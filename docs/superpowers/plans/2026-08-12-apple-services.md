@@ -491,6 +491,21 @@ func testExplicitReleaseOnlyReleasesASuccessfulReservationOnce() async throws {
     let releasedLocales = await inventory.releasedLocales
     XCTAssertEqual(releasedLocales, [locale])
 }
+
+func testInstallationFailureMapsToSpeechAssetsUnavailable() async {
+    let inventory = FakeSpeechAssetInventory(
+        equivalentLocale: Locale(identifier: "ja-JP"),
+        installError: NSError(domain: "SpeechAssetPreparerTests", code: 1)
+    )
+    let preparer = SpeechAssetPreparer(locale: Locale(identifier: "ja-JP"), inventory: inventory)
+
+    do {
+        _ = try await preparer.makePreparedTranscriber()
+        XCTFail("Expected installation failure")
+    } catch {
+        XCTAssertEqual(error as? ConversationServiceError, .speechAssetsUnavailable)
+    }
+}
 ```
 
 - [ ] **Step 2: Write failing converter tests for passthrough, resampling, flush, and construction failure**
@@ -521,7 +536,7 @@ func testFlushReturnsAnyPrimedFramesOnlyOnce() throws {
     _ = try converter.convert(makeInputBuffer(), at: nil)
     let first = try converter.flush()
     let second = try converter.flush()
-    XCTAssertGreaterThanOrEqual(first.count, 0)
+    XCTAssertGreaterThan(first.reduce(0) { $0 + Int($1.buffer.frameLength) }, 0)
     XCTAssertTrue(second.isEmpty)
 }
 ```
@@ -538,22 +553,33 @@ Expected: FAIL because the preparer and converter do not exist.
 - [ ] **Step 4: Implement exact iOS 26 asset setup**
 
 ```swift
+protocol SpeechAssetInventory: Sendable {
+    func equivalentSupportedLocale(to locale: Locale) async -> Locale?
+    func installIfNeeded(supporting transcriber: SpeechTranscriber) async throws
+    func isInstalled(_ transcriber: SpeechTranscriber) async -> Bool
+    func reserve(locale: Locale) async throws -> Bool
+    func release(reservedLocale: Locale) async -> Bool
+}
+
 private var reservedLocale: Locale?
 
 func makePreparedTranscriber() async throws -> SpeechTranscriber {
-    guard SpeechTranscriber.isAvailable,
-          let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
+    guard let supported = await inventory.equivalentSupportedLocale(to: locale) else {
         throw ConversationServiceError.speechLocaleUnsupported
     }
     let transcriber = SpeechTranscriber(locale: supported, preset: .progressiveTranscription)
-    if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-        try await request.downloadAndInstall()
+    do {
+        try await inventory.installIfNeeded(supporting: transcriber)
+    } catch is CancellationError {
+        throw ConversationServiceError.cancelled
+    } catch {
+        throw ConversationServiceError.speechAssetsUnavailable
     }
-    guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
+    guard await inventory.isInstalled(transcriber) else {
         throw ConversationServiceError.speechAssetsUnavailable
     }
     if reservedLocale == nil,
-       (try? await AssetInventory.reserve(locale: supported)) == true {
+       (try? await inventory.reserve(locale: supported)) == true {
         reservedLocale = supported
     }
     return transcriber
@@ -562,11 +588,11 @@ func makePreparedTranscriber() async throws -> SpeechTranscriber {
 func releaseReservation() async {
     guard let locale = reservedLocale else { return }
     reservedLocale = nil
-    _ = await AssetInventory.release(reservedLocale: locale)
+    _ = await inventory.release(reservedLocale: locale)
 }
 ```
 
-Implement `SpeechAssetPreparer` as an actor and wrap those static calls behind the internal inventory seam used by tests. Reservation is best-effort after status reaches `.installed`: a thrown error or `false` return leaves `reservedLocale` nil and does not fail transcription, because only eviction protection was unavailable. Record the locale only when `reserve(locale:)` returns `true`. `releaseReservation()` is the explicit, idempotent async teardown; clear the stored locale before awaiting release so reentrancy cannot release it twice. The owning composition must call it during async service teardown. Never attempt to `await` from `deinit`, and never release a locale that this instance did not successfully reserve.
+Implement `SpeechAssetPreparer` as an actor and wrap every environment-dependent static query behind the internal inventory seam used by tests, including `SpeechTranscriber.isAvailable`, equivalent-locale lookup, installation, installed status, reserve, and release. The live `installIfNeeded` implementation—not the seam—calls `AssetInventory.assetInstallationRequest(supporting:)` and then `downloadAndInstall()` when a request exists; `AssetInstallationRequest` is final and has no public initializer, so never expose it through the fakeable seam. Map installation cancellation to `.cancelled` and every other installation/request failure to `.speechAssetsUnavailable`; do not leak framework errors. Reservation is best-effort after status reaches `.installed`: a thrown error or `false` return leaves `reservedLocale` nil and does not fail transcription, because only eviction protection was unavailable. Record the locale only when `reserve(locale:)` returns `true`. `releaseReservation()` is the explicit, idempotent async teardown; clear the stored locale before awaiting release so reentrancy cannot release it twice. The owning composition must call it during async service teardown. Never attempt to `await` from `deinit`, and never release a locale that this instance did not successfully reserve.
 
 - [ ] **Step 5: Implement the converter protocol and AVAudioConverter bridge**
 
