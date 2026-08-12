@@ -29,12 +29,14 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         let preparationID: UUID
         let driver: any SpeechCaptureDriving
         let output: SpeechCaptureOutputGate
+        let startTask: Task<Void, Error>
     }
 
     private enum State {
         case unprepared
         case preparing(Preparation)
         case prepared(PreparedCapture)
+        case starting(RunningCapture)
         case running(RunningCapture)
         case stopping(UUID)
         case shuttingDown(UUID)
@@ -44,6 +46,8 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
     private let driverFactory: @Sendable () -> any SpeechCaptureDriving
     private var state: State = .unprepared
     private var shutdownOwnedPreparationIDs: Set<UUID> = []
+    private var startTeardownOwnership = SpeechStartTeardownOwnership()
+    private var failureOwnedStarts: [UUID: ConversationServiceError] = [:]
     private var lifecycleWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
     init(assetPreparer: SpeechAssetPreparer = SpeechAssetPreparer()) {
@@ -67,7 +71,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
 
     func start() async throws -> AsyncThrowingStream<SpeechRecognitionEvent, Error> {
         switch state {
-        case .running, .stopping, .shuttingDown:
+        case .starting, .running, .stopping, .shuttingDown:
             throw ConversationServiceError.speechCaptureAlreadyRunning
         case .unprepared, .preparing, .prepared:
             break
@@ -85,22 +89,13 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         let id = UUID()
         let (stream, continuation) = AsyncThrowingStream<SpeechRecognitionEvent, Error>.makeStream()
         let output = SpeechCaptureOutputGate(continuation: continuation)
-        state = .running(
-            RunningCapture(
-                id: id,
-                preparationID: prepared.preparationID,
-                driver: prepared.driver,
-                output: output
-            )
-        )
         continuation.onTermination = { [weak self] termination in
             guard case .cancelled = termination else { return }
             Task {
                 await self?.consumerTerminated(captureID: id)
             }
         }
-
-        do {
+        let startTask = Task {
             try await prepared.driver.start(
                 onEvent: { event in
                     output.yield(event)
@@ -111,22 +106,43 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
                     }
                 }
             )
-            if case .stopping(let stoppingID) = state, stoppingID == id {
-                await waitForLifecycle(stoppingID)
-            } else if case .shuttingDown(let shutdownID) = state {
-                await waitForLifecycle(shutdownID)
+        }
+        let capture = RunningCapture(
+            id: id,
+            preparationID: prepared.preparationID,
+            driver: prepared.driver,
+            output: output,
+            startTask: startTask
+        )
+        state = .starting(capture)
+
+        let startResult = await startTask.result
+        if let failure = failureOwnedStarts.removeValue(forKey: id) {
+            await waitForLifecycle(id)
+            throw failure
+        }
+        if let lifecycleID = startTeardownOwnership.takeLifecycleID(forStartID: id) {
+            await waitForLifecycle(lifecycleID)
+            throw ConversationServiceError.cancelled
+        }
+
+        switch startResult {
+        case .success:
+            guard case .starting(let active) = state,
+                  active.id == id else {
+                throw ConversationServiceError.cancelled
             }
+            state = .running(capture)
             return stream
-        } catch {
+        case .failure(let error):
             let mappedError = Self.mapCaptureError(error)
+            guard case .starting(let active) = state,
+                  active.id == id else {
+                throw mappedError
+            }
             await handleStartFailure(
                 mappedError,
-                capture: RunningCapture(
-                    id: id,
-                    preparationID: prepared.preparationID,
-                    driver: prepared.driver,
-                    output: output
-                )
+                capture: capture
             )
             throw mappedError
         }
@@ -141,18 +157,22 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             await waitForLifecycle(id)
             return
         }
+        if case .starting(let capture) = state {
+            state = .stopping(capture.id)
+            startTeardownOwnership.record(
+                lifecycleID: capture.id,
+                forStartID: capture.id
+            )
+            capture.output.beginGracefulFinalization()
+            let startResult = await capture.startTask.result
+            await stopCapture(capture, startResult: startResult)
+            completeLifecycle(capture.id)
+            return
+        }
         guard case .running(let capture) = state else { return }
         state = .stopping(capture.id)
         capture.output.beginGracefulFinalization()
-
-        do {
-            try await capture.driver.stop()
-            capture.output.finish()
-        } catch {
-            capture.output.beginImmediateCancellation()
-            await capture.driver.cancel()
-            capture.output.finish(throwing: Self.mapCaptureError(error))
-        }
+        await stopCapture(capture)
         completeLifecycle(capture.id)
     }
 
@@ -164,24 +184,26 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             case .shuttingDown(let id):
                 await waitForLifecycle(id)
                 return
-            case .unprepared, .preparing, .prepared, .running:
+            case .unprepared, .preparing, .prepared, .starting, .running:
                 break waitForActiveLifecycle
             }
         }
 
         let shutdownID = UUID()
         switch state {
+        case .starting(let capture):
+            state = .shuttingDown(shutdownID)
+            startTeardownOwnership.record(
+                lifecycleID: shutdownID,
+                forStartID: capture.id
+            )
+            capture.output.beginGracefulFinalization()
+            let startResult = await capture.startTask.result
+            await stopCapture(capture, startResult: startResult)
         case .running(let capture):
             state = .shuttingDown(shutdownID)
             capture.output.beginGracefulFinalization()
-            do {
-                try await capture.driver.stop()
-                capture.output.finish()
-            } catch {
-                capture.output.beginImmediateCancellation()
-                await capture.driver.cancel()
-                capture.output.finish(throwing: Self.mapCaptureError(error))
-            }
+            await stopCapture(capture)
         case .prepared(let prepared):
             state = .shuttingDown(shutdownID)
             await prepared.driver.cancel()
@@ -209,6 +231,11 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         case .preparing(let preparation):
             return try await resolvePreparation(preparation)
         case .running(let capture):
+            return PreparedCapture(
+                preparationID: capture.preparationID,
+                driver: capture.driver
+            )
+        case .starting(let capture):
             return PreparedCapture(
                 preparationID: capture.preparationID,
                 driver: capture.driver
@@ -256,6 +283,8 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
                 return active
             case .running(let active) where active.preparationID == preparation.id:
                 return prepared
+            case .starting(let active) where active.preparationID == preparation.id:
+                return prepared
             default:
                 throw ConversationServiceError.cancelled
             }
@@ -273,6 +302,12 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         capture: RunningCapture
     ) async {
         switch state {
+        case .starting(let active) where active.id == capture.id:
+            state = .stopping(capture.id)
+            capture.output.beginImmediateCancellation()
+            capture.output.finish(throwing: error)
+            await capture.driver.cancel()
+            completeLifecycle(capture.id)
         case .running(let active) where active.id == capture.id:
             state = .stopping(capture.id)
             capture.output.beginImmediateCancellation()
@@ -293,6 +328,14 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         captureID: UUID
     ) async {
         switch state {
+        case .starting(let capture) where capture.id == captureID:
+            state = .stopping(captureID)
+            failureOwnedStarts[captureID] = error
+            capture.output.beginImmediateCancellation()
+            capture.output.finish(throwing: error)
+            _ = await capture.startTask.result
+            await capture.driver.cancel()
+            completeLifecycle(captureID)
         case .running(let capture) where capture.id == captureID:
             state = .stopping(captureID)
             capture.output.beginImmediateCancellation()
@@ -322,6 +365,27 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         }
     }
 
+    private func stopCapture(
+        _ capture: RunningCapture,
+        startResult: Result<Void, Error>? = nil
+    ) async {
+        if let startResult, case .failure(let error) = startResult {
+            capture.output.beginImmediateCancellation()
+            await capture.driver.cancel()
+            capture.output.finish(throwing: Self.mapCaptureError(error))
+            return
+        }
+
+        do {
+            try await capture.driver.stop()
+            capture.output.finish()
+        } catch {
+            capture.output.beginImmediateCancellation()
+            await capture.driver.cancel()
+            capture.output.finish(throwing: Self.mapCaptureError(error))
+        }
+    }
+
     private func completeLifecycle(_ id: UUID) {
         guard ownsLifecycle(id) else { return }
         state = .unprepared
@@ -335,7 +399,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         switch state {
         case .stopping(let activeID), .shuttingDown(let activeID):
             return activeID == id
-        case .unprepared, .preparing, .prepared, .running:
+        case .unprepared, .preparing, .prepared, .starting, .running:
             return false
         }
     }
@@ -348,6 +412,21 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             return .cancelled
         }
         return .speechCaptureFailed
+    }
+}
+
+struct SpeechStartTeardownOwnership: Sendable {
+    private var lifecycleIDsByStartID: [UUID: UUID] = [:]
+
+    mutating func record(
+        lifecycleID: UUID,
+        forStartID startID: UUID
+    ) {
+        lifecycleIDsByStartID[startID] = lifecycleID
+    }
+
+    mutating func takeLifecycleID(forStartID startID: UUID) -> UUID? {
+        lifecycleIDsByStartID.removeValue(forKey: startID)
     }
 }
 

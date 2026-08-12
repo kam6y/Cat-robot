@@ -158,7 +158,7 @@ final class AppleSpeechRecognizerTests: XCTestCase {
 
         let entries = await log.entries
         let immediateTeardownCount = await driver.cancelCallCount
-        XCTAssertEqual(entries, [.normalStop, .releaseReservation])
+        XCTAssertEqual(entries, [.normalStop, .normalStopCompleted, .releaseReservation])
         XCTAssertEqual(immediateTeardownCount, 0)
         _ = stream
     }
@@ -197,6 +197,7 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         let driver = FakeSpeechCaptureDriver(analysisFailure: .failed)
         let recognizer = makeRecognizer(driverFactory: { driver })
         let stream = try await recognizer.start()
+        await driver.emitConfiguredFailure()
 
         await assertCaptureFailure(from: stream)
 
@@ -210,6 +211,7 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         let driver = FakeSpeechCaptureDriver(resultFailure: .failed)
         let recognizer = makeRecognizer(driverFactory: { driver })
         let stream = try await recognizer.start()
+        await driver.emitConfiguredFailure()
 
         await assertCaptureFailure(from: stream)
 
@@ -272,11 +274,15 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         let didBeginStart = await eventually { await first.startCount == 1 }
         XCTAssertTrue(didBeginStart)
         await first.emitFailure(.speechCaptureFailed)
-        let didBeginCancellation = await eventually { await first.cancelCallCount == 1 }
-        XCTAssertTrue(didBeginCancellation)
+        let didTakeOwnership = await waitUntilTeardownOwns(recognizer)
+        XCTAssertTrue(didTakeOwnership)
+        let cancelCountBeforeStartSettled = await first.cancelCallCount
+        XCTAssertEqual(cancelCountBeforeStartSettled, 0)
         await first.resumeStart()
         let didReachStartFailure = await eventually { await first.didReachStartFailure }
         XCTAssertTrue(didReachStartFailure)
+        let didBeginCancellation = await eventually { await first.cancelCallCount == 1 }
+        XCTAssertTrue(didBeginCancellation)
 
         var unexpectedStream: AsyncThrowingStream<SpeechRecognitionEvent, Error>?
         for _ in 0..<100 {
@@ -307,6 +313,181 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         await recognizer.stop()
         XCTAssertEqual(factory.creationCount, 2)
         _ = secondStream
+    }
+
+    func testStopWaitsForSuspendedSuccessfulStartAndMakesStartThrowCancelled() async throws {
+        let log = SpeechCaptureTestLog()
+        let first = FakeSpeechCaptureDriver(
+            log: log,
+            suspendNormalStop: true,
+            suspendStart: true,
+            logStartSettlement: true
+        )
+        let second = FakeSpeechCaptureDriver()
+        let factory = FakeSpeechCaptureDriverFactory(drivers: [first, second])
+        let recognizer = makeRecognizer(driverFactory: factory.make)
+        let startCompleted = LockedFlag()
+        let startOutcome = Task {
+            defer { startCompleted.set() }
+            return await captureStartOutcome(from: recognizer)
+        }
+
+        let didBeginStart = await eventually { await first.startCount == 1 }
+        XCTAssertTrue(didBeginStart)
+        let stop = Task { await recognizer.stop() }
+        let didTakeOwnership = await waitUntilTeardownOwns(recognizer)
+        XCTAssertTrue(didTakeOwnership)
+
+        await first.resumeStart()
+        let didBeginStop = await eventually { await first.normalStopCount == 1 }
+        XCTAssertTrue(didBeginStop)
+        do {
+            _ = try await recognizer.start()
+            XCTFail("Expected teardown to retain exclusive ownership")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .speechCaptureAlreadyRunning)
+        }
+        XCTAssertEqual(factory.creationCount, 1)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(startCompleted.value)
+        await first.resumeNormalStop()
+
+        await stop.value
+        let outcome = await startOutcome.value
+        let entries = await log.entries
+        let cancellationCount = await first.cancelCallCount
+        XCTAssertEqual(outcome, .failed(.cancelled))
+        XCTAssertEqual(entries, [.startSettled, .normalStop, .normalStopCompleted])
+        XCTAssertEqual(cancellationCount, 0)
+
+        let nextStream = try await recognizer.start()
+        XCTAssertEqual(factory.creationCount, 2)
+        await recognizer.stop()
+        _ = nextStream
+    }
+
+    func testShutdownWaitsForSuspendedSuccessfulStartBeforeTeardownAndRelease() async throws {
+        let log = SpeechCaptureTestLog()
+        let locale = Locale(identifier: "ja-JP")
+        let inventory = TaskFiveSpeechAssetInventory(
+            locale: locale,
+            log: log,
+            suspendRelease: true
+        )
+        let driver = FakeSpeechCaptureDriver(
+            log: log,
+            suspendNormalStop: true,
+            suspendStart: true,
+            logStartSettlement: true
+        )
+        let recognizer = AppleSpeechRecognizer(
+            assetPreparer: SpeechAssetPreparer(locale: locale, inventory: inventory),
+            driverFactory: { driver }
+        )
+        let startCompleted = LockedFlag()
+        let startOutcome = Task {
+            defer { startCompleted.set() }
+            return await captureStartOutcome(from: recognizer)
+        }
+
+        let didBeginStart = await eventually { await driver.startCount == 1 }
+        XCTAssertTrue(didBeginStart)
+        let shutdown = Task { await recognizer.shutdown() }
+        let didTakeOwnership = await waitUntilTeardownOwns(recognizer)
+        XCTAssertTrue(didTakeOwnership)
+
+        await driver.resumeStart()
+        let didBeginStop = await eventually { await driver.normalStopCount == 1 }
+        XCTAssertTrue(didBeginStop)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(startCompleted.value)
+        await driver.resumeNormalStop()
+        await inventory.waitUntilReleaseStarts()
+        let entriesDuringRelease = await log.entries
+        XCTAssertEqual(
+            entriesDuringRelease,
+            [.startSettled, .normalStop, .normalStopCompleted, .releaseReservation]
+        )
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(startCompleted.value)
+        await inventory.resumeRelease()
+
+        await shutdown.value
+        let outcome = await startOutcome.value
+        let entries = await log.entries
+        let cancellationCount = await driver.cancelCallCount
+        XCTAssertEqual(outcome, .failed(.cancelled))
+        XCTAssertEqual(
+            entries,
+            [.startSettled, .normalStop, .normalStopCompleted, .releaseReservation]
+        )
+        XCTAssertEqual(cancellationCount, 0)
+    }
+
+    func testFailureDuringSuspendedStartWaitsForSettlementBeforeImmediateTeardown() async {
+        let log = SpeechCaptureTestLog()
+        let driver = FakeSpeechCaptureDriver(
+            log: log,
+            suspendStart: true,
+            suspendCancellation: true,
+            logStartSettlement: true
+        )
+        let recognizer = makeRecognizer(driverFactory: { driver })
+        let startCompleted = LockedFlag()
+        let startOutcome = Task {
+            defer { startCompleted.set() }
+            return await captureStartOutcome(from: recognizer)
+        }
+
+        let didBeginStart = await eventually { await driver.startCount == 1 }
+        XCTAssertTrue(didBeginStart)
+        await driver.emitFailure(.speechCaptureFailed)
+        let didTakeOwnership = await waitUntilTeardownOwns(recognizer)
+        XCTAssertTrue(didTakeOwnership)
+
+        let cancellationCountBeforeStartSettled = await driver.cancelCallCount
+        XCTAssertEqual(cancellationCountBeforeStartSettled, 0)
+        await driver.resumeStart()
+        let didBeginCancellation = await eventually { await driver.cancelCallCount == 1 }
+        XCTAssertTrue(didBeginCancellation)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(startCompleted.value)
+        await driver.resumeCancellation()
+
+        let outcome = await startOutcome.value
+        let entries = await log.entries
+        let cancellationCount = await driver.cancelCallCount
+        XCTAssertEqual(outcome, .failed(.speechCaptureFailed))
+        XCTAssertEqual(entries, [.startSettled, .immediateTeardown])
+        XCTAssertEqual(cancellationCount, 1)
+    }
+
+    func testStartTeardownOwnershipKeepsEachLifecycleGenerationScoped() {
+        let startID = UUID()
+        let originalLifecycleID = UUID()
+        let newerStartID = UUID()
+        let newerLifecycleID = UUID()
+        var ownership = SpeechStartTeardownOwnership()
+
+        ownership.record(
+            lifecycleID: originalLifecycleID,
+            forStartID: startID
+        )
+        ownership.record(
+            lifecycleID: newerLifecycleID,
+            forStartID: newerStartID
+        )
+
+        XCTAssertNotEqual(originalLifecycleID, newerLifecycleID)
+        XCTAssertEqual(
+            ownership.takeLifecycleID(forStartID: startID),
+            originalLifecycleID
+        )
+        XCTAssertEqual(
+            ownership.takeLifecycleID(forStartID: newerStartID),
+            newerLifecycleID
+        )
+        XCTAssertNil(ownership.takeLifecycleID(forStartID: startID))
     }
 
     func testShutdownOwnsSuspendedPreparationAndCancelsItsPreparedDriverBeforeRelease() async throws {
@@ -434,6 +615,22 @@ final class AppleSpeechRecognizerTests: XCTestCase {
             )
         }
     }
+
+    private func waitUntilTeardownOwns(
+        _ recognizer: AppleSpeechRecognizer
+    ) async -> Bool {
+        for _ in 0..<1_000 {
+            do {
+                try await recognizer.prepare()
+            } catch let error as ConversationServiceError {
+                if error == .speechCaptureAlreadyRunning {
+                    return true
+                }
+            } catch {}
+            await Task.yield()
+        }
+        return false
+    }
 }
 
 private enum SpeechCaptureTestError: Error, Sendable {
@@ -441,9 +638,27 @@ private enum SpeechCaptureTestError: Error, Sendable {
 }
 
 private enum SpeechCaptureTestLogEntry: Equatable, Sendable {
+    case startSettled
     case normalStop
+    case normalStopCompleted
     case immediateTeardown
     case releaseReservation
+}
+
+private enum CaptureStartOutcome: Equatable, Sendable {
+    case returnedStream
+    case failed(ConversationServiceError?)
+}
+
+private func captureStartOutcome(
+    from recognizer: AppleSpeechRecognizer
+) async -> CaptureStartOutcome {
+    do {
+        _ = try await recognizer.start()
+        return .returnedStream
+    } catch {
+        return .failed(error as? ConversationServiceError)
+    }
 }
 
 private func makeRecognizer(
@@ -477,6 +692,7 @@ private actor FakeSpeechCaptureDriver: SpeechCaptureDriving {
     private let preparationCancellationProbe: LockedFlag?
     private let suspendStart: Bool
     private let suspendCancellation: Bool
+    private let logStartSettlement: Bool
 
     private(set) var prepareCount = 0
     private(set) var startCount = 0
@@ -501,7 +717,8 @@ private actor FakeSpeechCaptureDriver: SpeechCaptureDriving {
         suspendPreparation: Bool = false,
         preparationCancellationProbe: LockedFlag? = nil,
         suspendStart: Bool = false,
-        suspendCancellation: Bool = false
+        suspendCancellation: Bool = false,
+        logStartSettlement: Bool = false
     ) {
         self.results = results
         self.analysisFailure = analysisFailure
@@ -514,6 +731,7 @@ private actor FakeSpeechCaptureDriver: SpeechCaptureDriving {
         self.preparationCancellationProbe = preparationCancellationProbe
         self.suspendStart = suspendStart
         self.suspendCancellation = suspendCancellation
+        self.logStartSettlement = logStartSettlement
     }
 
     func prepare(with transcriber: SpeechTranscriber) async throws {
@@ -536,15 +754,15 @@ private actor FakeSpeechCaptureDriver: SpeechCaptureDriving {
         if suspendStart {
             await startGate.wait()
         }
+        if logStartSettlement {
+            await log?.append(.startSettled)
+        }
         if engineStartFailure != nil {
             didReachStartFailure = true
             throw SpeechCaptureTestError.failed
         }
         for result in results {
             onEvent(result)
-        }
-        if analysisFailure != nil || resultFailure != nil {
-            onFailure(.speechCaptureFailed)
         }
     }
 
@@ -557,6 +775,7 @@ private actor FakeSpeechCaptureDriver: SpeechCaptureDriving {
         if let tailResultOnStop {
             eventHandler?(tailResultOnStop)
         }
+        await log?.append(.normalStopCompleted)
     }
 
     func cancel() async {
@@ -570,6 +789,11 @@ private actor FakeSpeechCaptureDriver: SpeechCaptureDriving {
 
     func emitFailure(_ error: ConversationServiceError) {
         failureHandler?(error)
+    }
+
+    func emitConfiguredFailure() {
+        guard analysisFailure != nil || resultFailure != nil else { return }
+        failureHandler?(.speechCaptureFailed)
     }
 
     func resumeNormalStop() async {
