@@ -1030,9 +1030,33 @@ func testActivateUsesPlayAndRecordVoiceChatAndSpeakerBluetoothOptions() async th
     let controller = AppleAudioSessionController(session: session, notifications: center)
     try await controller.activate()
     XCTAssertEqual(session.category, .playAndRecord)
-    XCTAssertEqual(session.mode, .voiceChat)
+    XCTAssertEqual(session.mode, .default)
     XCTAssertEqual(session.options, [.defaultToSpeaker, .allowBluetoothHFP])
     XCTAssertTrue(session.isActive)
+}
+
+func testCategoryChangeRouteNotificationIsIgnoredButPhysicalRouteChangePublishes() async throws {
+    let session = FakeAudioSession()
+    let controller = AppleAudioSessionController(session: session, notifications: center)
+    let events = controller.events
+    center.post(name: AVAudioSession.routeChangeNotification, object: session.object,
+                userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.categoryChange.rawValue])
+    center.post(name: AVAudioSession.interruptionNotification, object: session.object,
+                userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+    XCTAssertEqual(await nextEvent(from: events), .interruptionBegan)
+
+    let routeEvents = controller.events
+    center.post(name: AVAudioSession.routeChangeNotification, object: session.object,
+                userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue])
+    XCTAssertEqual(await nextEvent(from: routeEvents), .routeChanged)
+}
+
+func testSubscribersReceiveSameEventAndOneCancellationDoesNotEndTheOther() async {
+    let controller = AppleAudioSessionController(session: FakeAudioSession(), notifications: center)
+    let first = controller.events
+    let second = controller.events
+    // Collect with bounded XCTest expectations; both receive interruptionBegan.
+    // Cancel the first collector, post interruptionEnded, and assert the second still receives it.
 }
 
 func testInterruptionEventsNeverReactivateAutomatically() async throws {
@@ -1073,7 +1097,7 @@ Expected: FAIL because the controller/session seam does not exist.
 func activate() async throws {
     try session.setCategory(
         .playAndRecord,
-        mode: .voiceChat,
+        mode: .default,
         options: [.defaultToSpeaker, .allowBluetoothHFP]
     )
     try session.setActive(true)
@@ -1084,7 +1108,15 @@ func deactivate() async {
 }
 ```
 
-Create one multicast-safe stream at controller initialization and retain notification observer tokens. Parse `AVAudioSession.interruptionNotification` using `AVAudioSessionInterruptionTypeKey` and `AVAudioSessionInterruptionOptionKey`; publish began/ended but never call `setActive(true)` from the handler. Publish `.routeChanged` for `AVAudioSession.routeChangeNotification` so integration can stop capture and re-preflight rather than continuing against a stale input format. Remove observers and finish the stream when the controller is released. Activation errors map to `.audioSessionFailed`; deactivation is best-effort.
+Implement `AppleAudioSessionController` as an actor. Define an internal class-bound `AudioSessionDriving: Sendable` seam with the exact synchronous throwing `setCategory(_:mode:options:)` and `setActive(_:options:)` operations; the live wrapper owns `AVAudioSession.sharedInstance()`, while tests use a lock-protected fake and post notifications for its explicit object identity. `activate()` performs potentially blocking `setActive` work off the main actor. Both category and activation failures map to `.audioSessionFailed`. `deactivate()` calls `setActive(false, options: .notifyOthersOnDeactivation)` and remains best-effort.
+
+The existing `events` getter can have more than one consumer, so do not return one competing-consumer `AsyncStream`. Back `nonisolated var events` with a small Sendable lock-protected broadcast hub that makes a fresh stream and continuation for each access, removes the matching continuation on termination, and publishes each event synchronously in registration order. `onTermination` weakly captures the hub. Notification callbacks parse and publish directly instead of launching one unstructured task per notification, preserving began/ended order.
+
+Parse `AVAudioSession.interruptionNotification` using `AVAudioSessionInterruptionTypeKey` and `AVAudioSessionInterruptionOptionKey`; missing end options mean `shouldResume: false`, malformed or unknown interruption types are ignored, and handlers never call `setActive(true)`. Parse `AVAudioSessionRouteChangeReasonKey` for route changes. Ignore `.categoryChange`, because the controller's own `setCategory` can emit it; publish `.routeChanged` for valid physical/other route reasons so integration can stop capture and re-preflight rather than continuing against a stale input format.
+
+Use `.playAndRecord` with `.default` mode and `[.defaultToSpeaker, .allowBluetoothHFP]`. This MVP is half-duplex and does not enable `AVAudioEngine` voice processing, so `.voiceChat` would request DSP behavior the capture driver has not configured. Retain notification observer tokens in a lifetime owner whose callbacks capture only the hub (not the controller); remove observers and finish all subscriber continuations when the owner is released. Add a weak-deallocation/stream-finish regression. Use bounded XCTest expectations for notification collectors rather than unbounded task awaits.
+
+Integration must configure and activate this audio session **before** `AppleSpeechRecognizer.prepare()` captures `inputNode.outputFormat` and builds its converter. Pause/background/interruption must stop the recognizer and speaker before deactivation. An explicit resume repeats activation before route-bound recognizer preparation; it never silently resumes from a notification.
 
 - [ ] **Step 4: Run focused tests and commit**
 
