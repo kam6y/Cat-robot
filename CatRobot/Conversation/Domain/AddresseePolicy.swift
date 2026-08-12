@@ -1,6 +1,7 @@
 import Foundation
 
 enum AddresseeRoute: Equatable, Sendable {
+    case wakeOnly
     case accept(String)
     case classify(String)
     case confirmPending(original: String)
@@ -25,6 +26,10 @@ struct PendingClarification: Equatable, Sendable {
 
 struct AddresseePolicy: Sendable {
     private static let wakeNames = ["ねこ", "猫ちゃん", "Cat Robot", "キャットロボット"]
+    private static let conversationalStarters = [
+        "今日", "今", "明日", "どう", "何", "なに", "いつ", "どこ", "誰", "だれ",
+        "なぜ", "なんで", "元気", "教えて", "聞いて", "お願い", "おはよう", "こんにちは", "こんばんは"
+    ]
     private static let fillerTokens: Set<String> = ["あ", "あの", "え", "えー", "えっと", "うーん", "ん", "んー"]
     private static let affirmativeTokens: Set<String> = ["うん", "はい", "ええ", "そう", "そうだよ", "そうです"]
     private static let negativeTokens: Set<String> = ["ううん", "いいえ", "いや", "違う", "ちがう", "違います", "そうじゃない"]
@@ -41,7 +46,7 @@ struct AddresseePolicy: Sendable {
         guard !token.isEmpty, !Self.fillerTokens.contains(token) else { return .ignore }
 
         if let content = contentAfterWakeName(in: trimmed) {
-            return content.isEmpty ? .ignore : .accept(content)
+            return content.isEmpty ? .wakeOnly : .accept(content)
         }
 
         if let pending, timestamp < pending.expiresAt {
@@ -58,7 +63,7 @@ struct AddresseePolicy: Sendable {
             return .accept(trimmed)
         }
 
-        return .classify(trimmed)
+        return .classify(utterance)
     }
 
     private func contentAfterWakeName(in utterance: String) -> String? {
@@ -70,16 +75,23 @@ struct AddresseePolicy: Sendable {
                 continue
             }
 
-            if range.upperBound < utterance.endIndex,
-               !utterance[range.upperBound].unicodeScalars.allSatisfy(Self.separators.contains) {
-                continue
+            let remainder = utterance[range.upperBound...]
+            guard let first = remainder.first else {
+                return ""
             }
 
-            let remainder = utterance[range.upperBound...]
-            let content = remainder.drop { character in
-                character.unicodeScalars.allSatisfy(Self.separators.contains)
+            if first.unicodeScalars.allSatisfy(Self.separators.contains) {
+                let content = remainder.drop { character in
+                    character.unicodeScalars.allSatisfy(Self.separators.contains)
+                }
+                return String(content)
             }
-            return String(content)
+
+            let content = String(remainder)
+            guard Self.conversationalStarters.contains(where: { content.hasPrefix($0) }) else {
+                continue
+            }
+            return content
         }
 
         return nil

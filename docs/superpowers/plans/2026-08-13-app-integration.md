@@ -131,6 +131,23 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(await harness.reply.prompts.last, "もう少し教えて")
     }
 
+    func testWakeOnlyAcknowledgesLocallyAndArmsFastFollowUp() async throws {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+        await harness.emitCompletedUtterance("猫ちゃん")
+
+        let firstSpokenTexts = await harness.speaker.texts
+        let firstClassifierCalls = await harness.classifier.calls
+        let firstReplyPrompts = await harness.reply.prompts
+        XCTAssertEqual(firstSpokenTexts, ["なあに？"])
+        XCTAssertTrue(firstClassifierCalls.isEmpty)
+        XCTAssertTrue(firstReplyPrompts.isEmpty)
+
+        await harness.completeTurn("今日どう？", at: 10)
+        let classifierCallCount = await harness.classifier.calls.count
+        XCTAssertEqual(classifierCallCount, 0)
+    }
+
     func testClassifiedAddressRepliesAndArmsFastFollowUp() async throws {
         let harness = ConversationHarness(classification: .addressed)
         await harness.completeUnengagedTurn("今日どう？", at: 0)
@@ -154,7 +171,7 @@ final class ConversationViewModelTests: XCTestCase {
 
 - [ ] **Step 3: Implement start and happy-path turn-taking**
 
-`startConversation` requests permission, checks model availability, prepares speech recognition assets and the installed Japanese synthesis voice, activates audio, prewarms reply, and starts recognition. A completed utterance immediately stops recognition. `.accept` goes directly to `streamReply`; `.classify` calls the classifier once. A classified `.addressed` result enters reply generation and arms engagement after the reply; `.ambiguous` enters the clarification flow; `.notAddressed` sends nothing to the reply session and immediately starts a fresh recognition stream. Replace caption with each cumulative snapshot. Speak only the final nonempty snapshot. On speech word events cycle `small/medium/wide`; on finish arm engagement for an explicit wake, confirmed pending utterance, or classified address, otherwise refresh an already active engagement; reset mouth and start a fresh recognition stream.
+`startConversation` requests permission, checks model availability, prepares speech recognition assets and the installed Japanese synthesis voice, activates audio, prewarms reply, and starts recognition. A completed utterance immediately stops recognition. `.wakeOnly` clears pending clarification, immediately captions and locally speaks the fixed phrase `なあに？`, never calls the classifier or reply session, arms engagement after acknowledgement finishes, and resumes capture. `.accept` goes directly to `streamReply`; `.classify` calls the classifier once. A classified `.addressed` result enters reply generation and arms engagement after the reply; `.ambiguous` enters the clarification flow; `.notAddressed` sends nothing to the reply session and immediately starts a fresh recognition stream. Replace caption with each cumulative snapshot. Speak only the final nonempty snapshot. On speech word events cycle `small/medium/wide`; on finish arm engagement for an explicit wake, confirmed pending utterance, or classified address, otherwise refresh an already active engagement; reset mouth and start a fresh recognition stream.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -297,7 +314,7 @@ xcrun devicectl device install app --device 00008140-000610311A90801C \
 xcrun devicectl device process launch --device 00008140-000610311A90801C com.kamby.CatRobot
 ```
 
-- [ ] On the phone, verify: contextual mic prompt; Japanese readiness; wake-name turn; natural engaged follow-up without name; unrelated speech after engagement expiry; ambiguous clarification plus yes/no; streamed caption; audible Japanese reply; moving mouth; automatic post-reply listening; manual pause; no silent resume after background/interruption; typed fallback.
+- [ ] On the phone, verify: contextual mic prompt; Japanese readiness; wake-name-only local **なあに？** acknowledgement followed by a classifier-free unnamed turn; wake-name-plus-content turn including an undelimited Japanese ASR form; natural engaged follow-up without name; unrelated speech after engagement expiry; ambiguous clarification plus yes/no; streamed caption; audible Japanese reply; moving mouth; automatic post-reply listening; manual pause; no silent resume after background/interruption; typed fallback.
 - [ ] Capture signpost timings for one fast-path and one classified-path turn with Instruments. Record observed values in `docs/validation/2026-08-13-iphone16pro-smoke-test.md`; record failures honestly and fix only issues required by acceptance criteria.
 - [ ] Run `git diff --check` and full tests after any fix, then commit `test: document iPhone 16 Pro smoke test`.
 - [ ] Squash into main as `feat: deliver Cat Robot MVP`, push main, push and retain `feature/app-integration`, and verify all retained feature branches exist on GitHub.
