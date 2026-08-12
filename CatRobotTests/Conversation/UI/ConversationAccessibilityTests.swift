@@ -46,6 +46,18 @@ final class ConversationAccessibilityTests: XCTestCase {
         )
     }
 
+    func testPausedSpeakingAnnouncesPausedActivityInsteadOfRetainedCaption() {
+        let oldState = ConversationViewState.speaking(caption: "こんにちは")
+        var newState = oldState
+        newState.phase = .paused
+        newState.activityStatus = "一時停止しています"
+
+        XCTAssertEqual(
+            ConversationAnnouncementPolicy.announcement(from: oldState, to: newState),
+            "一時停止しています"
+        )
+    }
+
     func testNewErrorAnnouncementIncludesEveryRecoveryTitle() {
         let oldState = ConversationViewState.listening
         let newState = ConversationViewState.failed(

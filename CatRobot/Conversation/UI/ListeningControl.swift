@@ -104,7 +104,7 @@ enum ConversationAnnouncementPolicy {
         }
 
         if oldState.phase == .speaking,
-           newState.phase != .speaking,
+           newState.phase == .listening,
            !newState.caption.isEmpty {
             return "猫の返事。\(newState.caption)"
         }
