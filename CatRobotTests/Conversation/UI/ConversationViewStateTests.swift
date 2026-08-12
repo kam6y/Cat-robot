@@ -14,6 +14,14 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(state.activityStatus, "話しています")
     }
 
+    func testClarifyingShowsTheFixedQuestionWhileCaptureIsPaused() {
+        let state = ConversationViewState.clarifying
+
+        XCTAssertEqual(state.caption, "今の、ぼくに言った？")
+        XCTAssertEqual(state.microphoneStatus, "聞き返しの間は聞き取りを休止")
+        XCTAssertEqual(state.activityStatus, "聞き返しています")
+    }
+
     func testFailureCarriesAVisibleNextAction() {
         let state = ConversationViewState.failed(
             error: .modelGenerationFailed,

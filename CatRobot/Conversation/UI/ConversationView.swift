@@ -19,14 +19,7 @@ struct ConversationView: View {
 
             VStack(spacing: 12) {
                 statusHeader
-
-                ScrollView {
-                    conversationContent
-                        .frame(maxWidth: .infinity)
-                }
-                .scrollIndicators(.hidden)
-
-                lowerControls
+                conversationBody
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -155,45 +148,90 @@ struct ConversationView: View {
     }
 
     @ViewBuilder
-    private var lowerControls: some View {
+    private var conversationBody: some View {
         if reduceTransparency {
-            controlContents(usesGlass: false)
-                .padding(12)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
+            verticalBody(usesGlass: false)
         } else {
             GlassEffectContainer(spacing: 12) {
-                controlContents(usesGlass: true)
+                verticalBody(usesGlass: true)
             }
         }
     }
 
-    private func controlContents(usesGlass: Bool) -> some View {
-        VStack(spacing: 10) {
-            if state.showsTypedInput {
-                TypedInputView(
-                    text: Binding(
-                        get: { state.typedText },
-                        set: { newValue in
-                            actions.updateTypedText(newValue)
-                        }
-                    ),
-                    usesGlass: usesGlass,
-                    onSend: sendTypedText,
-                    onDismiss: dismissTypedInput
-                )
+    private func verticalBody(usesGlass: Bool) -> some View {
+        VStack(spacing: 12) {
+            ScrollView {
+                scrollableContent(usesGlass: usesGlass)
+                    .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
 
-            switch ConversationLowerControlsLayout.preferred(for: dynamicTypeSize) {
-            case .horizontalFirst:
-                ViewThatFits(in: .horizontal) {
-                    horizontalControlButtons(usesGlass: usesGlass)
-                    stackedControlButtons(usesGlass: usesGlass)
-                }
-            case .stacked:
-                ViewThatFits(in: .horizontal) {
-                    stackedControlButtons(usesGlass: usesGlass)
+            fixedControls(usesGlass: usesGlass)
+        }
+    }
+
+    @ViewBuilder
+    private func scrollableContent(usesGlass: Bool) -> some View {
+        switch ConversationVerticalLayout.preferred(
+            for: dynamicTypeSize,
+            showsTypedInput: state.showsTypedInput
+        ) {
+        case .standard:
+            conversationContent
+        case .scrollableContentWithFixedControls:
+            VStack(spacing: 12) {
+                conversationContent
+
+                if state.showsTypedInput {
+                    typedInput(usesGlass: usesGlass)
                 }
             }
+        }
+    }
+
+    private func typedInput(usesGlass: Bool) -> some View {
+        TypedInputView(
+            text: Binding(
+                get: { state.typedText },
+                set: { newValue in
+                    actions.updateTypedText(newValue)
+                }
+            ),
+            usesGlass: usesGlass,
+            onSend: sendTypedText,
+            onDismiss: dismissTypedInput
+        )
+    }
+
+    @ViewBuilder
+    private func fixedControls(usesGlass: Bool) -> some View {
+        if usesGlass {
+            controlButtons(usesGlass: true)
+        } else {
+            controlButtons(usesGlass: false)
+                .padding(12)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
+        }
+    }
+
+    @ViewBuilder
+    private func controlButtons(usesGlass: Bool) -> some View {
+        switch ConversationLowerControlsLayout.preferred(
+            for: dynamicTypeSize,
+            showsTypedInput: state.showsTypedInput
+        ) {
+        case .horizontalFirst:
+            ViewThatFits(in: .horizontal) {
+                horizontalControlButtons(usesGlass: usesGlass)
+                stackedControlButtons(usesGlass: usesGlass)
+            }
+        case .stacked:
+            ViewThatFits(in: .horizontal) {
+                stackedControlButtons(usesGlass: usesGlass)
+            }
+        case .compactHorizontal:
+            compactControlButtons(usesGlass: usesGlass)
         }
     }
 
@@ -213,27 +251,42 @@ struct ConversationView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func listeningButton(usesGlass: Bool) -> some View {
+    private func compactControlButtons(usesGlass: Bool) -> some View {
+        HStack(spacing: 12) {
+            listeningButton(usesGlass: usesGlass, usesCompactLabel: true)
+            keyboardButton(usesGlass: usesGlass, usesCompactLabel: true)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func listeningButton(
+        usesGlass: Bool,
+        usesCompactLabel: Bool = false
+    ) -> some View {
         ListeningControl(
             phase: state.phase,
             usesGlass: usesGlass,
+            usesCompactLabel: usesCompactLabel,
             action: actions.toggleListening
         )
     }
 
     @ViewBuilder
-    private func keyboardButton(usesGlass: Bool) -> some View {
+    private func keyboardButton(
+        usesGlass: Bool,
+        usesCompactLabel: Bool = false
+    ) -> some View {
         if usesGlass {
-            keyboardButton.buttonStyle(.glass)
+            keyboardButton(usesCompactLabel: usesCompactLabel).buttonStyle(.glass)
         } else {
-            keyboardButton.buttonStyle(.bordered)
+            keyboardButton(usesCompactLabel: usesCompactLabel).buttonStyle(.bordered)
         }
     }
 
-    private var keyboardButton: some View {
+    private func keyboardButton(usesCompactLabel: Bool) -> some View {
         Button(action: toggleTypedInput) {
             Label(
-                state.showsTypedInput ? "文字入力を閉じる" : "文字で入力",
+                keyboardButtonTitle(usesCompactLabel: usesCompactLabel),
                 systemImage: state.showsTypedInput ? "keyboard.chevron.compact.down" : "keyboard"
             )
             .multilineTextAlignment(.center)
@@ -243,6 +296,13 @@ struct ConversationView: View {
         .frame(maxWidth: .infinity)
         .accessibilityLabel(state.showsTypedInput ? "文字入力を閉じる" : "文字入力を開く")
         .accessibilityValue(state.showsTypedInput ? "開いています" : "閉じています")
+    }
+
+    private func keyboardButtonTitle(usesCompactLabel: Bool) -> String {
+        if usesCompactLabel {
+            return state.showsTypedInput ? "閉じる" : "文字入力"
+        }
+        return state.showsTypedInput ? "文字入力を閉じる" : "文字で入力"
     }
 
     private var microphoneSymbol: String {

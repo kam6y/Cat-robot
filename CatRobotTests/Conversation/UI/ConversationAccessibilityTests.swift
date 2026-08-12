@@ -17,6 +17,7 @@ final class ConversationAccessibilityTests: XCTestCase {
     func testClarificationIsAvailableWithoutMotion() {
         let labels = ConversationAccessibility(phase: .clarifying)
 
+        XCTAssertEqual(labels.microphoneValue, "一時休止中")
         XCTAssertEqual(labels.assistantStatus, "聞き返しています")
     }
 
@@ -133,12 +134,63 @@ final class ConversationAccessibilityTests: XCTestCase {
 
     func testAccessibilityDynamicTypePrefersStackedLowerControls() {
         XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(for: .accessibility1),
+            ConversationLowerControlsLayout.preferred(
+                for: .accessibility1,
+                showsTypedInput: false
+            ),
             .stacked
         )
         XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(for: .large),
+            ConversationLowerControlsLayout.preferred(
+                for: .large,
+                showsTypedInput: false
+            ),
             .horizontalFirst
+        )
+    }
+
+    func testAccessibilityTypedInputUsesCompactFixedControls() {
+        XCTAssertEqual(
+            ConversationLowerControlsLayout.preferred(
+                for: .accessibility1,
+                showsTypedInput: true
+            ),
+            .compactHorizontal
+        )
+    }
+
+    func testAccessibilityTypedPanelUsesCompactHorizontalLayout() {
+        XCTAssertEqual(
+            TypedInputLayout.preferred(for: .accessibility1),
+            .compactHorizontal
+        )
+        XCTAssertEqual(
+            TypedInputLayout.preferred(for: .large),
+            .standard
+        )
+    }
+
+    func testKeyboardOrAccessibilityOverflowKeepsPrimaryControlsFixed() {
+        XCTAssertEqual(
+            ConversationVerticalLayout.preferred(
+                for: .large,
+                showsTypedInput: true
+            ),
+            .scrollableContentWithFixedControls
+        )
+        XCTAssertEqual(
+            ConversationVerticalLayout.preferred(
+                for: .accessibility1,
+                showsTypedInput: false
+            ),
+            .scrollableContentWithFixedControls
+        )
+        XCTAssertEqual(
+            ConversationVerticalLayout.preferred(
+                for: .large,
+                showsTypedInput: false
+            ),
+            .standard
         )
     }
 }

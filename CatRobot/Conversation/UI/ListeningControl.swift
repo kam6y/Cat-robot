@@ -63,7 +63,7 @@ struct ConversationAccessibility: Equatable {
             microphoneValue = "一時休止中"
             assistantStatus = "呼びかけを確認しています"
         case .clarifying:
-            microphoneValue = "再開中"
+            microphoneValue = "一時休止中"
             assistantStatus = "聞き返しています"
         case .thinking:
             microphoneValue = "一時休止中"
@@ -84,9 +84,28 @@ struct ConversationAccessibility: Equatable {
 enum ConversationLowerControlsLayout: Equatable {
     case horizontalFirst
     case stacked
+    case compactHorizontal
 
-    static func preferred(for dynamicTypeSize: DynamicTypeSize) -> Self {
-        dynamicTypeSize.isAccessibilitySize ? .stacked : .horizontalFirst
+    static func preferred(
+        for dynamicTypeSize: DynamicTypeSize,
+        showsTypedInput: Bool
+    ) -> Self {
+        guard dynamicTypeSize.isAccessibilitySize else { return .horizontalFirst }
+        return showsTypedInput ? .compactHorizontal : .stacked
+    }
+}
+
+enum ConversationVerticalLayout: Equatable {
+    case standard
+    case scrollableContentWithFixedControls
+
+    static func preferred(
+        for dynamicTypeSize: DynamicTypeSize,
+        showsTypedInput: Bool
+    ) -> Self {
+        showsTypedInput || dynamicTypeSize.isAccessibilitySize
+            ? .scrollableContentWithFixedControls
+            : .standard
     }
 }
 
@@ -125,6 +144,7 @@ enum ConversationAnnouncementPolicy {
 struct ListeningControl: View {
     let phase: ConversationPhase
     let usesGlass: Bool
+    let usesCompactLabel: Bool
     let action: () -> Void
 
     private var labels: ConversationAccessibility {
@@ -141,7 +161,7 @@ struct ListeningControl: View {
 
     private var button: some View {
         Button(action: action) {
-            Label(labels.listeningAction, systemImage: labels.listeningSymbol)
+            Label(visibleActionLabel, systemImage: labels.listeningSymbol)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 44)
@@ -150,5 +170,10 @@ struct ListeningControl: View {
         .accessibilityLabel(labels.listeningAction)
         .accessibilityValue(labels.microphoneValue)
         .accessibilityHint(labels.listeningHint)
+    }
+
+    private var visibleActionLabel: String {
+        guard usesCompactLabel else { return labels.listeningAction }
+        return labels.listeningSemantic == .pause ? "一時停止" : "再開"
     }
 }
