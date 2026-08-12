@@ -4,7 +4,7 @@
 
 **Goal:** Wire the domain, Apple services, and cat interface into a responsive foreground conversation, then prove the MVP on the connected iPhone 16 Pro.
 
-**Architecture:** One `@MainActor @Observable` `ConversationViewModel` owns UI state and a single orchestration task. It stops capture at each utterance boundary, takes deterministic wake/engagement fast paths before optional classification, streams one stateful reply into captions, speaks it, and resumes capture only after normal TTS completion; pause/background/interruption require explicit resume.
+**Architecture:** One `@MainActor @Observable` `ConversationViewModel` owns UI state plus distinct capture, segmentation, turn, preflight, and audio-event tasks. Monotonic session/capture/turn identities prevent stale callbacks from mutating a newer conversation. It stops capture at each utterance boundary, takes deterministic wake/engagement fast paths before optional classification, streams one stateful reply into captions, speaks it, and resumes capture only after normal TTS completion; pause/background/interruption require explicit resume.
 
 **Tech Stack:** SwiftUI, Observation, AVFAudio permission API, OSLog signposts, Swift 6, iOS 26, XCTest, xcodebuild/devicectl.
 
@@ -20,6 +20,10 @@
 - Use real device `Not so bad`, UDID `00008140-000610311A90801C`, iOS 26.6; simulator UDID is `0D540017-B9D7-4E42-B99F-6D0840FD41DA`.
 - Automatic signing: team `VUB4VP6453`, bundle `com.kamby.CatRobot`.
 - Integrate with `git merge --squash`; push and retain `feature/app-integration`.
+
+## Prerequisite integration base
+
+Do not create `feature/app-integration` until `feature/apple-services` and `feature/cat-interface` are clean, reviewed, and complete. From the main worktree, squash `feature/apple-services` into `main` first, then squash `feature/cat-interface`; regenerate once, run the combined simulator suite and `git diff --check`, commit each bounded squash, and push `main` plus both retained feature branches. Branch `feature/app-integration` from that exact combined `main`. Task 1 must not begin against a branch missing `AppleSpeechSynthesizer`, `AppleAudioSessionController`, or the final `ConversationView` action/accessibility contract.
 
 ## Integration contract
 
@@ -43,6 +47,8 @@ final class ConversationViewModel {
 
 The initializer receives `MicrophoneAuthorizing`, `ModelAvailabilityChecking`, `SpeechRecognizing`, `AddressClassifying`, `ReplyGenerating`, `SpeechSpeaking`, `AudioSessionControlling`, `AddresseePolicy`, and a monotonic `now: @Sendable () -> TimeInterval`. Fakes implement every external side effect.
 
+The view model serializes all public actions through one lifecycle generation. It owns separate cancellable `preflightTask`, `captureTask`, `segmentationTask`, `turnTask`, and `audioEventTask`, plus monotonic session/capture/turn counters. Repeated start/resume calls join or ignore the current preflight; pause/background/interruption invalidates the generation before awaiting child teardown. Every recognition event, timer firing, model snapshot, speech event, and preflight completion verifies its captured identity before changing state or restarting capture. A completed utterance invalidates that capture identity before its lossless recognizer stop, so any final tail event from the closed capture cannot seed a second turn.
+
 ---
 
 ### Task 1: Permission, error presentation, and dependency composition
@@ -65,7 +71,10 @@ final class ConversationErrorPresentationTests: XCTestCase {
         let value = ConversationErrorPresentation(.microphoneDenied)
         XCTAssertEqual(value.message, "マイクを使えません。設定で許可するか、文字で話しかけてください。")
         XCTAssertTrue(value.offersTypedInput)
-        XCTAssertEqual(value.recoveries, [.init(title: "文字で話す", action: .showTypedInput)])
+        XCTAssertEqual(value.recoveries, [
+            .init(title: "設定を開く", action: .openSettings),
+            .init(title: "文字で話す", action: .showTypedInput),
+        ])
     }
 
     func testModelPreparingOffersRetry() {
@@ -87,7 +96,7 @@ Run: `ruby scripts/generate_project.rb && xcodebuild test -project CatRobot.xcod
 
 - [ ] **Step 3: Implement permission and composition**
 
-Use `AVAudioApplication.requestRecordPermission()` in the live permission service. Map every `ConversationServiceError` with an exhaustive switch to plain Japanese plus one or more `ConversationRecovery` values; use retry, Settings, or typed-input recovery as appropriate and never expose debug descriptions. `ConversationDependencies.live()` constructs exactly one reply service, recognizer, synthesizer, and audio-session controller per app conversation lifetime; classifier sessions remain internally one-shot. Do not start any service during composition.
+Use `AVAudioApplication.requestRecordPermission()` in the live permission service. The app uses iOS 26 `SpeechTranscriber` and does not instantiate `SFSpeechRecognizer`, so it requests only microphone consent; no separate Speech-recognition authorization flow is needed. Map every `ConversationServiceError` with an exhaustive switch to plain Japanese plus one or more `ConversationRecovery` values; microphone denial offers both Settings and typed input, and other errors use retry, Settings, or typed input as appropriate without exposing debug descriptions. `ConversationDependencies.live()` constructs exactly one reply service, recognizer, synthesizer, and audio-session controller per app conversation lifetime; classifier sessions remain internally one-shot. Do not start any service during composition.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -170,6 +179,15 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertTrue(replyPrompts.isEmpty)
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
+
+    func testAudioActivatesBeforeRouteBoundRecognizerPreparation() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+        XCTAssertLessThan(
+            harness.calls.firstIndex(of: .activateAudio)!,
+            harness.calls.firstIndex(of: .prepareRecognizer)!
+        )
+    }
 }
 ```
 
@@ -179,7 +197,13 @@ final class ConversationViewModelTests: XCTestCase {
 
 - [ ] **Step 3: Implement start and happy-path turn-taking**
 
-`startConversation` requests permission, checks model availability, prepares speech recognition assets and the installed Japanese synthesis voice, activates audio, prewarms reply, and starts recognition. A completed utterance immediately stops recognition. Before handling any accepted route, consume and clear the current pending clarification; this applies to `.wakeOnly`, `.accept`, and a classified `.addressed` result, and happens before local acknowledgement or reply generation. `.wakeOnly` immediately captions and locally speaks the fixed phrase `なあに？`, never calls the classifier or reply session, arms engagement after acknowledgement finishes, and resumes capture. `.accept` goes directly to `streamReply`; `.classify` calls the classifier once. A classified `.addressed` result enters reply generation and arms engagement after the reply; `.ambiguous` enters the clarification flow; `.notAddressed` sends nothing to the reply session and immediately starts a fresh recognition stream. Replace caption with each cumulative snapshot. Speak only the final nonempty snapshot. On speech word events cycle `small/medium/wide`; on finish arm engagement for an explicit wake, confirmed pending utterance, or classified address, otherwise refresh an already active engagement; reset mouth and start a fresh recognition stream.
+`startConversation` requests permission, checks model availability, prepares the installed Japanese synthesis voice, activates audio, then prepares route-bound speech recognition, prewarms reply, and starts recognition. Audio activation must precede `AppleSpeechRecognizer.prepare()` because the latter captures `inputNode.outputFormat` and constructs its converter. Repeated starts while preflight is pending join or no-op; a permission/preflight completion from an invalidated generation cannot publish success or failure.
+
+A completed utterance invalidates its capture identity, cancels its segmentation timer, and awaits the recognizer's lossless stop before starting any newer recognition stream. Before handling any accepted route, consume and clear the current pending clarification; this applies to `.wakeOnly`, `.accept`, and a classified `.addressed` result, and happens before local acknowledgement or reply generation. `.wakeOnly` immediately captions and locally speaks the fixed phrase `なあに？`, never calls the classifier or reply session, arms engagement after acknowledgement finishes, and resumes capture. `.accept` goes directly to `streamReply`; `.classify` calls the classifier once. A classified `.addressed` result enters reply generation and arms engagement after the reply; `.ambiguous` enters the clarification flow; `.notAddressed` sends nothing to the reply session and starts a fresh recognition stream only after prior capture teardown completes. Replace caption with each cumulative snapshot. Speak only the final nonempty snapshot. On speech word events cycle `small/medium/wide`; on finish arm engagement for an explicit wake, confirmed pending utterance, or classified address, otherwise refresh an already active engagement; reset mouth and start one fresh recognition stream.
+
+Add focused race tests for two concurrent starts; scene inactivity while permission/preflight is suspended; pause during reply streaming; background during TTS; a tail recognition result after utterance close; stale model snapshot or speech-finished event after a newer session; duplicate interruption/inactive events; and rapid pause/resume. Each proves stale callbacks do not update the UI, arm engagement, or restart capture.
+
+If reply generation finishes without a nonempty snapshot, show a recoverable model-generation error with retry and typed fallback and do not speak or arm engagement. If generation is cancelled because the lifecycle changed, publish neither stale error nor restart. If TTS fails, show a visible synthesis error, do not arm engagement, and leave listening paused until explicit recovery. A normal speech terminal event resumes capture exactly once.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -281,6 +305,10 @@ final class ConversationRecoveryTests: XCTestCase {
 
 For `.ambiguous`, retain only one `PendingClarification`, speak the fixed local question without sending it to the reply session, and wait for yes/no. Negative/timeout discards it. Any accepted route consumes and clears the pending clarification before local acknowledgement or reply generation, including an affirmative acceptance of its original utterance and a new explicit wake-name turn that supersedes it; an old pending utterance must never reappear after a fresh accepted turn. An empty finalized recognition event presents `.speechUnrecognized` with **もう一度** and **文字で入力** while capture remains in `.listening`; `retryRecovery()` clears this card without restarting the already-running capture, and `showTypedInput()` opens the fallback. For paused or failed availability states, `retryRecovery()` reruns the same preflight as explicit resume. `pause`, scene inactivity, and any audio interruption cancel timer/model/stream tasks, stop recognizer/speaker, deactivate audio, and clear engagement/pending state. `toggleListening()` from paused reruns model availability, speech-asset preparation, synthesis-voice preparation, and audio activation before starting capture; a failed preflight stays visibly failed/paused and never pretends to listen. Context exceeded resets the reply session once and shows that short-term conversation memory was reset; it does not retry the same prompt silently. Typed text bypasses addressee classification.
 
+The explicit resume preflight uses the same order as initial start: synthesis/model checks as appropriate, then audio activation, then route-bound recognizer preparation. Stop recognizer and speaker before deactivating audio. `shouldResume` from an interruption is informational only; never reactivate automatically.
+
+Accessibility follows the UI branch's deduplicated announcement policy. Provisional recognition and cumulative intermediate reply snapshots are never announced. When the final nonempty reply is known and speech ends normally, keep that caption visible through the `.speaking` → `.listening` transition so it is announced exactly once. Errors and recovery choices are announced once by the same policy.
+
 - [ ] **Step 4: Run integration tests and commit**
 
 ```bash
@@ -302,11 +330,13 @@ git commit -m "feat: recover conversation naturally"
 
 - [ ] **Step 1: Write a failing composition test**
 
-Verify `AppRootView(dependencies:)` can be initialized with fakes and starts in onboarding without requesting microphone access.
+Verify `AppRootView(dependencies:)` can be initialized with fakes and starts in onboarding without requesting microphone access or starting any service. Also test that an audio-session interruption reaches the view model, `.active` does not resume, and duplicate `.inactive`/`.background` forwarding is idempotent.
 
 - [ ] **Step 2: Implement root composition**
 
-Create the view model with `@State`, show `OnboardingView`, and enter `ConversationView` after the start action. Forward `.inactive`/`.background` scene phases to `sceneBecameInactive`; do not auto-resume on `.active`. Bind UI actions to view-model methods using `Task`. Route recovery actions explicitly: retry calls `retryRecovery()`, typed input calls `showTypedInput()`, and Settings uses SwiftUI's `openURL` with `UIApplication.openSettingsURLString`.
+Keep one stable injected `ConversationDependencies` value. Initialize `_viewModel = State(initialValue: ConversationViewModel(dependencies: dependencies))` inside `AppRootView.init(dependencies:)`; live dependencies are constructed once at app-root ownership, not during `body` updates. Show `OnboardingView`, and enter `ConversationView` only after its explicit start action. Start one retained audio-event consumer for the view-model lifetime and cancel it during concrete dependency teardown; forward interruption/route events through `handleAudioSessionEvent`.
+
+Forward `.inactive`/`.background` scene phases to `sceneBecameInactive` idempotently; do not auto-resume on `.active`. Bind UI actions to view-model methods using token-aware `Task` calls, including the UI contract's explicit typed-input dismiss callback so the parent remains the source of truth. Route recovery actions explicitly: retry calls `retryRecovery()`, typed input calls `showTypedInput()`, and Settings uses SwiftUI's `openURL` with `UIApplication.openSettingsURLString`.
 
 - [ ] **Step 3: Add signposts and README limitations**
 
@@ -320,6 +350,8 @@ git commit -m "feat: integrate Cat Robot conversation experience"
 ```
 
 ### Task 5: iPhone 16 Pro build, install, and smoke test
+
+Create `docs/validation/2026-08-13-iphone16pro-smoke-test.md` before the run. Record Xcode version, SDK version, device name/model, iOS version, the exact build/install/launch commands and exit status, observed scenarios, latency values, and any acceptance failure honestly. Save bounded command output and Cat Robot console output under `docs/validation/logs/`; capture diagnostics before changing code when launch or runtime behavior fails. Do not record recognized utterance/reply content beyond the fixed test phrases or any device/user secrets.
 
 - [ ] Unlock `Not so bad`, keep it awake, and run:
 
@@ -348,7 +380,9 @@ xcrun devicectl device install app --device 00008140-000610311A90801C \
 xcrun devicectl device process launch --device 00008140-000610311A90801C com.kamby.CatRobot
 ```
 
+Capture a bounded Cat Robot console log during the smoke session with the installed `devicectl`/`log` facilities available on this Xcode version; write the exact successful command and output path into the validation report. If process launch or runtime initialization fails, collect the launch result and console diagnostics before applying the smallest acceptance fix.
+
 - [ ] On the phone, verify: contextual mic prompt; Japanese readiness; wake-name-only local **なあに？** acknowledgement followed by a classifier-free unnamed turn; wake-name-plus-content turn including an undelimited Japanese ASR form; natural engaged follow-up without name; unrelated speech after engagement expiry; ambiguous clarification plus yes/no; streamed caption; audible Japanese reply; moving mouth; automatic post-reply listening; manual pause; no silent resume after background/interruption; typed fallback.
 - [ ] Capture signpost timings for one fast-path and one classified-path turn with Instruments. Record observed values in `docs/validation/2026-08-13-iphone16pro-smoke-test.md`; record failures honestly and fix only issues required by acceptance criteria.
 - [ ] Run `git diff --check` and full tests after any fix, then commit `test: document iPhone 16 Pro smoke test`.
-- [ ] Squash into main as `feat: deliver Cat Robot MVP`, push main, push and retain `feature/app-integration`, and verify all retained feature branches exist on GitHub.
+- [ ] Verify the app-integration worktree is clean and list its bounded commits. From the main worktree, which already contains the services/UI squash commits, run `git merge --squash feature/app-integration`, commit as `feat: deliver Cat Robot MVP`, regenerate and run the final full suite plus `git diff --check` on main, then push main and the retained `feature/app-integration`, `feature/apple-services`, and `feature/cat-interface` branches. Verify the named remote refs exist; do not delete branches.
