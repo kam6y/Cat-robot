@@ -275,6 +275,7 @@ git commit -m "fix: represent speech synthesis failures"
 **Interfaces:**
 - Adds `AddresseeRoute.wakeOnly` for a recognized wake name with no remaining content.
 - Keeps clear separator-delimited wake names on the fast path and permits only the documented starter allowlist when Japanese ASR omits the separator.
+- Requires the downstream coordinator to consume and clear any pending clarification before acknowledging or generating a reply for every accepted route, including `.wakeOnly` and `.accept`.
 
 - [ ] **Step 1: Write focused failing tests**
 
@@ -283,6 +284,8 @@ Cover every wake name as `.wakeOnly`, every wake name followed without a separat
 - [ ] **Step 2: Implement the bounded fast path**
 
 Return `.wakeOnly` rather than `.ignore` for a wake-only utterance. Do not broaden raw prefix matching: an immediate Latin letter/digit remains a collision, and an undelimited non-starter remainder falls through to classification.
+
+The domain policy returns a route without mutating coordinator-owned pending state. Downstream integration must consume and clear that pending clarification before handling any accepted route so a superseded utterance cannot resurface after acknowledgement or reply generation.
 
 - [ ] **Step 3: Verify and commit**
 

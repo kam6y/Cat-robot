@@ -50,3 +50,15 @@ The final combined domain command exited 0; Xcode reported the test operation co
 - `Cat Robotics`, `Cat Robot2`, and the three Japanese collision examples retain their full input when classified; a separate test also preserves surrounding whitespace.
 - Internal/trailing content punctuation remains untouched after only leading wake separators are dropped.
 - `git diff --check` passed, and no generated or transient build files are part of the intended commit.
+
+## Task-review documentation follow-up
+
+The task review approved production code and identified a downstream orchestration ambiguity in the documents. I corrected documentation only:
+
+- The design policy now orders explicit wake handling first, pending clarification second, and active engagement third, matching `AddresseePolicy` and the desired clarification UX.
+- The integration plan requires every accepted route to consume pending clarification before acknowledgement or reply generation, rather than assigning that responsibility only to `.wakeOnly`.
+- A concrete recovery-plan test now establishes an ambiguous pending utterance, supersedes it with explicit wake-plus-content, verifies a newly engaged unnamed follow-up remains classifier-free, and verifies the old pending utterance never resurfaces.
+- Async values in the Task 2 and Task 3 XCTest examples are awaited into local variables before entering XCTest autoclosures.
+- Task 3.2 now records that the coordinator, not the pure domain route, owns pending-state consumption.
+
+No production or executable test file changed in this follow-up. Verification is `git diff --check` plus inspection of the documentation-only file list.

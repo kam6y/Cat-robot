@@ -117,9 +117,12 @@ final class ConversationViewModelTests: XCTestCase {
         harness.reply.snapshots = ["やあ", "やあ、元気だよ"]
         await harness.sut.startConversation()
         await harness.emitCompletedUtterance("猫ちゃん、元気？")
-        XCTAssertEqual(await harness.classifier.calls, [])
-        XCTAssertEqual(await harness.reply.prompts, ["元気？"])
-        XCTAssertEqual(await harness.speaker.texts, ["やあ、元気だよ"])
+        let classifierCalls = await harness.classifier.calls
+        let replyPrompts = await harness.reply.prompts
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(classifierCalls, [])
+        XCTAssertEqual(replyPrompts, ["元気？"])
+        XCTAssertEqual(spokenTexts, ["やあ、元気だよ"])
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 
@@ -127,8 +130,10 @@ final class ConversationViewModelTests: XCTestCase {
         let harness = ConversationHarness()
         await harness.completeTurn("ねこ、質問", at: 0)
         await harness.completeTurn("もう少し教えて", at: 10)
-        XCTAssertEqual(await harness.classifier.calls.count, 0)
-        XCTAssertEqual(await harness.reply.prompts.last, "もう少し教えて")
+        let classifierCalls = await harness.classifier.calls
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertEqual(classifierCalls.count, 0)
+        XCTAssertEqual(replyPrompts.last, "もう少し教えて")
     }
 
     func testWakeOnlyAcknowledgesLocallyAndArmsFastFollowUp() async throws {
@@ -152,14 +157,17 @@ final class ConversationViewModelTests: XCTestCase {
         let harness = ConversationHarness(classification: .addressed)
         await harness.completeUnengagedTurn("今日どう？", at: 0)
         await harness.completeTurn("もう少し教えて", at: 10)
-        XCTAssertEqual(await harness.reply.prompts, ["今日どう？", "もう少し教えて"])
-        XCTAssertEqual(await harness.classifier.calls.count, 1)
+        let replyPrompts = await harness.reply.prompts
+        let classifierCalls = await harness.classifier.calls
+        XCTAssertEqual(replyPrompts, ["今日どう？", "もう少し教えて"])
+        XCTAssertEqual(classifierCalls.count, 1)
     }
 
     func testUnrelatedSpeechReturnsToListeningWithoutReply() async throws {
         let harness = ConversationHarness(classification: .notAddressed)
         await harness.completeUnengagedTurn("テレビ消した？", at: 0)
-        XCTAssertTrue(await harness.reply.prompts.isEmpty)
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertTrue(replyPrompts.isEmpty)
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 }
@@ -171,7 +179,7 @@ final class ConversationViewModelTests: XCTestCase {
 
 - [ ] **Step 3: Implement start and happy-path turn-taking**
 
-`startConversation` requests permission, checks model availability, prepares speech recognition assets and the installed Japanese synthesis voice, activates audio, prewarms reply, and starts recognition. A completed utterance immediately stops recognition. `.wakeOnly` clears pending clarification, immediately captions and locally speaks the fixed phrase `なあに？`, never calls the classifier or reply session, arms engagement after acknowledgement finishes, and resumes capture. `.accept` goes directly to `streamReply`; `.classify` calls the classifier once. A classified `.addressed` result enters reply generation and arms engagement after the reply; `.ambiguous` enters the clarification flow; `.notAddressed` sends nothing to the reply session and immediately starts a fresh recognition stream. Replace caption with each cumulative snapshot. Speak only the final nonempty snapshot. On speech word events cycle `small/medium/wide`; on finish arm engagement for an explicit wake, confirmed pending utterance, or classified address, otherwise refresh an already active engagement; reset mouth and start a fresh recognition stream.
+`startConversation` requests permission, checks model availability, prepares speech recognition assets and the installed Japanese synthesis voice, activates audio, prewarms reply, and starts recognition. A completed utterance immediately stops recognition. Before handling any accepted route, consume and clear the current pending clarification; this applies to `.wakeOnly`, `.accept`, and a classified `.addressed` result, and happens before local acknowledgement or reply generation. `.wakeOnly` immediately captions and locally speaks the fixed phrase `なあに？`, never calls the classifier or reply session, arms engagement after acknowledgement finishes, and resumes capture. `.accept` goes directly to `streamReply`; `.classify` calls the classifier once. A classified `.addressed` result enters reply generation and arms engagement after the reply; `.ambiguous` enters the clarification flow; `.notAddressed` sends nothing to the reply session and immediately starts a fresh recognition stream. Replace caption with each cumulative snapshot. Speak only the final nonempty snapshot. On speech word events cycle `small/medium/wide`; on finish arm engagement for an explicit wake, confirmed pending utterance, or classified address, otherwise refresh an already active engagement; reset mouth and start a fresh recognition stream.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -197,24 +205,47 @@ final class ConversationRecoveryTests: XCTestCase {
     func testAmbiguousSpeechAsksOnceThenAffirmativeUsesOriginal() async throws {
         let harness = ConversationHarness(classification: .ambiguous)
         await harness.completeUnengagedTurn("明日の予定は？", at: 0)
-        XCTAssertEqual(await harness.speaker.texts.last, "今の、ぼくに言った？")
+        let clarificationTexts = await harness.speaker.texts
+        XCTAssertEqual(clarificationTexts.last, "今の、ぼくに言った？")
         await harness.completeUnengagedTurn("うん", at: 3)
-        XCTAssertEqual(await harness.reply.prompts.last, "明日の予定は？")
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertEqual(replyPrompts.last, "明日の予定は？")
+    }
+
+    func testNewExplicitWakeConsumesPendingBeforeFreshEngagement() async throws {
+        let harness = ConversationHarness(classification: .ambiguous)
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+        let clarificationTexts = await harness.speaker.texts
+        XCTAssertEqual(clarificationTexts.last, "今の、ぼくに言った？")
+
+        await harness.completeUnengagedTurn("猫ちゃん、今日どう？", at: 3)
+        await harness.completeTurn("もう少し教えて", at: 10)
+
+        let replyPrompts = await harness.reply.prompts
+        let classifierCalls = await harness.classifier.calls
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(replyPrompts, ["今日どう？", "もう少し教えて"])
+        XCTAssertEqual(classifierCalls, ["明日の予定は？"])
+        XCTAssertEqual(spokenTexts.filter { $0 == "今の、ぼくに言った？" }.count, 1)
+        XCTAssertFalse(replyPrompts.contains("明日の予定は？"))
     }
 
     func testBackgroundStopsEverythingAndRequiresExplicitResume() async {
         let harness = ConversationHarness()
         await harness.sut.sceneBecameInactive()
+        let recognizerIsRunning = await harness.recognizer.isRunning
+        let audioIsActive = await harness.audio.isActive
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
-        XCTAssertFalse(await harness.recognizer.isRunning)
-        XCTAssertFalse(await harness.audio.isActive)
+        XCTAssertFalse(recognizerIsRunning)
+        XCTAssertFalse(audioIsActive)
     }
 
     func testTypedTextWorksWhenMicrophoneDenied() async {
         let harness = ConversationHarness(microphoneAllowed: false)
         await harness.sut.startConversation()
         await harness.sut.submitTypedText("こんにちは")
-        XCTAssertEqual(await harness.reply.prompts, ["こんにちは"])
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertEqual(replyPrompts, ["こんにちは"])
     }
 
     func testEmptyFinalRecognitionShowsRecoveryWithoutStoppingListening() async {
@@ -233,9 +264,12 @@ final class ConversationRecoveryTests: XCTestCase {
         let harness = ConversationHarness()
         await harness.sut.sceneBecameInactive()
         await harness.sut.toggleListening()
-        XCTAssertEqual(await harness.modelAvailability.checkCount, 1)
-        XCTAssertEqual(await harness.recognizer.prepareCount, 1)
-        XCTAssertEqual(await harness.speaker.prepareCount, 1)
+        let availabilityCheckCount = await harness.modelAvailability.checkCount
+        let recognizerPrepareCount = await harness.recognizer.prepareCount
+        let speakerPrepareCount = await harness.speaker.prepareCount
+        XCTAssertEqual(availabilityCheckCount, 1)
+        XCTAssertEqual(recognizerPrepareCount, 1)
+        XCTAssertEqual(speakerPrepareCount, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 }
@@ -245,7 +279,7 @@ final class ConversationRecoveryTests: XCTestCase {
 
 - [ ] **Step 3: Implement recovery rules**
 
-For `.ambiguous`, retain only one `PendingClarification`, speak the fixed local question without sending it to the reply session, and wait for yes/no. Negative/timeout discards it. An empty finalized recognition event presents `.speechUnrecognized` with **もう一度** and **文字で入力** while capture remains in `.listening`; `retryRecovery()` clears this card without restarting the already-running capture, and `showTypedInput()` opens the fallback. For paused or failed availability states, `retryRecovery()` reruns the same preflight as explicit resume. `pause`, scene inactivity, and any audio interruption cancel timer/model/stream tasks, stop recognizer/speaker, deactivate audio, and clear engagement/pending state. `toggleListening()` from paused reruns model availability, speech-asset preparation, synthesis-voice preparation, and audio activation before starting capture; a failed preflight stays visibly failed/paused and never pretends to listen. Context exceeded resets the reply session once and shows that short-term memory was reset; it does not retry the same prompt silently. Typed text bypasses addressee classification.
+For `.ambiguous`, retain only one `PendingClarification`, speak the fixed local question without sending it to the reply session, and wait for yes/no. Negative/timeout discards it. Any accepted route consumes and clears the pending clarification before local acknowledgement or reply generation, including an affirmative acceptance of its original utterance and a new explicit wake-name turn that supersedes it; an old pending utterance must never reappear after a fresh accepted turn. An empty finalized recognition event presents `.speechUnrecognized` with **もう一度** and **文字で入力** while capture remains in `.listening`; `retryRecovery()` clears this card without restarting the already-running capture, and `showTypedInput()` opens the fallback. For paused or failed availability states, `retryRecovery()` reruns the same preflight as explicit resume. `pause`, scene inactivity, and any audio interruption cancel timer/model/stream tasks, stop recognizer/speaker, deactivate audio, and clear engagement/pending state. `toggleListening()` from paused reruns model availability, speech-asset preparation, synthesis-voice preparation, and audio activation before starting capture; a failed preflight stays visibly failed/paused and never pretends to listen. Context exceeded resets the reply session once and shows that short-term conversation memory was reset; it does not retry the same prompt silently. Typed text bypasses addressee classification.
 
 - [ ] **Step 4: Run integration tests and commit**
 
