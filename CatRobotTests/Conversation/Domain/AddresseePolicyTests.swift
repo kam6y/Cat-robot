@@ -12,6 +12,7 @@ final class AddresseePolicyTests: XCTestCase {
         engagement.arm(at: 0)
         engagement.refresh(afterReplyAt: 290)
         XCTAssertEqual(AddresseePolicy().route("続けて", at: 299, engagement: engagement, pending: nil), .accept("続けて"))
+        XCTAssertEqual(AddresseePolicy().route("続けて", at: 300, engagement: engagement, pending: nil), .classify("続けて"))
         XCTAssertEqual(AddresseePolicy().route("続けて", at: 301, engagement: engagement, pending: nil), .classify("続けて"))
     }
 
@@ -49,19 +50,36 @@ final class AddresseePolicyTests: XCTestCase {
         }
     }
 
-    func testWakeNameDoesNotMatchLaterTextOrLatinWordPrefix() {
+    func testWakeNameDoesNotMatchLaterTextOrConcatenatedWord() {
         XCTAssertEqual(
             AddresseePolicy().route("今日は猫ちゃんどう？", at: 0, engagement: .inactive, pending: nil),
             .classify("今日は猫ちゃんどう？")
         )
-        XCTAssertEqual(
-            AddresseePolicy().route("Cat Roboticsについて", at: 0, engagement: .inactive, pending: nil),
-            .classify("Cat Roboticsについて")
-        )
+
+        for utterance in [
+            "ねこまんまについて教えて",
+            "猫ちゃんねるを見せて",
+            "Cat Roboticsについて",
+            "キャットロボット工房について"
+        ] {
+            XCTAssertEqual(
+                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
+                .classify(utterance)
+            )
+        }
     }
 
     func testEmptyFillerAndWakeOnlySpeechAreIgnored() {
         for utterance in ["", "  \n", "えー", "えっと", "あの", "うーん", "猫ちゃん", "Cat Robot。"] {
+            XCTAssertEqual(
+                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
+                .ignore
+            )
+        }
+    }
+
+    func testPunctuationOnlyNoiseIsIgnored() {
+        for utterance in ["…", "、", "。。。"] {
             XCTAssertEqual(
                 AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
                 .ignore

@@ -56,3 +56,17 @@ The all-domain command exited 0; Xcode reported the test operation completed aft
 - Regenerated `CatRobot.xcodeproj` to register the production and test files.
 
 The tests protect the 30/300/15-second boundaries, clear behavior, hard-expiry immutability under refresh, all wake-name paths, leading-only address matching, case-insensitive Latin matching, filler handling, pending yes/no/other ordering, pending expiry, active fast path, and classifier fallback. The implementation imports only Foundation and does not modify earlier domain implementations. `git diff --check` is clean. No Task 3 implementation concern remains.
+
+## Task-review fixes
+
+The task reviewer identified two noise/collision paths. Each fix received its own focused RED/GREEN cycle before the aggregate reruns:
+
+1. I added `testPunctuationOnlyNoiseIsIgnored` for `…`, `、`, and `。。。`. Its first focused run exited 65 with three assertion failures. Routing now requires the normalized token (input without surrounding whitespace/punctuation) to be nonempty. The same focused test then exited 0 after 39.181 seconds.
+2. I expanded the wake collision test to cover concatenated continuations after every configured wake name: `ねこまんま`, `猫ちゃんねる`, `Cat Robotics`, and `キャットロボット工房`. The first focused run exited 65 with three failures; the existing Latin check already rejected its collision. Wake matching now requires the match to end the utterance or be followed by a separator for every wake name. Valid separator-prefixed cases remain covered by `testAllWakeNamesUseLeadingFastPath`. The collision test then exited 0 after 68.868 seconds.
+
+The engagement timing test also now asserts that the original hard expiry is inactive at exactly 300 seconds after arming, even when the soft expiry was refreshed.
+
+Fresh post-review verification after regenerating the project:
+
+- The complete `AddresseePolicyTests` suite exited 0 after 46.727 seconds.
+- The combined `ConversationTypesTests`, `UtteranceSegmenterTests`, and `AddresseePolicyTests` command exited 0 after 46.813 seconds.

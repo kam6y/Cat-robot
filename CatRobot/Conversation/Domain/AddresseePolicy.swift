@@ -38,7 +38,7 @@ struct AddresseePolicy: Sendable {
     ) -> AddresseeRoute {
         let trimmed = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
         let token = trimmed.trimmingCharacters(in: Self.separators)
-        guard !trimmed.isEmpty, !Self.fillerTokens.contains(token) else { return .ignore }
+        guard !token.isEmpty, !Self.fillerTokens.contains(token) else { return .ignore }
 
         if let content = contentAfterWakeName(in: trimmed) {
             return content.isEmpty ? .ignore : .accept(content)
@@ -70,9 +70,8 @@ struct AddresseePolicy: Sendable {
                 continue
             }
 
-            if wakeName == "Cat Robot",
-               range.upperBound < utterance.endIndex,
-               isASCIIWordCharacter(utterance[range.upperBound]) {
+            if range.upperBound < utterance.endIndex,
+               !utterance[range.upperBound].unicodeScalars.allSatisfy(Self.separators.contains) {
                 continue
             }
 
@@ -84,11 +83,5 @@ struct AddresseePolicy: Sendable {
         }
 
         return nil
-    }
-
-    private func isASCIIWordCharacter(_ character: Character) -> Bool {
-        character.unicodeScalars.allSatisfy { scalar in
-            scalar.value < 128 && CharacterSet.alphanumerics.contains(scalar)
-        }
     }
 }
