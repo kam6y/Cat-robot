@@ -63,13 +63,15 @@ test_group = project.main_group.new_group("CatRobotTests", "CatRobotTests")
 resources_group = app_group.new_group("Resources", "Resources")
 resources_group.new_file("Info.plist")
 assets_reference = resources_group.new_file("Assets.xcassets")
+preview_group = app_group.new_group("Preview Content", "Preview Content")
+preview_assets_reference = preview_group.new_file("Preview Assets.xcassets")
 
 app_target = project.new_target(:application, APP_NAME, :ios, DEPLOYMENT_TARGET, nil, :swift)
 test_target = project.new_target(:unit_test_bundle, TEST_TARGET_NAME, :ios, DEPLOYMENT_TARGET, nil, :swift)
 
 app_target.add_file_references(swift_references(app_group, ROOT.join("CatRobot")))
 test_target.add_file_references(swift_references(test_group, ROOT.join("CatRobotTests")))
-app_target.add_resources([assets_reference])
+app_target.add_resources([assets_reference, preview_assets_reference])
 test_target.add_dependency(app_target)
 test_target.add_system_framework("XCTest")
 
@@ -81,6 +83,7 @@ app_target.build_configurations.each do |configuration|
     "ASSETCATALOG_COMPILER_APPICON_NAME" => "AppIcon",
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" => "AccentColor",
     "CURRENT_PROJECT_VERSION" => "1",
+    "DEVELOPMENT_ASSET_PATHS" => '"CatRobot/Preview Content"',
     "ENABLE_PREVIEWS" => "YES",
     "GENERATE_INFOPLIST_FILE" => "NO",
     "INFOPLIST_FILE" => "CatRobot/Resources/Info.plist",
@@ -91,6 +94,9 @@ app_target.build_configurations.each do |configuration|
     "PRODUCT_NAME" => "$(TARGET_NAME)"
   )
   configuration.build_settings["ENABLE_TESTABILITY"] = "YES" if configuration.name == "Debug"
+  if configuration.name == "Release"
+    configuration.build_settings["EXCLUDED_SOURCE_FILE_NAMES"] = ["$(inherited)", '"Preview Assets.xcassets"']
+  end
 end
 
 test_target.build_configurations.each do |configuration|

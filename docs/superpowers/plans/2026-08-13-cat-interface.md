@@ -127,15 +127,30 @@ git commit -m "feat: add conversation presentation contract"
 ```swift
 final class CatFaceGeometryTests: XCTestCase {
     func testLandmarksStayInsideNormalizedCanvas() {
-        for point in CatFaceGeometry.landmarks {
+        for point in CatFaceGeometry.landmarksAndControlPoints {
             XCTAssertTrue((0...1).contains(point.x))
             XCTAssertTrue((0...1).contains(point.y))
         }
     }
 
-    func testMirroredEyeCentersAreSymmetric() {
-        XCTAssertEqual(CatFaceGeometry.leftEye.x + CatFaceGeometry.rightEye.x, 1, accuracy: 0.001)
-        XCTAssertEqual(CatFaceGeometry.leftEye.y, CatFaceGeometry.rightEye.y, accuracy: 0.001)
+    func testCanonicalCanvasMatchesTheFullReferenceRaster() {
+        XCTAssertEqual(CatFaceGeometry.aspectRatio, 1672.0 / 941.0, accuracy: 0.0001)
+    }
+
+    func testMirroredFeaturePairsAreSymmetric() {
+        for pair in CatFaceGeometry.mirroredFeaturePairs {
+            XCTAssertEqual(pair.left.x + pair.right.x, 1, accuracy: 0.001)
+            XCTAssertEqual(pair.left.y, pair.right.y, accuracy: 0.001)
+        }
+    }
+
+    func testMouthOpeningIncreasesAcrossSpeakingPoses() {
+        XCTAssertLessThan(CatFaceGeometry.mouthOpening(for: .closed),
+                          CatFaceGeometry.mouthOpening(for: .small))
+        XCTAssertLessThan(CatFaceGeometry.mouthOpening(for: .small),
+                          CatFaceGeometry.mouthOpening(for: .medium))
+        XCTAssertLessThan(CatFaceGeometry.mouthOpening(for: .medium),
+                          CatFaceGeometry.mouthOpening(for: .wide))
     }
 }
 ```
@@ -144,7 +159,21 @@ final class CatFaceGeometryTests: XCTestCase {
 
 - [ ] **Step 3: Implement shapes by tracing at low-opacity in a DEBUG preview**
 
-Use a 1×1 normalized canvas. Define symmetric landmark constants once and mirror the right-hand features. Build layers in this order: head/ears, inner ears/forehead marks, eyes, muzzle, nose, upper/lower mouth, whiskers. Add a `#Preview("Trace comparison")` with:
+Use normalized coordinates over the **full 1672×941 raster**, preserving its `1.7768` aspect ratio so a direct `scaledToFit` overlay aligns. The cat occupies approximately `x: 0.238...0.766`, `y: 0.062...0.967`, centered at `x = 0.5`. Define each left-hand landmark once and mirror right-hand features with `x -> 1 - x`. Include every anchor and Bézier control point in `landmarksAndControlPoints`, and include eyes, ear tips, and whisker endpoints in `mirroredFeaturePairs`.
+
+Use these low-node landmarks instead of tracing every fur pixel:
+
+- Eye centers: `(0.404, 0.515)` and `(0.596, 0.515)`; iris radii about `(0.032, 0.075)`, pupil radii about `(0.018, 0.060)`.
+- Muzzle centers: `(0.450, 0.700)` and `(0.550, 0.700)`; nose center `(0.500, 0.625)`; mouth hinge `(0.500, 0.688)`.
+- Left inner ear: `M(0.289,0.377) C(0.271,0.290 0.259,0.122 0.278,0.102) C(0.306,0.073 0.363,0.198 0.367,0.263)`, then return with no more than two shallow fur notches; mirror it.
+- Left sclera: `M(0.340,0.497) C(0.358,0.451 0.382,0.435 0.409,0.439) C(0.434,0.443 0.449,0.486 0.451,0.570) C(0.430,0.592 0.399,0.605 0.374,0.589) C(0.351,0.574 0.341,0.535 0.340,0.497) Z`; mirror it.
+- Left muzzle: `M(0.500,0.615) C(0.463,0.587 0.411,0.600 0.394,0.662) C(0.377,0.727 0.412,0.793 0.491,0.830) C(0.507,0.812 0.502,0.702 0.500,0.615) Z`; mirror it.
+- Nose: `M(0.500,0.592) C(0.532,0.592 0.538,0.611 0.524,0.632) C(0.515,0.646 0.505,0.663 0.500,0.663) C(0.495,0.663 0.485,0.646 0.476,0.632) C(0.462,0.611 0.468,0.592 0.500,0.592) Z`.
+- Left whiskers: `M(0.234,0.628) C(0.289,0.596 0.347,0.605 0.388,0.638)`, `M(0.242,0.702) C(0.290,0.666 0.344,0.642 0.393,0.657)`, and `M(0.269,0.766) C(0.306,0.724 0.355,0.689 0.400,0.684)`; mirror with round caps and joins.
+
+Keep the outer contour similarly low-node and symmetric: start near `(0.353,0.921)`, pass through left cheek/head `(0.373,0.799)`, `(0.253,0.669)`, `(0.269,0.570)`, `(0.287,0.398)`, left ear tip `(0.273,0.071)`, and forehead `(0.417,0.219)`, then mirror across `x = 0.5` and close near `(0.647,0.921)`. Build layers in this order: outer head/ears, inner ears/forehead marks, sclera/iris/pupil/highlight/lid, muzzle, nose, mouth/tongue/fangs, and whiskers. Use restrained solid colors derived from the reference: dark charcoal fur (`#202123`), warm cream (`#FFF0D8`, not pure white), amber iris (`#C78A3D`), teal marks (`#4FA5A3`), muted salmon (`#BE766E`/`#C97970`), and near-black outlines. Do not recreate gradients, textures, or every tuft for this MVP.
+
+Mouth openings are normalized `0`, `0.018`, `0.040`, and `0.070` for closed/small/medium/wide. Closed renders stem and smile only; small uses a restrained cavity, while medium/wide add a muted tongue and tiny fangs. Add a `#if DEBUG`-guarded `#Preview("Trace comparison")` with:
 
 ```swift
 ZStack {
@@ -153,15 +182,26 @@ ZStack {
 }
 ```
 
-Copy the reference from `docs/design/cat-character-reference-v1.png`. Update the generator to add Preview Assets only to Debug resources and set `DEVELOPMENT_ASSET_PATHS = "CatRobot/Preview Content"`; assert the Release resource phase does not contain `CatReference`. Do not add the PNG to normal Assets.
+Copy the reference from `docs/design/cat-character-reference-v1.png`. A PBX resources phase is target-wide rather than configuration-specific: add `Preview Assets.xcassets` once to app resources, set `DEVELOPMENT_ASSET_PATHS = ["CatRobot/Preview Content"]` for both configurations, and additionally set Release `EXCLUDED_SOURCE_FILE_NAMES = ["$(inherited)", "Preview Assets.xcassets"]`. Do not add the PNG directly or put it in normal Assets. The `#if DEBUG` preview must be the only source reference to `CatReference`.
 
 - [ ] **Step 4: Add restrained state animation**
 
-Listening adjusts pupils/ears slightly; thinking uses a slow blink; speaking changes only mouth pose. With Reduce Motion, disable ear/blink interpolation and crossfade mouth poses. Mark the whole artwork `.accessibilityHidden(true)`; the surrounding view exposes the textual assistant state.
+Listening makes one restrained pupil/inner-ear adjustment of about `0.004...0.006` normalized units; thinking uses a sparse slow blink rather than a pulse; speaking changes only mouth pose. Do not rotate part of a combined head silhouette; rotate outer ears only if they are separately drawable. With Reduce Motion, disable attention/blink interpolation and crossfade fixed mouth-pose layers in about `0.10...0.12` seconds rather than morphing geometry. Mark the whole artwork `.accessibilityHidden(true)`; the surrounding view exposes the textual assistant state. Respect Increase Contrast with a stronger outline, not a color-only state cue; avoid `Canvas`/`drawingGroup()` unless a measured need appears.
 
 - [ ] **Step 5: Run focused tests, build Debug and Release, then commit**
 
-Run geometry tests and `xcodebuild build` for Debug and Release simulator configurations. Expected: both build; Release contains no `cat-reference.png` under `.app`.
+Run geometry tests and Debug and Release simulator builds, using fresh derived data for Release. Expected: both build. Keep a filename search and require no `cat-reference.png`/`CatReference` file below the Release `.app`. Because asset catalogs compile into `Assets.car`, also inspect rendition metadata—without checksums—and require no `CatReference` match:
+
+```bash
+RELEASE_APP=.build/CatInterfaceRelease/Build/Products/Release-iphonesimulator/CatRobot.app
+find "$RELEASE_APP" -iname '*cat-reference*' -o -iname '*CatReference*'
+if /usr/bin/assetutil --info "$RELEASE_APP/Assets.car" | rg -q '"Name" : "CatReference"'; then
+  echo 'CatReference shipped in Release' >&2
+  exit 1
+fi
+```
+
+Also confirm the fresh Release build log does not list `Preview Assets.xcassets` as an `actool` input. A filename search alone cannot inspect a compiled asset catalog; do not add a checksum.
 
 ```bash
 git add CatRobot/Conversation/UI CatRobotTests/Conversation/UI 'CatRobot/Preview Content' scripts/generate_project.rb CatRobot.xcodeproj
@@ -217,7 +257,7 @@ git commit -m "feat: build landscape cat conversation interface"
 ### Task 4: Branch verification and integration
 
 - [ ] Run all tests on the iOS 26.5 simulator.
-- [ ] Build with `-configuration Release` and confirm the generated reference is absent from the app bundle with a filename search only; do not add checksums.
+- [ ] Build with `-configuration Release` into fresh DerivedData and confirm the generated reference is absent using both the filename search and the `assetutil --info` rendition-name check from Task 2; do not add checksums.
 - [ ] Inspect both landscape orientations, an accessibility Dynamic Type preview, Reduce Motion, and Reduce Transparency.
 - [ ] Run `git diff --check`; keep only intended files.
 - [ ] Squash into main as `feat: add animated cat interface`, push main, then push and retain `feature/cat-interface`.
