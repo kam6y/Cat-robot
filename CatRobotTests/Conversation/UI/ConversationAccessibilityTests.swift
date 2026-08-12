@@ -3,6 +3,10 @@ import SwiftUI
 @testable import CatRobot
 
 final class ConversationAccessibilityTests: XCTestCase {
+    func testConversationPresentationRequestsVisibleSystemStatus() {
+        XCTAssertFalse(ConversationPresentationPolicy.isStatusBarHidden)
+    }
+
     func testPausedControlHasExplicitLabelAndValue() {
         let labels = ConversationAccessibility(phase: .paused)
 

@@ -33,6 +33,7 @@ struct ConversationView: View {
         }
         .foregroundStyle(.primary)
         .preferredColorScheme(.dark)
+        .statusBarHidden(ConversationPresentationPolicy.isStatusBarHidden)
         .onChange(of: state) { oldState, newState in
             guard let announcement = ConversationAnnouncementPolicy.announcement(
                 from: oldState,

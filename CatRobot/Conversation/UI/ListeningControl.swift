@@ -90,6 +90,10 @@ enum ConversationLowerControlsLayout: Equatable {
     }
 }
 
+enum ConversationPresentationPolicy {
+    static let isStatusBarHidden = false
+}
+
 enum ConversationAnnouncementPolicy {
     static func announcement(
         from oldState: ConversationViewState,
