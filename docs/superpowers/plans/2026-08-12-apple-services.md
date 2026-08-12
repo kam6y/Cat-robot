@@ -684,15 +684,20 @@ func testStartForwardsProgressiveAndFinalResults() async throws {
         SpeechRecognitionEvent(text: "こん", isFinal: false),
         SpeechRecognitionEvent(text: "こんにちは", isFinal: true),
     ])
+    await recognizer.stop()
 }
 
-func testStopRemovesTapFinishesInputCancelsAnalyzerAndEndsStream() async throws {
+func testNormalStopFlushesThenFinalizesAndDrainsResultsWithoutCancellation() async throws {
     let driver = FakeSpeechCaptureDriver()
     let recognizer = AppleSpeechRecognizer(driverFactory: { driver })
     _ = try await recognizer.start()
     await recognizer.stop()
     let calls = await driver.calls
-    XCTAssertEqual(calls, [.prepare, .installTap, .analyze, .startEngine, .removeTap, .stopEngine, .finishInput, .cancelAnalyzer])
+    XCTAssertEqual(calls, [
+        .prepare, .installTap, .beginAnalysis, .startEngine,
+        .removeTap, .stopEngine, .resetEngine,
+        .flushConverter, .finishInput, .finalizeAnalyzer, .drainResults,
+    ])
 }
 
 func testSecondStartDoesNotCreateParallelCapture() async throws {
@@ -723,7 +728,38 @@ func testShutdownStopsAndReleasesSuccessfulReservationOnlyOnce() async throws {
     let releasedLocales = await inventory.releasedLocales
     XCTAssertEqual(releasedLocales, [locale])
 }
+
+func testAnalysisFailureThrowsCaptureFailureAndTearsDownExactlyOnce() async throws {
+    let driver = FakeSpeechCaptureDriver(analysisFailure: TestError.failed)
+    let recognizer = AppleSpeechRecognizer(driverFactory: { driver })
+    let stream = try await recognizer.start()
+
+    do {
+        for try await _ in stream {}
+        XCTFail("Expected analysis failure")
+    } catch {
+        XCTAssertEqual(error as? ConversationServiceError, .speechCaptureFailed)
+    }
+
+    let teardownCount = await driver.immediateTeardownCount
+    XCTAssertEqual(teardownCount, 1)
+}
+
+func testConsumerCancellationStopsCaptureImmediately() async throws {
+    let driver = FakeSpeechCaptureDriver()
+    let recognizer = AppleSpeechRecognizer(driverFactory: { driver })
+    let stream = try await recognizer.start()
+    let consumer = Task { for try await _ in stream {} }
+    consumer.cancel()
+    _ = await consumer.result
+
+    await driver.waitUntilImmediateTeardown()
+    let immediateTeardownCount = await driver.immediateTeardownCount
+    XCTAssertEqual(immediateTeardownCount, 1)
+}
 ```
+
+Add the same throwing-stream assertion for a result-stream failure, and add an engine-start-failure test that verifies the installed tap/input/analyzer are cleaned up exactly once. `testPrepareDoesNotInstallTapOrStartEngine` must prove preparation performs asset/analyzer preflight only. A `prepare(); start()` sequence must reuse the prepared driver without preparing twice; after `stop()`, a later `start()` creates a fresh per-run driver while the recognizer retains the same asset preparer. The strict ordering assertion begins only at synchronous lifecycle boundaries; do not assert scheduler ordering between child tasks.
 
 - [ ] **Step 2: Run the test and confirm failure**
 
@@ -766,11 +802,17 @@ audioEngine.prepare()
 try audioEngine.start()
 ```
 
-Run a separate result task: `for try await result in transcriber.results`, convert with `String(result.text.characters)`, and yield `SpeechRecognitionEvent(text:isFinal:)`. Preserve volatile results; do not trim away meaningful Japanese punctuation and do not close an utterance when `isFinal` arrives.
+Run a separate result task: `for try await result in transcriber.results`, convert with `String(result.text.characters)`, and yield `SpeechRecognitionEvent(text:isFinal:)`. Preserve volatile results; do not trim away meaningful Japanese punctuation and do not close an utterance when `isFinal` arrives. Both analysis-task and result-task errors must enter one exactly-once failure teardown and finish the public stream with `.speechCaptureFailed`; an error must never remain trapped in a fire-and-forget task while the caller hangs. Map cancellation to `.cancelled` only when it originated outside the driver's own normal/immediate teardown. Give each run an identity and ignore late callbacks from an old run.
 
-The concrete `AppleSpeechRecognizer` owns one injected-or-live `SpeechAssetPreparer` for its full lifetime. On `stop`: remove tap before stopping/resetting the engine, append converter `flush()` outputs with the same explicit yield loop, finish the input continuation, cancel the result/analysis tasks, `await analyzer.cancelAndFinishNow()`, finish the public stream, and nil all per-run objects. On any tap/analyzer/result failure, perform the same teardown once and finish throwing the mapped capture error. `prepare()` performs asset preparation and `prepareToAnalyze` without opening the mic; app integration calls it only after contextual permission.
+The concrete `AppleSpeechRecognizer` owns one injected-or-live `SpeechAssetPreparer` for its full lifetime and one prepared driver per run. Its explicit states are unprepared, prepared, running, and stopping. `prepare()` is idempotent: it performs asset preparation, constructs the per-run analyzer/driver, and calls `prepareToAnalyze`, but it never installs a tap or starts the engine. `start()` prepares lazily when needed and rejects a second running start. After a completed stop, the next start constructs and prepares a fresh driver; asset reservation remains owned by the recognizer.
 
-Add a concrete-only `shutdown() async` to `AppleSpeechRecognizer`; do not expand `SpeechRecognizing`. `shutdown()` idempotently calls `await stop()` and then `await assetPreparer.releaseReservation()`. Per-turn `stop()`, pause, background, and interruption do **not** release the reservation, avoiding a new asset setup on the next explicit resume. App composition invokes `shutdown()` only when leaving the conversation screen/app-root ownership lifetime. No `deinit` performs async work.
+Normal `stop()` is lossless and ordered: remove the tap, stop and reset the engine, serialize against any in-flight tap callback, append every converter `flush()` output with an explicit yield loop, finish the analyzer input, call `try await analyzer.finalizeAndFinishThroughEndOfInput()`, await the analysis task and drain the result task, then finish the public stream and nil all per-run objects. Do **not** cancel either task or call `cancelAndFinishNow()` on this normal path; doing so can discard the flushed tail and final result.
+
+Tap/converter, analyzer, result-stream, engine-start, and returned-stream consumer-cancellation paths use the exactly-once immediate teardown: remove tap if installed, stop/reset engine, finish input without emitting a converter tail after a failure, cancel result/analysis tasks, `await analyzer.cancelAndFinishNow()`, and finish the public stream with the mapped error (consumer cancellation may finish without a second error). Mark the run as stopping before cancellation so self-generated `CancellationError` does not recursively trigger failure teardown. The public stream's `onTermination` starts immediate teardown for its matching run identity, so abandoning a stream cannot leave the microphone active.
+
+`AVAudioNodeTapBlock` may execute away from the actor executor and carries non-Sendable `AVAudioPCMBuffer`. Do not move its buffer into a `Task` and do not rely on actor isolation alone. Put the converter plus input continuation in one narrowly scoped `@unchecked Sendable` tap bridge protected by an `NSLock` or a dedicated serial queue. Convert and explicitly yield synchronously inside that boundary; serialize normal-stop flush/finish and failure close through the same bridge. Convert failures to the Sendable `ConversationServiceError.speechCaptureFailed` before notifying the actor with a `@Sendable` callback. The bridge must stop accepting buffers before flush/finish and guarantee one finish. Keep `AVAudioEngine`, `SpeechAnalyzer`, and their other non-Sendable run state inside the live driver.
+
+Add a concrete-only `shutdown() async` to `AppleSpeechRecognizer`; do not expand `SpeechRecognizing`. `shutdown()` idempotently completes or immediately tears down an active run before `await assetPreparer.releaseReservation()`, and the test must verify that ordering as well as one release across repeated shutdown calls. Per-turn `stop()`, pause, background, and interruption do **not** release the reservation, avoiding a new asset setup on the next explicit resume. App composition invokes `shutdown()` only when leaving the conversation screen/app-root ownership lifetime. No `deinit` performs async work.
 
 - [ ] **Step 4: Run focused tests and commit**
 
