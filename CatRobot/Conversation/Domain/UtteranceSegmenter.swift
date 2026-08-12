@@ -40,16 +40,18 @@ struct UtteranceSegmenter: Sendable {
     }
 
     mutating func utteranceIfReady(at timestamp: TimeInterval) -> String? {
-        guard
-            !finalizedSegments.isEmpty,
-            let firstActivityAt,
-            let latestActivityAt
-        else {
+        guard let firstActivityAt else { return nil }
+
+        let maximumDurationElapsed = timestamp - firstActivityAt >= configuration.maximumDuration
+        guard !finalizedSegments.isEmpty else {
+            if maximumDurationElapsed {
+                reset()
+            }
             return nil
         }
 
+        guard let latestActivityAt else { return nil }
         let silenceElapsed = timestamp - latestActivityAt >= configuration.silenceInterval
-        let maximumDurationElapsed = timestamp - firstActivityAt >= configuration.maximumDuration
         guard silenceElapsed || maximumDurationElapsed else { return nil }
 
         let utterance = finalizedSegments.joined()
