@@ -41,6 +41,21 @@ final class SpeechAudioConverterTests: XCTestCase {
         XCTAssertNil(output[0].bufferStartTime)
     }
 
+    func testTimestampWithSubHalfSampleRateIsOmitted() throws {
+        let format = makeFormat(sampleRate: 48_000)
+        let converter = try SpeechAudioConverter(
+            sourceFormat: format,
+            analyzerFormat: format
+        )
+
+        let output = try converter.convert(
+            makeBuffer(format: format, frameCount: 480),
+            at: AVAudioTime(sampleTime: 1, atRate: 0.25)
+        )
+
+        XCTAssertNil(output[0].bufferStartTime)
+    }
+
     func testResamplesFortyEightKilohertzPCMToSixteenKilohertzPCM() throws {
         let sourceFormat = makeFormat(sampleRate: 48_000)
         let analyzerFormat = makeFormat(sampleRate: 16_000)
@@ -94,6 +109,52 @@ final class SpeechAudioConverterTests: XCTestCase {
         XCTAssertEqual(second.bufferStartTime, expectedSecondStart)
     }
 
+    func testOnlyFirstResampledBufferInitializesTimelineUntilFlushResetsIt() throws {
+        let backend = FakeSpeechAudioConverterBackend(
+            responses: [
+                .init(
+                    outcome: .init(status: .inputRanDry, error: nil),
+                    frameLength: 100
+                ),
+                .init(
+                    outcome: .init(status: .inputRanDry, error: nil),
+                    frameLength: 100
+                ),
+                .init(
+                    outcome: .init(status: .endOfStream, error: nil),
+                    frameLength: 0
+                ),
+                .init(
+                    outcome: .init(status: .inputRanDry, error: nil),
+                    frameLength: 100
+                ),
+            ]
+        )
+        let converter = try makeConverter(backend: backend)
+
+        let first = try converter.convert(
+            makeBuffer(format: makeFormat(sampleRate: 48_000), frameCount: 480),
+            at: AVAudioTime(hostTime: 1)
+        )
+        let second = try converter.convert(
+            makeBuffer(format: makeFormat(sampleRate: 48_000), frameCount: 480),
+            at: AVAudioTime(sampleTime: 48_000, atRate: 48_000)
+        )
+
+        XCTAssertNil(first[0].bufferStartTime)
+        XCTAssertNil(second[0].bufferStartTime)
+
+        _ = try converter.flush()
+        let afterReset = try converter.convert(
+            makeBuffer(format: makeFormat(sampleRate: 48_000), frameCount: 480),
+            at: AVAudioTime(sampleTime: 96_000, atRate: 48_000)
+        )
+        XCTAssertEqual(
+            afterReset[0].bufferStartTime,
+            CMTime(value: 96_000, timescale: 48_000)
+        )
+    }
+
     func testConvertDrainsEveryHaveDataBufferWithoutResupplyingInput() throws {
         let backend = FakeSpeechAudioConverterBackend(
             responses: [
@@ -138,6 +199,42 @@ final class SpeechAudioConverterTests: XCTestCase {
         }
         XCTAssertGreaterThan(firstFrameCount, 0)
         XCTAssertTrue(second.isEmpty)
+    }
+
+    func testEmptyResamplingBufferDoesNotDiscardPendingFlushTail() throws {
+        let backend = FakeSpeechAudioConverterBackend(
+            responses: [
+                .init(
+                    outcome: .init(status: .inputRanDry, error: nil),
+                    frameLength: 100
+                ),
+                .init(
+                    outcome: .init(status: .haveData, error: nil),
+                    frameLength: 20
+                ),
+                .init(
+                    outcome: .init(status: .endOfStream, error: nil),
+                    frameLength: 0
+                ),
+            ]
+        )
+        let converter = try makeConverter(backend: backend)
+
+        _ = try converter.convert(
+            makeBuffer(format: makeFormat(sampleRate: 48_000), frameCount: 480),
+            at: nil
+        )
+        let emptyOutput = try converter.convert(
+            makeBuffer(format: makeFormat(sampleRate: 48_000), frameCount: 0),
+            at: nil
+        )
+        let firstFlush = try converter.flush()
+        let secondFlush = try converter.flush()
+
+        XCTAssertTrue(emptyOutput.isEmpty)
+        XCTAssertEqual(firstFlush.map(\.buffer.frameLength), [20])
+        XCTAssertEqual(backend.resetCount, 1)
+        XCTAssertTrue(secondFlush.isEmpty)
     }
 
     func testUnsupportedConversionThrowsCaptureFailure() {
@@ -239,6 +336,7 @@ private final class FakeSpeechAudioConverterBackend: SpeechAudioConverterBackend
 
     private var responses: [Response]
     private(set) var receivedInputPresence: [Bool] = []
+    private(set) var resetCount = 0
 
     init(outcome: SpeechAudioConversionOutcome) {
         responses = [.init(outcome: outcome, frameLength: 0)]
@@ -259,5 +357,7 @@ private final class FakeSpeechAudioConverterBackend: SpeechAudioConverterBackend
         return response.outcome
     }
 
-    func reset() {}
+    func reset() {
+        resetCount += 1
+    }
 }

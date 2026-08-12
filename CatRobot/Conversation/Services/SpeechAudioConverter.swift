@@ -32,8 +32,10 @@ final class SpeechAudioConverter: SpeechAudioConverting {
     ) -> (any SpeechAudioConverterBackend)?
 
     private let analyzerFormat: AVAudioFormat
+    private let analyzerTimeScale: CMTimeScale
     private let backend: (any SpeechAudioConverterBackend)?
     private var nextOutputTime: CMTime?
+    private var timelineInitializationAttempted = false
     private var hasPendingInput = false
     private var outputCapacity: AVAudioFrameCount = 32
 
@@ -59,11 +61,15 @@ final class SpeechAudioConverter: SpeechAudioConverting {
         backendFactory: BackendFactory
     ) throws {
         guard Self.isSupportedPCMFormat(sourceFormat),
-              Self.isSupportedPCMFormat(analyzerFormat) else {
+              Self.isSupportedPCMFormat(analyzerFormat),
+              let analyzerTimeScale = Self.makeTimeScale(
+                  from: analyzerFormat.sampleRate
+              ) else {
             throw ConversationServiceError.speechCaptureFailed
         }
 
         self.analyzerFormat = analyzerFormat
+        self.analyzerTimeScale = analyzerTimeScale
         if sourceFormat == analyzerFormat {
             backend = nil
         } else {
@@ -86,8 +92,10 @@ final class SpeechAudioConverter: SpeechAudioConverting {
                 ),
             ]
         }
+        guard buffer.frameLength > 0 else { return [] }
 
-        if nextOutputTime == nil {
+        if !timelineInitializationAttempted {
+            timelineInitializationAttempted = true
             nextOutputTime = Self.makeTime(from: time)
         }
 
@@ -96,7 +104,7 @@ final class SpeechAudioConverter: SpeechAudioConverting {
             sourceRate: buffer.format.sampleRate,
             analyzerRate: analyzerFormat.sampleRate
         )
-        hasPendingInput = buffer.frameLength > 0
+        hasPendingInput = true
         var outputs: [AnalyzerInput] = []
         var pendingInput: AVAudioPCMBuffer? = buffer
         while true {
@@ -141,6 +149,7 @@ final class SpeechAudioConverter: SpeechAudioConverting {
         defer {
             backend.reset()
             nextOutputTime = nil
+            timelineInitializationAttempted = false
         }
 
         var outputs: [AnalyzerInput] = []
@@ -183,7 +192,7 @@ final class SpeechAudioConverter: SpeechAudioConverting {
                 startTime,
                 CMTime(
                     value: CMTimeValue(buffer.frameLength),
-                    timescale: CMTimeScale(analyzerFormat.sampleRate.rounded())
+                    timescale: analyzerTimeScale
                 )
             )
         }
@@ -220,15 +229,23 @@ final class SpeechAudioConverter: SpeechAudioConverting {
     private static func makeTime(from time: AVAudioTime?) -> CMTime? {
         guard let time,
               time.isSampleTimeValid,
-              time.sampleRate.isFinite,
-              time.sampleRate > 0,
-              time.sampleRate.rounded() <= Double(CMTimeScale.max) else {
+              let timeScale = makeTimeScale(from: time.sampleRate) else {
             return nil
         }
         return CMTime(
             value: CMTimeValue(time.sampleTime),
-            timescale: CMTimeScale(time.sampleRate.rounded())
+            timescale: timeScale
         )
+    }
+
+    private static func makeTimeScale(from sampleRate: Double) -> CMTimeScale? {
+        guard sampleRate.isFinite else { return nil }
+        let roundedRate = sampleRate.rounded()
+        guard roundedRate >= 1,
+              roundedRate <= Double(CMTimeScale.max) else {
+            return nil
+        }
+        return CMTimeScale(roundedRate)
     }
 }
 

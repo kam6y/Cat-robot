@@ -74,3 +74,41 @@ One earlier GREEN attempt was interrupted before test execution because Xcode's 
 
 - Simulator tests intentionally replace Speech asset inventory state with fakes. Japanese asset download/reservation and framework availability still require the connected-iPhone smoke test in the later composition/integration task.
 - The converter is deliberately not internally synchronized. Task 5 must retain it behind its serialized capture owner, as required by the plan.
+
+## Review fix round 1 — speech converter stream state
+
+### RED
+
+- Added three focused regressions before changing production code:
+  - an invalid timestamp on the first resampled input permanently consumes the stream's single timeline-initialization attempt until flush;
+  - a zero-frame resampling input cannot discard pending converter tail state;
+  - a timestamp sample rate below `0.5`, which rounds to an invalid zero `CMTimeScale`, is omitted.
+- The focused run failed as expected. The converter accepted a later timestamp after the first invalid one, invoked the backend for the empty input and lost the pending flush tail, and reached Speech's `AnalyzerInput` precondition with an invalid zero-timescale `CMTime`.
+
+### GREEN
+
+- Added a per-stream `timelineInitializationAttempted` flag. The first nonempty resampling input consumes the attempt whether its timestamp is valid or invalid; successful flush/reset clears it for the next stream.
+- Zero-frame resampling input now returns immediately without calling the backend or mutating converter stream state.
+- Centralized sample-rate-to-timescale validation and require the rounded value to be within `1...CMTimeScale.max`. The validated analyzer timescale is retained at initialization and used for output timeline advancement.
+
+### Verification commands and results
+
+```sh
+xcodebuild -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=0D540017-B9D7-4E42-B99F-6D0840FD41DA' -only-testing:CatRobotTests/SpeechAudioConverterTests test
+```
+
+Result: exit 0 / `** TEST SUCCEEDED **`; 12 tests passed, 0 failed.
+
+```sh
+xcodebuild -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=0D540017-B9D7-4E42-B99F-6D0840FD41DA' test
+```
+
+Result: exit 0 / `** TEST SUCCEEDED **`; 56 tests passed, 0 failed.
+
+The first full-suite attempt stopped before test execution when the sandbox lost its CoreSimulatorService connection (exit 70). Re-running with simulator access completed successfully with the result above.
+
+```sh
+git diff --check
+```
+
+Result: exit 0 with no diagnostics.
