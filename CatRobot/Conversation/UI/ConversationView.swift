@@ -1,3 +1,4 @@
+import Accessibility
 import SwiftUI
 
 struct ConversationView: View {
@@ -7,13 +8,6 @@ struct ConversationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var isTypedInputPresented: Bool
-
-    init(state: ConversationViewState, actions: ConversationActions) {
-        self.state = state
-        self.actions = actions
-        _isTypedInputPresented = State(initialValue: state.showsTypedInput)
-    }
 
     private var accessibility: ConversationAccessibility {
         ConversationAccessibility(phase: state.phase)
@@ -39,8 +33,12 @@ struct ConversationView: View {
         }
         .foregroundStyle(.primary)
         .preferredColorScheme(.dark)
-        .onChange(of: state.showsTypedInput) { _, isPresented in
-            isTypedInputPresented = isPresented
+        .onChange(of: state) { oldState, newState in
+            guard let announcement = ConversationAnnouncementPolicy.announcement(
+                from: oldState,
+                to: newState
+            ) else { return }
+            AccessibilityNotification.Announcement(announcement).post()
         }
     }
 
@@ -170,7 +168,7 @@ struct ConversationView: View {
 
     private func controlContents(usesGlass: Bool) -> some View {
         VStack(spacing: 10) {
-            if isTypedInputPresented {
+            if state.showsTypedInput {
                 TypedInputView(
                     text: Binding(
                         get: { state.typedText },
@@ -184,17 +182,42 @@ struct ConversationView: View {
                 )
             }
 
-            HStack(spacing: 12) {
-                ListeningControl(
-                    phase: state.phase,
-                    usesGlass: usesGlass,
-                    action: actions.toggleListening
-                )
-
-                keyboardButton(usesGlass: usesGlass)
+            switch ConversationLowerControlsLayout.preferred(for: dynamicTypeSize) {
+            case .horizontalFirst:
+                ViewThatFits(in: .horizontal) {
+                    horizontalControlButtons(usesGlass: usesGlass)
+                    stackedControlButtons(usesGlass: usesGlass)
+                }
+            case .stacked:
+                ViewThatFits(in: .horizontal) {
+                    stackedControlButtons(usesGlass: usesGlass)
+                }
             }
-            .frame(maxWidth: .infinity)
         }
+    }
+
+    private func horizontalControlButtons(usesGlass: Bool) -> some View {
+        HStack(spacing: 12) {
+            listeningButton(usesGlass: usesGlass)
+            keyboardButton(usesGlass: usesGlass)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func stackedControlButtons(usesGlass: Bool) -> some View {
+        VStack(spacing: 8) {
+            listeningButton(usesGlass: usesGlass)
+            keyboardButton(usesGlass: usesGlass)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func listeningButton(usesGlass: Bool) -> some View {
+        ListeningControl(
+            phase: state.phase,
+            usesGlass: usesGlass,
+            action: actions.toggleListening
+        )
     }
 
     @ViewBuilder
@@ -209,14 +232,16 @@ struct ConversationView: View {
     private var keyboardButton: some View {
         Button(action: toggleTypedInput) {
             Label(
-                isTypedInputPresented ? "文字入力を閉じる" : "文字で入力",
-                systemImage: isTypedInputPresented ? "keyboard.chevron.compact.down" : "keyboard"
+                state.showsTypedInput ? "文字入力を閉じる" : "文字で入力",
+                systemImage: state.showsTypedInput ? "keyboard.chevron.compact.down" : "keyboard"
             )
-            .lineLimit(1)
-            .frame(minHeight: 44)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .accessibilityLabel(isTypedInputPresented ? "文字入力を閉じる" : "文字入力を開く")
-        .accessibilityValue(isTypedInputPresented ? "開いています" : "閉じています")
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(state.showsTypedInput ? "文字入力を閉じる" : "文字入力を開く")
+        .accessibilityValue(state.showsTypedInput ? "開いています" : "閉じています")
     }
 
     private var microphoneSymbol: String {
@@ -231,22 +256,20 @@ struct ConversationView: View {
     }
 
     private func toggleTypedInput() {
-        if isTypedInputPresented {
+        if state.showsTypedInput {
             dismissTypedInput()
         } else {
-            actions.showTypedInput()
-            isTypedInputPresented = true
+            actions.performTypedInput(.show)
         }
     }
 
     private func dismissTypedInput() {
-        isTypedInputPresented = false
+        actions.performTypedInput(.dismiss)
     }
 
     private func sendTypedText() {
         guard !state.typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        actions.sendTypedText()
-        isTypedInputPresented = false
+        actions.performTypedInput(.send)
     }
 }
 
@@ -257,6 +280,7 @@ struct ConversationView: View {
         actions: .init(
             toggleListening: {},
             showTypedInput: {},
+            hideTypedInput: {},
             updateTypedText: { _ in },
             sendTypedText: {},
             performRecovery: { _ in }

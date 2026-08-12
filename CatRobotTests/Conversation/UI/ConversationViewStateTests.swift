@@ -33,4 +33,42 @@ final class ConversationViewStateTests: XCTestCase {
 
         XCTAssertEqual(state.phase, .failed(.microphoneDenied))
     }
+
+    func testTypedInputActionsRoundTripThroughParentPresentationState() {
+        var isPresented = false
+        var showRequestCount = 0
+        var submittedCount = 0
+        var recoveredActions: [ConversationRecoveryAction] = []
+        let actions = ConversationActions(
+            toggleListening: {},
+            showTypedInput: {
+                showRequestCount += 1
+                isPresented = true
+            },
+            hideTypedInput: { isPresented = false },
+            updateTypedText: { _ in },
+            sendTypedText: { submittedCount += 1 },
+            performRecovery: { action in
+                recoveredActions.append(action)
+                if action == .showTypedInput {
+                    isPresented = true
+                }
+            }
+        )
+
+        actions.performTypedInput(.show)
+        XCTAssertTrue(isPresented)
+
+        actions.performTypedInput(.dismiss)
+        XCTAssertFalse(isPresented)
+
+        actions.performRecovery(.showTypedInput)
+        XCTAssertTrue(isPresented)
+        XCTAssertEqual(recoveredActions, [.showTypedInput])
+        XCTAssertEqual(showRequestCount, 1)
+
+        actions.performTypedInput(.send)
+        XCTAssertFalse(isPresented)
+        XCTAssertEqual(submittedCount, 1)
+    }
 }

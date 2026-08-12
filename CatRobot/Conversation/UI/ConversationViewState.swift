@@ -44,9 +44,30 @@ struct ConversationViewState: Equatable, Sendable {
 struct ConversationActions {
     var toggleListening: () -> Void
     var showTypedInput: () -> Void
+    var hideTypedInput: () -> Void
     var updateTypedText: (String) -> Void
     var sendTypedText: () -> Void
     var performRecovery: (ConversationRecoveryAction) -> Void
+}
+
+enum ConversationTypedInputAction: Equatable, Sendable {
+    case show
+    case dismiss
+    case send
+}
+
+extension ConversationActions {
+    func performTypedInput(_ action: ConversationTypedInputAction) {
+        switch action {
+        case .show:
+            showTypedInput()
+        case .dismiss:
+            hideTypedInput()
+        case .send:
+            sendTypedText()
+            hideTypedInput()
+        }
+    }
 }
 
 extension ConversationViewState {
