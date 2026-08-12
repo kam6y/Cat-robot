@@ -1,0 +1,506 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		05E1AC80AB9C3D46F7CCFB448117BBFD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */; };
+		5199D455D59D3671ADC2938AE6079E44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CA12CB7961A13D70C9CFA34638C59767 /* Assets.xcassets */; };
+		6C0522B23202DEDE6CEB11817AC3ECCE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */; };
+		BF7428E225B4132BE4BD5A7CB027C054 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6764ADD20FF45C0F9B6DCCABD427464B /* XCTest.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E99EF0342BE7CF7C37BB3D7FAE4C2D73 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 922930F48E5A60EA5C47ED19BC6215D9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D0D539C137CAE6C864671805E7E724C6;
+			remoteInfo = CatRobot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		00E893503505039E33B021D56CC63273 /* CatRobot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CatRobot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		6764ADD20FF45C0F9B6DCCABD427464B /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		6FA0DD21165372AA643CD72B9529DBE9 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		966A5722C788941810C45634F3F5433E /* CatRobotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CatRobotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CA12CB7961A13D70C9CFA34638C59767 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		377BA891B14564AC2D04AAF7C85433E0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C0522B23202DEDE6CEB11817AC3ECCE /* Foundation.framework in Frameworks */,
+				BF7428E225B4132BE4BD5A7CB027C054 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CF426E6766F159340FA3DE7B2601FE65 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				05E1AC80AB9C3D46F7CCFB448117BBFD /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		655C339A0D0473C05017C290A26ECB7A /* CatRobot */ = {
+			isa = PBXGroup;
+			children = (
+				A093355E9F2682D22054D27DC431CE66 /* Resources */,
+			);
+			name = CatRobot;
+			path = CatRobot;
+			sourceTree = "<group>";
+		};
+		6AC803F7FAAC551442DDFC40A85EA735 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */,
+				6764ADD20FF45C0F9B6DCCABD427464B /* XCTest.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		9016E68F899DC38A41C5434B364D877B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				00E893503505039E33B021D56CC63273 /* CatRobot.app */,
+				966A5722C788941810C45634F3F5433E /* CatRobotTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A093355E9F2682D22054D27DC431CE66 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				CA12CB7961A13D70C9CFA34638C59767 /* Assets.xcassets */,
+				6FA0DD21165372AA643CD72B9529DBE9 /* Info.plist */,
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		BBEAB703C58C66CAD9CC476722807A52 /* CatRobotTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = CatRobotTests;
+			path = CatRobotTests;
+			sourceTree = "<group>";
+		};
+		DE9CFFE0925FC4413DE11B940EFBE9FB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				6AC803F7FAAC551442DDFC40A85EA735 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		FBDDD90FBA48B7EF15A54DCA324EBBB9 = {
+			isa = PBXGroup;
+			children = (
+				655C339A0D0473C05017C290A26ECB7A /* CatRobot */,
+				BBEAB703C58C66CAD9CC476722807A52 /* CatRobotTests */,
+				DE9CFFE0925FC4413DE11B940EFBE9FB /* Frameworks */,
+				9016E68F899DC38A41C5434B364D877B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		48FFC1CF9DF98786ACA1394D6C090916 /* CatRobotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9E29C0B7F8CC41DB4EDD46C3FA1CFEFB /* Build configuration list for PBXNativeTarget "CatRobotTests" */;
+			buildPhases = (
+				F7AC6BD0CBF7995014538DFFB7E99214 /* Sources */,
+				377BA891B14564AC2D04AAF7C85433E0 /* Frameworks */,
+				7C27F0F9B26EE1FC36AD26F6924139EE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E433DBDEA46745965EADCE53D8B5BA1A /* PBXTargetDependency */,
+			);
+			name = CatRobotTests;
+			productName = CatRobotTests;
+			productReference = 966A5722C788941810C45634F3F5433E /* CatRobotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D0D539C137CAE6C864671805E7E724C6 /* CatRobot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F8252D02F28792C8373BC0E9AC01628A /* Build configuration list for PBXNativeTarget "CatRobot" */;
+			buildPhases = (
+				4CDDF8B4647CF9C44B5EE261C3AD74B2 /* Sources */,
+				CF426E6766F159340FA3DE7B2601FE65 /* Frameworks */,
+				E5DCDD0A60F0191E039521D7C5D8FA73 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CatRobot;
+			productName = CatRobot;
+			productReference = 00E893503505039E33B021D56CC63273 /* CatRobot.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		922930F48E5A60EA5C47ED19BC6215D9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 2660;
+			};
+			buildConfigurationList = FA50CA4525C1F53BEA6DE346A311D279 /* Build configuration list for PBXProject "CatRobot" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = ja;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ja,
+				en,
+				Base,
+			);
+			mainGroup = FBDDD90FBA48B7EF15A54DCA324EBBB9;
+			minimizedProjectReferenceProxies = 0;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9016E68F899DC38A41C5434B364D877B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D0D539C137CAE6C864671805E7E724C6 /* CatRobot */,
+				48FFC1CF9DF98786ACA1394D6C090916 /* CatRobotTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7C27F0F9B26EE1FC36AD26F6924139EE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5DCDD0A60F0191E039521D7C5D8FA73 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5199D455D59D3671ADC2938AE6079E44 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4CDDF8B4647CF9C44B5EE261C3AD74B2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F7AC6BD0CBF7995014538DFFB7E99214 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E433DBDEA46745965EADCE53D8B5BA1A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = CatRobot;
+			target = D0D539C137CAE6C864671805E7E724C6 /* CatRobot */;
+			targetProxy = E99EF0342BE7CF7C37BB3D7FAE4C2D73 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		07BC9CFAD614E7930D0C5F9A53306329 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		26E7BC18F86B0F88A670DCEB7557C8B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/Frameworks",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CatRobot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CatRobot";
+			};
+			name = Debug;
+		};
+		4EA7EF3D0905B792BC1E3F5BFE099A24 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CatRobot/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobot;
+				PRODUCT_MODULE_NAME = CatRobot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		8510A7C751A3781E64F0BD8C339C2D4B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		87C1059F64F023D20FB637535F0D0B99 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/Frameworks",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CatRobot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CatRobot";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B1824EA0C5879FDD210C83C1B9ACB947 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CatRobot/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobot;
+				PRODUCT_MODULE_NAME = CatRobot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9E29C0B7F8CC41DB4EDD46C3FA1CFEFB /* Build configuration list for PBXNativeTarget "CatRobotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				26E7BC18F86B0F88A670DCEB7557C8B5 /* Debug */,
+				87C1059F64F023D20FB637535F0D0B99 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F8252D02F28792C8373BC0E9AC01628A /* Build configuration list for PBXNativeTarget "CatRobot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4EA7EF3D0905B792BC1E3F5BFE099A24 /* Debug */,
+				B1824EA0C5879FDD210C83C1B9ACB947 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FA50CA4525C1F53BEA6DE346A311D279 /* Build configuration list for PBXProject "CatRobot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8510A7C751A3781E64F0BD8C339C2D4B /* Debug */,
+				07BC9CFAD614E7930D0C5F9A53306329 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 922930F48E5A60EA5C47ED19BC6215D9 /* Project object */;
+}
