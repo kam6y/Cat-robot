@@ -62,14 +62,14 @@ The primary product value is conversational flow: low response latency, few ritu
 The gate deliberately favors continuity once engagement is established. It uses the following ordered policy:
 
 1. Reject empty, noise-only, or extremely short filler utterances.
-2. Accept an explicit address such as “ねこ”, “猫ちゃん”, “Cat Robot”, or “キャットロボット”. Strip only the leading address phrase before forwarding the remaining content.
-3. Accept any plausible conversational utterance during the active-conversation window. Its soft expiry is 30 seconds after the cat finishes speaking and each fast-path reply can refresh that soft expiry. A separately recorded hard expiry, five minutes after engagement was armed, cannot be extended by fast-path speech. This path does not call a classifier.
-4. If a clarification is pending, interpret a short affirmative as acceptance of the pending utterance and a short negative as rejection.
+2. Accept an explicit address such as “ねこ”, “猫ちゃん”, “Cat Robot”, or “キャットロボット”. Strip only the leading address phrase before forwarding the remaining content. If the utterance is only the wake name, skip both models, show and locally speak **なあに？**, arm engagement when that acknowledgement finishes, and resume listening. For Japanese ASR that omits a separator after the wake name, use a small fixed conversational-starter allowlist for the fast path; uncertain prefix collisions still go to classification.
+3. If a clarification is pending, interpret a short affirmative as acceptance of the pending utterance and a short negative as rejection. Any new explicit address still takes priority; once any route is accepted, consume the pending clarification before acknowledgement or reply generation so it cannot resurface.
+4. Accept any plausible conversational utterance during the active-conversation window. Its soft expiry is 30 seconds after the cat finishes speaking and each fast-path reply can refresh that soft expiry. A separately recorded hard expiry, five minutes after engagement was armed, cannot be extended by fast-path speech. This path does not call a classifier.
 5. Otherwise, run a separate `LanguageModelSession` that produces a constrained `AddressDecision` using guided generation.
 6. Map `.addressed` directly to reply generation, `.ambiguous` to the fixed spoken clarification, and `.notAddressed` to silent ignore.
 7. Never put rejected speech, classifier prompts, or classifier output into the reply session transcript.
 
-Engagement is armed only by an explicit wake-name, a classifier result of `.addressed`, or affirmative confirmation of an ambiguous utterance. It is cleared by pause, scene inactivity/backgrounding, or audio interruption. When the five-minute hard expiry is reached, the next non-wake utterance returns to classification; an explicit or positively classified address begins a new engagement period. Speech heard during the active window can therefore be assumed to be addressed to the cat. This intentional tradeoff favors responsiveness over eliminating every false activation.
+Engagement is armed only after the cat finishes acknowledging or replying to an explicit wake-name, after a classifier result of `.addressed` is answered, or after affirmative confirmation of an ambiguous utterance is answered. It is cleared by pause, scene inactivity/backgrounding, or audio interruption. When the five-minute hard expiry is reached, the next non-wake utterance returns to classification; an explicit or positively classified address begins a new engagement period. Speech heard during the active window can therefore be assumed to be addressed to the cat. This intentional tradeoff favors responsiveness over eliminating every false activation.
 
 The structured result is intentionally small:
 

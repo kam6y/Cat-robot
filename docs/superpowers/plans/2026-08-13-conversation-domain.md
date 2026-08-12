@@ -43,7 +43,7 @@ enum ModelAvailability: Equatable, Sendable {
 }
 enum ConversationServiceError: Error, Equatable, Sendable {
     case microphoneDenied, speechAssetsUnavailable, speechLocaleUnsupported, speechUnrecognized, speechCaptureFailed, speechCaptureAlreadyRunning
-    case speechVoiceUnavailable, audioSessionFailed, modelUnavailable(ModelAvailability)
+    case speechVoiceUnavailable, speechSynthesisFailed, audioSessionFailed, modelUnavailable(ModelAvailability)
     case modelLocaleUnsupported, modelAssetsUnavailable, guardrailViolation, refusal, contextExceeded
     case modelBusy, modelGenerationFailed, cancelled
 }
@@ -172,7 +172,7 @@ Use the Task 1 command with `-only-testing:CatRobotTests/UtteranceSegmenterTests
 
 - [ ] **Step 3: Implement the minimal segmenter**
 
-Trim whitespace, ignore empty results, replace provisional text, append finalized segments once, track first/latest activity, and clear all state after returning a completed utterance. `isFinal` does not itself close the turn.
+Trim whitespace, ignore empty results, replace provisional text, append finalized segments once, track first/latest activity, and clear all state after returning a completed utterance. `isFinal` does not itself close the turn. A provisional-only turn that reaches the maximum duration emits nothing and resets so its timestamp cannot leak into the next turn.
 
 - [ ] **Step 4: Run focused tests, then commit**
 
@@ -192,7 +192,7 @@ git commit -m "feat: segment continuous speech into turns"
 
 **Interfaces:**
 - Produces: `EngagementWindow.arm(at:)`, `isActive(at:)`, `refresh(afterReplyAt:)`, `clear()`.
-- Produces: `AddresseeRoute.accept(String)`, `.classify(String)`, `.confirmPending(original: String)`, `.ignore` and `AddresseePolicy.route(_:at:engagement:pending:)`.
+- Produces: `AddresseeRoute.wakeOnly`, `.accept(String)`, `.classify(String)`, `.confirmPending(original: String)`, `.ignore` and `AddresseePolicy.route(_:at:engagement:pending:)`.
 - Consumes: wake names `ねこ`, `猫ちゃん`, `Cat Robot`, `キャットロボット`; short Japanese yes/no tokens.
 
 - [ ] **Step 1: Write failing policy tests**
@@ -226,7 +226,7 @@ Use `-only-testing:CatRobotTests/AddresseePolicyTests`.
 
 - [ ] **Step 3: Implement policy and expiry state**
 
-`EngagementWindow` stores immutable arm time and mutable soft expiry. `refresh` never changes hard expiry. `PendingClarification` stores one trimmed utterance and expiry. Empty/filler speech routes to `.ignore`; expired pending state falls through to normal routing.
+`EngagementWindow` stores immutable arm time and mutable soft expiry. `refresh` never changes hard expiry. `PendingClarification` stores one trimmed utterance and expiry. Empty/filler speech routes to `.ignore`; expired pending state falls through to normal routing. A standalone wake name routes to `.wakeOnly` so integration can acknowledge it locally without an empty model prompt. A separator after any wake name is authoritative. When Japanese ASR supplies no separator, accept only if the remainder begins with one of: `今日`, `今`, `明日`, `どう`, `何`, `なに`, `いつ`, `どこ`, `誰`, `だれ`, `なぜ`, `なんで`, `元気`, `教えて`, `聞いて`, `お願い`, `おはよう`, `こんにちは`, `こんばんは`; otherwise preserve the original and classify it.
 
 - [ ] **Step 4: Run all domain tests and commit**
 
@@ -237,6 +237,63 @@ Expected: all domain tests pass.
 ```bash
 git add CatRobot/Conversation/Domain CatRobotTests/Conversation/Domain CatRobot.xcodeproj
 git commit -m "feat: add fast conversational address routing"
+```
+
+### Task 3.1: Represent speech-synthesis failure
+
+**Files:**
+- Modify: `CatRobot/Conversation/Domain/ConversationTypes.swift`
+- Modify: `CatRobotTests/Conversation/Domain/ConversationTypesTests.swift`
+
+**Interfaces:**
+- Adds one recovery-facing error, `ConversationServiceError.speechSynthesisFailed`.
+- Both an adapter failure and a rejected overlapping `speak` call map to this one MVP error; the adapter may distinguish the internal cause without expanding the public recovery surface.
+
+- [ ] **Step 1: Write a failing contract test**
+
+Verify that `ConversationPhase.failed(.speechSynthesisFailed)` can retain and compare the synthesis cause.
+
+- [ ] **Step 2: Prove the case is absent, then add only the enum case**
+
+Run only `CatRobotTests/ConversationTypesTests`; expect a missing-member compilation failure before implementation and a passing focused suite afterward.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/superpowers/plans/2026-08-13-conversation-domain.md CatRobot/Conversation/Domain/ConversationTypes.swift CatRobotTests/Conversation/Domain/ConversationTypesTests.swift
+git commit -m "fix: represent speech synthesis failures"
+```
+
+### Task 3.2: Preserve wake-only and undelimited Japanese fast paths
+
+**Files:**
+- Modify: `CatRobot/Conversation/Domain/AddresseePolicy.swift`
+- Modify: `CatRobotTests/Conversation/Domain/AddresseePolicyTests.swift`
+- Modify: `docs/superpowers/specs/2026-08-12-cat-robot-mvp-design.md`
+- Modify: `docs/superpowers/plans/2026-08-13-app-integration.md`
+
+**Interfaces:**
+- Adds `AddresseeRoute.wakeOnly` for a recognized wake name with no remaining content.
+- Keeps clear separator-delimited wake names on the fast path and permits only the documented starter allowlist when Japanese ASR omits the separator.
+- Requires the downstream coordinator to consume and clear any pending clarification before acknowledging or generating a reply for every accepted route, including `.wakeOnly` and `.accept`.
+
+- [ ] **Step 1: Write focused failing tests**
+
+Cover every wake name as `.wakeOnly`, every wake name followed without a separator by `今日どう？` as `.accept("今日どう？")`, and retain collision tests that classify the full original utterance.
+
+- [ ] **Step 2: Implement the bounded fast path**
+
+Return `.wakeOnly` rather than `.ignore` for a wake-only utterance. Do not broaden raw prefix matching: an immediate Latin letter/digit remains a collision, and an undelimited non-starter remainder falls through to classification.
+
+The domain policy returns a route without mutating coordinator-owned pending state. Downstream integration must consume and clear that pending clarification before handling any accepted route so a superseded utterance cannot resurface after acknowledgement or reply generation.
+
+- [ ] **Step 3: Verify and commit**
+
+Run the focused addressee suite and all three domain suites.
+
+```bash
+git add CatRobot/Conversation/Domain/AddresseePolicy.swift CatRobotTests/Conversation/Domain/AddresseePolicyTests.swift docs/superpowers/specs/2026-08-12-cat-robot-mvp-design.md docs/superpowers/plans/2026-08-13-conversation-domain.md docs/superpowers/plans/2026-08-13-app-integration.md
+git commit -m "fix: preserve explicit wake fast paths"
 ```
 
 ### Task 4: Branch verification and integration
