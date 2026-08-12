@@ -15,6 +15,7 @@
 - Keep the direct wake-name and active engagement paths classifier-free. Do not add a reply validator, factuality pass, cloud call, persistent transcript, or analytics.
 - Stop actual capture while classifying, generating, or speaking; automatically resume only after normal foreground turn completion.
 - Pause/background/interruption clears engagement and pending clarification and never silently resumes.
+- Pause/background/interruption performs per-turn stop/deactivation only; it does not release prepared Speech assets. Run the explicit service teardown only when the conversation screen or its app-root owner is actually leaving.
 - Stream cumulative Foundation Models snapshots by replacement, not append.
 - Target latency is under 2 seconds from detected utterance end to first visible fast-path reply and under 4 seconds to audible reply; measure classified turns separately. Targets guide UX and are not release gates.
 - Use real device `Not so bad`, UDID `00008140-000610311A90801C`, iOS 26.6; simulator UDID is `0D540017-B9D7-4E42-B99F-6D0840FD41DA`.
@@ -38,10 +39,11 @@ final class ConversationViewModel {
     func submitTypedText(_ text: String) async
     func sceneBecameInactive() async
     func handleAudioSessionEvent(_ event: AudioSessionEvent) async
+    func shutdown() async
 }
 ```
 
-The initializer receives `MicrophoneAuthorizing`, `ModelAvailabilityChecking`, `SpeechRecognizing`, `AddressClassifying`, `ReplyGenerating`, `SpeechSpeaking`, `AudioSessionControlling`, `AddresseePolicy`, and a monotonic `now: @Sendable () -> TimeInterval`. Fakes implement every external side effect.
+The initializer receives `MicrophoneAuthorizing`, `ModelAvailabilityChecking`, `SpeechRecognizing`, `AddressClassifying`, `ReplyGenerating`, `SpeechSpeaking`, `AudioSessionControlling`, `AddresseePolicy`, a monotonic `now: @Sendable () -> TimeInterval`, and `serviceTeardown: @escaping @Sendable () async -> Void`. Fakes implement every external side effect and use a no-op teardown unless a lifecycle test injects a counter.
 
 ---
 
@@ -54,7 +56,7 @@ The initializer receives `MicrophoneAuthorizing`, `ModelAvailabilityChecking`, `
 - Test: `CatRobotTests/Conversation/Integration/ConversationErrorPresentationTests.swift`
 
 **Interfaces:**
-- Produces: `MicrophoneAuthorizing`, live `MicrophonePermissionService`, Japanese error copy, and `ConversationDependencies.live()`.
+- Produces: `MicrophoneAuthorizing`, live `MicrophonePermissionService`, Japanese error copy, and `ConversationDependencies.live()` including explicit service teardown.
 - Consumes: all domain/service protocols and concrete Apple adapters.
 
 - [ ] **Step 1: Write failing actionable-copy tests**
@@ -87,7 +89,27 @@ Run: `ruby scripts/generate_project.rb && xcodebuild test -project CatRobot.xcod
 
 - [ ] **Step 3: Implement permission and composition**
 
-Use `AVAudioApplication.requestRecordPermission()` in the live permission service. Map every `ConversationServiceError` with an exhaustive switch to plain Japanese plus one or more `ConversationRecovery` values; use retry, Settings, or typed-input recovery as appropriate and never expose debug descriptions. `ConversationDependencies.live()` constructs exactly one reply service, recognizer, synthesizer, and audio-session controller per app conversation lifetime; classifier sessions remain internally one-shot. Do not start any service during composition.
+Use `AVAudioApplication.requestRecordPermission()` in the live permission service. Map every `ConversationServiceError` with an exhaustive switch to plain Japanese plus one or more `ConversationRecovery` values; use retry, Settings, or typed-input recovery as appropriate and never expose debug descriptions. `ConversationDependencies.live()` constructs exactly one reply service, concrete `AppleSpeechRecognizer`, synthesizer, and audio-session controller per app conversation lifetime; classifier sessions remain internally one-shot. Do not start any service during composition.
+
+Keep the concrete recognizer reachable while exposing it to orchestration through the domain existential:
+
+```swift
+@MainActor
+static func live() -> ConversationDependencies {
+    let concreteRecognizer = AppleSpeechRecognizer()
+    let recognizer: any SpeechRecognizing = concreteRecognizer
+    let serviceTeardown: @Sendable () async -> Void = {
+        await concreteRecognizer.shutdown()
+    }
+    return ConversationDependencies(
+        // other live dependencies,
+        recognizer: recognizer,
+        serviceTeardown: serviceTeardown
+    )
+}
+```
+
+`ConversationDependencies` retains both the existential and the closure for the same concrete instance. Its fake/test factory supplies `serviceTeardown: {}` by default; lifecycle tests may inject an actor-backed counter. Do not add `shutdown` to `SpeechRecognizing`.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -106,6 +128,23 @@ git commit -m "feat: compose live conversation dependencies"
 **Interfaces:**
 - Produces: `ConversationViewModel` methods in the integration contract.
 - Consumes: `UtteranceSegmenter`, engagement/pending clarification state, and all injected services.
+
+`ConversationHarness` passes an actor-backed `FakeServiceTeardown.call` closure to the view model and exposes that probe as `teardownProbe`; the general fake `ConversationDependencies` factory still defaults to the no-op `{}`:
+
+```swift
+actor FakeServiceTeardown {
+    private(set) var callCount = 0
+
+    func call() {
+        callCount += 1
+    }
+}
+
+let teardownProbe = FakeServiceTeardown()
+let serviceTeardown: @Sendable () async -> Void = {
+    await teardownProbe.call()
+}
+```
 
 - [ ] **Step 1: Write failing orchestration tests with actor-safe fakes**
 
@@ -238,6 +277,19 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         XCTAssertFalse(recognizerIsRunning)
         XCTAssertFalse(audioIsActive)
+        let teardownCallCount = await harness.teardownProbe.callCount
+        XCTAssertEqual(teardownCallCount, 0)
+    }
+
+    func testShutdownRunsServiceTeardownOnlyOnce() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+
+        await harness.sut.shutdown()
+        await harness.sut.shutdown()
+
+        let teardownCallCount = await harness.teardownProbe.callCount
+        XCTAssertEqual(teardownCallCount, 1)
     }
 
     func testTypedTextWorksWhenMicrophoneDenied() async {
@@ -279,7 +331,9 @@ final class ConversationRecoveryTests: XCTestCase {
 
 - [ ] **Step 3: Implement recovery rules**
 
-For `.ambiguous`, retain only one `PendingClarification`, speak the fixed local question without sending it to the reply session, and wait for yes/no. Negative/timeout discards it. Any accepted route consumes and clears the pending clarification before local acknowledgement or reply generation, including an affirmative acceptance of its original utterance and a new explicit wake-name turn that supersedes it; an old pending utterance must never reappear after a fresh accepted turn. An empty finalized recognition event presents `.speechUnrecognized` with **もう一度** and **文字で入力** while capture remains in `.listening`; `retryRecovery()` clears this card without restarting the already-running capture, and `showTypedInput()` opens the fallback. For paused or failed availability states, `retryRecovery()` reruns the same preflight as explicit resume. `pause`, scene inactivity, and any audio interruption cancel timer/model/stream tasks, stop recognizer/speaker, deactivate audio, and clear engagement/pending state. `toggleListening()` from paused reruns model availability, speech-asset preparation, synthesis-voice preparation, and audio activation before starting capture; a failed preflight stays visibly failed/paused and never pretends to listen. Context exceeded resets the reply session once and shows that short-term conversation memory was reset; it does not retry the same prompt silently. Typed text bypasses addressee classification.
+For `.ambiguous`, retain only one `PendingClarification`, speak the fixed local question without sending it to the reply session, and wait for yes/no. Negative/timeout discards it. Any accepted route consumes and clears the pending clarification before local acknowledgement or reply generation, including an affirmative acceptance of its original utterance and a new explicit wake-name turn that supersedes it; an old pending utterance must never reappear after a fresh accepted turn. An empty finalized recognition event presents `.speechUnrecognized` with **もう一度** and **文字で入力** while capture remains in `.listening`; `retryRecovery()` clears this card without restarting the already-running capture, and `showTypedInput()` opens the fallback. For paused or failed availability states, `retryRecovery()` reruns the same preflight as explicit resume. `pause`, scene inactivity, and any audio interruption cancel timer/model/stream tasks, stop recognizer/speaker, deactivate audio, and clear engagement/pending state, but deliberately retain the Speech asset reservation for low-latency explicit resume. `toggleListening()` from paused reruns model availability, speech-asset preparation, synthesis-voice preparation, and audio activation before starting capture; a failed preflight stays visibly failed/paused and never pretends to listen. Context exceeded resets the reply session once and shows that short-term conversation memory was reset; it does not retry the same prompt silently. Typed text bypasses addressee classification.
+
+Implement `ConversationViewModel.shutdown()` as an idempotent terminal lifecycle action: guard against a second call, cancel orchestration/timer/stream work, stop recognizer and speaker, deactivate audio, clear engagement/pending state, then await the injected `serviceTeardown`. This is separate from pause and is never called between turns or merely because `sceneBecameInactive()` ran.
 
 - [ ] **Step 4: Run integration tests and commit**
 
@@ -302,11 +356,11 @@ git commit -m "feat: recover conversation naturally"
 
 - [ ] **Step 1: Write a failing composition test**
 
-Verify `AppRootView(dependencies:)` can be initialized with fakes and starts in onboarding without requesting microphone access.
+Verify `AppRootView(dependencies:)` can be initialized with fakes and starts in onboarding without requesting microphone access. Add a focused lifecycle case that enters then leaves the conversation screen twice through the idempotent exit path and observes one injected teardown call; also forward `.inactive` first and prove it still observes zero teardown calls. The Apple-services composition test separately proves that this same closure reaches `AppleSpeechRecognizer.shutdown()` and releases one successful Speech reservation exactly once.
 
 - [ ] **Step 2: Implement root composition**
 
-Create the view model with `@State`, show `OnboardingView`, and enter `ConversationView` after the start action. Forward `.inactive`/`.background` scene phases to `sceneBecameInactive`; do not auto-resume on `.active`. Bind UI actions to view-model methods using `Task`. Route recovery actions explicitly: retry calls `retryRecovery()`, typed input calls `showTypedInput()`, and Settings uses SwiftUI's `openURL` with `UIApplication.openSettingsURLString`.
+Create the view model with `@State`, show `OnboardingView`, and enter `ConversationView` after the start action. Forward `.inactive`/`.background` scene phases to `sceneBecameInactive`; do not auto-resume on `.active` and do not invoke service teardown from scene-phase changes. Bind UI actions to view-model methods using `Task`. Route recovery actions explicitly: retry calls `retryRecovery()`, typed input calls `showTypedInput()`, and Settings uses SwiftUI's `openURL` with `UIApplication.openSettingsURLString`. When navigation actually leaves `ConversationView`, or when its `AppRootView` ownership ends, call and await the idempotent `ConversationViewModel.shutdown()` before discarding that lifetime. Do not call `shutdown()` on normal turn completion, manual pause, interruption, or backgrounding, preserving the prepared asset and resume latency.
 
 - [ ] **Step 3: Add signposts and README limitations**
 

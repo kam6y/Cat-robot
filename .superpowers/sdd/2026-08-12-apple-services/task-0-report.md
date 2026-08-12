@@ -24,3 +24,24 @@ $ rg -n "XCTAssert[A-Za-z]+\\([^\\n]*(try )?await|await XCTAssert|XCTAssertThrow
 ```
 
 The plan retains the installed iOS 26.5 SDK signatures and contains no compile path for the iOS 27-only Speech helpers.
+
+## Review follow-up
+
+The post-Task-0 review was verified and resolved in documentation before service implementation:
+
+- Marked `AppleSpeechSynthesizerTests` and its fake callback boundary `@MainActor`.
+- Made concrete `AppleSpeechRecognizer.shutdown()` own the reachable async path from idempotent per-run stop to `SpeechAssetPreparer.releaseReservation()`, without expanding `SpeechRecognizing`.
+- Updated service and app composition to retain that concrete recognizer, expose it through `any SpeechRecognizing`, and carry an `@Sendable` async teardown closure to the idempotent `ConversationViewModel.shutdown()` lifecycle endpoint.
+- Kept pause, background, interruption, and between-turn stop paths reservation-preserving for low-latency resume; teardown occurs only when the conversation/app-root ownership lifetime leaves.
+- Added focused lifecycle/composition test steps proving background does not tear down and repeated terminal teardown releases one successful reservation once.
+- Changed the unsupported converter test to assert `.speechCaptureFailed` with explicit `do/catch`.
+
+Follow-up verification:
+
+```text
+$ git diff --check
+(no output; exit 0)
+
+$ rg -n "XCTAssert[A-Za-z]+\\([^\\n]*(try )?await|await XCTAssert|XCTAssertThrowsErrorAsync|pcmFormatOther|forEach\\(inputContinuation\\.yield\\)" docs/superpowers/plans/2026-08-12-apple-services.md docs/superpowers/plans/2026-08-13-app-integration.md
+(no matches)
+```

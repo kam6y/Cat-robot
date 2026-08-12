@@ -508,7 +508,12 @@ func testMatchingFormatProducesAnalyzerInputWithoutConverter() throws {
 
 func testUnsupportedConversionThrowsCaptureFailure() {
     let invalid = AVAudioFormat(commonFormat: .otherFormat, sampleRate: 0, channels: 0, interleaved: false)!
-    XCTAssertThrowsError(try SpeechAudioConverter(sourceFormat: invalid, analyzerFormat: validAnalyzerFormat))
+    do {
+        _ = try SpeechAudioConverter(sourceFormat: invalid, analyzerFormat: validAnalyzerFormat)
+        XCTFail("Expected unsupported conversion to throw")
+    } catch {
+        XCTAssertEqual(error as? ConversationServiceError, .speechCaptureFailed)
+    }
 }
 
 func testFlushReturnsAnyPrimedFramesOnlyOnce() throws {
@@ -632,7 +637,7 @@ git commit -m "feat: prepare Japanese speech assets and audio input"
 
 **Interfaces:**
 - Consumes: `SpeechRecognizing`, `SpeechRecognitionEvent`, Task 4 preparer/converter.
-- Produces: an idempotently startable/stoppable progressive recognition stream; it does not own permission UI or turn segmentation.
+- Produces: an idempotently startable/stoppable progressive recognition stream plus concrete `shutdown() async`; it does not own permission UI or turn segmentation.
 
 - [ ] **Step 1: Write failing lifecycle/result tests against engine/analyzer driver seams**
 
@@ -674,6 +679,23 @@ func testSecondStartDoesNotCreateParallelCapture() async throws {
     } catch {
         XCTAssertEqual(error as? ConversationServiceError, .speechCaptureAlreadyRunning)
     }
+}
+
+func testShutdownStopsAndReleasesSuccessfulReservationOnlyOnce() async throws {
+    let locale = Locale(identifier: "ja-JP")
+    let inventory = FakeSpeechAssetInventory(equivalentLocale: locale, reserveResult: true)
+    let preparer = SpeechAssetPreparer(locale: locale, inventory: inventory)
+    let recognizer = AppleSpeechRecognizer(
+        assetPreparer: preparer,
+        driverFactory: { FakeSpeechCaptureDriver() }
+    )
+    try await recognizer.prepare()
+
+    await recognizer.shutdown()
+    await recognizer.shutdown()
+
+    let releasedLocales = await inventory.releasedLocales
+    XCTAssertEqual(releasedLocales, [locale])
 }
 ```
 
@@ -720,7 +742,9 @@ try audioEngine.start()
 
 Run a separate result task: `for try await result in transcriber.results`, convert with `String(result.text.characters)`, and yield `SpeechRecognitionEvent(text:isFinal:)`. Preserve volatile results; do not trim away meaningful Japanese punctuation and do not close an utterance when `isFinal` arrives.
 
-On `stop`: remove tap before stopping/resetting the engine, append converter `flush()` outputs with the same explicit yield loop, finish the input continuation, cancel the result/analysis tasks, `await analyzer.cancelAndFinishNow()`, finish the public stream, and nil all per-run objects. On any tap/analyzer/result failure, perform the same teardown once and finish throwing the mapped capture error. `prepare()` performs asset preparation and `prepareToAnalyze` without opening the mic; app integration calls it only after contextual permission. Do not release the Speech asset reservation from per-turn `stop()`, because doing so would add avoidable setup latency to the next turn. The composition owner invokes `await assetPreparer.releaseReservation()` only from its explicit async service teardown; no `deinit` performs async work.
+The concrete `AppleSpeechRecognizer` owns one injected-or-live `SpeechAssetPreparer` for its full lifetime. On `stop`: remove tap before stopping/resetting the engine, append converter `flush()` outputs with the same explicit yield loop, finish the input continuation, cancel the result/analysis tasks, `await analyzer.cancelAndFinishNow()`, finish the public stream, and nil all per-run objects. On any tap/analyzer/result failure, perform the same teardown once and finish throwing the mapped capture error. `prepare()` performs asset preparation and `prepareToAnalyze` without opening the mic; app integration calls it only after contextual permission.
+
+Add a concrete-only `shutdown() async` to `AppleSpeechRecognizer`; do not expand `SpeechRecognizing`. `shutdown()` idempotently calls `await stop()` and then `await assetPreparer.releaseReservation()`. Per-turn `stop()`, pause, background, and interruption do **not** release the reservation, avoiding a new asset setup on the next explicit resume. App composition invokes `shutdown()` only when leaving the conversation screen/app-root ownership lifetime. No `deinit` performs async work.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -744,71 +768,76 @@ git commit -m "feat: stream progressive Japanese speech recognition"
 - [ ] **Step 1: Write failing delegate-bridge tests using a synthesizer driver**
 
 ```swift
-func testSpeakUsesInstalledJapaneseVoiceAndForwardsMouthLifecycle() async throws {
-    let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true)
-    let service = AppleSpeechSynthesizer(driver: driver, language: "ja-JP")
-    let stream = try await service.speak("おはよう")
-    driver.emit(.didStart)
-    driver.emit(.willSpeak(NSRange(location: 0, length: 2)))
-    driver.emit(.didFinish)
-    var events: [SpeechEvent] = []
-    for try await event in stream {
-        events.append(event)
+@MainActor
+final class AppleSpeechSynthesizerTests: XCTestCase {
+    func testSpeakUsesInstalledJapaneseVoiceAndForwardsMouthLifecycle() async throws {
+        let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true)
+        let service = AppleSpeechSynthesizer(driver: driver, language: "ja-JP")
+        let stream = try await service.speak("おはよう")
+        driver.emit(.didStart)
+        driver.emit(.willSpeak(NSRange(location: 0, length: 2)))
+        driver.emit(.didFinish)
+        var events: [SpeechEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.started, .willSpeak(range: 0..<2), .finished])
+        XCTAssertEqual(driver.spokenText, "おはよう")
     }
-    XCTAssertEqual(events, [.started, .willSpeak(range: 0..<2), .finished])
-    XCTAssertEqual(driver.spokenText, "おはよう")
-}
 
-func testMissingVoiceFailsBeforeSpeaking() async {
-    let service = AppleSpeechSynthesizer(driver: FakeSpeechSynthesizerDriver(voiceAvailable: false), language: "ja-JP")
-    do {
-        try await service.prepare()
-        XCTFail("Expected a missing voice error")
-    } catch {
-        XCTAssertEqual(error as? ConversationServiceError, .speechVoiceUnavailable)
+    func testMissingVoiceFailsBeforeSpeaking() async {
+        let service = AppleSpeechSynthesizer(driver: FakeSpeechSynthesizerDriver(voiceAvailable: false), language: "ja-JP")
+        do {
+            try await service.prepare()
+            XCTFail("Expected a missing voice error")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .speechVoiceUnavailable)
+        }
     }
-}
 
-func testDriverFailureMapsToSpeechSynthesisFailed() async {
-    let driver = FakeSpeechSynthesizerDriver(
-        voiceAvailable: true,
-        speakError: NSError(domain: "AppleSpeechSynthesizerTests", code: 1)
-    )
-    let service = AppleSpeechSynthesizer(driver: driver)
-    do {
-        _ = try await service.speak("テスト")
-        XCTFail("Expected the driver failure to throw")
-    } catch {
-        XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed)
+    func testDriverFailureMapsToSpeechSynthesisFailed() async {
+        let driver = FakeSpeechSynthesizerDriver(
+            voiceAvailable: true,
+            speakError: NSError(domain: "AppleSpeechSynthesizerTests", code: 1)
+        )
+        let service = AppleSpeechSynthesizer(driver: driver)
+        do {
+            _ = try await service.speak("テスト")
+            XCTFail("Expected the driver failure to throw")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed)
+        }
     }
-}
 
-func testOverlappingSpeakMapsToSpeechSynthesisFailed() async throws {
-    let service = AppleSpeechSynthesizer(driver: FakeSpeechSynthesizerDriver(voiceAvailable: true))
-    _ = try await service.speak("最初の発話")
-    do {
-        _ = try await service.speak("重なる発話")
-        XCTFail("Expected overlapping speech to be rejected")
-    } catch {
-        XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed)
+    func testOverlappingSpeakMapsToSpeechSynthesisFailed() async throws {
+        let service = AppleSpeechSynthesizer(driver: FakeSpeechSynthesizerDriver(voiceAvailable: true))
+        _ = try await service.speak("最初の発話")
+        do {
+            _ = try await service.speak("重なる発話")
+            XCTFail("Expected overlapping speech to be rejected")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed)
+        }
+        await service.stop()
     }
-    await service.stop()
-}
 
-func testStopCancelsCurrentUtteranceAndFinishesStream() async throws {
-    let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true)
-    let service = AppleSpeechSynthesizer(driver: driver)
-    let stream = try await service.speak("長い文")
-    await service.stop()
-    driver.emit(.didCancel)
-    var events: [SpeechEvent] = []
-    for try await event in stream {
-        events.append(event)
+    func testStopCancelsCurrentUtteranceAndFinishesStream() async throws {
+        let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true)
+        let service = AppleSpeechSynthesizer(driver: driver)
+        let stream = try await service.speak("長い文")
+        await service.stop()
+        driver.emit(.didCancel)
+        var events: [SpeechEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.cancelled])
+        XCTAssertEqual(driver.stopBoundary, .immediate)
     }
-    XCTAssertEqual(events, [.cancelled])
-    XCTAssertEqual(driver.stopBoundary, .immediate)
 }
 ```
+
+Keep `FakeSpeechSynthesizerDriver` and its callback-emitting `emit(_:)` seam `@MainActor`; tests deliver every synthetic delegate callback on the same main-actor boundary as `AppleSpeechSynthesizer`.
 
 - [ ] **Step 2: Run the focused test and confirm failure**
 
@@ -973,14 +1002,39 @@ func testAppleServiceCompositionConformsToDomainProtocols() {
     let availability: any ModelAvailabilityChecking = FoundationModelAvailabilityService()
     let classifier: any AddressClassifying = FoundationModelAddressClassifier()
     let replies: any ReplyGenerating = FoundationModelReplyService()
-    let recognizer: any SpeechRecognizing = AppleSpeechRecognizer()
+    let concreteRecognizer = AppleSpeechRecognizer()
+    let recognizer: any SpeechRecognizing = concreteRecognizer
+    let shutdown: @Sendable () async -> Void = {
+        await concreteRecognizer.shutdown()
+    }
     let speaker: any SpeechSpeaking = AppleSpeechSynthesizer()
     let audio: any AudioSessionControlling = AppleAudioSessionController()
-    _ = (availability, classifier, replies, recognizer, speaker, audio)
+    _ = (availability, classifier, replies, recognizer, shutdown, speaker, audio)
+}
+
+func testServiceTeardownClosureReleasesSpeechReservationOnce() async throws {
+    let locale = Locale(identifier: "ja-JP")
+    let inventory = FakeSpeechAssetInventory(equivalentLocale: locale, reserveResult: true)
+    let preparer = SpeechAssetPreparer(locale: locale, inventory: inventory)
+    let concreteRecognizer = AppleSpeechRecognizer(
+        assetPreparer: preparer,
+        driverFactory: { FakeSpeechCaptureDriver() }
+    )
+    let recognizer: any SpeechRecognizing = concreteRecognizer
+    let shutdown: @Sendable () async -> Void = {
+        await concreteRecognizer.shutdown()
+    }
+    try await recognizer.prepare()
+
+    await shutdown()
+    await shutdown()
+
+    let releasedLocales = await inventory.releasedLocales
+    XCTAssertEqual(releasedLocales, [locale])
 }
 ```
 
-Place it in `CatRobotTests/Conversation/Services/AppleServiceCompositionTests.swift`. This proves protocol alignment only; do not call hardware/model methods.
+Place both tests in `CatRobotTests/Conversation/Services/AppleServiceCompositionTests.swift`. Live composition must retain `concreteRecognizer` while exposing it as `any SpeechRecognizing`, and must expose an `@Sendable () async -> Void` teardown closure that captures the same concrete instance and calls `shutdown()`. The first test proves protocol alignment without calling hardware/model methods; the second uses the fake inventory seam to prove repeated composition teardown releases one successfully reserved locale exactly once.
 
 - [ ] **Step 2: Regenerate and run all service tests**
 
