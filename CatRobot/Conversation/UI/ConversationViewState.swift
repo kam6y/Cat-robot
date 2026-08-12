@@ -136,9 +136,13 @@ extension ConversationViewState {
         )
     }
 
-    static func failed(message: String, recoveries: [ConversationRecovery]) -> Self {
+    static func failed(
+        error: ConversationServiceError,
+        message: String,
+        recoveries: [ConversationRecovery]
+    ) -> Self {
         Self(
-            phase: .failed(.modelGenerationFailed),
+            phase: .failed(error),
             catState: .failed,
             mouthPose: .closed,
             microphoneStatus: "マイクは待機中",

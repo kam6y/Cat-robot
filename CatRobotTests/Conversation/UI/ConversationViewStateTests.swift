@@ -16,10 +16,21 @@ final class ConversationViewStateTests: XCTestCase {
 
     func testFailureCarriesAVisibleNextAction() {
         let state = ConversationViewState.failed(
+            error: .modelGenerationFailed,
             message: "準備が必要です",
             recoveries: [.init(title: "もう一度確認", action: .retry)]
         )
         XCTAssertEqual(state.errorMessage, "準備が必要です")
         XCTAssertEqual(state.recoveries.map(\.action), [.retry])
+    }
+
+    func testFailurePreservesTheProvidedServiceError() {
+        let state = ConversationViewState.failed(
+            error: .microphoneDenied,
+            message: "マイクへのアクセスを許可してください",
+            recoveries: [.init(title: "設定を開く", action: .openSettings)]
+        )
+
+        XCTAssertEqual(state.phase, .failed(.microphoneDenied))
     }
 }

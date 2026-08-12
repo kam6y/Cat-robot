@@ -56,3 +56,39 @@ Result: passed with no whitespace errors.
 ## Remaining risks
 
 - The onboarding view is supplied as a reusable presentation component; connection to app-level navigation and permission orchestration is intentionally deferred to later tasks.
+
+## Review fix: preserve the service failure
+
+### RED
+
+Added `testFailurePreservesTheProvidedServiceError`, which requests:
+
+```swift
+ConversationViewState.failed(
+    error: .microphoneDenied,
+    message: "マイクへのアクセスを許可してください",
+    recoveries: [.init(title: "設定を開く", action: .openSettings)]
+)
+```
+
+The focused test initially failed to compile with `extra argument 'error' in call`, confirming that the prior factory could not carry a caller-provided `ConversationServiceError` and instead hard-coded `.modelGenerationFailed`.
+
+### GREEN
+
+The factory now accepts `error: ConversationServiceError` and assigns `phase: .failed(error)`. Existing callers provide their explicit previous error value.
+
+Focused command:
+
+```sh
+xcodebuild test -quiet -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=0D540017-B9D7-4E42-B99F-6D0840FD41DA' -only-testing:CatRobotTests/ConversationViewStateTests -derivedDataPath .build/DerivedData CODE_SIGNING_ALLOWED=NO
+```
+
+Result: passed, 4 tests on the iOS 26.5 simulator.
+
+Full command:
+
+```sh
+xcodebuild test -quiet -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=0D540017-B9D7-4E42-B99F-6D0840FD41DA' -derivedDataPath .build/DerivedData CODE_SIGNING_ALLOWED=NO
+```
+
+Result: passed, 26 tests on the iOS 26.5 simulator. `git diff --check` also passed.
