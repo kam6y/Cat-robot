@@ -833,7 +833,7 @@ git commit -m "feat: stream progressive Japanese speech recognition"
 - Consumes: `SpeechSpeaking`, domain `SpeechEvent`, `ConversationServiceError`.
 - Produces: `prepare()` preflight plus retained Japanese synthesis whose delegate drives start/range/finish/cancel events.
 
-- [ ] **Step 1: Write failing delegate-bridge tests using a synthesizer driver**
+- [ ] **Step 1: Write failing lifecycle tests using a main-actor synthesizer driver**
 
 ```swift
 @MainActor
@@ -842,9 +842,10 @@ final class AppleSpeechSynthesizerTests: XCTestCase {
         let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true)
         let service = AppleSpeechSynthesizer(driver: driver, language: "ja-JP")
         let stream = try await service.speak("おはよう")
-        driver.emit(.didStart)
-        driver.emit(.willSpeak(NSRange(location: 0, length: 2)))
-        driver.emit(.didFinish)
+        let runID = try XCTUnwrap(driver.lastRunID)
+        driver.emit(.didStart(runID: runID))
+        driver.emit(.willSpeak(runID: runID, range: NSRange(location: 0, length: 2)))
+        driver.emit(.didFinish(runID: runID))
         var events: [SpeechEvent] = []
         for try await event in stream {
             events.append(event)
@@ -890,11 +891,14 @@ final class AppleSpeechSynthesizerTests: XCTestCase {
     }
 
     func testStopCancelsCurrentUtteranceAndFinishesStream() async throws {
-        let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true)
+        let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true, stopResult: true)
         let service = AppleSpeechSynthesizer(driver: driver)
         let stream = try await service.speak("長い文")
-        await service.stop()
-        driver.emit(.didCancel)
+        let runID = try XCTUnwrap(driver.lastRunID)
+        let stopTask = Task { await service.stop() }
+        await Task.yield()
+        driver.emit(.didCancel(runID: runID))
+        await stopTask.value
         var events: [SpeechEvent] = []
         for try await event in stream {
             events.append(event)
@@ -902,10 +906,42 @@ final class AppleSpeechSynthesizerTests: XCTestCase {
         XCTAssertEqual(events, [.cancelled])
         XCTAssertEqual(driver.stopBoundary, .immediate)
     }
+
+    func testStopFinishesImmediatelyWhenDriverReportsNothingWasStopped() async throws {
+        let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true, stopResult: false)
+        let service = AppleSpeechSynthesizer(driver: driver)
+        let stream = try await service.speak("長い文")
+        await service.stop()
+        var events: [SpeechEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.cancelled])
+    }
+
+    func testAbandoningStreamStopsOnlyItsMatchingRun() async throws {
+        let driver = FakeSpeechSynthesizerDriver(voiceAvailable: true, stopResult: false)
+        let service = AppleSpeechSynthesizer(driver: driver)
+        var first: AsyncThrowingStream<SpeechEvent, Error>? = try await service.speak("最初")
+        let firstRunID = try XCTUnwrap(driver.lastRunID)
+        first = nil
+        await eventually { driver.stopCallCount == 1 }
+
+        let second = try await service.speak("次")
+        let secondRunID = try XCTUnwrap(driver.lastRunID)
+        XCTAssertNotEqual(firstRunID, secondRunID)
+        driver.emit(.didCancel(runID: firstRunID))
+        driver.emit(.didFinish(runID: secondRunID))
+        var events: [SpeechEvent] = []
+        for try await event in second {
+            events.append(event)
+        }
+        XCTAssertEqual(events, [.finished])
+    }
 }
 ```
 
-Keep `FakeSpeechSynthesizerDriver` and its callback-emitting `emit(_:)` seam `@MainActor`; tests deliver every synthetic delegate callback on the same main-actor boundary as `AppleSpeechSynthesizer`.
+Also cover exact-locale preference with Japanese language fallback, overlapping `speak`, a fake `speak` throw, consumer-task cancellation, and a late callback from a stopped first utterance arriving after a second utterance starts. Keep `FakeSpeechSynthesizerDriver` and its callback-emitting `emit(_:)` seam `@MainActor`; every fake event includes its monotonic run identity. `SpeechEvent.willSpeak` carries the `NSRange` UTF-16 offsets supplied by `AVSpeechSynthesizer`, not Swift `String.Index` offsets.
 
 - [ ] **Step 2: Run the focused test and confirm failure**
 
@@ -916,34 +952,41 @@ xcodebuild -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=i
 
 Expected: FAIL because the synthesizer adapter/driver do not exist.
 
-- [ ] **Step 3: Implement one retained synthesizer and delegate proxy**
+- [ ] **Step 3: Implement one retained synthesizer behind an explicit main-actor driver**
 
 ```swift
 @MainActor
-final class AppleSpeechSynthesizer: NSObject, SpeechSpeaking {
-    private let synthesizer = AVSpeechSynthesizer()
-    private let language: String
-    private var continuation: AsyncThrowingStream<SpeechEvent, Error>.Continuation?
-
-    init(language: String = "ja-JP") {
-        self.language = language
-        super.init()
-        synthesizer.delegate = self
-        synthesizer.usesApplicationAudioSession = true
-    }
-
+protocol SpeechSynthesizerDriving: AnyObject {
+    var onEvent: (@MainActor @Sendable (SpeechSynthesizerDriverEvent) -> Void)? { get set }
+    func availableVoices() -> [SpeechVoiceDescriptor]
+    func speak(_ text: String, voiceIdentifier: String, runID: UInt64) throws
+    func stopSpeaking(at boundary: AVSpeechBoundary) -> Bool
 }
 
-extension AppleSpeechSynthesizer: @preconcurrency AVSpeechSynthesizerDelegate {
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                           willSpeakRangeOfSpeechString range: NSRange,
-                           utterance: AVSpeechUtterance) {
-        continuation?.yield(.willSpeak(range: range.location..<(range.location + range.length)))
-    }
+struct SpeechVoiceDescriptor: Equatable, Sendable {
+    let identifier: String
+    let language: String
+}
+
+enum SpeechSynthesizerDriverEvent: Sendable {
+    case didStart(runID: UInt64)
+    case willSpeak(runID: UInt64, range: NSRange)
+    case didFinish(runID: UInt64)
+    case didCancel(runID: UInt64)
 }
 ```
 
-`prepare()` selects and retains an installed voice from `AVSpeechSynthesisVoice.speechVoices()` whose `Locale.Language(identifier: voice.language).languageCode` is Japanese, preferring exact `ja-JP`; fail `.speechVoiceUnavailable` if absent. `speak` calls the same idempotent preflight so direct callers also fail before enqueueing speech. Set the prepared voice on `AVSpeechUtterance(string:)`, use system default rate/pitch/volume, and call `synthesizer.speak(utterance)`. Map exact delegate methods `didStart`, `willSpeakRangeOfSpeechString`, `didFinish`, and `didCancel` to domain events. Finish and clear the continuation on finish/cancel. Map any driver/enqueue failure to `.speechSynthesisFailed`, and reject a second concurrent `speak` call with that same `.speechSynthesisFailed` domain case rather than allowing AVSpeechSynthesizer to queue overlapping replies. `stop()` calls `stopSpeaking(at: .immediate)` and remains idempotent. Keep the adapter `@MainActor` because AVSpeechSynthesizer is non-Sendable, and declare delegate conformance in the shown `@preconcurrency AVSpeechSynthesizerDelegate` extension so imported nonisolated Objective-C requirements compile cleanly under Swift 6.
+Keep `AppleSpeechSynthesizer`, the driver protocol, the live driver, and all mutable AVFoundation state `@MainActor`; this is the documented isolation guarantee for both production and fake drivers. The live driver retains one `AVSpeechSynthesizer`, sets `usesApplicationAudioSession = true`, and owns the current `AVSpeechUtterance`. Its concrete `speak` implementation calls the `Void` AVFoundation API but keeps the protocol's throwing signature so enqueue failures can be exercised deterministically by the fake.
+
+Do not pass non-Sendable `AVSpeechUtterance` objects across isolation boundaries. Use a small `@unchecked Sendable` `NSObject` delegate proxy whose nonisolated Objective-C callbacks synchronously reduce each utterance to a Sendable integer identity token (`UInt(bitPattern: ObjectIdentifier(utterance))`) plus Sendable event data, then forward to the main actor. The live driver accepts a callback only when that token matches its retained active utterance and emits the associated run ID; stale callbacks are ignored. Clear the retained utterance only after forwarding its terminal callback. This confines the narrowly justified unchecked boundary to identity/event bridging rather than the service.
+
+`prepare()` selects and retains a descriptor from `availableVoices()`. Prefer canonical exact locale equality (`Locale.Language(identifier: voice.language) == Locale.Language(identifier: language)`), then fall back to a descriptor whose canonical language code is Japanese. Fail `.speechVoiceUnavailable` if none is installed. `speak` calls the same idempotent preflight, creates a new monotonic run ID, installs its continuation before invoking the driver, and rejects overlap with `.speechSynthesisFailed`. Map a driver `speak` throw to `.speechSynthesisFailed` and atomically clear the failed run.
+
+Forward only matching-run `didStart`, `willSpeakRangeOfSpeechString`, `didFinish`, and `didCancel` events. On finish/cancel, yield the terminal domain event, clear active run state, finish its stream exactly once, and resume any matching `stop()` waiter. Preserve the synthesizer's `NSRange` integer values as UTF-16 offsets in `SpeechEvent.willSpeak`.
+
+Install `onTermination` on every returned stream. Consumer cancellation or abandonment starts main-actor cancellation only for the captured run ID. The monotonic run guard ensures a delayed termination or delegate callback from a previous stream cannot stop or finish a newer utterance.
+
+`stop()` is idempotent. With an active run it calls `stopSpeaking(at: .immediate)`. When the driver returns `true`, keep the run in stopping state and await the matching `didCancel`; when it returns `false`, AVFoundation does not promise a cancel callback, so synchronously yield `.cancelled`, clear and finish the stream, and resume the waiter. A repeated stop joins or returns from the same teardown rather than issuing another stop request.
 
 - [ ] **Step 4: Run focused tests and commit**
 
