@@ -159,7 +159,7 @@ Only one Foundation Models request runs at a time. The UI disables conflicting a
 ## Audio behavior
 
 - Use an `AVAudioSession` configured for play-and-record and voice conversation.
-- Use an `AVAudioEngine` input tap to feed audio buffers to `SpeechAnalyzer` through `AnalyzerInputConverter`.
+- Use an `AVAudioEngine` input tap. On the iOS 26 SDK, convert its PCM buffers with a small `AVAudioConverter` bridge into `AnalyzerInput`; Apple's `AnalyzerInputConverter` and `CaptureInputSequenceProvider` helpers are iOS 27-only and are not compiled into this iOS 26 MVP.
 - Install or prepare the current Japanese `SpeechTranscriber` asset before capture.
 - Stop the input engine and analysis when paused, inactive, interrupted, or speaking.
 - Use a retained `AVSpeechSynthesizer` with a Japanese voice. Delegate callbacks switch mouth poses during spoken word ranges and finish the speaking phase.
