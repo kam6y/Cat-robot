@@ -7,59 +7,67 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		05E1AC80AB9C3D46F7CCFB448117BBFD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */; };
-		5199D455D59D3671ADC2938AE6079E44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CA12CB7961A13D70C9CFA34638C59767 /* Assets.xcassets */; };
-		6C0522B23202DEDE6CEB11817AC3ECCE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */; };
-		BF7428E225B4132BE4BD5A7CB027C054 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6764ADD20FF45C0F9B6DCCABD427464B /* XCTest.framework */; };
+		0B3285B12839A31E27524C1C7F421357 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6764ADD20FF45C0F9B6DCCABD427464B /* XCTest.framework */; };
+		12CB6F195961B59D85800984E1F5308B /* AppIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D736041DA53E8EA985782F5821A3DB08 /* AppIdentityTests.swift */; };
+		47223F1122EEFAD96DBE4631488E4215 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C8939B402E6C1161CF1286FEBC7B885C /* Assets.xcassets */; };
+		564E8675ED52CD28E789948632005532 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C17BAFA26424F242E2FFB95BE0DBF60 /* AppRootView.swift */; };
+		6C383A781C943919C0E61A260FBD09F6 /* AppIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD5DD95C4711E88842F395FF5DBF1937 /* AppIdentity.swift */; };
+		9214B04B08911CE4CA23B70D214492DA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */; };
+		B72E53BFDC7CA5B8D9E612AF843673A6 /* CatRobotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5EF48D60A4D09DC1575C023796BD7C5 /* CatRobotApp.swift */; };
+		EF37C6588E7977CAFD4FE49D09566690 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		E99EF0342BE7CF7C37BB3D7FAE4C2D73 /* PBXContainerItemProxy */ = {
+		0830DF93661E7ACF26FC822213843EBA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 922930F48E5A60EA5C47ED19BC6215D9 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = D0D539C137CAE6C864671805E7E724C6;
+			remoteGlobalIDString = 09D0F17F8209B8277AFFD53D00722195;
 			remoteInfo = CatRobot;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		00E893503505039E33B021D56CC63273 /* CatRobot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CatRobot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1C17BAFA26424F242E2FFB95BE0DBF60 /* AppRootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppRootView.swift; path = App/AppRootView.swift; sourceTree = "<group>"; };
 		3A76917CDB25130696B25359C7F6FDED /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		6764ADD20FF45C0F9B6DCCABD427464B /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
-		6FA0DD21165372AA643CD72B9529DBE9 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		966A5722C788941810C45634F3F5433E /* CatRobotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CatRobotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CA12CB7961A13D70C9CFA34638C59767 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C5EF48D60A4D09DC1575C023796BD7C5 /* CatRobotApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CatRobotApp.swift; path = App/CatRobotApp.swift; sourceTree = "<group>"; };
+		C8939B402E6C1161CF1286FEBC7B885C /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D736041DA53E8EA985782F5821A3DB08 /* AppIdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppIdentityTests.swift; path = App/AppIdentityTests.swift; sourceTree = "<group>"; };
+		DD5DD95C4711E88842F395FF5DBF1937 /* AppIdentity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppIdentity.swift; path = App/AppIdentity.swift; sourceTree = "<group>"; };
+		F6841877C35C281BDE1A155C304BB7CB /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		377BA891B14564AC2D04AAF7C85433E0 /* Frameworks */ = {
+		A3DF36CA25983DC31A4D3C8B5EA05CA5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6C0522B23202DEDE6CEB11817AC3ECCE /* Foundation.framework in Frameworks */,
-				BF7428E225B4132BE4BD5A7CB027C054 /* XCTest.framework in Frameworks */,
+				EF37C6588E7977CAFD4FE49D09566690 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CF426E6766F159340FA3DE7B2601FE65 /* Frameworks */ = {
+		A571E0839AA74DC8B04B0381CA35AD0F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				05E1AC80AB9C3D46F7CCFB448117BBFD /* Foundation.framework in Frameworks */,
+				9214B04B08911CE4CA23B70D214492DA /* Foundation.framework in Frameworks */,
+				0B3285B12839A31E27524C1C7F421357 /* XCTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		655C339A0D0473C05017C290A26ECB7A /* CatRobot */ = {
+		117697A83503B90354AD199187E4EE0E /* CatRobotTests */ = {
 			isa = PBXGroup;
 			children = (
-				A093355E9F2682D22054D27DC431CE66 /* Resources */,
+				D736041DA53E8EA985782F5821A3DB08 /* AppIdentityTests.swift */,
 			);
-			name = CatRobot;
-			path = CatRobot;
+			name = CatRobotTests;
+			path = CatRobotTests;
 			sourceTree = "<group>";
 		};
 		6AC803F7FAAC551442DDFC40A85EA735 /* iOS */ = {
@@ -80,24 +88,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A093355E9F2682D22054D27DC431CE66 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				CA12CB7961A13D70C9CFA34638C59767 /* Assets.xcassets */,
-				6FA0DD21165372AA643CD72B9529DBE9 /* Info.plist */,
-			);
-			name = Resources;
-			path = Resources;
-			sourceTree = "<group>";
-		};
-		BBEAB703C58C66CAD9CC476722807A52 /* CatRobotTests */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = CatRobotTests;
-			path = CatRobotTests;
-			sourceTree = "<group>";
-		};
 		DE9CFFE0925FC4413DE11B940EFBE9FB /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -106,11 +96,33 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		E93D624E5C6DA68D36274016797FE637 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C8939B402E6C1161CF1286FEBC7B885C /* Assets.xcassets */,
+				F6841877C35C281BDE1A155C304BB7CB /* Info.plist */,
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		F69E902320265439AA3AB62202853B92 /* CatRobot */ = {
+			isa = PBXGroup;
+			children = (
+				DD5DD95C4711E88842F395FF5DBF1937 /* AppIdentity.swift */,
+				1C17BAFA26424F242E2FFB95BE0DBF60 /* AppRootView.swift */,
+				C5EF48D60A4D09DC1575C023796BD7C5 /* CatRobotApp.swift */,
+				E93D624E5C6DA68D36274016797FE637 /* Resources */,
+			);
+			name = CatRobot;
+			path = CatRobot;
+			sourceTree = "<group>";
+		};
 		FBDDD90FBA48B7EF15A54DCA324EBBB9 = {
 			isa = PBXGroup;
 			children = (
-				655C339A0D0473C05017C290A26ECB7A /* CatRobot */,
-				BBEAB703C58C66CAD9CC476722807A52 /* CatRobotTests */,
+				F69E902320265439AA3AB62202853B92 /* CatRobot */,
+				117697A83503B90354AD199187E4EE0E /* CatRobotTests */,
 				DE9CFFE0925FC4413DE11B940EFBE9FB /* Frameworks */,
 				9016E68F899DC38A41C5434B364D877B /* Products */,
 			);
@@ -119,31 +131,31 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		48FFC1CF9DF98786ACA1394D6C090916 /* CatRobotTests */ = {
+		0083B83FAB23A8939300B34306447DE0 /* CatRobotTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 9E29C0B7F8CC41DB4EDD46C3FA1CFEFB /* Build configuration list for PBXNativeTarget "CatRobotTests" */;
+			buildConfigurationList = 3F128C08C1BD26682154C6EE3D5D8D80 /* Build configuration list for PBXNativeTarget "CatRobotTests" */;
 			buildPhases = (
-				F7AC6BD0CBF7995014538DFFB7E99214 /* Sources */,
-				377BA891B14564AC2D04AAF7C85433E0 /* Frameworks */,
-				7C27F0F9B26EE1FC36AD26F6924139EE /* Resources */,
+				046FF2F92EF08C6D9E0C647AA40BDCB3 /* Sources */,
+				A571E0839AA74DC8B04B0381CA35AD0F /* Frameworks */,
+				8BC92AA38E7186FA2C4ABA798080156F /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				E433DBDEA46745965EADCE53D8B5BA1A /* PBXTargetDependency */,
+				284BBED148B922C1B98314ABB3448E4D /* PBXTargetDependency */,
 			);
 			name = CatRobotTests;
 			productName = CatRobotTests;
 			productReference = 966A5722C788941810C45634F3F5433E /* CatRobotTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		D0D539C137CAE6C864671805E7E724C6 /* CatRobot */ = {
+		09D0F17F8209B8277AFFD53D00722195 /* CatRobot */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F8252D02F28792C8373BC0E9AC01628A /* Build configuration list for PBXNativeTarget "CatRobot" */;
+			buildConfigurationList = 75F3271494A63818853246BFD7150D08 /* Build configuration list for PBXNativeTarget "CatRobot" */;
 			buildPhases = (
-				4CDDF8B4647CF9C44B5EE261C3AD74B2 /* Sources */,
-				CF426E6766F159340FA3DE7B2601FE65 /* Frameworks */,
-				E5DCDD0A60F0191E039521D7C5D8FA73 /* Resources */,
+				7B41584664C92FA73CF8899AC57EC516 /* Sources */,
+				A3DF36CA25983DC31A4D3C8B5EA05CA5 /* Frameworks */,
+				A034D9696390EB215D6CE7B135C580C7 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -179,53 +191,57 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				D0D539C137CAE6C864671805E7E724C6 /* CatRobot */,
-				48FFC1CF9DF98786ACA1394D6C090916 /* CatRobotTests */,
+				09D0F17F8209B8277AFFD53D00722195 /* CatRobot */,
+				0083B83FAB23A8939300B34306447DE0 /* CatRobotTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		7C27F0F9B26EE1FC36AD26F6924139EE /* Resources */ = {
+		8BC92AA38E7186FA2C4ABA798080156F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E5DCDD0A60F0191E039521D7C5D8FA73 /* Resources */ = {
+		A034D9696390EB215D6CE7B135C580C7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5199D455D59D3671ADC2938AE6079E44 /* Assets.xcassets in Resources */,
+				47223F1122EEFAD96DBE4631488E4215 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		4CDDF8B4647CF9C44B5EE261C3AD74B2 /* Sources */ = {
+		046FF2F92EF08C6D9E0C647AA40BDCB3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				12CB6F195961B59D85800984E1F5308B /* AppIdentityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F7AC6BD0CBF7995014538DFFB7E99214 /* Sources */ = {
+		7B41584664C92FA73CF8899AC57EC516 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6C383A781C943919C0E61A260FBD09F6 /* AppIdentity.swift in Sources */,
+				564E8675ED52CD28E789948632005532 /* AppRootView.swift in Sources */,
+				B72E53BFDC7CA5B8D9E612AF843673A6 /* CatRobotApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		E433DBDEA46745965EADCE53D8B5BA1A /* PBXTargetDependency */ = {
+		284BBED148B922C1B98314ABB3448E4D /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = CatRobot;
-			target = D0D539C137CAE6C864671805E7E724C6 /* CatRobot */;
-			targetProxy = E99EF0342BE7CF7C37BB3D7FAE4C2D73 /* PBXContainerItemProxy */;
+			target = 09D0F17F8209B8277AFFD53D00722195 /* CatRobot */;
+			targetProxy = 0830DF93661E7ACF26FC822213843EBA /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -287,34 +303,7 @@
 			};
 			name = Release;
 		};
-		26E7BC18F86B0F88A670DCEB7557C8B5 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = VUB4VP6453;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@loader_path/Frameworks",
-					"@executable_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobotTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CatRobot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CatRobot";
-			};
-			name = Debug;
-		};
-		4EA7EF3D0905B792BC1E3F5BFE099A24 /* Debug */ = {
+		09B86207EFB211AE2DA405A7344BB3A9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -343,6 +332,65 @@
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		3C34304FBAD03130797161BF1443CE77 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CatRobot/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobot;
+				PRODUCT_MODULE_NAME = CatRobot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		6CFF092F36A67AD49C4CF7CB42F7F8B3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/Frameworks",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CatRobot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CatRobot";
 			};
 			name = Debug;
 		};
@@ -410,7 +458,7 @@
 			};
 			name = Debug;
 		};
-		87C1059F64F023D20FB637535F0D0B99 /* Release */ = {
+		BFF5D71C2EE898B8BB211D41D1AFCB14 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -438,55 +486,23 @@
 			};
 			name = Release;
 		};
-		B1824EA0C5879FDD210C83C1B9ACB947 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VUB4VP6453;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = CatRobot/Resources/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatRobot;
-				PRODUCT_MODULE_NAME = CatRobot;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		9E29C0B7F8CC41DB4EDD46C3FA1CFEFB /* Build configuration list for PBXNativeTarget "CatRobotTests" */ = {
+		3F128C08C1BD26682154C6EE3D5D8D80 /* Build configuration list for PBXNativeTarget "CatRobotTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				26E7BC18F86B0F88A670DCEB7557C8B5 /* Debug */,
-				87C1059F64F023D20FB637535F0D0B99 /* Release */,
+				6CFF092F36A67AD49C4CF7CB42F7F8B3 /* Debug */,
+				BFF5D71C2EE898B8BB211D41D1AFCB14 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F8252D02F28792C8373BC0E9AC01628A /* Build configuration list for PBXNativeTarget "CatRobot" */ = {
+		75F3271494A63818853246BFD7150D08 /* Build configuration list for PBXNativeTarget "CatRobot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				4EA7EF3D0905B792BC1E3F5BFE099A24 /* Debug */,
-				B1824EA0C5879FDD210C83C1B9ACB947 /* Release */,
+				09B86207EFB211AE2DA405A7344BB3A9 /* Debug */,
+				3C34304FBAD03130797161BF1443CE77 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
