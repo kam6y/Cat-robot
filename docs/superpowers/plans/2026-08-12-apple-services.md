@@ -21,6 +21,7 @@
 - `SpeechTranscriber.Result.isFinal` is forwarded as event metadata only; this service does not decide end of turn.
 - Stop real microphone capture while speaking, paused, inactive, or interrupted. An interruption never causes automatic listening resume, even if AVFAudio reports `shouldResume`.
 - Hardware-backed model, microphone, Speech assets, and audible synthesis are smoke-tested on the iPhone; unit tests use fakes/adapters and never invoke them.
+- Keep the project-local iOS 26 `SpeechAudioConverter` architecture. Do not compile references to iOS 27-only `AnalyzerInputConverter` or `CaptureInputSequenceProvider` in production, tests, availability branches, or dead code.
 - Integrate with `git merge --squash`; push and retain `feature/apple-services` after its squash commit lands on `main`.
 
 ## SDK audit and compatibility decision
@@ -67,7 +68,7 @@ public protocol SpeechSpeaking: Sendable {
 }
 ```
 
-`ModelAvailability` must distinguish `.available`, `.deviceNotEligible`, `.appleIntelligenceNotEnabled`, `.modelNotReady`, and `.unsupportedLocale`; `SpeechRecognitionEvent` carries text plus `isFinal`; `SpeechEvent` distinguishes started, word-range/mouth activity, finished, and cancelled; `ConversationServiceError` distinguishes guardrail/refusal, context exceeded, unavailable assets/locale, concurrent/busy, capture/audio-session/synthesis failures, and cancellation. Tasks below use those domain names, not duplicate adapter-only error enums.
+`ModelAvailability` must distinguish `.available`, `.deviceNotEligible`, `.appleIntelligenceNotEnabled`, `.modelNotReady`, and `.unsupportedLocale`; `SpeechRecognitionEvent` carries text plus `isFinal`; `SpeechEvent` distinguishes started, word-range/mouth activity, finished, and cancelled; `ConversationServiceError` distinguishes guardrail/refusal, context exceeded, unavailable assets/locale, concurrent/busy, capture/audio-session/synthesis failures, and cancellation. In particular, synthesis-driver failures and rejected overlapping `speak` calls both map to the merged domain case `.speechSynthesisFailed`; a missing installed voice remains `.speechVoiceUnavailable`. Tasks below use those domain names, not duplicate adapter-only error enums.
 
 ## File map
 
@@ -112,7 +113,8 @@ final class FoundationModelAvailabilityServiceTests: XCTestCase {
 
         for (snapshot, expected) in cases {
             let service = FoundationModelAvailabilityService(locale: locale) { snapshot }
-            XCTAssertEqual(await service.availability(), expected)
+            let actual = await service.availability()
+            XCTAssertEqual(actual, expected)
         }
     }
 }
@@ -167,9 +169,13 @@ struct FoundationModelAvailabilityService: ModelAvailabilityChecking {
             let availability: FoundationModelAvailabilitySnapshot.Availability
             switch model.availability {
             case .available: availability = .available
-            case .unavailable(.deviceNotEligible): availability = .deviceNotEligible
-            case .unavailable(.appleIntelligenceNotEnabled): availability = .appleIntelligenceNotEnabled
-            case .unavailable(.modelNotReady): availability = .modelNotReady
+            case .unavailable(let reason):
+                switch reason {
+                case .deviceNotEligible: availability = .deviceNotEligible
+                case .appleIntelligenceNotEnabled: availability = .appleIntelligenceNotEnabled
+                case .modelNotReady: availability = .modelNotReady
+                @unknown default: availability = .modelNotReady
+                }
             }
             return .init(availability: availability, supportsLocale: model.supportsLocale(locale))
         }
@@ -193,7 +199,9 @@ struct FoundationModelAvailabilityService: ModelAvailabilityChecking {
 }
 ```
 
-In the error mapper, exhaustively switch the real `LanguageModelSession.GenerationError` cases: `.exceededContextWindowSize`, `.assetsUnavailable`, `.guardrailViolation`, `.unsupportedGuide`, `.unsupportedLanguageOrLocale`, `.decodingFailure`, `.rateLimited`, `.concurrentRequests`, and `.refusal`. Map cancellation first with `error is CancellationError`. Keep `Context.debugDescription` out of returned domain values.
+The nested `SystemLanguageModel.Availability.UnavailableReason` is nonfrozen even though the outer availability enum is frozen. The `@unknown default` above is therefore required and conservatively reports `.modelNotReady`, allowing the UI's existing retry path rather than treating a future reason as eligibility or locale failure.
+
+In the error mapper, switch every currently installed `LanguageModelSession.GenerationError` case: `.exceededContextWindowSize`, `.assetsUnavailable`, `.guardrailViolation`, `.unsupportedGuide`, `.unsupportedLanguageOrLocale`, `.decodingFailure`, `.rateLimited`, `.concurrentRequests`, and `.refusal`. The error enum is nonfrozen, so the production switch must also include `@unknown default: return .modelGenerationFailed`. Map cancellation first with `error is CancellationError`. Keep `Context.debugDescription` out of returned domain values.
 
 - [ ] **Step 5: Run focused tests and commit**
 
@@ -221,16 +229,25 @@ func testClassificationUsesFreshRequestAndMapsAllTargets() async throws {
     let client = FakeAddressModelClient(outputs: [.addressed, .ambiguous, .notAddressed])
     let classifier = FoundationModelAddressClassifier(client: client)
 
-    XCTAssertEqual(try await classifier.classify("ねえ、今日どう？"), .addressed)
-    XCTAssertEqual(try await classifier.classify("それ置いといて"), .ambiguous)
-    XCTAssertEqual(try await classifier.classify("テレビ消した？"), .notAddressed)
-    XCTAssertEqual(await client.requestCount, 3)
-    XCTAssertEqual(await client.prompts, ["ねえ、今日どう？", "それ置いといて", "テレビ消した？"])
+    let addressed = try await classifier.classify("ねえ、今日どう？")
+    let ambiguous = try await classifier.classify("それ置いといて")
+    let notAddressed = try await classifier.classify("テレビ消した？")
+    let requestCount = await client.requestCount
+    let prompts = await client.prompts
+
+    XCTAssertEqual(addressed, .addressed)
+    XCTAssertEqual(ambiguous, .ambiguous)
+    XCTAssertEqual(notAddressed, .notAddressed)
+    XCTAssertEqual(requestCount, 3)
+    XCTAssertEqual(prompts, ["ねえ、今日どう？", "それ置いといて", "テレビ消した？"])
 }
 
 func testClassificationMapsModelError() async {
     let classifier = FoundationModelAddressClassifier(client: FakeAddressModelClient(error: .guardrailViolation))
-    await XCTAssertThrowsErrorAsync(try await classifier.classify("発話")) { error in
+    do {
+        _ = try await classifier.classify("発話")
+        XCTFail("Expected classification to throw")
+    } catch {
         XCTAssertEqual(error as? ConversationServiceError, .guardrailViolation)
     }
 }
@@ -307,10 +324,25 @@ func testPrewarmThenStreamUsesOneStatefulSessionAndCumulativeSnapshots() async t
     let service = FoundationModelReplyService(clientFactory: { client })
 
     await service.prewarm()
-    XCTAssertEqual(try await collect(service.streamReply(to: "いい？")), ["うん", "うん、いいよ。"])
-    XCTAssertEqual(try await collect(service.streamReply(to: "続けるね")), ["次", "次も聞かせて。"])
-    XCTAssertEqual(await client.prewarmCount, 1)
-    XCTAssertEqual(await client.prompts, ["いい？", "続けるね"])
+
+    let firstStream = try await service.streamReply(to: "いい？")
+    var firstSnapshots: [String] = []
+    for try await snapshot in firstStream {
+        firstSnapshots.append(snapshot)
+    }
+
+    let secondStream = try await service.streamReply(to: "続けるね")
+    var secondSnapshots: [String] = []
+    for try await snapshot in secondStream {
+        secondSnapshots.append(snapshot)
+    }
+
+    let prewarmCount = await client.prewarmCount
+    let prompts = await client.prompts
+    XCTAssertEqual(firstSnapshots, ["うん", "うん、いいよ。"])
+    XCTAssertEqual(secondSnapshots, ["次", "次も聞かせて。"])
+    XCTAssertEqual(prewarmCount, 1)
+    XCTAssertEqual(prompts, ["いい？", "続けるね"])
 }
 
 func testResetReplacesSessionAndPrewarmsReplacement() async {
@@ -318,13 +350,20 @@ func testResetReplacesSessionAndPrewarmsReplacement() async {
     let service = FoundationModelReplyService(clientFactory: factory.make)
     await service.prewarm()
     await service.reset()
-    XCTAssertEqual(await factory.creationCount, 2)
-    XCTAssertEqual(await factory.clients[1].prewarmCount, 1)
+    let creationCount = await factory.creationCount
+    let clients = await factory.clients
+    let replacementPrewarmCount = await clients[1].prewarmCount
+    XCTAssertEqual(creationCount, 2)
+    XCTAssertEqual(replacementPrewarmCount, 1)
 }
 
 func testContextErrorIsNotSilentlyRetried() async {
     let service = FoundationModelReplyService(clientFactory: { FakeReplyModelClient(error: .contextExceeded) })
-    await XCTAssertThrowsErrorAsync(try await collect(service.streamReply(to: "続き"))) { error in
+    do {
+        let stream = try await service.streamReply(to: "続き")
+        for try await _ in stream {}
+        XCTFail("Expected context exhaustion to throw")
+    } catch {
         XCTAssertEqual(error as? ConversationServiceError, .contextExceeded)
     }
 }
@@ -409,16 +448,48 @@ git commit -m "feat: stream replies from a stateful model session"
 ```swift
 func testPrepareRejectsUnsupportedJapaneseLocale() async {
     let preparer = SpeechAssetPreparer(locale: Locale(identifier: "ja-JP"), inventory: .unsupported)
-    await XCTAssertThrowsErrorAsync(try await preparer.makePreparedTranscriber()) { error in
+    do {
+        _ = try await preparer.makePreparedTranscriber()
+        XCTFail("Expected an unsupported locale error")
+    } catch {
         XCTAssertEqual(error as? ConversationServiceError, .speechLocaleUnsupported)
     }
 }
 
 func testPrepareDownloadsWhenRequestExistsThenReservesLocale() async throws {
     let inventory = FakeSpeechAssetInventory(equivalentLocale: Locale(identifier: "ja-JP"), needsDownload: true)
-    _ = try await SpeechAssetPreparer(locale: Locale(identifier: "ja-JP"), inventory: inventory).makePreparedTranscriber()
-    XCTAssertEqual(await inventory.downloadCount, 1)
-    XCTAssertEqual(await inventory.reservedLocales, [Locale(identifier: "ja-JP")])
+    let preparer = SpeechAssetPreparer(locale: Locale(identifier: "ja-JP"), inventory: inventory)
+    _ = try await preparer.makePreparedTranscriber()
+    let downloadCount = await inventory.downloadCount
+    let reservedLocales = await inventory.reservedLocales
+    XCTAssertEqual(downloadCount, 1)
+    XCTAssertEqual(reservedLocales, [Locale(identifier: "ja-JP")])
+    await preparer.releaseReservation()
+}
+
+func testReservationFailureDoesNotHideInstalledAssets() async throws {
+    let inventory = FakeSpeechAssetInventory(
+        equivalentLocale: Locale(identifier: "ja-JP"),
+        reserveError: ConversationServiceError.speechAssetsUnavailable
+    )
+    let preparer = SpeechAssetPreparer(locale: Locale(identifier: "ja-JP"), inventory: inventory)
+    _ = try await preparer.makePreparedTranscriber()
+
+    await preparer.releaseReservation()
+    let releasedLocales = await inventory.releasedLocales
+    XCTAssertTrue(releasedLocales.isEmpty)
+}
+
+func testExplicitReleaseOnlyReleasesASuccessfulReservationOnce() async throws {
+    let locale = Locale(identifier: "ja-JP")
+    let inventory = FakeSpeechAssetInventory(equivalentLocale: locale, reserveResult: true)
+    let preparer = SpeechAssetPreparer(locale: locale, inventory: inventory)
+    _ = try await preparer.makePreparedTranscriber()
+
+    await preparer.releaseReservation()
+    await preparer.releaseReservation()
+    let releasedLocales = await inventory.releasedLocales
+    XCTAssertEqual(releasedLocales, [locale])
 }
 ```
 
@@ -436,7 +507,7 @@ func testMatchingFormatProducesAnalyzerInputWithoutConverter() throws {
 }
 
 func testUnsupportedConversionThrowsCaptureFailure() {
-    let invalid = AVAudioFormat(commonFormat: .pcmFormatOther, sampleRate: 0, channels: 0, interleaved: false)!
+    let invalid = AVAudioFormat(commonFormat: .otherFormat, sampleRate: 0, channels: 0, interleaved: false)!
     XCTAssertThrowsError(try SpeechAudioConverter(sourceFormat: invalid, analyzerFormat: validAnalyzerFormat))
 }
 
@@ -462,6 +533,8 @@ Expected: FAIL because the preparer and converter do not exist.
 - [ ] **Step 4: Implement exact iOS 26 asset setup**
 
 ```swift
+private var reservedLocale: Locale?
+
 func makePreparedTranscriber() async throws -> SpeechTranscriber {
     guard SpeechTranscriber.isAvailable,
           let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
@@ -474,12 +547,21 @@ func makePreparedTranscriber() async throws -> SpeechTranscriber {
     guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
         throw ConversationServiceError.speechAssetsUnavailable
     }
-    _ = try await AssetInventory.reserve(locale: supported)
+    if reservedLocale == nil,
+       (try? await AssetInventory.reserve(locale: supported)) == true {
+        reservedLocale = supported
+    }
     return transcriber
+}
+
+func releaseReservation() async {
+    guard let locale = reservedLocale else { return }
+    reservedLocale = nil
+    _ = await AssetInventory.release(reservedLocale: locale)
 }
 ```
 
-Wrap those static calls behind the internal inventory seam used by tests. Reservation failure is not fatal once status is `.installed`; it means eviction protection was unavailable, not that transcription is unavailable. Release any successfully reserved locale when the preparer/service is torn down with `await AssetInventory.release(reservedLocale: supported)`.
+Implement `SpeechAssetPreparer` as an actor and wrap those static calls behind the internal inventory seam used by tests. Reservation is best-effort after status reaches `.installed`: a thrown error or `false` return leaves `reservedLocale` nil and does not fail transcription, because only eviction protection was unavailable. Record the locale only when `reserve(locale:)` returns `true`. `releaseReservation()` is the explicit, idempotent async teardown; clear the stored locale before awaiting release so reentrancy cannot release it twice. The owning composition must call it during async service teardown. Never attempt to `await` from `deinit`, and never release a locale that this instance did not successfully reserve.
 
 - [ ] **Step 5: Implement the converter protocol and AVAudioConverter bridge**
 
@@ -497,6 +579,39 @@ final class SpeechAudioConverter: SpeechAudioConverting {
 ```
 
 For equal formats, return one `AnalyzerInput` and convert a valid `AVAudioTime` explicitly with `CMTime(value: CMTimeValue(time.sampleTime), timescale: CMTimeScale(time.sampleRate.rounded()))`; use `nil` when sample time or sample rate is invalid. Otherwise create `AVAudioConverter(from: sourceFormat, to: analyzerFormat)` and throw `.speechCaptureFailed` if it returns nil. Allocate output capacity as `ceil(inputFrames * analyzerRate / sourceRate) + 32`, call `convert(to:error:withInputFrom:)`, supply the input once with `.haveData`, then `.noDataNow`, and return an `AnalyzerInput` for every nonempty `.haveData` or `.inputRanDry` output buffer. Track output sample time so resampled buffers have a continuous `CMTime`; on the first buffer, derive it from `AVAudioTime.sampleTime/sampleRate` when valid. `flush()` supplies `.endOfStream` until `.endOfStream`/zero frames, returns pending nonempty frames, calls `reset()`, and is idempotent. Treat `.error` or an `NSError` as `.speechCaptureFailed`.
+
+`AVAudioConverterInputBlock` is `@Sendable` in Swift 6. Do not directly capture the non-Sendable `AVAudioPCMBuffer` or a mutable local "supplied" flag. Put only that per-conversion state in this narrowly scoped box:
+
+```swift
+private final class ConverterInputState: @unchecked Sendable {
+    private let buffer: AVAudioPCMBuffer?
+    private let exhaustedStatus: AVAudioConverterInputStatus
+    private var didSupplyBuffer = false
+
+    init(buffer: AVAudioPCMBuffer?, exhaustedStatus: AVAudioConverterInputStatus) {
+        self.buffer = buffer
+        self.exhaustedStatus = exhaustedStatus
+    }
+
+    func next(status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        guard !didSupplyBuffer, let buffer else {
+            status.pointee = exhaustedStatus
+            return nil
+        }
+        didSupplyBuffer = true
+        status.pointee = .haveData
+        return buffer
+    }
+}
+
+let inputState = ConverterInputState(buffer: inputBuffer, exhaustedStatus: .noDataNow)
+let conversionStatus = converter.convert(to: outputBuffer, error: &conversionError) {
+    _, inputStatus in
+    inputState.next(status: inputStatus)
+}
+```
+
+The `@unchecked Sendable` claim is limited to this box: `AVAudioConverter.convert(to:error:withInputFrom:)` invokes its input block synchronously on the calling converter operation, each box is created for one call, and it neither escapes nor participates in concurrent conversion. Keep converter ownership serialized. Do not generalize the box into shared mutable state; use the same pattern with `buffer: nil` and `exhaustedStatus: .endOfStream` for flush.
 
 Do not implement channel maps, codecs, file formats, or a general audio library; the source is `AVAudioEngine` PCM and the destination is Speech PCM.
 
@@ -528,7 +643,12 @@ func testStartForwardsProgressiveAndFinalResults() async throws {
         .init(text: "こんにちは", isFinal: true),
     ])
     let recognizer = AppleSpeechRecognizer(driverFactory: { driver })
-    let events = try await collect(recognizer.start(), count: 2)
+    let stream = try await recognizer.start()
+    var events: [SpeechRecognitionEvent] = []
+    for try await event in stream {
+        events.append(event)
+        if events.count == 2 { break }
+    }
     XCTAssertEqual(events, [
         SpeechRecognitionEvent(text: "こん", isFinal: false),
         SpeechRecognitionEvent(text: "こんにちは", isFinal: true),
@@ -540,14 +660,18 @@ func testStopRemovesTapFinishesInputCancelsAnalyzerAndEndsStream() async throws 
     let recognizer = AppleSpeechRecognizer(driverFactory: { driver })
     _ = try await recognizer.start()
     await recognizer.stop()
-    XCTAssertEqual(await driver.calls, [.prepare, .installTap, .analyze, .startEngine, .removeTap, .stopEngine, .finishInput, .cancelAnalyzer])
+    let calls = await driver.calls
+    XCTAssertEqual(calls, [.prepare, .installTap, .analyze, .startEngine, .removeTap, .stopEngine, .finishInput, .cancelAnalyzer])
 }
 
 func testSecondStartDoesNotCreateParallelCapture() async throws {
     let factory = FakeSpeechCaptureDriverFactory()
     let recognizer = AppleSpeechRecognizer(driverFactory: factory.make)
     _ = try await recognizer.start()
-    await XCTAssertThrowsErrorAsync(try await recognizer.start()) { error in
+    do {
+        _ = try await recognizer.start()
+        XCTFail("Expected a second capture to be rejected")
+    } catch {
         XCTAssertEqual(error as? ConversationServiceError, .speechCaptureAlreadyRunning)
     }
 }
@@ -582,7 +706,11 @@ let converter = try converterFactory(sourceFormat, analyzerFormat)
 let (inputs, inputContinuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
 try await analyzer.prepareToAnalyze(in: analyzerFormat)
 inputNode.installTap(onBus: 0, bufferSize: 1_024, format: sourceFormat) { buffer, time in
-    do { try converter.convert(buffer, at: time).forEach(inputContinuation.yield) }
+    do {
+        for input in try converter.convert(buffer, at: time) {
+            _ = inputContinuation.yield(input)
+        }
+    }
     catch { inputContinuation.finish(); captureFailure(error) }
 }
 let analysisTask = Task { try await analyzer.analyzeSequence(inputs) }
@@ -592,7 +720,7 @@ try audioEngine.start()
 
 Run a separate result task: `for try await result in transcriber.results`, convert with `String(result.text.characters)`, and yield `SpeechRecognitionEvent(text:isFinal:)`. Preserve volatile results; do not trim away meaningful Japanese punctuation and do not close an utterance when `isFinal` arrives.
 
-On `stop`: remove tap before stopping/resetting the engine, append converter `flush()` outputs, finish the input continuation, cancel the result/analysis tasks, `await analyzer.cancelAndFinishNow()`, finish the public stream, and nil all per-run objects. On any tap/analyzer/result failure, perform the same teardown once and finish throwing the mapped capture error. `prepare()` performs asset preparation and `prepareToAnalyze` without opening the mic; app integration calls it only after contextual permission.
+On `stop`: remove tap before stopping/resetting the engine, append converter `flush()` outputs with the same explicit yield loop, finish the input continuation, cancel the result/analysis tasks, `await analyzer.cancelAndFinishNow()`, finish the public stream, and nil all per-run objects. On any tap/analyzer/result failure, perform the same teardown once and finish throwing the mapped capture error. `prepare()` performs asset preparation and `prepareToAnalyze` without opening the mic; app integration calls it only after contextual permission. Do not release the Speech asset reservation from per-turn `stop()`, because doing so would add avoidable setup latency to the next turn. The composition owner invokes `await assetPreparer.releaseReservation()` only from its explicit async service teardown; no `deinit` performs async work.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -623,15 +751,48 @@ func testSpeakUsesInstalledJapaneseVoiceAndForwardsMouthLifecycle() async throws
     driver.emit(.didStart)
     driver.emit(.willSpeak(NSRange(location: 0, length: 2)))
     driver.emit(.didFinish)
-    XCTAssertEqual(try await collect(stream), [.started, .willSpeak(range: 0..<2), .finished])
+    var events: [SpeechEvent] = []
+    for try await event in stream {
+        events.append(event)
+    }
+    XCTAssertEqual(events, [.started, .willSpeak(range: 0..<2), .finished])
     XCTAssertEqual(driver.spokenText, "おはよう")
 }
 
 func testMissingVoiceFailsBeforeSpeaking() async {
     let service = AppleSpeechSynthesizer(driver: FakeSpeechSynthesizerDriver(voiceAvailable: false), language: "ja-JP")
-    await XCTAssertThrowsErrorAsync(try await service.prepare()) { error in
+    do {
+        try await service.prepare()
+        XCTFail("Expected a missing voice error")
+    } catch {
         XCTAssertEqual(error as? ConversationServiceError, .speechVoiceUnavailable)
     }
+}
+
+func testDriverFailureMapsToSpeechSynthesisFailed() async {
+    let driver = FakeSpeechSynthesizerDriver(
+        voiceAvailable: true,
+        speakError: NSError(domain: "AppleSpeechSynthesizerTests", code: 1)
+    )
+    let service = AppleSpeechSynthesizer(driver: driver)
+    do {
+        _ = try await service.speak("テスト")
+        XCTFail("Expected the driver failure to throw")
+    } catch {
+        XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed)
+    }
+}
+
+func testOverlappingSpeakMapsToSpeechSynthesisFailed() async throws {
+    let service = AppleSpeechSynthesizer(driver: FakeSpeechSynthesizerDriver(voiceAvailable: true))
+    _ = try await service.speak("最初の発話")
+    do {
+        _ = try await service.speak("重なる発話")
+        XCTFail("Expected overlapping speech to be rejected")
+    } catch {
+        XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed)
+    }
+    await service.stop()
 }
 
 func testStopCancelsCurrentUtteranceAndFinishesStream() async throws {
@@ -640,7 +801,11 @@ func testStopCancelsCurrentUtteranceAndFinishesStream() async throws {
     let stream = try await service.speak("長い文")
     await service.stop()
     driver.emit(.didCancel)
-    XCTAssertEqual(try await collect(stream), [.cancelled])
+    var events: [SpeechEvent] = []
+    for try await event in stream {
+        events.append(event)
+    }
+    XCTAssertEqual(events, [.cancelled])
     XCTAssertEqual(driver.stopBoundary, .immediate)
 }
 ```
@@ -681,7 +846,7 @@ extension AppleSpeechSynthesizer: @preconcurrency AVSpeechSynthesizerDelegate {
 }
 ```
 
-`prepare()` selects and retains an installed voice from `AVSpeechSynthesisVoice.speechVoices()` whose `Locale.Language(identifier: voice.language).languageCode` is Japanese, preferring exact `ja-JP`; fail `.speechVoiceUnavailable` if absent. `speak` calls the same idempotent preflight so direct callers also fail before enqueueing speech. Set the prepared voice on `AVSpeechUtterance(string:)`, use system default rate/pitch/volume, and call `synthesizer.speak(utterance)`. Map exact delegate methods `didStart`, `willSpeakRangeOfSpeechString`, `didFinish`, and `didCancel` to domain events. Finish and clear the continuation on finish/cancel; reject a second concurrent utterance. `stop()` calls `stopSpeaking(at: .immediate)` and remains idempotent. Keep the adapter `@MainActor` because AVSpeechSynthesizer is non-Sendable, and declare delegate conformance in the shown `@preconcurrency AVSpeechSynthesizerDelegate` extension so imported nonisolated Objective-C requirements compile cleanly under Swift 6.
+`prepare()` selects and retains an installed voice from `AVSpeechSynthesisVoice.speechVoices()` whose `Locale.Language(identifier: voice.language).languageCode` is Japanese, preferring exact `ja-JP`; fail `.speechVoiceUnavailable` if absent. `speak` calls the same idempotent preflight so direct callers also fail before enqueueing speech. Set the prepared voice on `AVSpeechUtterance(string:)`, use system default rate/pitch/volume, and call `synthesizer.speak(utterance)`. Map exact delegate methods `didStart`, `willSpeakRangeOfSpeechString`, `didFinish`, and `didCancel` to domain events. Finish and clear the continuation on finish/cancel. Map any driver/enqueue failure to `.speechSynthesisFailed`, and reject a second concurrent `speak` call with that same `.speechSynthesisFailed` domain case rather than allowing AVSpeechSynthesizer to queue overlapping replies. `stop()` calls `stopSpeaking(at: .immediate)` and remains idempotent. Keep the adapter `@MainActor` because AVSpeechSynthesizer is non-Sendable, and declare delegate conformance in the shown `@preconcurrency AVSpeechSynthesizerDelegate` extension so imported nonisolated Objective-C requirements compile cleanly under Swift 6.
 
 - [ ] **Step 4: Run focused tests and commit**
 
@@ -734,12 +899,21 @@ func testInterruptionEventsNeverReactivateAutomatically() async throws {
     let session = FakeAudioSession()
     let controller = AppleAudioSessionController(session: session, notifications: center)
     let events = controller.events
+    let firstTwoEvents = Task { () -> [AudioSessionEvent] in
+        var received: [AudioSessionEvent] = []
+        for await event in events {
+            received.append(event)
+            if received.count == 2 { return received }
+        }
+        return received
+    }
     center.post(name: AVAudioSession.interruptionNotification, object: session.object,
                 userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
     center.post(name: AVAudioSession.interruptionNotification, object: session.object,
                 userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
                            AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue])
-    XCTAssertEqual(await firstTwo(events), [.interruptionBegan, .interruptionEnded(shouldResume: true)])
+    let received = await firstTwoEvents.value
+    XCTAssertEqual(received, [.interruptionBegan, .interruptionEnded(shouldResume: true)])
     XCTAssertEqual(session.activateCallCount, 0)
 }
 ```
