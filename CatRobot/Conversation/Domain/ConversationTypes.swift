@@ -54,6 +54,7 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case speechCaptureFailed
     case speechCaptureAlreadyRunning
     case speechVoiceUnavailable
+    case speechSynthesisFailed
     case audioSessionFailed
     case modelUnavailable(ModelAvailability)
     case modelLocaleUnsupported

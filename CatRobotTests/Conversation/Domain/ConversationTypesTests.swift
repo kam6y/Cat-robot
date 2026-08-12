@@ -9,6 +9,13 @@ final class ConversationTypesTests: XCTestCase {
         )
     }
 
+    func testFailurePhaseRetainsSpeechSynthesisCause() {
+        XCTAssertEqual(
+            ConversationPhase.failed(.speechSynthesisFailed),
+            .failed(.speechSynthesisFailed)
+        )
+    }
+
     func testRecognitionEventsDistinguishProvisionalAndFinalText() {
         XCTAssertNotEqual(
             SpeechRecognitionEvent.provisional("ねこ"),

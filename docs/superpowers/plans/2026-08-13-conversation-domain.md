@@ -43,7 +43,7 @@ enum ModelAvailability: Equatable, Sendable {
 }
 enum ConversationServiceError: Error, Equatable, Sendable {
     case microphoneDenied, speechAssetsUnavailable, speechLocaleUnsupported, speechUnrecognized, speechCaptureFailed, speechCaptureAlreadyRunning
-    case speechVoiceUnavailable, audioSessionFailed, modelUnavailable(ModelAvailability)
+    case speechVoiceUnavailable, speechSynthesisFailed, audioSessionFailed, modelUnavailable(ModelAvailability)
     case modelLocaleUnsupported, modelAssetsUnavailable, guardrailViolation, refusal, contextExceeded
     case modelBusy, modelGenerationFailed, cancelled
 }
@@ -237,6 +237,31 @@ Expected: all domain tests pass.
 ```bash
 git add CatRobot/Conversation/Domain CatRobotTests/Conversation/Domain CatRobot.xcodeproj
 git commit -m "feat: add fast conversational address routing"
+```
+
+### Task 3.1: Represent speech-synthesis failure
+
+**Files:**
+- Modify: `CatRobot/Conversation/Domain/ConversationTypes.swift`
+- Modify: `CatRobotTests/Conversation/Domain/ConversationTypesTests.swift`
+
+**Interfaces:**
+- Adds one recovery-facing error, `ConversationServiceError.speechSynthesisFailed`.
+- Both an adapter failure and a rejected overlapping `speak` call map to this one MVP error; the adapter may distinguish the internal cause without expanding the public recovery surface.
+
+- [ ] **Step 1: Write a failing contract test**
+
+Verify that `ConversationPhase.failed(.speechSynthesisFailed)` can retain and compare the synthesis cause.
+
+- [ ] **Step 2: Prove the case is absent, then add only the enum case**
+
+Run only `CatRobotTests/ConversationTypesTests`; expect a missing-member compilation failure before implementation and a passing focused suite afterward.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/superpowers/plans/2026-08-13-conversation-domain.md CatRobot/Conversation/Domain/ConversationTypes.swift CatRobotTests/Conversation/Domain/ConversationTypesTests.swift
+git commit -m "fix: represent speech synthesis failures"
 ```
 
 ### Task 4: Branch verification and integration
