@@ -1,0 +1,575 @@
+import XCTest
+@testable import CatRobot
+
+@MainActor
+final class ConversationRecoveryTests: XCTestCase {
+    func testAmbiguousSpeechAsksOnceThenAffirmativeUsesOriginal() async {
+        let harness = ConversationHarness(classification: .ambiguous)
+
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+
+        let clarificationTexts = await harness.speaker.texts
+        XCTAssertEqual(clarificationTexts, ["今の、ぼくに言った？"])
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+
+        await harness.completeUnengagedTurn("うん", at: 3)
+
+        let replyPrompts = await harness.reply.prompts
+        let classifierCalls = await harness.classifier.calls
+        XCTAssertEqual(replyPrompts, ["明日の予定は？"])
+        XCTAssertEqual(classifierCalls, ["明日の予定は？"])
+    }
+
+    func testNewExplicitWakeSupersedesPendingBeforeFreshEngagement() async {
+        let harness = ConversationHarness(classification: .ambiguous)
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+
+        await harness.completeUnengagedTurn("猫ちゃん、今日どう？", at: 3)
+        await harness.completeTurn("もう少し教えて", at: 10)
+
+        let replyPrompts = await harness.reply.prompts
+        let classifierCalls = await harness.classifier.calls
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(replyPrompts, ["今日どう？", "もう少し教えて"])
+        XCTAssertEqual(classifierCalls, ["明日の予定は？"])
+        XCTAssertEqual(spokenTexts.filter { $0 == "今の、ぼくに言った？" }.count, 1)
+        XCTAssertFalse(replyPrompts.contains("明日の予定は？"))
+    }
+
+    func testNonYesNoCorrectionClassifiesCurrentWithoutRepeatedClarification() async {
+        let harness = ConversationHarness(classification: .ambiguous)
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+
+        await harness.completeUnengagedTurn("違った、天気を教えて", at: 3)
+
+        let classifierCalls = await harness.classifier.calls
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(classifierCalls, ["明日の予定は？", "違った、天気を教えて"])
+        XCTAssertEqual(spokenTexts.filter { $0 == "今の、ぼくに言った？" }.count, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+    }
+
+    func testEmptyFinalShowsInlineRecoveryWhileCaptureKeepsRunning() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+
+        await harness.emit(.finalized(""))
+
+        let startsBeforeRetry = await harness.recognizer.startCount
+        let isRunning = await harness.recognizer.isRunning
+        XCTAssertEqual(harness.sut.viewState.errorMessage, "うまく聞き取れませんでした")
+        XCTAssertEqual(harness.sut.viewState.recoveries.map(\.action), [.retry, .showTypedInput])
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+        XCTAssertEqual(startsBeforeRetry, 1)
+        XCTAssertTrue(isRunning)
+
+        await harness.sut.retryRecovery()
+
+        let startsAfterRetry = await harness.recognizer.startCount
+        XCTAssertNil(harness.sut.viewState.errorMessage)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+        XCTAssertEqual(startsAfterRetry, 1)
+    }
+
+    func testPauseInactiveInterruptionAndRouteChangeAllStopWithoutAutoResume() async {
+        enum Trigger {
+            case pause
+            case inactive
+            case interruption
+            case routeChange
+        }
+
+        for trigger in [Trigger.pause, .inactive, .interruption, .routeChange] {
+            let harness = ConversationHarness()
+            await harness.sut.startConversation()
+
+            switch trigger {
+            case .pause:
+                await harness.sut.toggleListening()
+            case .inactive:
+                await harness.sut.sceneBecameInactive()
+            case .interruption:
+                await harness.sut.handleAudioSessionEvent(.interruptionBegan)
+            case .routeChange:
+                await harness.sut.handleAudioSessionEvent(.routeChanged)
+            }
+
+            await harness.sut.handleAudioSessionEvent(.interruptionEnded(shouldResume: true))
+
+            let startCount = await harness.recognizer.startCount
+            let stopCount = await harness.recognizer.stopCount
+            let speakerStopCount = await harness.speaker.stopCount
+            let deactivateCount = await harness.audio.deactivateCount
+            let teardownCount = await harness.teardownProbe.callCount
+            XCTAssertEqual(harness.sut.viewState.phase, .paused)
+            XCTAssertEqual(startCount, 1)
+            XCTAssertEqual(stopCount, 1)
+            XCTAssertEqual(speakerStopCount, 1)
+            XCTAssertEqual(deactivateCount, 1)
+            XCTAssertEqual(teardownCount, 0)
+        }
+    }
+
+    func testExplicitResumeRunsFreshActivatePrepareStartPreflight() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+        await harness.sut.handleAudioSessionEvent(.routeChanged)
+
+        await harness.sut.toggleListening()
+
+        let availabilityChecks = await harness.modelAvailability.checkCount
+        let speakerPrepares = await harness.speaker.prepareCount
+        let audioActivations = await harness.audio.activateCount
+        let recognizerPrepares = await harness.recognizer.prepareCount
+        let recognizerStarts = await harness.recognizer.startCount
+        XCTAssertEqual(availabilityChecks, 2)
+        XCTAssertEqual(speakerPrepares, 2)
+        XCTAssertEqual(audioActivations, 2)
+        XCTAssertEqual(recognizerPrepares, 2)
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+
+        let calls = harness.calls.values
+        let secondActivation = calls.indices.filter { calls[$0] == .activateAudio }[1]
+        let secondPreparation = calls.indices.filter { calls[$0] == .prepareRecognizer }[1]
+        let secondStart = calls.indices.filter { calls[$0] == .startRecognizer }[1]
+        XCTAssertLessThan(secondActivation, secondPreparation)
+        XCTAssertLessThan(secondPreparation, secondStart)
+    }
+
+    func testClarificationSpeechFailureClearsUnheardPendingUtterance() async {
+        let harness = ConversationHarness(
+            classification: .ambiguous,
+            speakerError: .speechSynthesisFailed
+        )
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
+
+        await harness.sut.retryRecovery()
+        await harness.emitCompletedUtterance("うん", at: 3)
+
+        let classifierCalls = await harness.classifier.calls
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertEqual(classifierCalls, ["明日の予定は？", "うん"])
+        XCTAssertTrue(replyPrompts.isEmpty)
+    }
+
+    func testMicrophoneDeniedTypedTurnUsesOnlyTypedPreflightAndRetainsCaption() async {
+        let harness = ConversationHarness(
+            microphoneAllowed: false,
+            replySnapshots: ["こんにちは", "こんにちは、会えてうれしいよ"]
+        )
+        await harness.sut.startConversation()
+
+        harness.sut.updateTypedText("こんにちは")
+        await harness.sut.submitTypedText("こんにちは")
+
+        let permissionRequests = await harness.microphone.requestCount
+        let availabilityChecks = await harness.modelAvailability.checkCount
+        let replyPrewarms = await harness.reply.prewarmCount
+        let replyPrompts = await harness.reply.prompts
+        let speakerPrepares = await harness.speaker.prepareCount
+        let spokenTexts = await harness.speaker.texts
+        let audioActivations = await harness.audio.activateCount
+        let audioIsActive = await harness.audio.isActive
+        let recognizerPrepares = await harness.recognizer.prepareCount
+        let recognizerStarts = await harness.recognizer.startCount
+        let classifierCalls = await harness.classifier.calls
+        XCTAssertEqual(permissionRequests, 1)
+        XCTAssertEqual(availabilityChecks, 1)
+        XCTAssertEqual(replyPrewarms, 1)
+        XCTAssertEqual(replyPrompts, ["こんにちは"])
+        XCTAssertEqual(speakerPrepares, 1)
+        XCTAssertEqual(spokenTexts, ["こんにちは、会えてうれしいよ"])
+        XCTAssertEqual(audioActivations, 1)
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(recognizerPrepares, 0)
+        XCTAssertEqual(recognizerStarts, 0)
+        XCTAssertTrue(classifierCalls.isEmpty)
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertEqual(harness.sut.viewState.caption, "こんにちは、会えてうれしいよ")
+        XCTAssertEqual(harness.sut.viewState.typedText, "")
+    }
+
+    func testTypedTurnClosesCaptureLosslesslyDiscardsTailAndResumesVoiceOnce() async {
+        let harness = ConversationHarness(
+            recognizerTail: .finalized("古い音声")
+        )
+        await harness.sut.startConversation()
+        harness.sut.updateTypedText("文字の質問")
+
+        await harness.sut.submitTypedText("文字の質問")
+
+        let replyPrompts = await harness.reply.prompts
+        let classifierCalls = await harness.classifier.calls
+        let recognizerStops = await harness.recognizer.stopCount
+        let recognizerStarts = await harness.recognizer.startCount
+        let recognizerPrepares = await harness.recognizer.prepareCount
+        XCTAssertEqual(replyPrompts, ["文字の質問"])
+        XCTAssertTrue(classifierCalls.isEmpty)
+        XCTAssertEqual(recognizerStops, 1)
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(recognizerPrepares, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+        XCTAssertEqual(harness.sut.viewState.typedText, "")
+    }
+
+    func testDuplicateTypedSubmissionWhileBusyIsIgnored() async {
+        let harness = ConversationHarness(
+            microphoneAllowed: false,
+            replySnapshots: nil
+        )
+        await harness.sut.startConversation()
+        let first = Task { await harness.sut.submitTypedText("最初") }
+        await harness.reply.waitUntilPromptCount(1)
+
+        await harness.sut.submitTypedText("二つ目")
+        await harness.reply.yield("最初の返事")
+        await harness.reply.finish()
+        await first.value
+
+        let replyPrompts = await harness.reply.prompts
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(replyPrompts, ["最初"])
+        XCTAssertEqual(spokenTexts, ["最初の返事"])
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+    }
+
+    func testContextExceededResetsOnceAndDoesNotSilentlyRetryPrompt() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("猫ちゃん、長い話の続き", at: 0)
+        }
+        await harness.reply.waitUntilPromptCount(1)
+
+        await harness.reply.fail(.contextExceeded)
+        await turn.value
+
+        let resetCount = await harness.reply.resetCount
+        let replyPrompts = await harness.reply.prompts
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(resetCount, 1)
+        XCTAssertEqual(replyPrompts, ["長い話の続き"])
+        XCTAssertTrue(spokenTexts.isEmpty)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.contextExceeded))
+        XCTAssertEqual(
+            harness.sut.viewState.errorMessage,
+            "会話が長くなったため、短期の会話内容をリセットしました。もう一度話しかけてください。"
+        )
+    }
+
+    func testContextResetFinishesAfterPauseWithoutPublishingStaleError() async {
+        let resetGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            replyResetGate: resetGate
+        )
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("猫ちゃん、長い話", at: 0)
+        }
+        await harness.reply.waitUntilPromptCount(1)
+
+        await harness.reply.fail(.contextExceeded)
+        await resetGate.waitUntilEntered()
+        let pause = Task { await harness.sut.sceneBecameInactive() }
+        let didPause = await harness.waitUntil {
+            harness.sut.viewState.phase == .paused
+        }
+        XCTAssertTrue(didPause)
+        await resetGate.open()
+        await pause.value
+        await turn.value
+
+        let resetCount = await harness.reply.resetCount
+        XCTAssertEqual(resetCount, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertNil(harness.sut.viewState.errorMessage)
+    }
+
+    func testConcurrentShutdownCallsJoinOneTeardown() async {
+        let teardownGate = ConversationTestGate()
+        let harness = ConversationHarness(serviceTeardownGate: teardownGate)
+        let secondCompletion = ConversationCompletionProbe()
+        await harness.sut.startConversation()
+
+        let first = Task { await harness.sut.shutdown() }
+        await teardownGate.waitUntilEntered()
+        let second = Task {
+            await harness.sut.shutdown()
+            await secondCompletion.complete()
+        }
+        for _ in 0..<20 { await Task.yield() }
+
+        let completedBeforeTeardown = await secondCompletion.isComplete
+        XCTAssertFalse(completedBeforeTeardown)
+        await teardownGate.open()
+        await first.value
+        await second.value
+
+        let teardownCount = await harness.teardownProbe.callCount
+        let completedAfterTeardown = await secondCompletion.isComplete
+        XCTAssertEqual(teardownCount, 1)
+        XCTAssertTrue(completedAfterTeardown)
+    }
+
+    func testTypedSubmissionSnapshotsArgumentBeforeEditorDismissAndPreservesNewDraft() async {
+        let harness = ConversationHarness(
+            microphoneAllowed: false,
+            replySnapshots: nil
+        )
+        await harness.sut.startConversation()
+        harness.sut.showTypedInput()
+        harness.sut.updateTypedText("送信する質問")
+        let submitted = harness.sut.viewState.typedText
+        let turn = Task { await harness.sut.submitTypedText(submitted) }
+        harness.sut.hideTypedInput()
+        await harness.reply.waitUntilPromptCount(1)
+
+        harness.sut.showTypedInput()
+        harness.sut.updateTypedText("次の下書き")
+        await harness.reply.yield("返事")
+        await harness.reply.finish()
+        await turn.value
+
+        let prompts = await harness.reply.prompts
+        XCTAssertEqual(prompts, ["送信する質問"])
+        XCTAssertEqual(harness.sut.viewState.typedText, "次の下書き")
+        XCTAssertTrue(harness.sut.viewState.showsTypedInput)
+        XCTAssertEqual(harness.sut.viewState.caption, "返事")
+    }
+
+    func testRetryRerunsPreflightAndNeverPretendsUnavailableModelIsListening() async {
+        let harness = ConversationHarness(
+            modelAvailabilityResult: .modelNotReady
+        )
+        await harness.sut.startConversation()
+
+        await harness.sut.retryRecovery()
+
+        let checksWhileUnavailable = await harness.modelAvailability.checkCount
+        let startsWhileUnavailable = await harness.recognizer.startCount
+        XCTAssertEqual(checksWhileUnavailable, 2)
+        XCTAssertEqual(startsWhileUnavailable, 0)
+        XCTAssertEqual(
+            harness.sut.viewState.phase,
+            .failed(.modelUnavailable(.modelNotReady))
+        )
+
+        await harness.modelAvailability.setResult(.available)
+        await harness.sut.retryRecovery()
+
+        let totalChecks = await harness.modelAvailability.checkCount
+        let startCount = await harness.recognizer.startCount
+        XCTAssertEqual(totalChecks, 3)
+        XCTAssertEqual(startCount, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+    }
+
+    func testTypedCaptureCloseDoesNotEraseNewDraftEnteredWhileStopping() async {
+        let stopGate = ConversationTestGate()
+        let harness = ConversationHarness(recognizerStopGate: stopGate)
+        await harness.sut.startConversation()
+        harness.sut.updateTypedText("送信する質問")
+        let turn = Task { await harness.sut.submitTypedText("送信する質問") }
+        await stopGate.waitUntilEntered()
+
+        harness.sut.showTypedInput()
+        harness.sut.updateTypedText("次の下書き")
+        await stopGate.open()
+        await turn.value
+
+        let prompts = await harness.reply.prompts
+        XCTAssertEqual(prompts, ["送信する質問"])
+        XCTAssertEqual(harness.sut.viewState.typedText, "次の下書き")
+        XCTAssertTrue(harness.sut.viewState.showsTypedInput)
+    }
+
+    func testTypedSubmissionWaitsForInFlightLifecycleCleanup() async {
+        let stopGate = ConversationTestGate()
+        let harness = ConversationHarness(recognizerStopGate: stopGate)
+        await harness.sut.startConversation()
+        let pause = Task { await harness.sut.sceneBecameInactive() }
+        await stopGate.waitUntilEntered()
+
+        let typed = Task { await harness.sut.submitTypedText("文字の質問") }
+        for _ in 0..<20 { await Task.yield() }
+
+        let promptsBeforeCleanup = await harness.reply.prompts
+        XCTAssertTrue(promptsBeforeCleanup.isEmpty)
+        await stopGate.open()
+        await pause.value
+        await typed.value
+
+        let promptsAfterCleanup = await harness.reply.prompts
+        XCTAssertEqual(promptsAfterCleanup, ["文字の質問"])
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+    }
+
+    func testTypedSubmissionDuringCaptureClosingDoesNotBlockNextVoiceTurn() async {
+        let stopGate = ConversationTestGate()
+        let harness = ConversationHarness(recognizerStopGate: stopGate)
+        await harness.sut.startConversation()
+        await harness.emit(.finalized("猫ちゃん、古い音声"), at: 0)
+        harness.now.set(1.2)
+        let closing = Task { await harness.sut.flushSegmentation(at: 1.2) }
+        await stopGate.waitUntilEntered()
+
+        let typed = Task { await harness.sut.submitTypedText("文字の質問") }
+        for _ in 0..<20 { await Task.yield() }
+        await stopGate.open()
+        await closing.value
+        await typed.value
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+
+        await harness.emitCompletedUtterance("猫ちゃん、新しい質問", at: 3)
+
+        let prompts = await harness.reply.prompts
+        XCTAssertEqual(prompts, ["文字の質問", "新しい質問"])
+    }
+
+    func testTypedNoResumeRetainsOwnershipUntilAudioDeactivationCompletes() async {
+        let deactivateGate = ConversationTestGate()
+        let harness = ConversationHarness(audioDeactivateGate: deactivateGate)
+        let typed = Task { await harness.sut.submitTypedText("文字の質問") }
+        await deactivateGate.waitUntilEntered()
+
+        XCTAssertEqual(harness.sut.viewState.phase, .speaking)
+        await harness.sut.startConversation()
+        let startsBeforeDeactivation = await harness.recognizer.startCount
+        XCTAssertEqual(startsBeforeDeactivation, 0)
+
+        await deactivateGate.open()
+        await typed.value
+        let audioAfterTypedTurn = await harness.audio.isActive
+        XCTAssertFalse(audioAfterTypedTurn)
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+
+        await harness.sut.startConversation()
+        let startsAfterExplicitResume = await harness.recognizer.startCount
+        let audioAfterExplicitResume = await harness.audio.isActive
+        XCTAssertEqual(startsAfterExplicitResume, 1)
+        XCTAssertTrue(audioAfterExplicitResume)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+    }
+
+    func testTypedGenerationFailureStopsSpeakerAndDeactivatesBeforePublishingFailure() async {
+        let harness = ConversationHarness(
+            microphoneAllowed: false,
+            replySnapshots: nil
+        )
+        await harness.sut.startConversation()
+        let typed = Task { await harness.sut.submitTypedText("文字の質問") }
+        await harness.reply.waitUntilPromptCount(1)
+
+        await harness.reply.fail(.modelGenerationFailed)
+        await typed.value
+
+        let audioIsActive = await harness.audio.isActive
+        let speakerStops = await harness.speaker.stopCount
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
+        let calls = harness.calls.values
+        XCTAssertLessThan(
+            calls.lastIndex(of: .stopSpeaker)!,
+            calls.lastIndex(of: .deactivateAudio)!
+        )
+    }
+
+    func testTypedSpeechFailureStopsSpeakerAndDeactivatesBeforePublishingFailure() async {
+        let harness = ConversationHarness(
+            microphoneAllowed: false,
+            speakerError: .speechSynthesisFailed
+        )
+        await harness.sut.startConversation()
+
+        await harness.sut.submitTypedText("文字の質問")
+
+        let audioIsActive = await harness.audio.isActive
+        let speakerStops = await harness.speaker.stopCount
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
+        let calls = harness.calls.values
+        XCTAssertLessThan(
+            calls.lastIndex(of: .stopSpeaker)!,
+            calls.lastIndex(of: .deactivateAudio)!
+        )
+    }
+
+    func testTypedContextResetRunsAfterAudioIsDeactivated() async {
+        let resetGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            microphoneAllowed: false,
+            replySnapshots: nil,
+            replyResetGate: resetGate
+        )
+        await harness.sut.startConversation()
+        let typed = Task { await harness.sut.submitTypedText("文字の質問") }
+        await harness.reply.waitUntilPromptCount(1)
+
+        await harness.reply.fail(.contextExceeded)
+        await resetGate.waitUntilEntered()
+
+        let audioDuringReset = await harness.audio.isActive
+        let speakerStopsDuringReset = await harness.speaker.stopCount
+        XCTAssertFalse(audioDuringReset)
+        XCTAssertEqual(speakerStopsDuringReset, 1)
+        XCTAssertNotEqual(harness.sut.viewState.phase, .failed(.contextExceeded))
+
+        await resetGate.open()
+        await typed.value
+        let resetCount = await harness.reply.resetCount
+        XCTAssertEqual(resetCount, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.contextExceeded))
+    }
+
+    func testTypedModelUnavailableAfterVoiceCaptureCleansUpInheritedAudio() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+        await harness.modelAvailability.setResult(.modelNotReady)
+
+        await harness.sut.submitTypedText("文字の質問")
+
+        let audioIsActive = await harness.audio.isActive
+        let speakerStops = await harness.speaker.stopCount
+        let recognizerStops = await harness.recognizer.stopCount
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(recognizerStops, 1)
+        XCTAssertEqual(
+            harness.sut.viewState.phase,
+            .failed(.modelUnavailable(.modelNotReady))
+        )
+        let calls = harness.calls.values
+        guard let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
+              let deactivateAudio = calls.lastIndex(of: .deactivateAudio) else {
+            return XCTFail("typed failure must stop the speaker and deactivate audio")
+        }
+        XCTAssertLessThan(stopSpeaker, deactivateAudio)
+    }
+
+    func testTypedSpeakerPreparationFailureAfterVoiceCaptureCleansUpInheritedAudio() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+        await harness.speaker.setPrepareError(.speechSynthesisFailed)
+
+        await harness.sut.submitTypedText("文字の質問")
+
+        let audioIsActive = await harness.audio.isActive
+        let speakerStops = await harness.speaker.stopCount
+        let recognizerStops = await harness.recognizer.stopCount
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(recognizerStops, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
+        let calls = harness.calls.values
+        guard let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
+              let deactivateAudio = calls.lastIndex(of: .deactivateAudio) else {
+            return XCTFail("typed failure must stop the speaker and deactivate audio")
+        }
+        XCTAssertLessThan(stopSpeaker, deactivateAudio)
+    }
+}

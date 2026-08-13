@@ -113,7 +113,7 @@ actor FakeMicrophonePermission: MicrophoneAuthorizing {
 }
 
 actor FakeModelAvailability: ModelAvailabilityChecking {
-    private let result: ModelAvailability
+    private var result: ModelAvailability
     private let log: ConversationTestCallLog
     private(set) var checkCount = 0
 
@@ -126,6 +126,10 @@ actor FakeModelAvailability: ModelAvailabilityChecking {
         checkCount += 1
         log.append(.checkAvailability)
         return result
+    }
+
+    func setResult(_ result: ModelAvailability) {
+        self.result = result
     }
 }
 
@@ -232,6 +236,7 @@ actor FakeReplyService: ReplyGenerating {
     typealias Continuation = AsyncThrowingStream<String, Error>.Continuation
 
     private let automaticSnapshots: [String]?
+    private let resetGate: ConversationTestGate?
     private let log: ConversationTestCallLog
     private var continuations: [Continuation] = []
     private var promptWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
@@ -239,8 +244,13 @@ actor FakeReplyService: ReplyGenerating {
     private(set) var prewarmCount = 0
     private(set) var resetCount = 0
 
-    init(automaticSnapshots: [String]?, log: ConversationTestCallLog) {
+    init(
+        automaticSnapshots: [String]?,
+        resetGate: ConversationTestGate?,
+        log: ConversationTestCallLog
+    ) {
         self.automaticSnapshots = automaticSnapshots
+        self.resetGate = resetGate
         self.log = log
     }
 
@@ -264,6 +274,7 @@ actor FakeReplyService: ReplyGenerating {
 
     func reset() async {
         resetCount += 1
+        await resetGate?.wait()
     }
 
     func yield(_ snapshot: String, run index: Int = 0) {
@@ -299,6 +310,7 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
     typealias Continuation = AsyncThrowingStream<SpeechEvent, Error>.Continuation
 
     private let automaticallyFinishes: Bool
+    private var prepareError: ConversationServiceError?
     private let speakError: ConversationServiceError?
     private let log: ConversationTestCallLog
     private var continuations: [Continuation] = []
@@ -309,10 +321,12 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
 
     init(
         automaticallyFinishes: Bool,
+        prepareError: ConversationServiceError?,
         speakError: ConversationServiceError?,
         log: ConversationTestCallLog
     ) {
         self.automaticallyFinishes = automaticallyFinishes
+        self.prepareError = prepareError
         self.speakError = speakError
         self.log = log
     }
@@ -320,6 +334,11 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
     func prepare() async throws {
         prepareCount += 1
         log.append(.prepareSpeaker)
+        if let prepareError { throw prepareError }
+    }
+
+    func setPrepareError(_ error: ConversationServiceError?) {
+        prepareError = error
     }
 
     func speak(_ text: String) async throws -> AsyncThrowingStream<SpeechEvent, Error> {
@@ -375,15 +394,20 @@ actor FakeConversationAudioSession: AudioSessionControlling {
     nonisolated let events: AsyncStream<AudioSessionEvent>
     private nonisolated let eventContinuation: AsyncStream<AudioSessionEvent>.Continuation
     private let log: ConversationTestCallLog
+    private let deactivateGate: ConversationTestGate?
     private(set) var activateCount = 0
     private(set) var deactivateCount = 0
     private(set) var isActive = false
 
-    init(log: ConversationTestCallLog) {
+    init(
+        log: ConversationTestCallLog,
+        deactivateGate: ConversationTestGate? = nil
+    ) {
         let pair = AsyncStream<AudioSessionEvent>.makeStream()
         events = pair.stream
         eventContinuation = pair.continuation
         self.log = log
+        self.deactivateGate = deactivateGate
     }
 
     func activate() async throws {
@@ -394,8 +418,9 @@ actor FakeConversationAudioSession: AudioSessionControlling {
 
     func deactivate() async {
         deactivateCount += 1
-        isActive = false
         log.append(.deactivateAudio)
+        await deactivateGate?.wait()
+        isActive = false
     }
 
     nonisolated func emit(_ event: AudioSessionEvent) {
@@ -404,10 +429,24 @@ actor FakeConversationAudioSession: AudioSessionControlling {
 }
 
 actor FakeServiceTeardown {
+    private let gate: ConversationTestGate?
     private(set) var callCount = 0
 
-    func call() {
+    init(gate: ConversationTestGate? = nil) {
+        self.gate = gate
+    }
+
+    func call() async {
         callCount += 1
+        await gate?.wait()
+    }
+}
+
+actor ConversationCompletionProbe {
+    private(set) var isComplete = false
+
+    func complete() {
+        isComplete = true
     }
 }
 
@@ -428,13 +467,18 @@ final class ConversationHarness {
     init(
         classification: AddressTarget = .addressed,
         microphoneAllowed: Bool = true,
+        modelAvailabilityResult: ModelAvailability = .available,
         permissionGate: ConversationTestGate? = nil,
         replySnapshots: [String]? = ["わかったよ"],
         speakerAutomaticallyFinishes: Bool = true,
+        speakerPrepareError: ConversationServiceError? = nil,
         speakerError: ConversationServiceError? = nil,
         recognizerPrepareGate: ConversationTestGate? = nil,
         recognizerStopGate: ConversationTestGate? = nil,
-        recognizerTail: SpeechRecognitionEvent? = nil
+        recognizerTail: SpeechRecognitionEvent? = nil,
+        replyResetGate: ConversationTestGate? = nil,
+        serviceTeardownGate: ConversationTestGate? = nil,
+        audioDeactivateGate: ConversationTestGate? = nil
     ) {
         let calls = ConversationTestCallLog()
         let now = ConversationTestNow()
@@ -443,7 +487,10 @@ final class ConversationHarness {
             gate: permissionGate,
             log: calls
         )
-        let modelAvailability = FakeModelAvailability(log: calls)
+        let modelAvailability = FakeModelAvailability(
+            result: modelAvailabilityResult,
+            log: calls
+        )
         let recognizer = FakeSpeechRecognizer(
             log: calls,
             prepareGate: recognizerPrepareGate,
@@ -451,14 +498,22 @@ final class ConversationHarness {
             tailOnFirstStop: recognizerTail
         )
         let classifier = FakeAddressClassifier(result: classification, log: calls)
-        let reply = FakeReplyService(automaticSnapshots: replySnapshots, log: calls)
+        let reply = FakeReplyService(
+            automaticSnapshots: replySnapshots,
+            resetGate: replyResetGate,
+            log: calls
+        )
         let speaker = FakeSpeechSpeaker(
             automaticallyFinishes: speakerAutomaticallyFinishes,
+            prepareError: speakerPrepareError,
             speakError: speakerError,
             log: calls
         )
-        let audio = FakeConversationAudioSession(log: calls)
-        let teardownProbe = FakeServiceTeardown()
+        let audio = FakeConversationAudioSession(
+            log: calls,
+            deactivateGate: audioDeactivateGate
+        )
+        let teardownProbe = FakeServiceTeardown(gate: serviceTeardownGate)
 
         self.calls = calls
         self.now = now

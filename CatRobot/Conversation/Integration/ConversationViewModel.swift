@@ -38,6 +38,7 @@ final class ConversationViewModel {
     @ObservationIgnored private var turnTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleTransitionTask: Task<Void, Never>?
     @ObservationIgnored private var audioEventTask: Task<Void, Never>?
+    @ObservationIgnored private var shutdownTask: Task<Void, Never>?
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
@@ -51,6 +52,9 @@ final class ConversationViewModel {
             actionIntentCounter &+= 1
             let resumeIntent = actionIntentCounter
             await lifecycleTransitionTask.value
+            // Let an already-enqueued later lifecycle intent publish before
+            // this queued resume decides whether it still owns the action.
+            await Task.yield()
             guard actionIntentCounter == resumeIntent else { return }
         }
         guard !isShutdown, !isShuttingDown else { return }
@@ -115,9 +119,55 @@ final class ConversationViewModel {
 
     func submitTypedText(_ text: String) async {
         let submitted = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !submitted.isEmpty else { return }
-        viewState.typedText = submitted
+        guard !submitted.isEmpty, !isShutdown, !isShuttingDown else { return }
         viewState.showsTypedInput = false
+
+        if let lifecycleTransitionTask {
+            actionIntentCounter &+= 1
+            let typedIntent = actionIntentCounter
+            await lifecycleTransitionTask.value
+            await Task.yield()
+            guard actionIntentCounter == typedIntent,
+                  !isShutdown,
+                  !isShuttingDown else { return }
+        }
+
+        switch viewState.phase {
+        case .preparing, .classifying, .thinking, .speaking:
+            return
+        case .idle, .listening, .clarifying, .paused, .failed:
+            break
+        }
+
+        ensureAudioEventConsumer()
+        let shouldResumeVoice = wantsListening
+            && microphoneWasAllowed
+            && activeCaptureID != nil
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
+        wantsListening = false
+        pendingClarification = nil
+        engagement.clear()
+        turnCounter &+= 1
+        let turnID = turnCounter
+        activeTurnID = turnID
+        transition(to: .preparing)
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performTypedTurn(
+                submitted,
+                shouldResumeVoice: shouldResumeVoice,
+                generation: generation,
+                turnID: turnID
+            )
+        }
+        turnTask = task
+        await task.value
+        if activeTurnID == turnID {
+            activeTurnID = nil
+            turnTask = nil
+        }
     }
 
     func sceneBecameInactive() async {
@@ -134,8 +184,21 @@ final class ConversationViewModel {
     }
 
     func shutdown() async {
-        guard !isShutdown, !isShuttingDown else { return }
+        if let shutdownTask {
+            await shutdownTask.value
+            return
+        }
+        guard !isShutdown else { return }
         isShuttingDown = true
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performShutdown()
+        }
+        shutdownTask = task
+        await task.value
+    }
+
+    private func performShutdown() async {
         await pauseConversation(force: true)
 
         let eventTask = audioEventTask
@@ -215,6 +278,211 @@ final class ConversationViewModel {
         }
     }
 
+    private func performTypedTurn(
+        _ submitted: String,
+        shouldResumeVoice: Bool,
+        generation: UInt64,
+        turnID: UInt64
+    ) async {
+        let oldCapture = captureTask
+        let oldClosing = closingTask
+        let hadCapture = activeCaptureID != nil
+            || oldCapture != nil
+            || oldClosing != nil
+        if hadCapture {
+            segmentationTask?.cancel()
+            segmentationTask = nil
+            activeCaptureID = nil
+            captureTask = nil
+            closingTask = nil
+            captureIsClosing = false
+            closingTailSegments.removeAll(keepingCapacity: true)
+            segmenter = UtteranceSegmenter()
+            firstCaptureActivityAt = nil
+            latestCaptureActivityAt = nil
+            if let oldClosing {
+                await oldClosing.value
+            } else {
+                await dependencies.recognizer.stop()
+                await oldCapture?.value
+            }
+        }
+        guard isTypedTurnCurrent(generation, turnID: turnID),
+              !Task.isCancelled else { return }
+        viewState.provisionalTranscript = ""
+        if viewState.typedText == submitted {
+            viewState.typedText = ""
+        }
+
+        do {
+            let availability = await dependencies.modelAvailability.availability()
+            guard isTypedTurnCurrent(generation, turnID: turnID),
+                  !Task.isCancelled else { return }
+            guard availability == .available else {
+                await finishTypedTurn(
+                    with: .modelUnavailable(availability),
+                    includesTypedFallback: true,
+                    generation: generation,
+                    turnID: turnID
+                )
+                return
+            }
+
+            await dependencies.reply.prewarm()
+            guard isTypedTurnCurrent(generation, turnID: turnID),
+                  !Task.isCancelled else { return }
+            try await dependencies.speaker.prepare()
+            guard isTypedTurnCurrent(generation, turnID: turnID),
+                  !Task.isCancelled else { return }
+            try await dependencies.audioSession.activate()
+            guard isTypedTurnCurrent(generation, turnID: turnID),
+                  !Task.isCancelled else { return }
+            await generateTypedReply(
+                to: submitted,
+                shouldResumeVoice: shouldResumeVoice,
+                generation: generation,
+                turnID: turnID
+            )
+        } catch {
+            let serviceError = Self.serviceError(from: error)
+            await finishTypedTurn(
+                with: serviceError,
+                includesTypedFallback: true,
+                generation: generation,
+                turnID: turnID
+            )
+        }
+    }
+
+    private func generateTypedReply(
+        to submitted: String,
+        shouldResumeVoice: Bool,
+        generation: UInt64,
+        turnID: UInt64
+    ) async {
+        transition(to: .thinking)
+        do {
+            let stream = try await dependencies.reply.streamReply(to: submitted)
+            var finalText: String?
+            for try await snapshot in stream {
+                guard isTypedTurnCurrent(generation, turnID: turnID),
+                      !Task.isCancelled else { return }
+                viewState.caption = snapshot
+                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finalText = snapshot
+                }
+            }
+            guard isTypedTurnCurrent(generation, turnID: turnID),
+                  !Task.isCancelled else { return }
+            guard let finalText else {
+                await finishTypedTurn(
+                    with: .modelGenerationFailed,
+                    includesTypedFallback: true,
+                    generation: generation,
+                    turnID: turnID
+                )
+                return
+            }
+            await speakTypedReply(
+                finalText,
+                shouldResumeVoice: shouldResumeVoice,
+                generation: generation,
+                turnID: turnID
+            )
+        } catch {
+            let serviceError = Self.serviceError(from: error)
+            await finishTypedTurn(
+                with: serviceError,
+                includesTypedFallback: true,
+                resetsReplySession: serviceError == .contextExceeded,
+                generation: generation,
+                turnID: turnID
+            )
+        }
+    }
+
+    private func speakTypedReply(
+        _ text: String,
+        shouldResumeVoice: Bool,
+        generation: UInt64,
+        turnID: UInt64
+    ) async {
+        transition(to: .speaking, caption: text)
+        do {
+            let stream = try await dependencies.speaker.speak(text)
+            var finishedNormally = false
+            var mouthIndex = 0
+            for try await event in stream {
+                guard isTypedTurnCurrent(generation, turnID: turnID),
+                      !Task.isCancelled else { return }
+                switch event {
+                case .started:
+                    viewState.mouthPose = .small
+                case .willSpeak:
+                    let poses: [MouthPose] = [.small, .medium, .wide]
+                    viewState.mouthPose = poses[mouthIndex % poses.count]
+                    mouthIndex += 1
+                case .finished:
+                    finishedNormally = true
+                    viewState.mouthPose = .closed
+                case .cancelled:
+                    throw ConversationServiceError.speechSynthesisFailed
+                }
+            }
+            guard isTypedTurnCurrent(generation, turnID: turnID),
+                  !Task.isCancelled else { return }
+            guard finishedNormally else {
+                throw ConversationServiceError.speechSynthesisFailed
+            }
+
+            if shouldResumeVoice {
+                engagement.arm(at: dependencies.now())
+                wantsListening = true
+                do {
+                    try await startCapture(generation: generation, recognizerIsPrepared: false)
+                } catch {
+                    guard isTypedTurnCurrent(generation, turnID: turnID),
+                          !Task.isCancelled else { return }
+                    wantsListening = false
+                    await dependencies.recognizer.stop()
+                    await finishTypedTurn(
+                        with: Self.serviceError(from: error),
+                        generation: generation,
+                        turnID: turnID
+                    )
+                }
+            } else {
+                await dependencies.audioSession.deactivate()
+                guard isTypedTurnCurrent(generation, turnID: turnID),
+                      !Task.isCancelled else { return }
+                transition(to: .paused)
+            }
+        } catch {
+            await finishTypedTurn(
+                with: Self.serviceError(from: error),
+                generation: generation,
+                turnID: turnID
+            )
+        }
+    }
+
+    private func finishTypedTurn(
+        with error: ConversationServiceError,
+        includesTypedFallback: Bool = false,
+        resetsReplySession: Bool = false,
+        generation: UInt64,
+        turnID: UInt64
+    ) async {
+        await dependencies.speaker.stop()
+        await dependencies.audioSession.deactivate()
+        if resetsReplySession {
+            await dependencies.reply.reset()
+        }
+        guard isTypedTurnCurrent(generation, turnID: turnID),
+              !Task.isCancelled else { return }
+        publish(error, includesTypedFallback: includesTypedFallback)
+    }
+
     private func startCapture(
         generation: UInt64,
         recognizerIsPrepared: Bool
@@ -277,7 +545,12 @@ final class ConversationViewModel {
             }
             return
         }
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            if event.isFinal {
+                presentUnrecognizedSpeechWhileListening()
+            }
+            return
+        }
 
         let timestamp = dependencies.now()
         segmenter.receive(event, at: timestamp)
@@ -308,6 +581,18 @@ final class ConversationViewModel {
         segmentationTask = nil
         firstCaptureActivityAt = nil
         latestCaptureActivityAt = nil
+    }
+
+    private func presentUnrecognizedSpeechWhileListening() {
+        segmentationTask?.cancel()
+        segmentationTask = nil
+        segmenter = UtteranceSegmenter()
+        firstCaptureActivityAt = nil
+        latestCaptureActivityAt = nil
+        viewState.provisionalTranscript = ""
+        let presentation = ConversationErrorPresentation(.speechUnrecognized)
+        viewState.errorMessage = presentation.message
+        viewState.recoveries = presentation.recoveries
     }
 
     private func scheduleSegmentationFlush(
@@ -400,6 +685,11 @@ final class ConversationViewModel {
     ) async {
         guard isCurrent(generation, turnID: turnID) else { return }
         let timestamp = dependencies.now()
+        if let pendingClarification,
+           timestamp >= pendingClarification.expiresAt {
+            self.pendingClarification = nil
+        }
+        let isCorrectingPending = pendingClarification != nil
         let wasEngaged = engagement.isActive(at: timestamp)
         let explicitWakeRoute = dependencies.addresseePolicy.route(
             utterance,
@@ -411,7 +701,7 @@ final class ConversationViewModel {
         switch explicitWakeRoute {
         case .wakeOnly, .accept(_):
             isExplicitWake = true
-        case .classify(_), .confirmPending(_), .ignore:
+        case .classify(_), .confirmPending(_), .dismissPending, .ignore:
             isExplicitWake = false
         }
         let route = dependencies.addresseePolicy.route(
@@ -439,6 +729,7 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         case .classify(let candidate):
+            pendingClarification = nil
             transition(to: .classifying)
             do {
                 let target = try await dependencies.classifier.classify(candidate)
@@ -455,11 +746,20 @@ final class ConversationViewModel {
                 case .notAddressed:
                     await resumeCapture(generation: generation, turnID: turnID)
                 case .ambiguous:
-                    pendingClarification = PendingClarification(
-                        utterance: candidate,
-                        at: dependencies.now()
-                    )
-                    transition(to: .clarifying, caption: "今の、ぼくに言った？")
+                    if isCorrectingPending {
+                        await resumeCapture(generation: generation, turnID: turnID)
+                    } else {
+                        pendingClarification = PendingClarification(
+                            utterance: candidate,
+                            at: dependencies.now()
+                        )
+                        await speakAndResume(
+                            "今の、ぼくに言った？",
+                            engagementUpdate: .none,
+                            generation: generation,
+                            turnID: turnID
+                        )
+                    }
                 }
             } catch {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
@@ -469,8 +769,10 @@ final class ConversationViewModel {
         case .confirmPending:
             pendingClarification = nil
             await resumeCapture(generation: generation, turnID: turnID)
-        case .ignore:
+        case .dismissPending:
             pendingClarification = nil
+            await resumeCapture(generation: generation, turnID: turnID)
+        case .ignore:
             await resumeCapture(generation: generation, turnID: turnID)
         }
     }
@@ -505,9 +807,13 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         } catch {
+            let serviceError = Self.serviceError(from: error)
+            if serviceError == .contextExceeded {
+                await dependencies.reply.reset()
+            }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             wantsListening = false
-            publish(Self.serviceError(from: error), includesTypedFallback: true)
+            publish(serviceError, includesTypedFallback: true)
         }
     }
 
@@ -555,6 +861,7 @@ final class ConversationViewModel {
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            pendingClarification = nil
             wantsListening = false
             publish(Self.serviceError(from: error))
         }
@@ -648,6 +955,13 @@ final class ConversationViewModel {
 
     private func isCurrent(_ generation: UInt64, turnID: UInt64) -> Bool {
         isCurrent(generation) && activeTurnID == turnID
+    }
+
+    private func isTypedTurnCurrent(_ generation: UInt64, turnID: UInt64) -> Bool {
+        lifecycleGeneration == generation
+            && activeTurnID == turnID
+            && !isShutdown
+            && !isShuttingDown
     }
 
     private func transition(

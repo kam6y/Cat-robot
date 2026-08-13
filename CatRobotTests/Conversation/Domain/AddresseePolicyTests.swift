@@ -16,10 +16,10 @@ final class AddresseePolicyTests: XCTestCase {
         XCTAssertEqual(AddresseePolicy().route("続けて", at: 301, engagement: engagement, pending: nil), .classify("続けて"))
     }
 
-    func testAffirmativeUsesPendingOriginalAndNegativeDropsIt() {
+    func testAffirmativeUsesPendingOriginalAndNegativeExplicitlyDismissesIt() {
         let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
         XCTAssertEqual(AddresseePolicy().route("うん", at: 2, engagement: .inactive, pending: pending), .accept("明日の予定は？"))
-        XCTAssertEqual(AddresseePolicy().route("違う", at: 2, engagement: .inactive, pending: pending), .ignore)
+        XCTAssertEqual(AddresseePolicy().route("違う", at: 2, engagement: .inactive, pending: pending), .dismissPending)
     }
 
     func testEngagementUsesThirtySecondSoftExpiryAndCanBeCleared() {
@@ -172,19 +172,28 @@ final class AddresseePolicyTests: XCTestCase {
         for negative in ["いいえ", "ううん", "いや", "ちがう", "違います", "そうじゃない。"] {
             XCTAssertEqual(
                 AddresseePolicy().route(negative, at: 2, engagement: .inactive, pending: pending),
-                .ignore
+                .dismissPending
             )
         }
     }
 
-    func testPendingClarificationTakesPriorityOverActiveEngagement() {
+    func testFillerDuringPendingIsIgnoredWithoutDismissingIt() {
+        let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
+
+        XCTAssertEqual(
+            AddresseePolicy().route("えっと", at: 2, engagement: .inactive, pending: pending),
+            .ignore
+        )
+    }
+
+    func testNonYesNoPendingResponseClassifiesCurrentUtteranceAsNaturalCorrection() {
         var engagement = EngagementWindow()
         engagement.arm(at: 0)
         let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
 
         XCTAssertEqual(
             AddresseePolicy().route("もう一度", at: 2, engagement: engagement, pending: pending),
-            .confirmPending(original: "明日の予定は？")
+            .classify("もう一度")
         )
     }
 
@@ -193,7 +202,7 @@ final class AddresseePolicyTests: XCTestCase {
 
         XCTAssertEqual(
             AddresseePolicy().route("待って", at: 24.999, engagement: .inactive, pending: pending),
-            .confirmPending(original: "明日の予定は？")
+            .classify("待って")
         )
         XCTAssertEqual(
             AddresseePolicy().route("待って", at: 25, engagement: .inactive, pending: pending),
