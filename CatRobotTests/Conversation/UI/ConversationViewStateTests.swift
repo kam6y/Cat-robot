@@ -22,6 +22,44 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(state.activityStatus, "聞き返しています")
     }
 
+    func testTypedSubmissionAvailabilityMatchesConversationPhase() {
+        let cases: [(ConversationPhase, Bool)] = [
+            (.idle, true),
+            (.preparing, false),
+            (.listening, true),
+            (.classifying, false),
+            (.clarifying, true),
+            (.thinking, false),
+            (.speaking, false),
+            (.paused, true),
+            (.failed(.modelBusy), true)
+        ]
+
+        for (phase, expected) in cases {
+            var state = ConversationViewState.idle
+            state.phase = phase
+            XCTAssertEqual(state.allowsTypedSubmission, expected, "Unexpected availability for \(phase)")
+        }
+    }
+
+    func testTypedInputSendAvailabilityDistinguishesBusyEmptyAndReady() {
+        XCTAssertEqual(
+            TypedInputSendAvailability(text: "質問", isSubmissionAllowed: false),
+            .busy
+        )
+        XCTAssertEqual(
+            TypedInputSendAvailability(text: "  \n", isSubmissionAllowed: true),
+            .empty
+        )
+        XCTAssertEqual(
+            TypedInputSendAvailability(text: "質問", isSubmissionAllowed: true),
+            .ready
+        )
+        XCTAssertEqual(TypedInputSendAvailability.busy.accessibilityValue, "猫の返事が終わると送信できます")
+        XCTAssertEqual(TypedInputSendAvailability.empty.accessibilityValue, "入力が必要です")
+        XCTAssertEqual(TypedInputSendAvailability.ready.accessibilityValue, "送信できます")
+    }
+
     func testFailureCarriesAVisibleNextAction() {
         let state = ConversationViewState.failed(
             error: .modelGenerationFailed,
@@ -76,7 +114,7 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(showRequestCount, 1)
 
         actions.performTypedInput(.send)
-        XCTAssertFalse(isPresented)
+        XCTAssertTrue(isPresented)
         XCTAssertEqual(submittedCount, 1)
     }
 }
