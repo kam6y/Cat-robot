@@ -10,7 +10,7 @@ enum AddresseeRoute: Equatable, Sendable {
 }
 
 struct PendingClarification: Equatable, Sendable {
-    private static let duration: TimeInterval = 15
+    static let duration: TimeInterval = 15
 
     let utterance: String
     let expiresAt: TimeInterval

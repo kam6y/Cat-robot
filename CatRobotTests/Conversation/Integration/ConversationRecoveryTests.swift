@@ -14,6 +14,130 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertNil(ownership.activeID)
     }
 
+    func testAmbiguousPromptUsesClarifyingPresentationUntilSpeechFinishes() async {
+        let harness = ConversationHarness(
+            classification: .ambiguous,
+            speakerAutomaticallyFinishes: false
+        )
+        await harness.sut.startConversation()
+
+        let turn = Task {
+            await harness.emitCompletedUtterance("明日の予定は？", at: 0)
+        }
+        await harness.speaker.waitUntilTextCount(1)
+
+        XCTAssertEqual(harness.sut.viewState.phase, .clarifying)
+        XCTAssertEqual(harness.sut.viewState.catState, .clarifying)
+        XCTAssertEqual(harness.sut.viewState.caption, "今の、ぼくに言った？")
+        XCTAssertEqual(harness.sut.viewState.activityStatus, "聞き返しています")
+        XCTAssertEqual(harness.sut.viewState.microphoneStatus, "聞き返しの間は聞き取りを休止")
+
+        await harness.speaker.yield(.started)
+        XCTAssertEqual(harness.sut.viewState.phase, .clarifying)
+
+        await harness.speaker.yield(.finished)
+        await harness.speaker.finish()
+        await turn.value
+
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+    }
+
+    func testPendingClarificationExpiresSilentlyWhenDelayCompletes() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            classification: .ambiguous,
+            clarificationDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+
+        let didScheduleExpiry = await harness.waitUntil {
+            await sleeper.durations.count == 1
+        }
+        guard didScheduleExpiry else {
+            XCTFail("A pending clarification must schedule its 15-second expiry")
+            return
+        }
+        let durations = await sleeper.durations
+        XCTAssertEqual(durations, [.seconds(15)])
+        let visibleState = harness.sut.viewState
+
+        harness.now.set(2)
+        await sleeper.release(0)
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertEqual(harness.sut.viewState, visibleState)
+        await harness.completeUnengagedTurn("うん", at: 2)
+
+        let classifierCalls = await harness.classifier.calls
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertEqual(classifierCalls, ["明日の予定は？", "うん"])
+        XCTAssertTrue(replyPrompts.isEmpty)
+
+        await harness.sut.sceneBecameInactive()
+        await sleeper.releaseAll()
+    }
+
+    func testSceneInvalidationImmediatelyCancelsPendingClarificationExpiry() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            classification: .ambiguous,
+            clarificationDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
+        let didScheduleExpiry = await harness.waitUntil {
+            await sleeper.durations.count == 1
+        }
+        XCTAssertTrue(didScheduleExpiry)
+
+        harness.sut.invalidateForSceneInactivity()
+
+        let didCancelImmediately = await harness.waitUntil {
+            await sleeper.cancellationCount == 1
+        }
+        XCTAssertTrue(didCancelImmediately)
+
+        await sleeper.releaseAll()
+        await harness.sut.sceneBecameInactive()
+    }
+
+    func testCancelledOlderExpiryCannotClearANewerPendingClarification() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            classification: .ambiguous,
+            clarificationDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        await harness.completeUnengagedTurn("最初の予定は？", at: 0)
+        let didScheduleFirstExpiry = await harness.waitUntil {
+            await sleeper.durations.count == 1
+        }
+        XCTAssertTrue(didScheduleFirstExpiry)
+
+        await harness.completeUnengagedTurn("ううん", at: 3)
+        await harness.completeUnengagedTurn("次の予定は？", at: 4)
+        let didScheduleSecondExpiry = await harness.waitUntil {
+            await sleeper.durations.count == 2
+        }
+        XCTAssertTrue(didScheduleSecondExpiry)
+
+        await sleeper.release(0)
+        for _ in 0..<20 { await Task.yield() }
+        await harness.completeUnengagedTurn("うん", at: 5)
+
+        let classifierCalls = await harness.classifier.calls
+        let replyPrompts = await harness.reply.prompts
+        XCTAssertEqual(classifierCalls, ["最初の予定は？", "次の予定は？"])
+        XCTAssertEqual(replyPrompts, ["次の予定は？"])
+
+        await harness.sut.sceneBecameInactive()
+        await sleeper.releaseAll()
+    }
+
     func testAmbiguousSpeechAsksOnceThenAffirmativeUsesOriginal() async {
         let harness = ConversationHarness(classification: .ambiguous)
 

@@ -52,6 +52,8 @@ final class ConversationViewModel {
 
     @ObservationIgnored private var engagement = EngagementWindow()
     @ObservationIgnored private var pendingClarification: PendingClarification?
+    @ObservationIgnored private var pendingClarificationExpirationCounter: UInt64 = 0
+    @ObservationIgnored private var activePendingClarificationExpirationID: UInt64?
     @ObservationIgnored private var lifecycleGeneration: UInt64 = 0
     @ObservationIgnored private var captureCounter: UInt64 = 0
     @ObservationIgnored private var turnCounter: UInt64 = 0
@@ -83,6 +85,7 @@ final class ConversationViewModel {
     @ObservationIgnored private var turnTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleTransitionTask: Task<Void, Never>?
     @ObservationIgnored private var failureCleanupTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingClarificationExpirationTask: Task<Void, Never>?
     @ObservationIgnored private var audioEventTask: Task<Void, Never>?
     @ObservationIgnored private var shutdownTask: Task<Void, Never>?
 
@@ -216,7 +219,7 @@ final class ConversationViewModel {
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
         wantsListening = false
-        pendingClarification = nil
+        clearPendingClarification()
         engagement.clear()
         turnCounter &+= 1
         let turnID = turnCounter
@@ -260,6 +263,7 @@ final class ConversationViewModel {
         actionIntentCounter &+= 1
         lifecycleGeneration &+= 1
         wantsListening = false
+        clearPendingClarification()
         cancelActiveVoiceLatency(reason: .lifecycle)
         activeMicrophonePermissionAwaitID = nil
         releaseMicrophonePermissionCompletion()
@@ -828,7 +832,7 @@ final class ConversationViewModel {
         let timestamp = dependencies.now()
         if let pendingClarification,
            timestamp >= pendingClarification.expiresAt {
-            self.pendingClarification = nil
+            clearPendingClarification()
         }
         let isCorrectingPending = pendingClarification != nil
         let wasEngaged = engagement.isActive(at: timestamp)
@@ -854,7 +858,7 @@ final class ConversationViewModel {
 
         switch route {
         case .wakeOnly:
-            pendingClarification = nil
+            clearPendingClarification()
             selectVoiceLatency(.fast, generation: generation, turnID: turnID)
             await speakAndResume(
                 "なあに？",
@@ -863,7 +867,7 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         case .accept(let accepted):
-            pendingClarification = nil
+            clearPendingClarification()
             selectVoiceLatency(.fast, generation: generation, turnID: turnID)
             await generateReply(
                 to: accepted,
@@ -872,7 +876,7 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         case .classify(let candidate):
-            pendingClarification = nil
+            clearPendingClarification()
             selectVoiceLatency(.classified, generation: generation, turnID: turnID)
             transition(to: .classifying)
             do {
@@ -880,7 +884,7 @@ final class ConversationViewModel {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch target {
                 case .addressed:
-                    pendingClarification = nil
+                    clearPendingClarification()
                     await generateReply(
                         to: candidate,
                         engagementUpdate: .arm,
@@ -903,12 +907,14 @@ final class ConversationViewModel {
                     if isCorrectingPending {
                         await resumeCapture(generation: generation, turnID: turnID)
                     } else {
-                        pendingClarification = PendingClarification(
+                        setPendingClarification(
                             utterance: candidate,
-                            at: dependencies.now()
+                            at: dependencies.now(),
+                            generation: generation
                         )
                         await speakAndResume(
                             "今の、ぼくに言った？",
+                            presentationPhase: .clarifying,
                             engagementUpdate: .none,
                             generation: generation,
                             turnID: turnID
@@ -924,7 +930,7 @@ final class ConversationViewModel {
                 )
             }
         case .confirmPending:
-            pendingClarification = nil
+            clearPendingClarification()
             cancelVoiceLatency(
                 reason: .noResponse,
                 generation: generation,
@@ -932,7 +938,7 @@ final class ConversationViewModel {
             )
             await resumeCapture(generation: generation, turnID: turnID)
         case .dismissPending:
-            pendingClarification = nil
+            clearPendingClarification()
             cancelVoiceLatency(
                 reason: .noResponse,
                 generation: generation,
@@ -947,6 +953,40 @@ final class ConversationViewModel {
             )
             await resumeCapture(generation: generation, turnID: turnID)
         }
+    }
+
+    private func setPendingClarification(
+        utterance: String,
+        at timestamp: TimeInterval,
+        generation: UInt64
+    ) {
+        clearPendingClarification()
+        pendingClarification = PendingClarification(
+            utterance: utterance,
+            at: timestamp
+        )
+        pendingClarificationExpirationCounter &+= 1
+        let expirationID = pendingClarificationExpirationCounter
+        activePendingClarificationExpirationID = expirationID
+        let delay = dependencies.clarificationDelay
+
+        pendingClarificationExpirationTask = Task { @MainActor [weak self] in
+            await delay(.seconds(PendingClarification.duration))
+            guard !Task.isCancelled,
+                  let self,
+                  self.lifecycleGeneration == generation,
+                  self.activePendingClarificationExpirationID == expirationID else { return }
+            self.pendingClarification = nil
+            self.activePendingClarificationExpirationID = nil
+            self.pendingClarificationExpirationTask = nil
+        }
+    }
+
+    private func clearPendingClarification() {
+        pendingClarificationExpirationTask?.cancel()
+        pendingClarificationExpirationTask = nil
+        activePendingClarificationExpirationID = nil
+        pendingClarification = nil
     }
 
     private func generateReply(
@@ -1001,11 +1041,12 @@ final class ConversationViewModel {
 
     private func speakAndResume(
         _ text: String,
+        presentationPhase: ConversationPhase = .speaking,
         engagementUpdate: EngagementUpdate,
         generation: UInt64,
         turnID: UInt64
     ) async {
-        transition(to: .speaking, caption: text)
+        transition(to: presentationPhase, caption: text)
         recordFirstVoiceCaption(generation: generation, turnID: turnID)
         do {
             let stream = try await dependencies.speaker.speak(text)
@@ -1107,7 +1148,7 @@ final class ConversationViewModel {
         guard ownsVoiceFailure(owner), !Task.isCancelled else { return }
         cancelVoiceLatency(reason: .failure, owner: owner)
         wantsListening = false
-        pendingClarification = nil
+        clearPendingClarification()
         engagement.clear()
         segmentationTask?.cancel()
         segmentationTask = nil
@@ -1177,7 +1218,7 @@ final class ConversationViewModel {
             let transitionID = transitionOwnership.begin()
             wantsListening = false
             engagement.clear()
-            pendingClarification = nil
+            clearPendingClarification()
             transition(to: .paused)
 
             segmentationTask?.cancel()
@@ -1218,7 +1259,7 @@ final class ConversationViewModel {
             lifecycleGeneration &+= 1
             wantsListening = false
             engagement.clear()
-            pendingClarification = nil
+            clearPendingClarification()
             transition(to: .paused)
             await lifecycleTransitionTask.value
             return
@@ -1231,7 +1272,7 @@ final class ConversationViewModel {
         let transitionID = transitionOwnership.begin()
         wantsListening = false
         engagement.clear()
-        pendingClarification = nil
+        clearPendingClarification()
         transition(to: .paused)
 
         segmentationTask?.cancel()
