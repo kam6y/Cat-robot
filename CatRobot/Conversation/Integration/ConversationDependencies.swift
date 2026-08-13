@@ -1,5 +1,12 @@
 import Foundation
 
+enum ConversationLifecycleCheckpoint: Sendable {
+    case waitingForFailureCleanup
+    case preflightWillStart
+    case preflightWillFinish
+    case joiningExistingPreflight
+}
+
 struct ConversationDependencies: Sendable {
     let microphonePermission: any MicrophoneAuthorizing
     let modelAvailability: any ModelAvailabilityChecking
@@ -12,6 +19,7 @@ struct ConversationDependencies: Sendable {
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
     let clarificationDelay: @Sendable (Duration) async -> Void
+    let lifecycleCheckpoint: @Sendable (ConversationLifecycleCheckpoint) async -> Void
     let serviceTeardown: @Sendable () async -> Void
 
     init(
@@ -30,6 +38,7 @@ struct ConversationDependencies: Sendable {
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
+        lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in },
         serviceTeardown: @escaping @Sendable () async -> Void = {}
     ) {
         self.microphonePermission = microphonePermission
@@ -43,6 +52,7 @@ struct ConversationDependencies: Sendable {
         self.addresseePolicy = addresseePolicy
         self.now = now
         self.clarificationDelay = clarificationDelay
+        self.lifecycleCheckpoint = lifecycleCheckpoint
         self.serviceTeardown = serviceTeardown
     }
 }

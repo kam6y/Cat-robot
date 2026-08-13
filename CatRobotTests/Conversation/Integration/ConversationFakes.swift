@@ -219,6 +219,46 @@ actor ConversationTestGate {
     }
 }
 
+enum ConversationPreflightRaceOutcome: Equatable {
+    case freshPreflight
+    case joinedExistingPreflight
+}
+
+actor ConversationPreflightRaceProbe {
+    private var preflightStartCount = 0
+    private var outcome: ConversationPreflightRaceOutcome?
+    private var waiter: CheckedContinuation<ConversationPreflightRaceOutcome, Never>?
+
+    func record(_ checkpoint: ConversationLifecycleCheckpoint) {
+        switch checkpoint {
+        case .preflightWillStart:
+            preflightStartCount += 1
+            if preflightStartCount == 2 {
+                complete(with: .freshPreflight)
+            }
+        case .joiningExistingPreflight:
+            complete(with: .joinedExistingPreflight)
+        case .waitingForFailureCleanup, .preflightWillFinish:
+            break
+        }
+    }
+
+    func waitForOutcome() async -> ConversationPreflightRaceOutcome {
+        if let outcome { return outcome }
+        return await withCheckedContinuation { continuation in
+            waiter = continuation
+        }
+    }
+
+    private func complete(with outcome: ConversationPreflightRaceOutcome) {
+        guard self.outcome == nil else { return }
+        self.outcome = outcome
+        let waiter = waiter
+        self.waiter = nil
+        waiter?.resume(returning: outcome)
+    }
+}
+
 actor FakeMicrophonePermission: MicrophoneAuthorizing {
     private let allowed: Bool
     private let gate: ConversationTestGate?
@@ -634,7 +674,8 @@ final class ConversationHarness {
         latency: FakeConversationLatencyTracker? = nil,
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
-        }
+        },
+        lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in }
     ) {
         let calls = ConversationTestCallLog()
         let now = ConversationTestNow()
@@ -696,6 +737,7 @@ final class ConversationHarness {
             latency: latency,
             now: { now.value },
             clarificationDelay: clarificationDelay,
+            lifecycleCheckpoint: lifecycleCheckpoint,
             serviceTeardown: { await teardownProbe.call() }
         )
         self.dependencies = dependencies

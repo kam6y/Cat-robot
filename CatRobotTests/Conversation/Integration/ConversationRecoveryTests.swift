@@ -874,11 +874,25 @@ final class ConversationRecoveryTests: XCTestCase {
 
     func testRetryQueuedDuringPreflightFailureCleanupStartsFreshPreflight() async {
         let deactivateGate = ConversationTestGate()
+        let waitingForCleanupSignal = ConversationTestGate(isOpen: true)
+        let preflightFinishGate = ConversationTestGate()
+        let raceProbe = ConversationPreflightRaceProbe()
         let harness = ConversationHarness(
             recognizerPrepareError: .speechLocaleUnsupported,
-            audioDeactivateGate: deactivateGate
+            audioDeactivateGate: deactivateGate,
+            lifecycleCheckpoint: { checkpoint in
+                await raceProbe.record(checkpoint)
+                switch checkpoint {
+                case .waitingForFailureCleanup:
+                    await waitingForCleanupSignal.wait()
+                case .preflightWillFinish:
+                    await preflightFinishGate.wait()
+                case .preflightWillStart, .joiningExistingPreflight:
+                    break
+                }
+            }
         )
-        let firstStart = Task(priority: .low) {
+        let firstStart = Task {
             await harness.sut.startConversation()
         }
         let didBeginCleanup = await harness.waitUntil {
@@ -886,14 +900,19 @@ final class ConversationRecoveryTests: XCTestCase {
         }
         XCTAssertTrue(didBeginCleanup)
 
-        let retry = Task(priority: .high) {
+        let retry = Task {
             await harness.sut.startConversation()
         }
-        for _ in 0..<20 { await Task.yield() }
+        await waitingForCleanupSignal.waitUntilEntered()
         let preparesDuringCleanup = await harness.recognizer.prepareCount
         XCTAssertEqual(preparesDuringCleanup, 1)
 
         await deactivateGate.open()
+        await preflightFinishGate.waitUntilEntered()
+        let outcome = await raceProbe.waitForOutcome()
+        XCTAssertEqual(outcome, .freshPreflight)
+
+        await preflightFinishGate.open()
         await firstStart.value
         await retry.value
 

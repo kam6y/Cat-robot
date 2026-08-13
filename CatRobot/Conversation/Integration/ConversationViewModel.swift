@@ -104,6 +104,7 @@ final class ConversationViewModel {
         if let failureCleanupTask {
             actionIntentCounter &+= 1
             let resumeIntent = actionIntentCounter
+            await dependencies.lifecycleCheckpoint(.waitingForFailureCleanup)
             await failureCleanupTask.value
             await Task.yield()
             guard actionIntentCounter == resumeIntent else { return }
@@ -121,6 +122,7 @@ final class ConversationViewModel {
         guard !isShutdown, !isShuttingDown else { return }
 
         if let preflightTask {
+            await dependencies.lifecycleCheckpoint(.joiningExistingPreflight)
             await preflightTask.value
             return
         }
@@ -138,7 +140,9 @@ final class ConversationViewModel {
         let preflightID = preflightOwnership.begin()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            await self.dependencies.lifecycleCheckpoint(.preflightWillStart)
             await self.performVoicePreflight(generation: generation)
+            await self.dependencies.lifecycleCheckpoint(.preflightWillFinish)
             if self.preflightOwnership.finish(preflightID) {
                 self.preflightTask = nil
             }
@@ -1187,6 +1191,10 @@ final class ConversationViewModel {
         }
 
         if activeFailureID == failureID, ownsVoiceFailure(owner) {
+            if case .lifecycle = owner {
+                preflightOwnership.invalidate()
+                preflightTask = nil
+            }
             if case .capture(_, let captureID) = owner,
                activeCaptureID == captureID {
                 activeCaptureID = nil
