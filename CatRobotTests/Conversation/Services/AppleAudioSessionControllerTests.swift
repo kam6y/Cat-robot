@@ -6,6 +6,35 @@ import XCTest
 
 @MainActor
 final class AppleAudioSessionControllerTests: XCTestCase {
+    func testConstructionDefersNotificationObserversUntilEventsAreRequested() {
+        let center = CountingNotificationCenter()
+        let session = FakeAudioSession()
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: center
+        )
+
+        XCTAssertEqual(center.addObserverCallCount, 0)
+
+        _ = controller.events
+
+        XCTAssertEqual(center.addObserverCallCount, 2)
+    }
+
+    func testMultipleEventStreamsShareOneNotificationObservation() {
+        let center = CountingNotificationCenter()
+        let session = FakeAudioSession()
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: center
+        )
+
+        _ = controller.events
+        _ = controller.events
+
+        XCTAssertEqual(center.addObserverCallCount, 2)
+    }
+
     func testActivateUsesPlayAndRecordDefaultModeSpeakerAndBluetoothHFP() async throws {
         let session = FakeAudioSession()
         let controller = AppleAudioSessionController(
@@ -381,7 +410,7 @@ final class AppleAudioSessionControllerTests: XCTestCase {
     }
 
     func testControllerDeallocationRemovesObserversAndFinishesStreams() async {
-        let center = NotificationCenter()
+        let center = CountingNotificationCenter()
         let session = FakeAudioSession()
         var controller: AppleAudioSessionController? = AppleAudioSessionController(
             session: session,
@@ -394,6 +423,7 @@ final class AppleAudioSessionControllerTests: XCTestCase {
 
         let didReleaseController = await eventually { weakController == nil }
         XCTAssertTrue(didReleaseController)
+        XCTAssertEqual(center.removeObserverCallCount, 2)
         let didFinishStream = await collector.waitUntilFinished()
         XCTAssertTrue(didFinishStream)
 
@@ -406,6 +436,40 @@ final class AppleAudioSessionControllerTests: XCTestCase {
             ]
         )
         XCTAssertTrue(collector.events.isEmpty)
+    }
+}
+
+private final class CountingNotificationCenter: NotificationCenter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedAddObserverCallCount = 0
+    private var storedRemoveObserverCallCount = 0
+
+    var addObserverCallCount: Int {
+        lock.withLock { storedAddObserverCallCount }
+    }
+
+    var removeObserverCallCount: Int {
+        lock.withLock { storedRemoveObserverCallCount }
+    }
+
+    override func addObserver(
+        forName name: NSNotification.Name?,
+        object obj: Any?,
+        queue: OperationQueue?,
+        using block: @Sendable @escaping (Notification) -> Void
+    ) -> any NSObjectProtocol {
+        lock.withLock { storedAddObserverCallCount += 1 }
+        return super.addObserver(
+            forName: name,
+            object: obj,
+            queue: queue,
+            using: block
+        )
+    }
+
+    override func removeObserver(_ observer: Any) {
+        lock.withLock { storedRemoveObserverCallCount += 1 }
+        super.removeObserver(observer)
     }
 }
 

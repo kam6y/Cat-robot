@@ -5,6 +5,7 @@ enum AddresseeRoute: Equatable, Sendable {
     case accept(String)
     case classify(String)
     case confirmPending(original: String)
+    case dismissPending
     case ignore
 }
 
@@ -54,9 +55,9 @@ struct AddresseePolicy: Sendable {
                 return .accept(pending.utterance)
             }
             if Self.negativeTokens.contains(token) {
-                return .ignore
+                return .dismissPending
             }
-            return .confirmPending(original: pending.utterance)
+            return .classify(utterance)
         }
 
         if engagement.isActive(at: timestamp) {

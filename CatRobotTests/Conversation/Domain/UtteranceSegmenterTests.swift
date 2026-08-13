@@ -11,6 +11,13 @@ final class UtteranceSegmenterTests: XCTestCase {
         XCTAssertNil(sut.utteranceIfReady(at: 2.0))
     }
 
+    func testExactSilenceDeadlineAtNonzeroTimestampCloses() {
+        var sut = UtteranceSegmenter()
+        sut.receive(.finalized("続けて"), at: 10)
+
+        XCTAssertEqual(sut.utteranceIfReady(at: 11.2), "続けて")
+    }
+
     func testMaximumDurationClosesNoisyTurn() {
         var sut = UtteranceSegmenter()
         sut.receive(.finalized("長い話"), at: 5)
@@ -24,8 +31,10 @@ final class UtteranceSegmenterTests: XCTestCase {
         sut.receive(.provisional("まだ雑音"), at: 24.9)
 
         XCTAssertNil(sut.utteranceIfReady(at: 25))
+        XCTAssertFalse(sut.hasActivity)
 
         sut.receive(.finalized("新しい発話"), at: 26)
+        XCTAssertTrue(sut.hasActivity)
         XCTAssertNil(sut.utteranceIfReady(at: 26))
         XCTAssertNil(sut.utteranceIfReady(at: 27.19))
         XCTAssertEqual(sut.utteranceIfReady(at: 27.200_001), "新しい発話")

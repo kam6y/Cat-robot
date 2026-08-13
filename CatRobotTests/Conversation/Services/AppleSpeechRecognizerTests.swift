@@ -100,6 +100,93 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         _ = stream
     }
 
+    func testStopFromPreparedCancelsRouteBoundDriverAndKeepsReservationForFreshPrepare() async throws {
+        let locale = Locale(identifier: "ja-JP")
+        let inventory = TaskFiveSpeechAssetInventory(locale: locale)
+        let first = FakeSpeechCaptureDriver()
+        let second = FakeSpeechCaptureDriver()
+        let factory = FakeSpeechCaptureDriverFactory(drivers: [first, second])
+        let recognizer = AppleSpeechRecognizer(
+            assetPreparer: SpeechAssetPreparer(locale: locale, inventory: inventory),
+            driverFactory: factory.make
+        )
+        try await recognizer.prepare()
+
+        await recognizer.stop()
+
+        let firstCancelCount = await first.cancelCallCount
+        let releasedLocales = await inventory.releasedLocales
+        XCTAssertEqual(firstCancelCount, 1)
+        XCTAssertTrue(releasedLocales.isEmpty)
+
+        try await recognizer.prepare()
+
+        let firstPrepareCount = await first.prepareCount
+        let secondPrepareCount = await second.prepareCount
+        XCTAssertEqual(factory.creationCount, 2)
+        XCTAssertEqual(firstPrepareCount, 1)
+        XCTAssertEqual(secondPrepareCount, 1)
+        await recognizer.shutdown()
+    }
+
+    func testStopOwnsSuspendedPreparationAndKeepsReservationForFreshPrepare() async throws {
+        let locale = Locale(identifier: "ja-JP")
+        let inventory = TaskFiveSpeechAssetInventory(locale: locale)
+        let cancellationProbe = LockedFlag()
+        let first = FakeSpeechCaptureDriver(
+            suspendPreparation: true,
+            preparationCancellationProbe: cancellationProbe
+        )
+        let second = FakeSpeechCaptureDriver()
+        let factory = FakeSpeechCaptureDriverFactory(drivers: [first, second])
+        let recognizer = AppleSpeechRecognizer(
+            assetPreparer: SpeechAssetPreparer(locale: locale, inventory: inventory),
+            driverFactory: factory.make
+        )
+        let prepareOutcome = Task { () -> ConversationServiceError? in
+            do {
+                try await recognizer.prepare()
+                return nil
+            } catch {
+                return error as? ConversationServiceError
+            }
+        }
+        let didBeginPreparation = await eventually { await first.prepareCount == 1 }
+        XCTAssertTrue(didBeginPreparation)
+
+        let stopCompleted = LockedFlag()
+        let stop = Task {
+            await recognizer.stop()
+            stopCompleted.set()
+        }
+        let didCancelPreparation = await eventually { cancellationProbe.value }
+        XCTAssertTrue(didCancelPreparation)
+        XCTAssertFalse(stopCompleted.value)
+        do {
+            try await recognizer.prepare()
+            XCTFail("A second prepare must not enter while stop owns preparation teardown")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .speechCaptureAlreadyRunning)
+        }
+        XCTAssertEqual(factory.creationCount, 1)
+        XCTAssertFalse(stopCompleted.value)
+        await first.resumePreparation()
+        await stop.value
+
+        let preparationResult = await prepareOutcome.value
+        let firstCancelCount = await first.cancelCallCount
+        let releasedLocales = await inventory.releasedLocales
+        XCTAssertEqual(preparationResult, .cancelled)
+        XCTAssertEqual(firstCancelCount, 1)
+        XCTAssertTrue(releasedLocales.isEmpty)
+
+        try await recognizer.prepare()
+        let secondPrepareCount = await second.prepareCount
+        XCTAssertEqual(factory.creationCount, 2)
+        XCTAssertEqual(secondPrepareCount, 1)
+        await recognizer.shutdown()
+    }
+
     func testStartAfterStopCreatesAndPreparesFreshDriver() async throws {
         let first = FakeSpeechCaptureDriver()
         let second = FakeSpeechCaptureDriver()

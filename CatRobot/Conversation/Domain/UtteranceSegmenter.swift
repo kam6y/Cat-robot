@@ -20,6 +20,10 @@ struct UtteranceSegmenter: Sendable {
     private var firstActivityAt: TimeInterval?
     private var latestActivityAt: TimeInterval?
 
+    var hasActivity: Bool {
+        firstActivityAt != nil
+    }
+
     init(configuration: Configuration = .init()) {
         self.configuration = configuration
     }
@@ -42,7 +46,7 @@ struct UtteranceSegmenter: Sendable {
     mutating func utteranceIfReady(at timestamp: TimeInterval) -> String? {
         guard let firstActivityAt else { return nil }
 
-        let maximumDurationElapsed = timestamp - firstActivityAt >= configuration.maximumDuration
+        let maximumDurationElapsed = timestamp >= firstActivityAt + configuration.maximumDuration
         guard !finalizedSegments.isEmpty else {
             if maximumDurationElapsed {
                 reset()
@@ -51,7 +55,7 @@ struct UtteranceSegmenter: Sendable {
         }
 
         guard let latestActivityAt else { return nil }
-        let silenceElapsed = timestamp - latestActivityAt >= configuration.silenceInterval
+        let silenceElapsed = timestamp >= latestActivityAt + configuration.silenceInterval
         guard silenceElapsed || maximumDurationElapsed else { return nil }
 
         let utterance = finalizedSegments.joined()
