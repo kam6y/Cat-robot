@@ -11,6 +11,7 @@ struct ConversationDependencies: Sendable {
     let latency: any ConversationLatencyTracking
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
+    let clarificationDelay: @Sendable (Duration) async -> Void
     let serviceTeardown: @Sendable () async -> Void
 
     init(
@@ -26,6 +27,9 @@ struct ConversationDependencies: Sendable {
         now: @escaping @Sendable () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
         },
+        clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        },
         serviceTeardown: @escaping @Sendable () async -> Void = {}
     ) {
         self.microphonePermission = microphonePermission
@@ -38,6 +42,7 @@ struct ConversationDependencies: Sendable {
         self.latency = latency
         self.addresseePolicy = addresseePolicy
         self.now = now
+        self.clarificationDelay = clarificationDelay
         self.serviceTeardown = serviceTeardown
     }
 }

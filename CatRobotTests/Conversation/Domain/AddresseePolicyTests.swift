@@ -201,12 +201,12 @@ final class AddresseePolicyTests: XCTestCase {
         let pending = PendingClarification(utterance: "  明日の予定は？ \n", at: 10)
 
         XCTAssertEqual(
-            AddresseePolicy().route("待って", at: 24.999, engagement: .inactive, pending: pending),
-            .classify("待って")
+            AddresseePolicy().route("うん", at: 24.999, engagement: .inactive, pending: pending),
+            .accept("明日の予定は？")
         )
         XCTAssertEqual(
-            AddresseePolicy().route("待って", at: 25, engagement: .inactive, pending: pending),
-            .classify("待って")
+            AddresseePolicy().route("うん", at: 25, engagement: .inactive, pending: pending),
+            .classify("うん")
         )
     }
 }

@@ -145,6 +145,40 @@ final class ConversationTestNow: @unchecked Sendable {
     }
 }
 
+actor ConversationTestSleeper {
+    private var continuations: [CheckedContinuation<Void, Never>?] = []
+    private(set) var durations: [Duration] = []
+    private(set) var cancellationCount = 0
+
+    func sleep(for duration: Duration) async {
+        durations.append(duration)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                continuations.append(continuation)
+            }
+        } onCancel: {
+            Task { await self.recordCancellation() }
+        }
+    }
+
+    private func recordCancellation() {
+        cancellationCount += 1
+    }
+
+    func release(_ index: Int) {
+        guard continuations.indices.contains(index),
+              let continuation = continuations[index] else { return }
+        continuations[index] = nil
+        continuation.resume()
+    }
+
+    func releaseAll() {
+        let pending = continuations.compactMap { $0 }
+        continuations = Array(repeating: nil, count: continuations.count)
+        pending.forEach { $0.resume() }
+    }
+}
+
 actor ConversationTestGate {
     private var isOpen: Bool
     private var entryCount = 0
@@ -597,7 +631,10 @@ final class ConversationHarness {
         replyResetGate: ConversationTestGate? = nil,
         serviceTeardownGate: ConversationTestGate? = nil,
         audioDeactivateGate: ConversationTestGate? = nil,
-        latency: FakeConversationLatencyTracker? = nil
+        latency: FakeConversationLatencyTracker? = nil,
+        clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        }
     ) {
         let calls = ConversationTestCallLog()
         let now = ConversationTestNow()
@@ -658,6 +695,7 @@ final class ConversationHarness {
             audioSession: audio,
             latency: latency,
             now: { now.value },
+            clarificationDelay: clarificationDelay,
             serviceTeardown: { await teardownProbe.call() }
         )
         self.dependencies = dependencies
