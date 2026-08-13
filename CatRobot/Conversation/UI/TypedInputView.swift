@@ -9,17 +9,52 @@ enum TypedInputLayout: Equatable {
     }
 }
 
+enum TypedInputSendAvailability: Equatable {
+    case busy
+    case empty
+    case ready
+
+    init(text: String, isSubmissionAllowed: Bool) {
+        if !isSubmissionAllowed {
+            self = .busy
+        } else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            self = .empty
+        } else {
+            self = .ready
+        }
+    }
+
+    var isEnabled: Bool {
+        self == .ready
+    }
+
+    var accessibilityValue: String {
+        switch self {
+        case .busy:
+            "猫の返事が終わると送信できます"
+        case .empty:
+            "入力が必要です"
+        case .ready:
+            "送信できます"
+        }
+    }
+}
+
 struct TypedInputView: View {
     @Binding var text: String
     let usesGlass: Bool
+    let isSubmissionAllowed: Bool
     let onSend: () -> Void
     let onDismiss: () -> Void
 
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var sendIsDisabled: Bool {
-        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var sendAvailability: TypedInputSendAvailability {
+        TypedInputSendAvailability(
+            text: text,
+            isSubmissionAllowed: isSubmissionAllowed
+        )
     }
 
     var body: some View {
@@ -105,13 +140,13 @@ struct TypedInputView: View {
                 .labelStyle(.iconOnly)
                 .frame(minWidth: 44, minHeight: 44)
         }
-        .disabled(sendIsDisabled)
+        .disabled(!sendAvailability.isEnabled)
         .accessibilityLabel("文字を送信")
-        .accessibilityValue(sendIsDisabled ? "入力が必要です" : "送信できます")
+        .accessibilityValue(sendAvailability.accessibilityValue)
     }
 
     private func send() {
-        guard !sendIsDisabled else { return }
+        guard sendAvailability.isEnabled else { return }
         isFocused = false
         onSend()
     }

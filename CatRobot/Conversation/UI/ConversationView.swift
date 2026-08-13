@@ -199,6 +199,7 @@ struct ConversationView: View {
                 }
             ),
             usesGlass: usesGlass,
+            isSubmissionAllowed: state.allowsTypedSubmission,
             onSend: sendTypedText,
             onDismiss: dismissTypedInput
         )

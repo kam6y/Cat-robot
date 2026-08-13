@@ -181,8 +181,10 @@ final class ConversationViewModel {
 
     func submitTypedText(_ text: String) async {
         let submitted = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !submitted.isEmpty, !isShutdown, !isShuttingDown else { return }
-        viewState.showsTypedInput = false
+        guard !submitted.isEmpty,
+              !isShutdown,
+              !isShuttingDown,
+              viewState.allowsTypedSubmission else { return }
 
         if let failureCleanupTask {
             actionIntentCounter &+= 1
@@ -204,12 +206,8 @@ final class ConversationViewModel {
                   !isShuttingDown else { return }
         }
 
-        switch viewState.phase {
-        case .preparing, .classifying, .thinking, .speaking:
-            return
-        case .idle, .listening, .clarifying, .paused, .failed:
-            break
-        }
+        guard viewState.allowsTypedSubmission else { return }
+        viewState.showsTypedInput = false
 
         cancelActiveVoiceLatency(reason: .typedReplacement)
         ensureAudioEventConsumer()

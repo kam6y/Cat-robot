@@ -296,6 +296,7 @@ final class ConversationRecoveryTests: XCTestCase {
         )
         await harness.sut.startConversation()
 
+        harness.sut.showTypedInput()
         harness.sut.updateTypedText("こんにちは")
         await harness.sut.submitTypedText("こんにちは")
 
@@ -324,6 +325,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         XCTAssertEqual(harness.sut.viewState.caption, "こんにちは、会えてうれしいよ")
         XCTAssertEqual(harness.sut.viewState.typedText, "")
+        XCTAssertFalse(harness.sut.viewState.showsTypedInput)
     }
 
     func testTypedTurnClosesCaptureLosslesslyDiscardsTailAndResumesVoiceOnce() async {
@@ -358,7 +360,12 @@ final class ConversationRecoveryTests: XCTestCase {
         let first = Task { await harness.sut.submitTypedText("最初") }
         await harness.reply.waitUntilPromptCount(1)
 
+        harness.sut.showTypedInput()
+        harness.sut.updateTypedText("二つ目")
         await harness.sut.submitTypedText("二つ目")
+        XCTAssertTrue(harness.sut.viewState.showsTypedInput)
+        XCTAssertEqual(harness.sut.viewState.typedText, "二つ目")
+
         await harness.reply.yield("最初の返事")
         await harness.reply.finish()
         await first.value
@@ -368,6 +375,8 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(replyPrompts, ["最初"])
         XCTAssertEqual(spokenTexts, ["最初の返事"])
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertTrue(harness.sut.viewState.showsTypedInput)
+        XCTAssertEqual(harness.sut.viewState.typedText, "二つ目")
     }
 
     func testContextExceededResetsOnceAndDoesNotSilentlyRetryPrompt() async {

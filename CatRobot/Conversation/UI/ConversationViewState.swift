@@ -65,12 +65,26 @@ extension ConversationActions {
             hideTypedInput()
         case .send:
             sendTypedText()
-            hideTypedInput()
+        }
+    }
+}
+
+extension ConversationPhase {
+    var allowsTypedSubmission: Bool {
+        switch self {
+        case .idle, .listening, .clarifying, .paused, .failed:
+            true
+        case .preparing, .classifying, .thinking, .speaking:
+            false
         }
     }
 }
 
 extension ConversationViewState {
+    var allowsTypedSubmission: Bool {
+        phase.allowsTypedSubmission
+    }
+
     static let idle = Self(
         phase: .idle,
         catState: .idle,
