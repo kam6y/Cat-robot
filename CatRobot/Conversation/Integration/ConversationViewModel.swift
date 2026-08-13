@@ -26,6 +26,8 @@ struct ConversationOperationOwnership {
 @MainActor
 @Observable
 final class ConversationViewModel {
+    private static let segmentationSilenceInterval: TimeInterval = 1.2
+
     private enum VoiceFailureOwner {
         case lifecycle(generation: UInt64)
         case turn(generation: UInt64, turnID: UInt64)
@@ -38,6 +40,13 @@ final class ConversationViewModel {
         case none
     }
 
+    private struct ActiveVoiceLatency {
+        let generation: UInt64
+        let captureID: UInt64
+        let turnID: UInt64
+        let token: ConversationLatencyToken
+    }
+
     private let dependencies: ConversationDependencies
     private(set) var viewState: ConversationViewState = .idle
 
@@ -48,11 +57,16 @@ final class ConversationViewModel {
     @ObservationIgnored private var turnCounter: UInt64 = 0
     @ObservationIgnored private var actionIntentCounter: UInt64 = 0
     @ObservationIgnored private var failureCounter: UInt64 = 0
+    @ObservationIgnored private var microphonePermissionAwaitCounter: UInt64 = 0
+    @ObservationIgnored private var activeMicrophonePermissionAwaitID: UInt64?
+    @ObservationIgnored private var deferredMicrophonePermissionAwaitID: UInt64?
+    @ObservationIgnored private var microphonePermissionCompletionWaiter: CheckedContinuation<Void, Never>?
     @ObservationIgnored private var preflightOwnership = ConversationOperationOwnership()
     @ObservationIgnored private var transitionOwnership = ConversationOperationOwnership()
     @ObservationIgnored private var activeFailureID: UInt64?
     @ObservationIgnored private var activeCaptureID: UInt64?
     @ObservationIgnored private var activeTurnID: UInt64?
+    @ObservationIgnored private var activeVoiceLatency: ActiveVoiceLatency?
     @ObservationIgnored private var captureIsClosing = false
     @ObservationIgnored private var closingTailSegments: [String] = []
     @ObservationIgnored private var segmenter = UtteranceSegmenter()
@@ -74,6 +88,10 @@ final class ConversationViewModel {
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
+    }
+
+    var isAwaitingMicrophonePermission: Bool {
+        activeMicrophonePermissionAwaitID != nil
     }
 
     func startConversation() async {
@@ -190,6 +208,7 @@ final class ConversationViewModel {
             break
         }
 
+        cancelActiveVoiceLatency(reason: .typedReplacement)
         ensureAudioEventConsumer()
         let shouldResumeVoice = wantsListening
             && microphoneWasAllowed
@@ -225,6 +244,27 @@ final class ConversationViewModel {
         await pauseConversation()
     }
 
+    func deferMicrophonePermissionCompletion() {
+        guard let activeMicrophonePermissionAwaitID else { return }
+        deferredMicrophonePermissionAwaitID = activeMicrophonePermissionAwaitID
+    }
+
+    func releaseMicrophonePermissionCompletion() {
+        deferredMicrophonePermissionAwaitID = nil
+        let waiter = microphonePermissionCompletionWaiter
+        microphonePermissionCompletionWaiter = nil
+        waiter?.resume()
+    }
+
+    func invalidateForSceneInactivity() {
+        actionIntentCounter &+= 1
+        lifecycleGeneration &+= 1
+        wantsListening = false
+        cancelActiveVoiceLatency(reason: .lifecycle)
+        activeMicrophonePermissionAwaitID = nil
+        releaseMicrophonePermissionCompletion()
+    }
+
     func handleAudioSessionEvent(_ event: AudioSessionEvent) async {
         switch event {
         case .interruptionBegan, .routeChanged:
@@ -250,6 +290,7 @@ final class ConversationViewModel {
     }
 
     private func performShutdown() async {
+        cancelActiveVoiceLatency(reason: .shutdown)
         await pauseConversation(force: true)
 
         let eventTask = audioEventTask
@@ -277,7 +318,8 @@ final class ConversationViewModel {
         beginClosingCapture(
             utterance: utterance,
             generation: lifecycleGeneration,
-            captureID: captureID
+            captureID: captureID,
+            boundaryAt: timestamp
         )
         await closingTask?.value
     }
@@ -297,7 +339,14 @@ final class ConversationViewModel {
         var audioActivationAttempted = false
         var recognizerPreparationAttempted = false
         do {
+            microphonePermissionAwaitCounter &+= 1
+            let permissionAwaitID = microphonePermissionAwaitCounter
+            activeMicrophonePermissionAwaitID = permissionAwaitID
             let allowed = await dependencies.microphonePermission.requestAccess()
+            await waitForMicrophonePermissionCompletionIfDeferred(permissionAwaitID)
+            if activeMicrophonePermissionAwaitID == permissionAwaitID {
+                activeMicrophonePermissionAwaitID = nil
+            }
             guard isCurrent(generation) else { return }
             guard allowed else {
                 microphoneWasAllowed = false
@@ -604,8 +653,18 @@ final class ConversationViewModel {
         let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if captureIsClosing {
-            if event.isFinal, !text.isEmpty {
-                closingTailSegments.append(text)
+            if !text.isEmpty {
+                if let latency = activeVoiceLatency,
+                   latency.generation == generation,
+                   latency.captureID == captureID {
+                    dependencies.latency.noteASRActivity(
+                        at: dependencies.now(),
+                        for: latency.token
+                    )
+                }
+                if event.isFinal {
+                    closingTailSegments.append(text)
+                }
             }
             return
         }
@@ -626,7 +685,8 @@ final class ConversationViewModel {
             beginClosingCapture(
                 utterance: utterance,
                 generation: generation,
-                captureID: captureID
+                captureID: captureID,
+                boundaryAt: timestamp
             )
         } else if segmenter.hasActivity {
             scheduleSegmentationFlush(
@@ -669,7 +729,7 @@ final class ConversationViewModel {
             0,
             20 - (timestamp - (firstCaptureActivityAt ?? timestamp))
         )
-        let delay = min(1.2, hardRemaining)
+        let delay = min(Self.segmentationSilenceInterval, hardRemaining)
         segmentationTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
@@ -686,7 +746,8 @@ final class ConversationViewModel {
     private func beginClosingCapture(
         utterance: String,
         generation: UInt64,
-        captureID: UInt64
+        captureID: UInt64,
+        boundaryAt: TimeInterval
     ) {
         guard isCurrent(generation),
               activeCaptureID == captureID,
@@ -695,6 +756,21 @@ final class ConversationViewModel {
         captureIsClosing = true
         segmentationTask?.cancel()
         segmentationTask = nil
+        turnCounter &+= 1
+        let turnID = turnCounter
+        activeTurnID = turnID
+        let latencyToken = dependencies.latency.beginVoiceTurn(
+            turnID: turnID,
+            boundaryAt: boundaryAt,
+            lastASRActivityAt: latestCaptureActivityAt,
+            segmentationInterval: Self.segmentationSilenceInterval
+        )
+        activeVoiceLatency = ActiveVoiceLatency(
+            generation: generation,
+            captureID: captureID,
+            turnID: turnID,
+            token: latencyToken
+        )
         let consumer = captureTask
         closingTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -703,7 +779,8 @@ final class ConversationViewModel {
             await self.finishClosingCapture(
                 utterance: utterance,
                 generation: generation,
-                captureID: captureID
+                captureID: captureID,
+                turnID: turnID
             )
         }
     }
@@ -711,9 +788,12 @@ final class ConversationViewModel {
     private func finishClosingCapture(
         utterance: String,
         generation: UInt64,
-        captureID: UInt64
+        captureID: UInt64,
+        turnID: UInt64
     ) async {
-        guard isCurrent(generation), activeCaptureID == captureID else { return }
+        guard isCurrent(generation),
+              activeCaptureID == captureID,
+              activeTurnID == turnID else { return }
         let completedUtterance = ([utterance] + closingTailSegments).joined()
         activeCaptureID = nil
         captureTask = nil
@@ -724,9 +804,6 @@ final class ConversationViewModel {
         latestCaptureActivityAt = nil
         viewState.provisionalTranscript = ""
 
-        turnCounter &+= 1
-        let turnID = turnCounter
-        activeTurnID = turnID
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.performTurn(
@@ -778,6 +855,7 @@ final class ConversationViewModel {
         switch route {
         case .wakeOnly:
             pendingClarification = nil
+            selectVoiceLatency(.fast, generation: generation, turnID: turnID)
             await speakAndResume(
                 "なあに？",
                 engagementUpdate: .arm,
@@ -786,6 +864,7 @@ final class ConversationViewModel {
             )
         case .accept(let accepted):
             pendingClarification = nil
+            selectVoiceLatency(.fast, generation: generation, turnID: turnID)
             await generateReply(
                 to: accepted,
                 engagementUpdate: isExplicitWake || !wasEngaged ? .arm : .refresh,
@@ -794,6 +873,7 @@ final class ConversationViewModel {
             )
         case .classify(let candidate):
             pendingClarification = nil
+            selectVoiceLatency(.classified, generation: generation, turnID: turnID)
             transition(to: .classifying)
             do {
                 let target = try await dependencies.classifier.classify(candidate)
@@ -808,8 +888,18 @@ final class ConversationViewModel {
                         turnID: turnID
                     )
                 case .notAddressed:
+                    cancelVoiceLatency(
+                        reason: .noResponse,
+                        generation: generation,
+                        turnID: turnID
+                    )
                     await resumeCapture(generation: generation, turnID: turnID)
                 case .ambiguous:
+                    cancelVoiceLatency(
+                        reason: .ambiguous,
+                        generation: generation,
+                        turnID: turnID
+                    )
                     if isCorrectingPending {
                         await resumeCapture(generation: generation, turnID: turnID)
                     } else {
@@ -835,11 +925,26 @@ final class ConversationViewModel {
             }
         case .confirmPending:
             pendingClarification = nil
+            cancelVoiceLatency(
+                reason: .noResponse,
+                generation: generation,
+                turnID: turnID
+            )
             await resumeCapture(generation: generation, turnID: turnID)
         case .dismissPending:
             pendingClarification = nil
+            cancelVoiceLatency(
+                reason: .noResponse,
+                generation: generation,
+                turnID: turnID
+            )
             await resumeCapture(generation: generation, turnID: turnID)
         case .ignore:
+            cancelVoiceLatency(
+                reason: .noResponse,
+                generation: generation,
+                turnID: turnID
+            )
             await resumeCapture(generation: generation, turnID: turnID)
         }
     }
@@ -858,6 +963,10 @@ final class ConversationViewModel {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 viewState.caption = snapshot
                 if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    recordFirstVoiceCaption(
+                        generation: generation,
+                        turnID: turnID
+                    )
                     finalText = snapshot
                 }
             }
@@ -897,6 +1006,7 @@ final class ConversationViewModel {
         turnID: UInt64
     ) async {
         transition(to: .speaking, caption: text)
+        recordFirstVoiceCaption(generation: generation, turnID: turnID)
         do {
             let stream = try await dependencies.speaker.speak(text)
             var finishedNormally = false
@@ -905,8 +1015,16 @@ final class ConversationViewModel {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch event {
                 case .started:
+                    recordVoiceSpeechStarted(
+                        generation: generation,
+                        turnID: turnID
+                    )
                     viewState.mouthPose = .small
                 case .willSpeak:
+                    recordVoiceSpeechStarted(
+                        generation: generation,
+                        turnID: turnID
+                    )
                     let poses: [MouthPose] = [.small, .medium, .wide]
                     viewState.mouthPose = poses[mouthIndex % poses.count]
                     mouthIndex += 1
@@ -944,6 +1062,13 @@ final class ConversationViewModel {
 
     private func resumeCapture(generation: UInt64, turnID: UInt64) async {
         guard isCurrent(generation, turnID: turnID), wantsListening else { return }
+        // A conforming speaker may finish without reporting a start event.
+        // Cancel any still-open measurement before releasing the turn token.
+        cancelVoiceLatency(
+            reason: .failure,
+            generation: generation,
+            turnID: turnID
+        )
         activeTurnID = nil
         do {
             try await startCapture(generation: generation, recognizerIsPrepared: false)
@@ -980,6 +1105,7 @@ final class ConversationViewModel {
         owner: VoiceFailureOwner
     ) async {
         guard ownsVoiceFailure(owner), !Task.isCancelled else { return }
+        cancelVoiceLatency(reason: .failure, owner: owner)
         wantsListening = false
         pendingClarification = nil
         engagement.clear()
@@ -1043,6 +1169,9 @@ final class ConversationViewModel {
 
     private func pauseConversation(force: Bool = false) async {
         actionIntentCounter &+= 1
+        cancelActiveVoiceLatency(reason: .lifecycle)
+        activeMicrophonePermissionAwaitID = nil
+        releaseMicrophonePermissionCompletion()
         if let failureCleanupTask {
             lifecycleGeneration &+= 1
             let transitionID = transitionOwnership.begin()
@@ -1139,8 +1268,106 @@ final class ConversationViewModel {
         }
     }
 
+    private func selectVoiceLatency(
+        _ path: ConversationLatencyPath,
+        generation: UInt64,
+        turnID: UInt64
+    ) {
+        guard let latency = activeVoiceLatency,
+              latency.generation == generation,
+              latency.turnID == turnID else { return }
+        dependencies.latency.selectPath(
+            path,
+            for: latency.token,
+            at: dependencies.now()
+        )
+    }
+
+    private func recordFirstVoiceCaption(
+        generation: UInt64,
+        turnID: UInt64
+    ) {
+        guard let latency = activeVoiceLatency,
+              latency.generation == generation,
+              latency.turnID == turnID else { return }
+        dependencies.latency.firstCaptionVisible(
+            for: latency.token,
+            at: dependencies.now()
+        )
+    }
+
+    private func recordVoiceSpeechStarted(
+        generation: UInt64,
+        turnID: UInt64
+    ) {
+        guard let latency = activeVoiceLatency,
+              latency.generation == generation,
+              latency.turnID == turnID else { return }
+        dependencies.latency.speechStarted(
+            for: latency.token,
+            at: dependencies.now()
+        )
+    }
+
+    private func cancelActiveVoiceLatency(
+        reason: ConversationLatencyCancellation
+    ) {
+        guard let latency = activeVoiceLatency else { return }
+        activeVoiceLatency = nil
+        dependencies.latency.cancel(
+            latency.token,
+            reason: reason,
+            at: dependencies.now()
+        )
+    }
+
+    private func cancelVoiceLatency(
+        reason: ConversationLatencyCancellation,
+        generation: UInt64,
+        turnID: UInt64
+    ) {
+        guard let latency = activeVoiceLatency,
+              latency.generation == generation,
+              latency.turnID == turnID else { return }
+        cancelActiveVoiceLatency(reason: reason)
+    }
+
+    private func cancelVoiceLatency(
+        reason: ConversationLatencyCancellation,
+        owner: VoiceFailureOwner
+    ) {
+        guard let latency = activeVoiceLatency else { return }
+        let isOwner: Bool
+        switch owner {
+        case .lifecycle(let generation):
+            isOwner = latency.generation == generation
+        case .turn(let generation, let turnID):
+            isOwner = latency.generation == generation
+                && latency.turnID == turnID
+        case .capture(let generation, let captureID):
+            isOwner = latency.generation == generation
+                && latency.captureID == captureID
+        }
+        guard isOwner else { return }
+        cancelActiveVoiceLatency(reason: reason)
+    }
+
     private func isCurrent(_ generation: UInt64) -> Bool {
         lifecycleGeneration == generation && wantsListening && !isShutdown
+    }
+
+    private func waitForMicrophonePermissionCompletionIfDeferred(_ id: UInt64) async {
+        while deferredMicrophonePermissionAwaitID == id,
+              activeMicrophonePermissionAwaitID == id {
+            await withCheckedContinuation { continuation in
+                guard deferredMicrophonePermissionAwaitID == id,
+                      activeMicrophonePermissionAwaitID == id else {
+                    continuation.resume()
+                    return
+                }
+                microphonePermissionCompletionWaiter = continuation
+            }
+        }
     }
 
     private func isCurrent(_ generation: UInt64, turnID: UInt64) -> Bool {

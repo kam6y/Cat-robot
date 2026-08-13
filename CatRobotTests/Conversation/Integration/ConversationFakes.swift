@@ -18,6 +18,103 @@ enum ConversationTestCall: Equatable, Sendable {
     case deactivateAudio
 }
 
+enum ConversationLatencyTestEvent: Equatable, Sendable {
+    case began(
+        token: ConversationLatencyToken,
+        turnID: UInt64,
+        boundaryAt: TimeInterval,
+        lastASRActivityAt: TimeInterval?,
+        segmentationInterval: TimeInterval
+    )
+    case asrActivity(token: ConversationLatencyToken, at: TimeInterval)
+    case selected(token: ConversationLatencyToken, path: ConversationLatencyPath, at: TimeInterval)
+    case caption(token: ConversationLatencyToken, at: TimeInterval)
+    case speech(token: ConversationLatencyToken, at: TimeInterval)
+    case cancelled(
+        token: ConversationLatencyToken,
+        reason: ConversationLatencyCancellation,
+        at: TimeInterval
+    )
+}
+
+@MainActor
+final class FakeConversationLatencyTracker: ConversationLatencyTracking {
+    private struct Milestones {
+        var pathWasSelected = false
+        var captionWasRecorded = false
+        var speechWasRecorded = false
+    }
+
+    private(set) var events: [ConversationLatencyTestEvent] = []
+    private var milestones: [ConversationLatencyToken: Milestones] = [:]
+
+    func beginVoiceTurn(
+        turnID: UInt64,
+        boundaryAt: TimeInterval,
+        lastASRActivityAt: TimeInterval?,
+        segmentationInterval: TimeInterval
+    ) -> ConversationLatencyToken {
+        let token = ConversationLatencyToken(rawValue: UUID())
+        milestones[token] = Milestones()
+        events.append(
+            .began(
+                token: token,
+                turnID: turnID,
+                boundaryAt: boundaryAt,
+                lastASRActivityAt: lastASRActivityAt,
+                segmentationInterval: segmentationInterval
+            )
+        )
+        return token
+    }
+
+    func noteASRActivity(at timestamp: TimeInterval, for token: ConversationLatencyToken) {
+        guard milestones[token] != nil else { return }
+        events.append(.asrActivity(token: token, at: timestamp))
+    }
+
+    func selectPath(
+        _ path: ConversationLatencyPath,
+        for token: ConversationLatencyToken,
+        at timestamp: TimeInterval
+    ) {
+        guard var state = milestones[token], !state.pathWasSelected else { return }
+        state.pathWasSelected = true
+        milestones[token] = state
+        events.append(.selected(token: token, path: path, at: timestamp))
+    }
+
+    func firstCaptionVisible(for token: ConversationLatencyToken, at timestamp: TimeInterval) {
+        guard var state = milestones[token],
+              state.pathWasSelected,
+              !state.captionWasRecorded else { return }
+        state.captionWasRecorded = true
+        milestones[token] = state
+        events.append(.caption(token: token, at: timestamp))
+    }
+
+    func speechStarted(for token: ConversationLatencyToken, at timestamp: TimeInterval) {
+        guard var state = milestones[token],
+              state.pathWasSelected,
+              !state.speechWasRecorded else { return }
+        state.speechWasRecorded = true
+        milestones[token] = state
+        events.append(.speech(token: token, at: timestamp))
+        if state.captionWasRecorded {
+            milestones[token] = nil
+        }
+    }
+
+    func cancel(
+        _ token: ConversationLatencyToken,
+        reason: ConversationLatencyCancellation,
+        at timestamp: TimeInterval
+    ) {
+        guard milestones.removeValue(forKey: token) != nil else { return }
+        events.append(.cancelled(token: token, reason: reason, at: timestamp))
+    }
+}
+
 final class ConversationTestCallLog: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [ConversationTestCall] = []
@@ -479,6 +576,8 @@ final class ConversationHarness {
     let speaker: FakeSpeechSpeaker
     let audio: FakeConversationAudioSession
     let teardownProbe: FakeServiceTeardown
+    let latency: FakeConversationLatencyTracker
+    let dependencies: ConversationDependencies
     let sut: ConversationViewModel
 
     init(
@@ -497,7 +596,8 @@ final class ConversationHarness {
         recognizerStartError: ConversationServiceError? = nil,
         replyResetGate: ConversationTestGate? = nil,
         serviceTeardownGate: ConversationTestGate? = nil,
-        audioDeactivateGate: ConversationTestGate? = nil
+        audioDeactivateGate: ConversationTestGate? = nil,
+        latency: FakeConversationLatencyTracker? = nil
     ) {
         let calls = ConversationTestCallLog()
         let now = ConversationTestNow()
@@ -535,6 +635,7 @@ final class ConversationHarness {
             deactivateGate: audioDeactivateGate
         )
         let teardownProbe = FakeServiceTeardown(gate: serviceTeardownGate)
+        let latency = latency ?? FakeConversationLatencyTracker()
 
         self.calls = calls
         self.now = now
@@ -546,19 +647,21 @@ final class ConversationHarness {
         self.speaker = speaker
         self.audio = audio
         self.teardownProbe = teardownProbe
-        sut = ConversationViewModel(
-            dependencies: ConversationDependencies(
-                microphonePermission: microphone,
-                modelAvailability: modelAvailability,
-                recognizer: recognizer,
-                classifier: classifier,
-                reply: reply,
-                speaker: speaker,
-                audioSession: audio,
-                now: { now.value },
-                serviceTeardown: { await teardownProbe.call() }
-            )
+        self.latency = latency
+        let dependencies = ConversationDependencies(
+            microphonePermission: microphone,
+            modelAvailability: modelAvailability,
+            recognizer: recognizer,
+            classifier: classifier,
+            reply: reply,
+            speaker: speaker,
+            audioSession: audio,
+            latency: latency,
+            now: { now.value },
+            serviceTeardown: { await teardownProbe.call() }
         )
+        self.dependencies = dependencies
+        sut = ConversationViewModel(dependencies: dependencies)
     }
 
     func emit(_ event: SpeechRecognitionEvent, at timestamp: TimeInterval? = nil) async {

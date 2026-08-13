@@ -17,12 +17,11 @@ protocol AudioSessionDriving: AnyObject, Sendable {
 
 actor AppleAudioSessionController: AudioSessionControlling {
     nonisolated var events: AsyncStream<AudioSessionEvent> {
-        eventHub.makeStream()
+        eventSource.makeStream()
     }
 
     private let session: any AudioSessionDriving
-    private nonisolated let eventHub: AudioSessionEventBroadcastHub
-    private let observation: AudioSessionNotificationObservation
+    private nonisolated let eventSource: AudioSessionEventSource
 
     init() {
         self.init(
@@ -35,13 +34,10 @@ actor AppleAudioSessionController: AudioSessionControlling {
         session: any AudioSessionDriving,
         notifications: NotificationCenter
     ) {
-        let eventHub = AudioSessionEventBroadcastHub()
         self.session = session
-        self.eventHub = eventHub
-        observation = AudioSessionNotificationObservation(
+        eventSource = AudioSessionEventSource(
             notifications: notifications,
-            object: session.notificationObject,
-            eventHub: eventHub
+            object: session.notificationObject
         )
     }
 
@@ -63,6 +59,40 @@ actor AppleAudioSessionController: AudioSessionControlling {
             false,
             options: [.notifyOthersOnDeactivation]
         )
+    }
+}
+
+private final class AudioSessionEventSource: @unchecked Sendable {
+    private let lock = NSLock()
+    private let notifications: NotificationCenter
+    private let object: AnyObject
+    private let eventHub = AudioSessionEventBroadcastHub()
+    private var observation: AudioSessionNotificationObservation?
+
+    init(
+        notifications: NotificationCenter,
+        object: AnyObject
+    ) {
+        self.notifications = notifications
+        self.object = object
+    }
+
+    func makeStream() -> AsyncStream<AudioSessionEvent> {
+        let stream = eventHub.makeStream()
+        lock.withLock {
+            guard observation == nil else { return }
+            observation = AudioSessionNotificationObservation(
+                notifications: notifications,
+                object: object,
+                eventHub: eventHub
+            )
+        }
+        return stream
+    }
+
+    deinit {
+        observation = nil
+        eventHub.finish()
     }
 }
 
@@ -134,7 +164,6 @@ final class AudioSessionEventBroadcastHub: @unchecked Sendable {
 
 private final class AudioSessionNotificationObservation: @unchecked Sendable {
     private let notifications: NotificationCenter
-    private let eventHub: AudioSessionEventBroadcastHub
     private let observerTokens: [NSObjectProtocol]
 
     init(
@@ -143,7 +172,6 @@ private final class AudioSessionNotificationObservation: @unchecked Sendable {
         eventHub: AudioSessionEventBroadcastHub
     ) {
         self.notifications = notifications
-        self.eventHub = eventHub
         observerTokens = [
             notifications.addObserver(
                 forName: AVAudioSession.interruptionNotification,
@@ -170,7 +198,6 @@ private final class AudioSessionNotificationObservation: @unchecked Sendable {
         for token in observerTokens {
             notifications.removeObserver(token)
         }
-        eventHub.finish()
     }
 
     private static func interruptionEvent(
