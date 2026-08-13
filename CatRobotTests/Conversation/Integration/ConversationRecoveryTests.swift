@@ -572,4 +572,159 @@ final class ConversationRecoveryTests: XCTestCase {
         }
         XCTAssertLessThan(stopSpeaker, deactivateAudio)
     }
+
+    func testSingleEmittedInterruptionAllowsQueuedExplicitResumeExactlyOnce() async {
+        let stopGate = ConversationTestGate()
+        let harness = ConversationHarness(recognizerStopGate: stopGate)
+        await harness.sut.startConversation()
+
+        harness.audio.emit(.interruptionBegan)
+        await stopGate.waitUntilEntered()
+        let resume = Task { await harness.sut.startConversation() }
+        for _ in 0..<20 { await Task.yield() }
+
+        await stopGate.open()
+        await resume.value
+
+        let recognizerStarts = await harness.recognizer.startCount
+        let recognizerStops = await harness.recognizer.stopCount
+        let audioActivations = await harness.audio.activateCount
+        let audioDeactivations = await harness.audio.deactivateCount
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(recognizerStops, 1)
+        XCTAssertEqual(audioActivations, 2)
+        XCTAssertEqual(audioDeactivations, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+    }
+
+    func testRecognizerPreflightFailuresCleanUpVoiceAudioBeforePublishingFailure() async {
+        enum Stage {
+            case prepare
+            case start
+        }
+
+        for stage in [Stage.prepare, .start] {
+            let expectedError: ConversationServiceError = stage == .prepare
+                ? .speechLocaleUnsupported
+                : .speechCaptureFailed
+            let harness = ConversationHarness(
+                recognizerPrepareError: stage == .prepare ? expectedError : nil,
+                recognizerStartError: stage == .start ? expectedError : nil
+            )
+
+            await harness.sut.startConversation()
+
+            let audioIsActive = await harness.audio.isActive
+            let recognizerStops = await harness.recognizer.stopCount
+            let speakerStops = await harness.speaker.stopCount
+            let audioDeactivations = await harness.audio.deactivateCount
+            XCTAssertFalse(audioIsActive, "stage: \(stage)")
+            XCTAssertEqual(recognizerStops, 1, "stage: \(stage)")
+            XCTAssertEqual(speakerStops, 1, "stage: \(stage)")
+            XCTAssertEqual(audioDeactivations, 1, "stage: \(stage)")
+            XCTAssertEqual(harness.sut.viewState.phase, .failed(expectedError))
+
+            let calls = harness.calls.values
+            guard let stopRecognizer = calls.lastIndex(of: .stopRecognizer),
+                  let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
+                  let deactivateAudio = calls.lastIndex(of: .deactivateAudio) else {
+                XCTFail("voice preflight failure must stop services before deactivation")
+                continue
+            }
+            XCTAssertLessThan(stopRecognizer, deactivateAudio)
+            XCTAssertLessThan(stopSpeaker, deactivateAudio)
+        }
+    }
+
+    func testVoiceGenerationFailureCleansUpAudioBeforePublishingFailure() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("猫ちゃん、質問", at: 0)
+        }
+        await harness.reply.waitUntilPromptCount(1)
+
+        await harness.reply.fail(.modelGenerationFailed)
+        await turn.value
+
+        let audioIsActive = await harness.audio.isActive
+        let speakerStops = await harness.speaker.stopCount
+        let audioDeactivations = await harness.audio.deactivateCount
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(audioDeactivations, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
+        let calls = harness.calls.values
+        guard let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
+              let deactivateAudio = calls.lastIndex(of: .deactivateAudio) else {
+            return XCTFail("generation failure must stop speech before deactivation")
+        }
+        XCTAssertLessThan(stopSpeaker, deactivateAudio)
+    }
+
+    func testVoiceSpeechFailureSerializesCleanupBeforeQueuedRetry() async {
+        let deactivateGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            speakerError: .speechSynthesisFailed,
+            audioDeactivateGate: deactivateGate
+        )
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("猫ちゃん、質問", at: 0)
+        }
+        let didBeginCleanup = await harness.waitUntil {
+            await harness.audio.deactivateCount == 1
+        }
+        guard didBeginCleanup else {
+            await turn.value
+            return XCTFail("speech failure must begin audio cleanup")
+        }
+
+        XCTAssertNotEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
+        let retry = Task { await harness.sut.startConversation() }
+        for _ in 0..<20 { await Task.yield() }
+        let activationsDuringCleanup = await harness.audio.activateCount
+        let startsDuringCleanup = await harness.recognizer.startCount
+        XCTAssertEqual(activationsDuringCleanup, 1)
+        XCTAssertEqual(startsDuringCleanup, 1)
+
+        await deactivateGate.open()
+        await turn.value
+        await retry.value
+
+        let audioIsActive = await harness.audio.isActive
+        let speakerStops = await harness.speaker.stopCount
+        let recognizerStarts = await harness.recognizer.startCount
+        let audioActivations = await harness.audio.activateCount
+        XCTAssertTrue(audioIsActive)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(audioActivations, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+        let calls = harness.calls.values
+        let deactivation = calls.lastIndex(of: .deactivateAudio)!
+        let activations = calls.indices.filter { calls[$0] == .activateAudio }
+        XCTAssertEqual(activations.count, 2)
+        XCTAssertLessThan(deactivation, activations[1])
+    }
+
+    func testCaptureStreamFailureStopsServicesAndDeactivatesAudio() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+
+        await harness.recognizer.fail(.speechCaptureFailed)
+        let didFail = await harness.waitUntil {
+            harness.sut.viewState.phase == .failed(.speechCaptureFailed)
+        }
+
+        let audioIsActive = await harness.audio.isActive
+        let recognizerStops = await harness.recognizer.stopCount
+        let speakerStops = await harness.speaker.stopCount
+        let audioDeactivations = await harness.audio.deactivateCount
+        XCTAssertTrue(didFail)
+        XCTAssertFalse(audioIsActive)
+        XCTAssertEqual(recognizerStops, 1)
+        XCTAssertEqual(speakerStops, 1)
+        XCTAssertEqual(audioDeactivations, 1)
+    }
 }

@@ -140,6 +140,8 @@ actor FakeSpeechRecognizer: SpeechRecognizing {
     private let prepareGate: ConversationTestGate?
     private let stopGate: ConversationTestGate?
     private let tailOnFirstStop: SpeechRecognitionEvent?
+    private let prepareError: ConversationServiceError?
+    private let startError: ConversationServiceError?
     private var continuations: [Continuation] = []
     private var startWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private(set) var prepareCount = 0
@@ -151,23 +153,29 @@ actor FakeSpeechRecognizer: SpeechRecognizing {
         log: ConversationTestCallLog,
         prepareGate: ConversationTestGate? = nil,
         stopGate: ConversationTestGate? = nil,
-        tailOnFirstStop: SpeechRecognitionEvent? = nil
+        tailOnFirstStop: SpeechRecognitionEvent? = nil,
+        prepareError: ConversationServiceError? = nil,
+        startError: ConversationServiceError? = nil
     ) {
         self.log = log
         self.prepareGate = prepareGate
         self.stopGate = stopGate
         self.tailOnFirstStop = tailOnFirstStop
+        self.prepareError = prepareError
+        self.startError = startError
     }
 
     func prepare() async throws {
         prepareCount += 1
         log.append(.prepareRecognizer)
         await prepareGate?.wait()
+        if let prepareError { throw prepareError }
     }
 
     func start() async throws -> AsyncThrowingStream<SpeechRecognitionEvent, Error> {
         startCount += 1
         log.append(.startRecognizer)
+        if let startError { throw startError }
         let pair = AsyncThrowingStream<SpeechRecognitionEvent, Error>.makeStream()
         continuations.append(pair.continuation)
         isRunning = true
@@ -199,6 +207,15 @@ actor FakeSpeechRecognizer: SpeechRecognizing {
         guard let index = index ?? continuations.indices.last,
               continuations.indices.contains(index) else { return }
         continuations[index].finish()
+    }
+
+    func fail(
+        _ error: ConversationServiceError,
+        capture index: Int? = nil
+    ) {
+        guard let index = index ?? continuations.indices.last,
+              continuations.indices.contains(index) else { return }
+        continuations[index].finish(throwing: error)
     }
 
     func waitUntilStarted(_ count: Int) async {
@@ -476,6 +493,8 @@ final class ConversationHarness {
         recognizerPrepareGate: ConversationTestGate? = nil,
         recognizerStopGate: ConversationTestGate? = nil,
         recognizerTail: SpeechRecognitionEvent? = nil,
+        recognizerPrepareError: ConversationServiceError? = nil,
+        recognizerStartError: ConversationServiceError? = nil,
         replyResetGate: ConversationTestGate? = nil,
         serviceTeardownGate: ConversationTestGate? = nil,
         audioDeactivateGate: ConversationTestGate? = nil
@@ -495,7 +514,9 @@ final class ConversationHarness {
             log: calls,
             prepareGate: recognizerPrepareGate,
             stopGate: recognizerStopGate,
-            tailOnFirstStop: recognizerTail
+            tailOnFirstStop: recognizerTail,
+            prepareError: recognizerPrepareError,
+            startError: recognizerStartError
         )
         let classifier = FakeAddressClassifier(result: classification, log: calls)
         let reply = FakeReplyService(

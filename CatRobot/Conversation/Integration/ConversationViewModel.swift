@@ -4,6 +4,12 @@ import Observation
 @MainActor
 @Observable
 final class ConversationViewModel {
+    private enum VoiceFailureOwner {
+        case lifecycle(generation: UInt64)
+        case turn(generation: UInt64, turnID: UInt64)
+        case capture(generation: UInt64, captureID: UInt64)
+    }
+
     private enum EngagementUpdate {
         case arm
         case refresh
@@ -20,6 +26,8 @@ final class ConversationViewModel {
     @ObservationIgnored private var turnCounter: UInt64 = 0
     @ObservationIgnored private var transitionCounter: UInt64 = 0
     @ObservationIgnored private var actionIntentCounter: UInt64 = 0
+    @ObservationIgnored private var failureCounter: UInt64 = 0
+    @ObservationIgnored private var activeFailureID: UInt64?
     @ObservationIgnored private var activeCaptureID: UInt64?
     @ObservationIgnored private var activeTurnID: UInt64?
     @ObservationIgnored private var captureIsClosing = false
@@ -37,6 +45,7 @@ final class ConversationViewModel {
     @ObservationIgnored private var closingTask: Task<Void, Never>?
     @ObservationIgnored private var turnTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleTransitionTask: Task<Void, Never>?
+    @ObservationIgnored private var failureCleanupTask: Task<Void, Never>?
     @ObservationIgnored private var audioEventTask: Task<Void, Never>?
     @ObservationIgnored private var shutdownTask: Task<Void, Never>?
 
@@ -47,6 +56,14 @@ final class ConversationViewModel {
     func startConversation() async {
         guard !isShutdown, !isShuttingDown else { return }
         ensureAudioEventConsumer()
+
+        if let failureCleanupTask {
+            actionIntentCounter &+= 1
+            let resumeIntent = actionIntentCounter
+            await failureCleanupTask.value
+            await Task.yield()
+            guard actionIntentCounter == resumeIntent else { return }
+        }
 
         if let lifecycleTransitionTask {
             actionIntentCounter &+= 1
@@ -121,6 +138,16 @@ final class ConversationViewModel {
         let submitted = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !submitted.isEmpty, !isShutdown, !isShuttingDown else { return }
         viewState.showsTypedInput = false
+
+        if let failureCleanupTask {
+            actionIntentCounter &+= 1
+            let typedIntent = actionIntentCounter
+            await failureCleanupTask.value
+            await Task.yield()
+            guard actionIntentCounter == typedIntent,
+                  !isShutdown,
+                  !isShuttingDown else { return }
+        }
 
         if let lifecycleTransitionTask {
             actionIntentCounter &+= 1
@@ -243,6 +270,8 @@ final class ConversationViewModel {
     }
 
     private func performVoicePreflight(generation: UInt64) async {
+        var audioActivationAttempted = false
+        var recognizerPreparationAttempted = false
         do {
             let allowed = await dependencies.microphonePermission.requestAccess()
             guard isCurrent(generation) else { return }
@@ -264,8 +293,10 @@ final class ConversationViewModel {
 
             try await dependencies.speaker.prepare()
             guard isCurrent(generation) else { return }
+            audioActivationAttempted = true
             try await dependencies.audioSession.activate()
             guard isCurrent(generation) else { return }
+            recognizerPreparationAttempted = true
             try await dependencies.recognizer.prepare()
             guard isCurrent(generation) else { return }
             await dependencies.reply.prewarm()
@@ -273,8 +304,17 @@ final class ConversationViewModel {
             try await startCapture(generation: generation, recognizerIsPrepared: true)
         } catch {
             guard isCurrent(generation), !Task.isCancelled else { return }
-            wantsListening = false
-            publish(Self.serviceError(from: error))
+            let serviceError = Self.serviceError(from: error)
+            if audioActivationAttempted {
+                await finishVoiceFailure(
+                    with: serviceError,
+                    stopRecognizer: recognizerPreparationAttempted,
+                    owner: .lifecycle(generation: generation)
+                )
+            } else {
+                wantsListening = false
+                publish(serviceError)
+            }
         }
     }
 
@@ -522,7 +562,7 @@ final class ConversationViewModel {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                self?.captureFailed(
+                await self?.captureFailed(
                     error,
                     generation: generation,
                     captureID: captureID
@@ -763,8 +803,11 @@ final class ConversationViewModel {
                 }
             } catch {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                wantsListening = false
-                publish(Self.serviceError(from: error))
+                await finishVoiceFailure(
+                    with: Self.serviceError(from: error),
+                    stopRecognizer: false,
+                    owner: .turn(generation: generation, turnID: turnID)
+                )
             }
         case .confirmPending:
             pendingClarification = nil
@@ -796,8 +839,12 @@ final class ConversationViewModel {
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             guard let finalText else {
-                wantsListening = false
-                publish(.modelGenerationFailed, includesTypedFallback: true)
+                await finishVoiceFailure(
+                    with: .modelGenerationFailed,
+                    includesTypedFallback: true,
+                    stopRecognizer: false,
+                    owner: .turn(generation: generation, turnID: turnID)
+                )
                 return
             }
             await speakAndResume(
@@ -808,12 +855,14 @@ final class ConversationViewModel {
             )
         } catch {
             let serviceError = Self.serviceError(from: error)
-            if serviceError == .contextExceeded {
-                await dependencies.reply.reset()
-            }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            wantsListening = false
-            publish(serviceError, includesTypedFallback: true)
+            await finishVoiceFailure(
+                with: serviceError,
+                includesTypedFallback: true,
+                resetsReplySession: serviceError == .contextExceeded,
+                stopRecognizer: false,
+                owner: .turn(generation: generation, turnID: turnID)
+            )
         }
     }
 
@@ -861,9 +910,11 @@ final class ConversationViewModel {
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            pendingClarification = nil
-            wantsListening = false
-            publish(Self.serviceError(from: error))
+            await finishVoiceFailure(
+                with: Self.serviceError(from: error),
+                stopRecognizer: false,
+                owner: .turn(generation: generation, turnID: turnID)
+            )
         }
     }
 
@@ -874,8 +925,11 @@ final class ConversationViewModel {
             try await startCapture(generation: generation, recognizerIsPrepared: false)
         } catch {
             guard isCurrent(generation), !Task.isCancelled else { return }
-            wantsListening = false
-            publish(Self.serviceError(from: error))
+            await finishVoiceFailure(
+                with: Self.serviceError(from: error),
+                stopRecognizer: true,
+                owner: .lifecycle(generation: generation)
+            )
         }
     }
 
@@ -883,18 +937,109 @@ final class ConversationViewModel {
         _ error: any Error,
         generation: UInt64,
         captureID: UInt64
-    ) {
+    ) async {
         guard isCurrent(generation),
               activeCaptureID == captureID,
               !captureIsClosing else { return }
-        activeCaptureID = nil
-        captureTask = nil
+        await finishVoiceFailure(
+            with: Self.serviceError(from: error),
+            stopRecognizer: true,
+            owner: .capture(generation: generation, captureID: captureID)
+        )
+    }
+
+    private func finishVoiceFailure(
+        with error: ConversationServiceError,
+        includesTypedFallback: Bool = false,
+        resetsReplySession: Bool = false,
+        stopRecognizer: Bool,
+        owner: VoiceFailureOwner
+    ) async {
+        guard ownsVoiceFailure(owner), !Task.isCancelled else { return }
         wantsListening = false
-        publish(Self.serviceError(from: error))
+        pendingClarification = nil
+        engagement.clear()
+        segmentationTask?.cancel()
+        segmentationTask = nil
+
+        failureCounter &+= 1
+        let failureID = failureCounter
+        activeFailureID = failureID
+        let cleanup = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performVoiceFailureCleanup(
+                with: error,
+                includesTypedFallback: includesTypedFallback,
+                resetsReplySession: resetsReplySession,
+                stopRecognizer: stopRecognizer,
+                owner: owner,
+                failureID: failureID
+            )
+        }
+        failureCleanupTask = cleanup
+        await cleanup.value
+    }
+
+    private func performVoiceFailureCleanup(
+        with error: ConversationServiceError,
+        includesTypedFallback: Bool,
+        resetsReplySession: Bool,
+        stopRecognizer: Bool,
+        owner: VoiceFailureOwner,
+        failureID: UInt64
+    ) async {
+        await dependencies.speaker.stop()
+        if stopRecognizer {
+            await dependencies.recognizer.stop()
+        }
+        await dependencies.audioSession.deactivate()
+        if resetsReplySession {
+            await dependencies.reply.reset()
+        }
+
+        if activeFailureID == failureID, ownsVoiceFailure(owner) {
+            if case .capture(_, let captureID) = owner,
+               activeCaptureID == captureID {
+                activeCaptureID = nil
+                captureTask = nil
+                captureIsClosing = false
+                closingTailSegments.removeAll(keepingCapacity: true)
+                segmenter = UtteranceSegmenter()
+                firstCaptureActivityAt = nil
+                latestCaptureActivityAt = nil
+                viewState.provisionalTranscript = ""
+            }
+            publish(error, includesTypedFallback: includesTypedFallback)
+        }
+        if activeFailureID == failureID {
+            activeFailureID = nil
+            failureCleanupTask = nil
+        }
     }
 
     private func pauseConversation(force: Bool = false) async {
         actionIntentCounter &+= 1
+        if let failureCleanupTask {
+            lifecycleGeneration &+= 1
+            wantsListening = false
+            engagement.clear()
+            pendingClarification = nil
+            transition(to: .paused)
+            preflightTask?.cancel()
+            turnTask?.cancel()
+            captureTask?.cancel()
+            segmentationTask?.cancel()
+            await failureCleanupTask.value
+            preflightTask = nil
+            turnTask = nil
+            captureTask = nil
+            closingTask = nil
+            activeCaptureID = nil
+            activeTurnID = nil
+            captureIsClosing = false
+            closingTailSegments.removeAll(keepingCapacity: true)
+            return
+        }
         if let lifecycleTransitionTask {
             lifecycleGeneration &+= 1
             wantsListening = false
@@ -962,6 +1107,18 @@ final class ConversationViewModel {
             && activeTurnID == turnID
             && !isShutdown
             && !isShuttingDown
+    }
+
+    private func ownsVoiceFailure(_ owner: VoiceFailureOwner) -> Bool {
+        guard !isShutdown, !isShuttingDown else { return false }
+        switch owner {
+        case .lifecycle(let generation):
+            return lifecycleGeneration == generation
+        case .turn(let generation, let turnID):
+            return lifecycleGeneration == generation && activeTurnID == turnID
+        case .capture(let generation, let captureID):
+            return lifecycleGeneration == generation && activeCaptureID == captureID
+        }
     }
 
     private func transition(
