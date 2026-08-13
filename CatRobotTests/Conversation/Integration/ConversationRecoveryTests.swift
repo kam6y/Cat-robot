@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class ConversationRecoveryTests: XCTestCase {
+    func testOperationOwnershipRejectsAnOlderCompletionAfterReplacement() {
+        var ownership = ConversationOperationOwnership()
+        let first = ownership.begin()
+        let second = ownership.begin()
+
+        XCTAssertFalse(ownership.finish(first))
+        XCTAssertEqual(ownership.activeID, second)
+        XCTAssertTrue(ownership.finish(second))
+        XCTAssertNil(ownership.activeID)
+    }
+
     func testAmbiguousSpeechAsksOnceThenAffirmativeUsesOriginal() async {
         let harness = ConversationHarness(classification: .ambiguous)
 
@@ -726,5 +737,82 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(recognizerStops, 1)
         XCTAssertEqual(speakerStops, 1)
         XCTAssertEqual(audioDeactivations, 1)
+    }
+
+    func testRetryQueuedDuringPreflightFailureCleanupStartsFreshPreflight() async {
+        let deactivateGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            recognizerPrepareError: .speechLocaleUnsupported,
+            audioDeactivateGate: deactivateGate
+        )
+        let firstStart = Task(priority: .low) {
+            await harness.sut.startConversation()
+        }
+        let didBeginCleanup = await harness.waitUntil {
+            await harness.audio.deactivateCount == 1
+        }
+        XCTAssertTrue(didBeginCleanup)
+
+        let retry = Task(priority: .high) {
+            await harness.sut.startConversation()
+        }
+        for _ in 0..<20 { await Task.yield() }
+        let preparesDuringCleanup = await harness.recognizer.prepareCount
+        XCTAssertEqual(preparesDuringCleanup, 1)
+
+        await deactivateGate.open()
+        await firstStart.value
+        await retry.value
+
+        let permissionRequests = await harness.microphone.requestCount
+        let audioActivations = await harness.audio.activateCount
+        let recognizerPrepares = await harness.recognizer.prepareCount
+        XCTAssertEqual(permissionRequests, 2)
+        XCTAssertEqual(audioActivations, 2)
+        XCTAssertEqual(recognizerPrepares, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechLocaleUnsupported))
+    }
+
+    func testPauseDuringFailureCleanupCannotEraseQueuedResumeOwnership() async {
+        let deactivateGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            speakerError: .speechSynthesisFailed,
+            audioDeactivateGate: deactivateGate
+        )
+        await harness.sut.startConversation()
+        let failedTurn = Task(priority: .low) {
+            await harness.emitCompletedUtterance("猫ちゃん、質問", at: 0)
+        }
+        let didBeginCleanup = await harness.waitUntil {
+            await harness.audio.deactivateCount == 1
+        }
+        XCTAssertTrue(didBeginCleanup)
+
+        let pause = Task(priority: .low) {
+            await harness.sut.sceneBecameInactive()
+        }
+        let didPublishPause = await harness.waitUntil {
+            harness.sut.viewState.phase == .paused
+        }
+        XCTAssertTrue(didPublishPause)
+        let resume = Task(priority: .high) {
+            await harness.sut.startConversation()
+        }
+        for _ in 0..<20 { await Task.yield() }
+        let startsDuringCleanup = await harness.recognizer.startCount
+        XCTAssertEqual(startsDuringCleanup, 1)
+
+        await deactivateGate.open()
+        await failedTurn.value
+        await pause.value
+        await resume.value
+
+        let recognizerStarts = await harness.recognizer.startCount
+        let audioActivations = await harness.audio.activateCount
+        let audioIsActive = await harness.audio.isActive
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(audioActivations, 2)
+        XCTAssertTrue(audioIsActive)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 }

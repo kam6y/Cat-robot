@@ -1,6 +1,28 @@
 import Foundation
 import Observation
 
+struct ConversationOperationOwnership {
+    private(set) var activeID: UInt64?
+    private var counter: UInt64 = 0
+
+    mutating func begin() -> UInt64 {
+        counter &+= 1
+        activeID = counter
+        return counter
+    }
+
+    @discardableResult
+    mutating func finish(_ id: UInt64) -> Bool {
+        guard activeID == id else { return false }
+        activeID = nil
+        return true
+    }
+
+    mutating func invalidate() {
+        activeID = nil
+    }
+}
+
 @MainActor
 @Observable
 final class ConversationViewModel {
@@ -24,9 +46,10 @@ final class ConversationViewModel {
     @ObservationIgnored private var lifecycleGeneration: UInt64 = 0
     @ObservationIgnored private var captureCounter: UInt64 = 0
     @ObservationIgnored private var turnCounter: UInt64 = 0
-    @ObservationIgnored private var transitionCounter: UInt64 = 0
     @ObservationIgnored private var actionIntentCounter: UInt64 = 0
     @ObservationIgnored private var failureCounter: UInt64 = 0
+    @ObservationIgnored private var preflightOwnership = ConversationOperationOwnership()
+    @ObservationIgnored private var transitionOwnership = ConversationOperationOwnership()
     @ObservationIgnored private var activeFailureID: UInt64?
     @ObservationIgnored private var activeCaptureID: UInt64?
     @ObservationIgnored private var activeTurnID: UInt64?
@@ -91,15 +114,16 @@ final class ConversationViewModel {
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
         transition(to: .preparing)
+        let preflightID = preflightOwnership.begin()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.performVoicePreflight(generation: generation)
+            if self.preflightOwnership.finish(preflightID) {
+                self.preflightTask = nil
+            }
         }
         preflightTask = task
         await task.value
-        if lifecycleGeneration == generation {
-            preflightTask = nil
-        }
     }
 
     func toggleListening() async {
@@ -1021,23 +1045,44 @@ final class ConversationViewModel {
         actionIntentCounter &+= 1
         if let failureCleanupTask {
             lifecycleGeneration &+= 1
+            let transitionID = transitionOwnership.begin()
             wantsListening = false
             engagement.clear()
             pendingClarification = nil
             transition(to: .paused)
-            preflightTask?.cancel()
-            turnTask?.cancel()
-            captureTask?.cancel()
+
             segmentationTask?.cancel()
-            await failureCleanupTask.value
+            segmentationTask = nil
+            let oldPreflight = preflightTask
             preflightTask = nil
+            preflightOwnership.invalidate()
+            oldPreflight?.cancel()
+            let oldTurn = turnTask
             turnTask = nil
+            oldTurn?.cancel()
+            let oldCapture = captureTask
             captureTask = nil
+            oldCapture?.cancel()
+            let oldClosing = closingTask
             closingTask = nil
+            oldClosing?.cancel()
             activeCaptureID = nil
             activeTurnID = nil
             captureIsClosing = false
             closingTailSegments.removeAll(keepingCapacity: true)
+
+            let cleanup = Task { @MainActor in
+                await failureCleanupTask.value
+                await oldPreflight?.value
+                await oldCapture?.value
+                await oldClosing?.value
+                await oldTurn?.value
+            }
+            lifecycleTransitionTask = cleanup
+            await cleanup.value
+            if transitionOwnership.finish(transitionID) {
+                lifecycleTransitionTask = nil
+            }
             return
         }
         if let lifecycleTransitionTask {
@@ -1054,8 +1099,7 @@ final class ConversationViewModel {
         }
 
         lifecycleGeneration &+= 1
-        transitionCounter &+= 1
-        let transitionID = transitionCounter
+        let transitionID = transitionOwnership.begin()
         wantsListening = false
         engagement.clear()
         pendingClarification = nil
@@ -1065,6 +1109,7 @@ final class ConversationViewModel {
         segmentationTask = nil
         let oldPreflight = preflightTask
         preflightTask = nil
+        preflightOwnership.invalidate()
         oldPreflight?.cancel()
         let oldTurn = turnTask
         turnTask = nil
@@ -1089,7 +1134,7 @@ final class ConversationViewModel {
         }
         lifecycleTransitionTask = cleanup
         await cleanup.value
-        if transitionCounter == transitionID {
+        if transitionOwnership.finish(transitionID) {
             lifecycleTransitionTask = nil
         }
     }
