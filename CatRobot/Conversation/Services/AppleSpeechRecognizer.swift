@@ -169,6 +169,22 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             completeLifecycle(capture.id)
             return
         }
+        if case .preparing(let preparation) = state {
+            let lifecycleID = UUID()
+            state = .stopping(lifecycleID)
+            preparation.task.cancel()
+            _ = await preparation.task.result
+            await preparation.driver.cancel()
+            completeLifecycle(lifecycleID)
+            return
+        }
+        if case .prepared(let prepared) = state {
+            let lifecycleID = UUID()
+            state = .stopping(lifecycleID)
+            await prepared.driver.cancel()
+            completeLifecycle(lifecycleID)
+            return
+        }
         guard case .running(let capture) = state else { return }
         state = .stopping(capture.id)
         capture.output.beginGracefulFinalization()
