@@ -530,7 +530,7 @@ final class ConversationViewModel {
         do {
             let stream = try await dependencies.speaker.speak(text)
             var finishedNormally = false
-            var mouthIndex = 0
+            var mouthSequence = SpeechMouthPoseSequence()
             for try await event in stream {
                 guard isTypedTurnCurrent(generation, turnID: turnID),
                       !Task.isCancelled else { return }
@@ -538,9 +538,7 @@ final class ConversationViewModel {
                 case .started:
                     viewState.mouthPose = .small
                 case .willSpeak:
-                    let poses: [MouthPose] = [.small, .medium, .wide]
-                    viewState.mouthPose = poses[mouthIndex % poses.count]
-                    mouthIndex += 1
+                    viewState.mouthPose = mouthSequence.nextWordPose()
                 case .finished:
                     finishedNormally = true
                     viewState.mouthPose = .closed
@@ -1053,7 +1051,7 @@ final class ConversationViewModel {
         do {
             let stream = try await dependencies.speaker.speak(text)
             var finishedNormally = false
-            var mouthIndex = 0
+            var mouthSequence = SpeechMouthPoseSequence()
             for try await event in stream {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch event {
@@ -1068,9 +1066,7 @@ final class ConversationViewModel {
                         generation: generation,
                         turnID: turnID
                     )
-                    let poses: [MouthPose] = [.small, .medium, .wide]
-                    viewState.mouthPose = poses[mouthIndex % poses.count]
-                    mouthIndex += 1
+                    viewState.mouthPose = mouthSequence.nextWordPose()
                 case .finished:
                     finishedNormally = true
                     viewState.mouthPose = .closed
