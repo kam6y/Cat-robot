@@ -425,4 +425,27 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.recoveries.map(\.action), [.retry])
         XCTAssertEqual(recognizerStarts, 1)
     }
+
+    func testShortVoiceReplyOpensWideOnFirstWordAndClosesAfterFinish() async {
+        let harness = ConversationHarness(speakerAutomaticallyFinishes: false)
+        await harness.sut.startConversation()
+        let turn = Task { await harness.emitCompletedUtterance("猫ちゃん", at: 0) }
+        await harness.speaker.waitUntilTextCount(1)
+
+        await harness.speaker.yield(.started)
+        let didShowSmall = await harness.waitUntil {
+            harness.sut.viewState.mouthPose == .small
+        }
+        XCTAssertTrue(didShowSmall)
+        await harness.speaker.yield(.willSpeak(range: 0..<3))
+        let didShowWide = await harness.waitUntil {
+            harness.sut.viewState.mouthPose == .wide
+        }
+        XCTAssertTrue(didShowWide)
+        await harness.speaker.yield(.finished)
+        await harness.speaker.finish()
+        await turn.value
+
+        XCTAssertEqual(harness.sut.viewState.mouthPose, .closed)
+    }
 }

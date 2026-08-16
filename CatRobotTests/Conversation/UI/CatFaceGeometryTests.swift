@@ -28,4 +28,28 @@ final class CatFaceGeometryTests: XCTestCase {
         XCTAssertLessThan(CatFaceGeometry.mouthOpening(for: .medium),
                           CatFaceGeometry.mouthOpening(for: .wide))
     }
+
+    func testMuzzleUsesOneClosedContourWithoutASeparateCenterSeam() {
+        let commands = CatFaceGeometry.muzzle.commands
+        let moveCount = commands.reduce(into: 0) { count, command in
+            if case .move = command { count += 1 }
+        }
+        let closeCount = commands.reduce(into: 0) { count, command in
+            if case .close = command { count += 1 }
+        }
+
+        XCTAssertEqual(moveCount, 1)
+        XCTAssertEqual(closeCount, 1)
+        XCTAssertFalse(commands.contains { command in
+            guard case let .line(point) = command else { return false }
+            return abs(point.x - 0.5) < 0.0001 && point.y > CatFaceGeometry.mouthHinge.y
+        })
+    }
+
+    func testMouthOpeningsAreVisibleAndStayInsideApprovedWideLimit() {
+        XCTAssertEqual(CatFaceGeometry.mouthOpening(for: .small), 0.025, accuracy: 0.0001)
+        XCTAssertEqual(CatFaceGeometry.mouthOpening(for: .medium), 0.055, accuracy: 0.0001)
+        XCTAssertEqual(CatFaceGeometry.mouthOpening(for: .wide), 0.090, accuracy: 0.0001)
+        XCTAssertLessThan(CatFaceGeometry.mouthOpening(for: .wide), 0.095)
+    }
 }

@@ -117,4 +117,12 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertTrue(isPresented)
         XCTAssertEqual(submittedCount, 1)
     }
+
+    func testSpeechMouthSequenceOpensWideOnFirstWordAndCyclesWithoutRepeatingStart() {
+        var sequence = SpeechMouthPoseSequence()
+        XCTAssertEqual(sequence.nextWordPose(), .wide)
+        XCTAssertEqual(sequence.nextWordPose(), .medium)
+        XCTAssertEqual(sequence.nextWordPose(), .small)
+        XCTAssertEqual(sequence.nextWordPose(), .wide)
+    }
 }

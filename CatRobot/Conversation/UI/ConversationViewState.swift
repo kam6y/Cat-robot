@@ -16,6 +16,16 @@ enum MouthPose: Equatable, Sendable {
     case wide
 }
 
+struct SpeechMouthPoseSequence {
+    private static let wordPoses: [MouthPose] = [.wide, .medium, .small]
+    private var wordIndex = 0
+
+    mutating func nextWordPose() -> MouthPose {
+        defer { wordIndex += 1 }
+        return Self.wordPoses[wordIndex % Self.wordPoses.count]
+    }
+}
+
 enum ConversationRecoveryAction: Equatable, Sendable {
     case retry
     case openSettings

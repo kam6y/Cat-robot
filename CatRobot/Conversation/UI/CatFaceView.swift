@@ -37,11 +37,9 @@ struct CatFaceView: View {
                     eye(side: side, outline: outline, size: size)
                 }
 
-                ForEach([CatFaceSide.left, .right], id: \.self) { side in
-                    CatMuzzleShape(side: side)
-                        .fill(Palette.cream)
-                        .stroke(Palette.outline, lineWidth: outline * 0.75)
-                }
+                CatMuzzleShape()
+                    .fill(Palette.cream)
+                    .stroke(Palette.outline, lineWidth: outline * 0.75)
 
                 CatNoseShape()
                     .fill(Palette.nose)
