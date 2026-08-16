@@ -59,13 +59,11 @@ enum CatFaceGeometry {
         .curve(0.434, 0.436, 0.452, 0.461, 0.462, 0.493),
     ])
 
-    static let leftMuzzle = NormalizedPath([
-        .move(0.500, 0.615),
-        .curve(0.463, 0.587, 0.411, 0.600, 0.394, 0.662),
-        .curve(0.377, 0.727, 0.412, 0.793, 0.491, 0.830),
-        .curve(0.507, 0.812, 0.502, 0.702, 0.500, 0.615),
-        .close,
-    ])
+    static let muzzle = NormalizedPath.symmetricClosed(leftHalf: [
+        .move(0.491, 0.830),
+        .curve(0.412, 0.793, 0.377, 0.727, 0.394, 0.662),
+        .curve(0.411, 0.600, 0.463, 0.587, 0.500, 0.615),
+    ], lowerControl: CGPoint(x: 0.497, y: 0.840))
 
     static let nose = NormalizedPath([
         .move(0.500, 0.592),
@@ -110,7 +108,7 @@ enum CatFaceGeometry {
     static let landmarksAndControlPoints: [CGPoint] = {
         let mouthPoses: [MouthPose] = [.small, .medium, .wide]
         let pathPoints = [head, leftInnerEar, leftInnerEar.mirrored, leftSclera, leftSclera.mirrored,
-                          leftLid, leftLid.mirrored, leftMuzzle, leftMuzzle.mirrored, nose]
+                          leftLid, leftLid.mirrored, muzzle, nose]
             + leftWhiskers + leftWhiskers.map(\.mirrored) + foreheadMarks + browMarks
             + mouthLines + fangs
             + mouthPoses.map(mouthCavity) + mouthPoses.map(tongue)
@@ -129,9 +127,9 @@ enum CatFaceGeometry {
     static func mouthOpening(for pose: MouthPose) -> CGFloat {
         switch pose {
         case .closed: 0
-        case .small: 0.018
-        case .medium: 0.040
-        case .wide: 0.070
+        case .small: 0.025
+        case .medium: 0.055
+        case .wide: 0.090
         }
     }
 
@@ -289,9 +287,8 @@ struct CatLidShape: Shape {
 }
 
 struct CatMuzzleShape: Shape {
-    let side: CatFaceSide
     func path(in rect: CGRect) -> Path {
-        (side == .left ? CatFaceGeometry.leftMuzzle : CatFaceGeometry.leftMuzzle.mirrored).path(in: rect)
+        CatFaceGeometry.muzzle.path(in: rect)
     }
 }
 
