@@ -2,9 +2,9 @@
 
 > **実装を担当するエージェントへ:** 必須サブスキルとして `superpowers:subagent-driven-development`（推奨）または `superpowers:executing-plans` を使用し、この計画をタスク単位で実装すること。進捗管理にはチェックボックス（`- [ ]`）を使用する。この計画でユーザーが承認したレビュー上限は、問題がなくなるまでreview/fix loopを続けるスキル既定値より優先される。
 
-**目標:** Appleのcontent-tagging住所判定classifierを維持したまま、iOS 27 Foundation Models API経由でGemma 4 E2BをCat Robotの応答・画像理解backendとして動かす。上限付きcontext compactionとGemma主導のローカルmemory toolを追加し、接続済みiPhone 16 Pro上でPoCを実証する。
+**目標:** Appleのcontent-tagging住所判定classifierを維持したまま、iOS 27 Foundation Models API経由でGemma 4 E2BをCat Robotの応答・画像理解backendとして動かす。上限付きcontext compaction、Gemma主導のローカルmemory tool、read-onlyの端末日時toolを追加し、接続済みiPhone 16 Pro上でPoCを実証する。
 
-**アーキテクチャ:** 既存の逐次的な住所判定フローを維持し、応答生成だけをGoogle公式の`LiteRTLMFoundationModels` adapterへ置き換える。model storeが固定済みartifactを一度だけ検証し、状態を持つreply actorがFoundation Modelsのtranscriptとcompactionを所有する。Gemmaのreply sessionには、transactionalなlocal storeをbackendとする検証付き`rememberMemory`、`forgetMemory`、`searchMemory` toolを渡す。toolが必要かはGemmaが判断し、アプリは変更をstageして応答成功後だけcommitし、小さな非blocking通知を表示する。実機probeはアプリと同じ`LanguageModelSession`経路を使用し、実行回数に厳格な上限を設ける。
+**アーキテクチャ:** 既存の逐次的な住所判定フローを維持し、応答生成だけをGoogle公式の`LiteRTLMFoundationModels` adapterへ置き換える。model storeが固定済みartifactを一度だけ検証し、状態を持つreply actorがFoundation Modelsのtranscriptとcompactionを所有する。Gemmaのreply sessionには、transactionalなlocal storeをbackendとする検証付き`rememberMemory`、`forgetMemory`、`searchMemory` toolと、端末時計を読むだけの`getCurrentDateTime` toolを渡す。toolが必要かはGemmaが判断し、アプリはmemory変更をstageして応答成功後だけcommitし、小さな非blocking通知を表示する。実機probeはアプリと同じ`LanguageModelSession`経路を使用し、実行回数に厳格な上限を設ける。
 
 **技術スタック:** Swift 6.0 strict concurrency、SwiftUI、iOS 27、Xcode 27、Apple Foundation Models、Google LiteRT-LM `0.16.0`、XCTest、Ruby `xcodeproj 1.27.0`。
 
@@ -31,13 +31,14 @@
 - アプリlevelのthinking/reasoning設定、UI、transcript保存、output strippingを追加しない。
 - 通常応答の上限は256 output tokens、明示的な詳細要求と画像応答は512とする。
 - 通常の文体は結論先行の1〜3文とし、詳細は要求された場合だけ展開する。
-- `rememberMemory`、`forgetMemory`、`searchMemory` toolはGemma reply sessionだけに渡す。Apple住所判定classifierにはmemory toolを一切渡さない。
+- `rememberMemory`、`forgetMemory`、`searchMemory`、`getCurrentDateTime` toolはGemma reply sessionだけに渡す。Apple住所判定classifierとcompaction専用sessionには渡さない。
 - Foundation Modelsのtool-calling modeは`.allowed`を使い、`.required`は使わない。通常応答に不要なtool round tripを強制しない。
+- `getCurrentDateTime`は端末の現在日時・曜日・timezoneだけを返すread-only toolとする。network access、永続化、memory通知、system clock変更を行わない。
 - Gemmaは通常のユーザー発話から有用な事実を自律的に保存してよい。変更の`supportingQuote`がUnicode正規化後の現在のユーザーtext内に存在する場合だけ有効とする。assistant応答、summary、tool output、画像だけからの推論はmemory sourceにしない。
 - 生成中のmemory変更はstageし、応答成功後だけcommitして小さな一時通知を表示する。確認dialogやblockingなmemory UIは追加しない。
 - context reserveは20%とする: `operationalContextBudget = floor(validatedContextCapacity * 0.8)`。
 - model context calibrationはfull-model 14回、vision検証はinference 8回を上限とする。
-- 統合memory-tool検証はuser-turn reply request 6回を上限とする。
+- 統合tool検証はmemoryと日時を合わせてuser-turn reply request 6回を上限とする。
 - whole-diffを対象とした正式なreview/fix/revalidateは最大2 roundとする。第1 roundがcleanならreviewを終了する。
 - inputとbinaryが不変なら、full SHA、full build、full test suite、device sweep、context sweepを繰り返さない。
 - production download orchestration、cloud memory、embedding、無関係なrefactor、別model、別LiteRT version、fallback adapterは実装しない。
@@ -102,7 +103,7 @@ modelはApplication Support配下へ保存し、backup対象から除外する�
 - `CatRobot/Conversation/Services/FoundationModelAvailabilityService.swift`を変更: 置換対象のApple general reply modelではなく、Apple content-tagging classifierを確認する。
 - compile probeで実際に観測した具体的なiOS 27 errorに限り、`CatRobot/Conversation/Services/FoundationModelErrorMapper.swift`を変更する。
 
-### Contextとmemory
+### Context、memory、tool
 
 - `CatRobot/Conversation/Context/ConversationTurn.swift`を作成する。
 - `CatRobot/Conversation/Context/TokenBudgeting.swift`を作成する。
@@ -113,6 +114,7 @@ modelはApplication Support配下へ保存し、backup対象から除外する�
 - `CatRobot/Conversation/Memory/RememberMemoryTool.swift`を作成する。
 - `CatRobot/Conversation/Memory/ForgetMemoryTool.swift`を作成する。
 - `CatRobot/Conversation/Memory/SearchMemoryTool.swift`を作成する。
+- `CatRobot/Conversation/Tools/CurrentDateTimeTool.swift`を作成する。
 - `CatRobot/Conversation/UI/MemoryNoticeView.swift`を作成する。
 
 ### PoC probeとevidence
@@ -127,7 +129,7 @@ modelはApplication Support配下へ保存し、backup対象から除外する�
 
 ### Unit testとintegration test
 
-- `CatRobotTests/Conversation/Services`、`Context`、`Memory`配下に、各新規serviceと対応するtestを作成する。
+- `CatRobotTests/Conversation/Services`、`Context`、`Memory`、`Tools`配下に、各新規service/toolと対応するtestを作成する。
 - `CatRobotTests/Conversation/Integration/ConversationFakes.swift`を変更する。
 - `CatRobotTests/Conversation/Integration/ConversationViewModelTests.swift`を変更する。
 - `CatRobotTests/Conversation/Integration/AppCompositionTests.swift`を変更する。
@@ -401,7 +403,7 @@ git commit -m "refactor: add multimodal reply request"
 **インターフェース:**
 - 入力: 検証済みmodel URLと`ReplyRequest`。
 - 提供: `LanguageModelSession`からの累積text snapshot。
-- 提供: タスク6で使うinject可能な`[any Tool]` session境界。memoryをcomposeするまではdefaultを空にする。
+- 提供: タスク6で使うinject可能な`[any Tool]` session境界。reply toolをcomposeするまではdefaultを空にする。
 - 維持: Apple content-tagging classifierは変更しない。
 
 - [ ] **ステップ1: inject可能なsession clientを境界にfactoryの失敗するtestを書く**
@@ -417,7 +419,7 @@ protocol GemmaSessionClient: Sendable {
 }
 ```
 
-live factoryは`[any Tool] = []`を受け取り、`LanguageModelSession(model:tools:instructions:)`を生成する。`model.capabilities`で`.vision`と`.toolCalling`が利用可能なことをassertし、reasoningは公開しない。タスク6でlive memory toolを渡し、reply requestでは明示的に`.allowed`を選択する。
+live factoryは`[any Tool] = []`を受け取り、`LanguageModelSession(model:tools:instructions:)`を生成する。`model.capabilities`で`.vision`と`.toolCalling`が利用可能なことをassertし、reasoningは公開しない。タスク6でlive reply toolを渡し、reply requestでは明示的に`.allowed`を選択する。
 
 - [ ] **ステップ3: 既存のbusy/cancellation semanticsを維持してreply streamingを実装する**
 
@@ -505,7 +507,7 @@ git commit -m "feat: add bounded Gemma vision probe"
 
 ---
 
-### タスク6: tool駆動の自動local memoryを実装する
+### タスク6: Gemma reply toolと自動local memoryを実装する
 
 **対象ファイル:**
 - 新規作成: `CatRobot/Conversation/Memory/MemoryFact.swift`
@@ -514,14 +516,15 @@ git commit -m "feat: add bounded Gemma vision probe"
 - 新規作成: `CatRobot/Conversation/Memory/RememberMemoryTool.swift`
 - 新規作成: `CatRobot/Conversation/Memory/ForgetMemoryTool.swift`
 - 新規作成: `CatRobot/Conversation/Memory/SearchMemoryTool.swift`
+- 新規作成: `CatRobot/Conversation/Tools/CurrentDateTimeTool.swift`
 - 新規作成: `CatRobot/Conversation/UI/MemoryNoticeView.swift`
-- テスト: 対応するmemory test
+- テスト: 対応するmemory testと`CatRobotTests/Conversation/Tools/CurrentDateTimeToolTests.swift`
 - 変更: `GemmaFoundationModelFactory.swift`、`GemmaFoundationModelReplyService.swift`、`ConversationDependencies.swift`、`ConversationViewModel.swift`、`ConversationViewState.swift`、`ConversationView.swift`、各fake
 
 **インターフェース:**
-- 提供: local-onlyのfact CRUDとFoundation Modelsの`rememberMemory`、`forgetMemory`、`searchMemory` tool。
+- 提供: local-onlyのfact CRUDとFoundation Modelsの`rememberMemory`、`forgetMemory`、`searchMemory`、`getCurrentDateTime` tool。
 - 提供: reply生成成功後だけcommitするturn単位のstaged mutation。
-- 上限: 保存fact 50件。user turnごとに受理するmemory-tool call 5回、search 2回、search result合計8件、search-result token合計1,024、staged mutation 3件。
+- 上限: 保存fact 50件。user turnごとに受理するmemory-tool call 5回、search 2回、search result合計8件、search-result token合計1,024、staged mutation 3件、current-date-time call 1回。
 
 - [ ] **ステップ1: 保存record、通知、turn単位transaction境界を定義する**
 
@@ -585,26 +588,68 @@ struct SearchMemoryArguments {
 
 `rememberMemory`は将来有用な簡潔なfactを1件stageする。`searchMemory`はfact IDとtextを返し、残りのturn単位result/token allowance以内にoutputを制限し、private metadataは返さない。`forgetMemory`は現在のturnでsearchから返されたUUIDだけを受け付ける。ただし`forgetAll == true`の場合を除く。2つのmutation toolでは、Unicode正規化後の現在のuser textに完全なsubstringとして存在する、空でない`supportingQuote`を必須とする。型としてdecodeできても意味的に無効な値は、短いreject文字列をGemmaへ返しstorageを変更しない。schema/argumentのdecode failureは`ToolCallError`となり、reply serviceがturn全体をrollbackする。正常にdecodeされたtool callからthrowしてよいのは、実際のstore I/O errorだけとする。
 
-- [ ] **ステップ5: toolをGemma reply sessionへcomposeする**
+- [ ] **ステップ5: read-onlyの`getCurrentDateTime` toolを実装する**
 
-3つのtoolを渡してreply用`LanguageModelSession`を生成し、`GenerationOptions.ToolCallingMode.allowed`を設定する。tool descriptionでは、後で有用になりそうな安定した好み、人間関係、routine、ユーザー提供factを保存し、一時的な観察、推測、assistantが生成した主張、summary、画像だけからの結論は保存しないようGemmaへ指示する。既存factと競合し得るfactを置換または削除する前にはsearchするよう指示する。`MemoryToolContext`はturn単位上限を超えるcallに、短い`tool budget exhausted; answer without another memory tool` resultを返してrejectする。これらのtoolを`FoundationModelAddressClassifier`へ渡さず、別のextraction model callも実行しない。
+```swift
+struct CurrentDateTimeSnapshot: Codable, Equatable, Sendable {
+    let iso8601: String
+    let localDate: String
+    let localTime: String
+    let isoWeekday: Int
+    let timeZoneIdentifier: String
+    let utcOffsetSeconds: Int
+}
 
-各response前に`beginTurn`を呼ぶ。responseが完全に成功した場合は`commitTurn`、cancellation、context failure、generation failureでは`rollbackTurn`を呼ぶ。reply actorはこのlifecycleを既存context transactionと同じ順序でserializeし、tool mutationとtranscript stateが食い違わないようにする。
+protocol CurrentDateTimeProviding: Sendable {
+    func snapshot(includeSeconds: Bool) -> CurrentDateTimeSnapshot
+}
 
-- [ ] **ステップ6: commit後だけ小さな通知を表示する**
+@Generable
+struct CurrentDateTimeArguments {
+    var includeSeconds: Bool
+}
+
+actor CurrentDateTimeCallGate {
+    private var activeTurnID: UInt64?
+    private var consumed = false
+
+    func beginTurn(id: UInt64) {
+        activeTurnID = id
+        consumed = false
+    }
+
+    func consumeCall() -> Bool {
+        guard activeTurnID != nil, !consumed else { return false }
+        consumed = true
+        return true
+    }
+}
+```
+
+live providerは`Date.now`、Gregorian `Calendar`、`TimeZone.autoupdatingCurrent`をcall時に読み、`en_US_POSIX`の安定したISO 8601/local表現を生成する。`includeSeconds == true`では`2026-08-24T12:34:56+09:00`/`12:34:56`、falseでは`2026-08-24T12:34+09:00`/`12:34`の粒度にする。`isoWeekday`は月曜を1、日曜を7とする。`CurrentDateTimeTool`はsnapshotをJSON textとして返すだけで、network、file、memory store、UI、system clockを変更しない。`CurrentDateTimeCallGate`で最初の1 callだけを受理し、2回目以降は`current date-time already supplied; answer without calling this tool again`を返す。
+
+testでは`FixedCurrentDateTimeProvider`をinjectし、`2026-08-24T12:34:56+09:00`、`Asia/Tokyo`、ISO weekday 1、`includeSeconds`のtrue/false、同一turnの2回目reject、次turnでのgate reset、notificationとmemory mutationが発生しないことを検証する。testはsystem clockへ依存させない。
+
+- [ ] **ステップ6: toolをGemma reply sessionへcomposeする**
+
+4つのtoolを渡してreply用`LanguageModelSession`を生成し、`GenerationOptions.ToolCallingMode.allowed`を設定する。memory tool descriptionでは、後で有用になりそうな安定した好み、人間関係、routine、ユーザー提供factを保存し、一時的な観察、推測、assistantが生成した主張、summary、画像だけからの結論は保存しないようGemmaへ指示する。既存factと競合し得るfactを置換または削除する前にはsearchするよう指示する。日時tool descriptionでは、現在日時、曜日、timezone、相対日付の基準が必要な場合だけ1回呼び、modelの学習知識から現在日時を推測しないよう指示する。`MemoryToolContext`はturn単位上限を超えるcallに、短い`tool budget exhausted; answer without another memory tool` resultを返してrejectする。これらのtoolを`FoundationModelAddressClassifier`やcompaction専用sessionへ渡さず、別のextraction model callも実行しない。
+
+各response前にmemory transactionとcurrent-date-time call gateの`beginTurn`を呼ぶ。responseが完全に成功した場合はmemoryの`commitTurn`、cancellation、context failure、generation failureではmemoryの`rollbackTurn`を呼ぶ。日時toolはread-onlyなのでcommit/rollback対象にしない。reply actorはこのlifecycleを既存context transactionと同じ順序でserializeし、tool mutationとtranscript stateが食い違わないようにする。
+
+- [ ] **ステップ7: memory commit後だけ小さな通知を表示する**
 
 commit済み`MemoryNotice`を`ConversationViewModel`へpublishし、同一turnの複数mutationを1つのcompactなoverlay/bannerへまとめる。表示するfact textは80文字でtruncateし、view modelが所有するcancel可能taskで2.5秒後にdismissする。通知はtapを要求せず、speechを停止せず、focusを奪わず、conversation transcriptへ含めない。accessibility labelを付与する。確認、設定、memory管理screenは追加しない。
 
-- [ ] **ステップ7: toolとUIのintegration testを確認する**
+- [ ] **ステップ8: toolとUIのintegration testを確認する**
 
-fake tool/session outputを使用し、自動remember/search/forget routing、成功turnのatomic commitと1つにまとめた通知、failure/cancellation/schema-decode時のrollback、searchでは通知しないこと、住所判定classifierからaccessできないこと、`覚えて`や`忘れて`という語を決定論的な必須条件にしないことを証明する。quote欠落・不一致、call/mutation/result超過、stale/unknown UUID、storage failureを検証し、いずれもstoreを部分変更してはならない。dependency側のunknown-tool JSON parser testは重複させない。ここでは実model inferenceを使わない。
+fake tool/session outputを使用し、自動remember/search/forget routing、成功turnのatomic commitと1つにまとめた通知、failure/cancellation/schema-decode時のrollback、searchと日時取得では通知しないこと、日時取得がmemory transactionへ影響しないこと、住所判定classifierとcompaction専用sessionから全reply toolへaccessできないこと、`覚えて`や`忘れて`という語を決定論的な必須条件にしないことを証明する。quote欠落・不一致、call/mutation/result超過、stale/unknown UUID、storage failureを検証し、いずれもstoreを部分変更してはならない。dependency側のunknown-tool JSON parser testは重複させない。ここでは実model inferenceを使わない。
 
-- [ ] **ステップ8: memory toolをcommitする**
+- [ ] **ステップ9: Gemma reply toolをcommitする**
 
 ```bash
-git add CatRobot/Conversation/Memory CatRobot/Conversation/Integration CatRobotTests/Conversation
+git add CatRobot/Conversation/Memory CatRobot/Conversation/Tools CatRobot/Conversation/Integration CatRobotTests/Conversation
 git add CatRobot/Conversation/Services CatRobot/Conversation/UI
-git commit -m "feat: add Gemma-driven local memory tools"
+git commit -m "feat: add Gemma reply tools and local memory"
 ```
 
 ---
@@ -620,7 +665,7 @@ git commit -m "feat: add Gemma-driven local memory tools"
 
 **インターフェース:**
 - 提供: 予測token accountingと再構築可能なcontext state。
-- 使用: session-scoped summary、直近4 turn pair、memory-tool definition/result、現在input、image token、output reserve。
+- 使用: session-scoped summary、直近4 turn pair、reply-tool definition/result、現在input、image token、output reserve。
 
 - [ ] **ステップ1: 厳密なbudgeting型を定義する**
 
@@ -639,13 +684,13 @@ struct TokenProjection: Equatable, Sendable {
     let instructions: Int
     let summary: Int
     let recentTurns: Int
-    let memoryToolDefinitions: Int
-    let memoryToolResults: Int
+    let toolDefinitions: Int
+    let toolResults: Int
     let currentInput: Int
     let images: Int
     let outputReserve: Int
     let margin: Int
-    var total: Int { instructions + summary + recentTurns + memoryToolDefinitions + memoryToolResults + currentInput + images + outputReserve + margin }
+    var total: Int { instructions + summary + recentTurns + toolDefinitions + toolResults + currentInput + images + outputReserve + margin }
 }
 
 struct ConversationTurn: Equatable, Sendable {
@@ -668,7 +713,7 @@ struct PreparedReplyContext: Equatable, Sendable {
 
 - [ ] **ステップ2: thresholdとpreservationの失敗するtestを書く**
 
-256/512 reserve、image/tool-definition/tool-resultの計上、厳密な80%境界、summaryから独立したpersistent store、直近4 pairのverbatim保持、promptが厳密に1回だけ現れること、cancellation/failure時のrollback、繰り返しcompaction、context exceeded時の1回だけのretryを検証する。
+256/512 reserve、image、4つのtool definition、memory/date-time tool resultの計上、厳密な80%境界、summaryから独立したpersistent store、直近4 pairのverbatim保持、promptが厳密に1回だけ現れること、cancellation/failure時のrollback、繰り返しcompaction、context exceeded時の1回だけのretryを検証する。
 
 - [ ] **ステップ3: context actorを実装する**
 
@@ -681,7 +726,7 @@ actor ConversationContextController {
 }
 ```
 
-Compactionは専用Gemma sessionで古いconversation turnをsummary化する。完了済みtool callとtool outputをsummary sourceから除外し、直近4 pairをverbatimで保持し、3つのtool definitionを再度attachする。validated capacityの40%以下をtargetにreplacement transcript/sessionを構築し、preparation成功後だけswapする。persistent memoryは`LocalMemoryStore`に残し、必要時に`searchMemory`で再取得する。
+Compactionはtoolを持たない専用Gemma sessionで古いconversation turnをsummary化する。完了済みtool callとtool outputをsummary sourceから除外し、直近4 pairをverbatimで保持し、reply sessionへ4つのtool definitionを再度attachする。validated capacityの40%以下をtargetにreplacement transcript/sessionを構築し、preparation成功後だけswapする。persistent memoryは`LocalMemoryStore`に残し、必要時に`searchMemory`で再取得する。
 
 - [ ] **ステップ4: context exceeded時のretryを1回だけ追加する**
 
@@ -726,6 +771,7 @@ voice: recognize -> Apple classify -> Gemma reply -> speak
 typed: submit -> Gemma reply -> speak
 memory mutation: begin turn -> Gemma tool call -> stage -> successful reply -> commit -> notice
 memory rollback: begin turn -> Gemma tool call -> stage -> cancel/fail -> discard
+current date/time: begin turn -> Gemma tool call -> read device clock once -> reply without notice
 contextExceeded: compact -> retry once -> speak or fail
 cancel: stop streaming -> preserve last committed context
 ```
@@ -848,9 +894,9 @@ voice発話がApple content-tagging classificationの後にFoundation Models-bac
 
 タスク5の上限内で3つのfixtureとno-image controlを実行する。privateなuser contentを含まないraw responseを記録する。
 
-- [ ] **ステップ5: memory acceptanceを実行する**
+- [ ] **ステップ5: reply tool acceptanceを実行する**
 
-user-turn reply requestは6回以内とする。`覚えて`と言わずに安定した好みを1つ述べ、Gemmaが`rememberMemory`を呼ぶこと、成功turnでcommitされること、speechをblockせず小さな通知が表示されることを証明する。restart後、意味的に関連する質問を行い、`searchMemory`が保存factを取得することを証明する。次に削除を依頼し、`forgetMemory`が削除して通知を出すことを証明する。明らかに一時的な観察も1つ与え、mutation toolが呼ばれないことを証明する。各tool名、検証済みargument、tool result、commit/rollback outcome、user-visible通知を記録し、無関係なprivate conversationは記録しない。
+user-turn reply requestは全toolを合わせて6回以内とする。`覚えて`と言わずに安定した好みを1つ述べ、Gemmaが`rememberMemory`を呼ぶこと、成功turnでcommitされること、speechをblockせず小さな通知が表示されることを証明する。restart後、意味的に関連する質問を行い、`searchMemory`が保存factを取得することを証明する。次に削除を依頼し、`forgetMemory`が削除して通知を出すことを証明する。明らかに一時的な観察も1つ与え、mutation toolが呼ばれないことを証明する。5回目に現在日時・曜日・timezoneを尋ね、Gemmaが`getCurrentDateTime`を1回だけ呼ぶこと、返したinstantがtool call前後に取得したdevice clockの範囲内でありtimezone identifier/offsetが端末値と一致すること、通知とmemory mutationがないことを証明する。6回目は日時を必要としない通常質問を行い、`getCurrentDateTime`を呼ばないことを証明する。各tool名、検証済みargument、tool result、commit/rollback outcome、user-visible通知を記録し、無関係なprivate conversationは記録しない。
 
 - [ ] **ステップ6: warm-cache behaviorとoffline inferenceを確認する**
 
@@ -858,7 +904,7 @@ user-turn reply requestは6回以内とする。`覚えて`と言わずに安定
 
 - [ ] **ステップ7: 制限事項を記録する**
 
-LiteRT SwiftとFoundation Models adapterがearly-preview dependencyであること、v0.16.0 adapterのguided generationとtool selectionはhard constrained decodingではなくsoftなprompt-driven JSONであること、memoryに値するturnではtool round tripが追加されること、transcript replayによりlong-context TTFTが増える可能性があること、modelが約2.6 GBであること、production readinessは主張しないことを記載する。
+LiteRT SwiftとFoundation Models adapterがearly-preview dependencyであること、v0.16.0 adapterのguided generationとtool selectionはhard constrained decodingではなくsoftなprompt-driven JSONであること、memoryに値するturnや現在日時を尋ねるturnではtool round tripが追加されること、`getCurrentDateTime`は端末のsystem clock/timezoneの正確性に依存すること、transcript replayによりlong-context TTFTが増える可能性があること、modelが約2.6 GBであること、production readinessは主張しないことを記載する。
 
 ---
 
@@ -873,7 +919,7 @@ LiteRT SwiftとFoundation Models adapterがearly-preview dependencyであるこ�
 
 - [ ] **ステップ1: Sol/xhighの正式reviewerを1つだけdispatchする**
 
-`gpt-5.6-sol` subagentを`xhigh`で1つだけ使い、要件準拠、Swift concurrency、Foundation Models/LiteRT routing、model integrity policy、compaction時のprompt-once semantics、memory-toolのauthorization/transactionality/privacy、testが必要behaviorを証明しているかをreviewする。同じdiffを複数agentへreviewさせない。
+`gpt-5.6-sol` subagentを`xhigh`で1つだけ使い、要件準拠、Swift concurrency、Foundation Models/LiteRT routing、model integrity policy、compaction時のprompt-once semantics、memory-toolのauthorization/transactionality/privacy、`getCurrentDateTime`のread-only性・決定性・call上限、testが必要behaviorを証明しているかをreviewする。同じdiffを複数agentへreviewさせない。
 
 - [ ] **ステップ2: 第1 roundを処理する**
 
@@ -922,9 +968,10 @@ branch、worktree、base SHA、変更file、厳密なpin、command/result、実�
 5. 通常replyは256、詳細・画像replyは512を上限とする。
 6. 3つの決定論的vision fixtureとno-image controlが8 run以内でsemantic rubricを満たす。
 7. Gemmaが`rememberMemory`、`searchMemory`、`forgetMemory`を自律的に呼べる。明示的なcommand wordingがなくてもfactを保存できる一方、検証済みの現在user quoteだけをmutation sourceにできる。failure/cancellation時はrollbackし、restart/search/deletionが動作し、commit済みmutationでは小さな非blocking通知だけを表示する。
-8. Context searchが14 run以内に完了し、success/failure boundと3 run安定したcapacityを記録する。
-9. Operational budgetがvalidated capacityの厳密に80%であり、実際のcompaction後もsummary、直近4 pair、独立memory storeと再attachしたtool、現在promptの厳密に1回の出現を維持する。
-10. 初回model integrityが検証され、変更のないwarm launchではartifactを再hashしない。
-11. Generator contract、Simulator suite、signed device build、統合device acceptanceがPASSする。
-12. 正式reviewは最大2 roundで、Critical/Important findingを残さない。
-13. push、PR、merge、comparison-branch mutation、fallback model/library、scope外refactorを行わない。
+8. Gemmaが必要時だけ`getCurrentDateTime`を1 turn 1回以内で呼び、端末由来の現在日時、ISO曜日、timezone identifier、UTC offsetを取得できる。toolはread-onlyで、network、永続化、通知、memory mutationを行わない。
+9. Context searchが14 run以内に完了し、success/failure boundと3 run安定したcapacityを記録する。
+10. Operational budgetがvalidated capacityの厳密に80%であり、実際のcompaction後もsummary、直近4 pair、独立memory storeと再attachした4 tool、現在promptの厳密に1回の出現を維持する。
+11. 初回model integrityが検証され、変更のないwarm launchではartifactを再hashしない。
+12. Generator contract、Simulator suite、signed device build、統合device acceptanceがPASSする。
+13. 正式reviewは最大2 roundで、Critical/Important findingを残さない。
+14. push、PR、merge、comparison-branch mutation、fallback model/library、scope外refactorを行わない。
