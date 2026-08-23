@@ -1,6 +1,6 @@
 # Cat Robot Gemma 4 Foundation Models PoC 実装計画
 
-> **実装を担当するエージェントへ:** 必須サブスキルとして `superpowers:subagent-driven-development`（推奨）または `superpowers:executing-plans` を使用し、この計画をタスク単位で実装すること。進捗管理にはチェックボックス（`- [ ]`）を使用する。この計画でユーザーが承認したレビュー上限は、問題がなくなるまでreview/fix loopを続けるスキル既定値より優先される。
+> **実装を担当するエージェントへ:** 必須サブスキルとして `superpowers:subagent-driven-development`（推奨）または `superpowers:executing-plans` を使用し、この計画をタスク単位で実装すること。進捗管理にはチェックボックス（`- [ ]`）を使用する。ただし、ステップごとのreviewやfix/revalidate、spec reviewとcode-quality reviewの二段階実行など、スキル既定の細かなcheckpointは使用しない。以下の「タスク単位の実装・検証ルール」と最大2 loopの上限がスキル既定値より優先される。
 
 **目標:** Appleのcontent-tagging住所判定classifierを維持したまま、iOS 27 Foundation Models API経由でGemma 4 E2BをCat Robotの応答・画像理解backendとして動かす。上限付きcontext compaction、Gemma主導のローカルmemory tool、read-onlyの端末日時toolを追加し、接続済みiPhone 16 Pro上でPoCを実証する。
 
@@ -39,9 +39,19 @@
 - context reserveは20%とする: `operationalContextBudget = floor(validatedContextCapacity * 0.8)`。
 - model context calibrationはfull-model 14回、vision検証はinference 8回を上限とする。
 - 統合tool検証はmemoryと日時を合わせてuser-turn reply request 6回を上限とする。
-- whole-diffを対象とした正式なreview/fix/revalidateは最大2 roundとする。第1 roundがcleanならreviewを終了する。
+- review、修正、再検証は以下のタスク境界でだけ行い、各タスク最大2 fix/revalidate loopとする。
 - inputとbinaryが不変なら、full SHA、full build、full test suite、device sweep、context sweepを繰り返さない。
 - production download orchestration、cloud memory、embedding、無関係なrefactor、別model、別LiteRT version、fallback adapterは実装しない。
+
+## タスク単位の実装・検証ルール
+
+- 1タスクを「全ステップを完了する1つの実装batch」と「末尾の1つの検証境界」として扱う。同じ担当agentが原則としてタスクの先頭から末尾まで所有し、ステップ間でreviewerへhandoffしない。
+- タスク内の各ステップが終わるたびに、subagent review、spec review、code-quality review、広いtest、修正、再検証を行ってはならない。ステップごとにfresh reviewerを起動したり、別agentによる確認を挟んだりもしない。
+- baseline、意図的に失敗させるred test、API compile probe、上限付き実機測定など、そのステップの実装または観測そのものに不可欠なcommandは記載どおり1回実行してよい。これはreview checkpointではなく、その場でreview/fix loopへ入らない。後続作業が安全に続けられる失敗は記録してタスク末尾まで進め、前提条件を失う失敗だけはblockerとして停止する。
+- 全実装ステップが終わってから、そのタスクに列挙されたtargeted test、build、静的確認を1つのvalidation bundleとして1回実行する。複数commandがあっても1回のタスク検証としてまとめ、command間で修正に戻らない。実行可能な項目を完了してからfailureをまとめる。
+- reviewが必要なタスクでも、validation bundleの後に同じtask diffを確認するreviewerは最大1人とし、spec reviewとcode-quality reviewを別agent・別roundへ分割しない。Critical/Important findingだけを修正対象とし、Minorはscopeを広げずhandoffへ記録する。
+- initial validation/reviewがcleanなら即座にcommitして次のタスクへ進む。failureまたはCritical/Important findingがあれば全件を1つの修正batchにまとめ、影響範囲のvalidation bundleを1回だけ再実行する。これを1 loopと数え、1タスクにつき最大2 loopまでとする。3 loop目は行わず、未解決ならそのタスクをblockedとして報告する。
+- タスク末尾の検証を通過したあとに、同じdiffへ追加のwhole-diff review、重複test、念のためのbuildを行わない。タスク10は最終acceptance全体を1つのvalidation bundleとして扱い、各acceptance項目の間では修正せず、bundle完了後にだけ同じ最大2 loopルールを適用する。
 
 ## 固定するmodel artifact
 
@@ -878,6 +888,8 @@ git commit -m "test: calibrate Gemma context on iPhone 16 Pro"
 **インターフェース:**
 - 提供: すべての完了条件に対する有限なevidence。
 
+以下のステップ1〜7を1つのtask-level validation bundleとして、修正を挟まず最後まで実行する。途中のfailureは記録し、依存関係上実行可能な残りの項目を完了してからまとめて修正する。再実行はfailureの影響範囲だけとし、「タスク単位の実装・検証ルール」の最大2 loopへ含める。
+
 - [ ] **ステップ1: 最終generator検証とSimulator検証を1回だけ実行する**
 
 `ruby scripts/test_generate_project.rb`、最後のcode変更の影響を受ける対象test、full Simulator suite 1回の順で実行する。具体的なstale-cache signatureがない限りDerivedDataをcleanしない。
@@ -906,45 +918,19 @@ user-turn reply requestは全toolを合わせて6回以内とする。`覚えて
 
 LiteRT SwiftとFoundation Models adapterがearly-preview dependencyであること、v0.16.0 adapterのguided generationとtool selectionはhard constrained decodingではなくsoftなprompt-driven JSONであること、memoryに値するturnや現在日時を尋ねるturnではtool round tripが追加されること、`getCurrentDateTime`は端末のsystem clock/timezoneの正確性に依存すること、transcript replayによりlong-context TTFTが増える可能性があること、modelが約2.6 GBであること、production readinessは主張しないことを記載する。
 
----
+- [ ] **ステップ8: 最終handoffを行う**
 
-### タスク11: 正式なreview/fixを最大2 round実行してhandoffする
-
-**対象ファイル:**
-- review対象: current goal diffだけ
-- 更新: `docs/validation/2026-08-24-gemma4-foundationmodels-poc.md`
-
-**インターフェース:**
-- 提供: clean、または明確にblockedとされたPoC handoff。
-
-- [ ] **ステップ1: Sol/xhighの正式reviewerを1つだけdispatchする**
-
-`gpt-5.6-sol` subagentを`xhigh`で1つだけ使い、要件準拠、Swift concurrency、Foundation Models/LiteRT routing、model integrity policy、compaction時のprompt-once semantics、memory-toolのauthorization/transactionality/privacy、`getCurrentDateTime`のread-only性・決定性・call上限、testが必要behaviorを証明しているかをreviewする。同じdiffを複数agentへreviewさせない。
-
-- [ ] **ステップ2: 第1 roundを処理する**
-
-scope内のCritical/Important findingだけを修正し、impact-based validationを実行する。Minor findingはscopeを拡張せず報告する。第1 roundにCritical/Important findingがなければ第2 roundをskipする。
-
-- [ ] **ステップ3: 第1 roundの修正後だけ第2 roundを実行する**
-
-同じreviewerへ、変更後diffのfresh reviewを依頼する。scope内のCritical/Important findingを修正し、impact-based validationを実行する。3回目のwhole-diff reviewは行わない。
-
-- [ ] **ステップ4: terminal stateを強制する**
-
-第2 round後もCritical/Important findingが残る場合、完了を主張せず停止する。後続のgoal turnで自動的に編集を続けない。残件がなく、すべての完了条件にevidenceがある場合だけcompleteとする。
-
-- [ ] **ステップ5: 最終handoffを行う**
-
-branch、worktree、base SHA、変更file、厳密なpin、command/result、実機結果、vision table、context table、validated capacity、operational budget、有効compact threshold、SHA実行回数と理由、使用したreview round、残存finding、制限事項、validation report pathを報告する。
+branch、worktree、base SHA、変更file、厳密なpin、command/result、実機結果、vision table、context table、validated capacity、operational budget、有効compact threshold、SHA実行回数と理由、各タスクで使用したfix/revalidate loop数、残存finding、制限事項、validation report pathを報告する。Critical/Important finding、未達の完了条件、または2 loop後も解消しないfailureがあれば完了を主張せず、該当タスクをblockedとして報告する。
 
 ## Subagent routing方針
 
 - RootがGit/worktree、shared interface、package integration、Xcode、signing、Simulator、実機、model download、context run、結果統合、completion statusを所有する。
 - `gpt-5.6-luna`の`max`は、file inventory、独立fixture生成、独立unit test、table整形など、上限が明確なmechanical taskだけを担当してよい。
-- `gpt-5.6-sol`の`xhigh`は、Foundation Models/LiteRT設計、Swift concurrency、context log解釈、正式reviewを担当する。
+- `gpt-5.6-sol`の`xhigh`は、Foundation Models/LiteRT設計、Swift concurrency、context log解釈、タスク境界で必要な重いreviewを担当する。
 - `gpt-5.6-terra`は使用しない。
 - 同時にactiveにするsubagentは最大2つとし、taskとfile ownershipを重複させない。
-- subagentを使うためだけに作業を分割せず、Xcode操作やdevice操作を委譲しない。
+- subagentを使うためだけに作業を分割せず、Xcode操作やdevice操作を委譲しない。1タスクを複数の実装agentへステップ分割せず、ステップ終了時のreviewerも起動しない。
+- タスク境界でreviewerを使う場合も1人だけとし、実装agent、spec reviewer、code-quality reviewerを順番に回す多段workflowは使用しない。findingへの修正と再検証はタスク担当へ戻してまとめて行う。
 - subagentが利用できない場合、Terraで代替せずrootが進める。
 
 ## Retryとevidence再利用方針
@@ -952,7 +938,8 @@ branch、worktree、base SHA、変更file、厳密なpin、command/result、実�
 - 変更のないfailed commandはflake確認のため1回だけrerunしてよい。
 - それ以降のattemptには、新しい仮説と実質的な変更を必須とする。
 - 同じfailure signature/root causeが3回連続したら、そのpathを停止してblockerとする。
-- failure signatureが変化し、測定可能な進捗がある間は通常のTDDを続けてよい。
+- ステップ途中ではfailureごとのfix/revalidate loopへ入らず、タスク境界でfailureをまとめる。安全に後続ステップへ進めない前提failureだけは即時blockerとする。
+- タスク境界でfailure signatureが変化し、測定可能な進捗があっても、fix/revalidateはそのタスクの最大2 loopを超えない。
 - documentation-onlyの変更では、full build、device run、model hash、context sweepを実行しない。
 - source、binary、model、device、関連configurationが不変なら既存evidenceを再利用する。
 - corruption pathのtestには小さなfixtureを使い、実modelを意図的に破損させない。
@@ -973,5 +960,5 @@ branch、worktree、base SHA、変更file、厳密なpin、command/result、実�
 10. Operational budgetがvalidated capacityの厳密に80%であり、実際のcompaction後もsummary、直近4 pair、独立memory storeと再attachした4 tool、現在promptの厳密に1回の出現を維持する。
 11. 初回model integrityが検証され、変更のないwarm launchではartifactを再hashしない。
 12. Generator contract、Simulator suite、signed device build、統合device acceptanceがPASSする。
-13. 正式reviewは最大2 roundで、Critical/Important findingを残さない。
+13. ステップごとのreview/fix/revalidateや二段階reviewを行わず、各タスク末尾で1つのvalidation bundleを実行する。必要な修正と再検証は各タスク最大2 loopで、Critical/Important findingを残さない。
 14. push、PR、merge、comparison-branch mutation、fallback model/library、scope外refactorを行わない。
