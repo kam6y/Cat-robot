@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. The user-approved review budget in this plan overrides any skill default that would continue review/fix loops until clean.
 
-**Goal:** Run Gemma 4 E2B as Cat Robot's reply and vision backend through the iOS 27 Foundation Models API while retaining the Apple content-tagging address classifier, adding bounded context compaction and explicit local memory, and proving the PoC on the connected iPhone 16 Pro.
+**Goal:** Run Gemma 4 E2B as Cat Robot's reply and vision backend through the iOS 27 Foundation Models API while retaining the Apple content-tagging address classifier, adding bounded context compaction and Gemma-driven local memory tools, and proving the PoC on the connected iPhone 16 Pro.
 
-**Architecture:** Keep the existing sequential address-classification flow and replace only reply generation with Google's official `LiteRTLMFoundationModels` adapter. A model store verifies the pinned artifact once, a stateful reply actor owns Foundation Models transcripts and compaction, and a separate local memory actor persists only explicit facts. Physical-device probes use the same `LanguageModelSession` path as the app and have hard run limits.
+**Architecture:** Keep the existing sequential address-classification flow and replace only reply generation with Google's official `LiteRTLMFoundationModels` adapter. A model store verifies the pinned artifact once, a stateful reply actor owns Foundation Models transcripts and compaction, and the Gemma reply session receives validated `rememberMemory`, `forgetMemory`, and `searchMemory` tools backed by a transactional local store. Gemma decides when the tools are useful; the app stages mutations, commits them only after a successful reply, and shows a small nonblocking notice. Physical-device probes use the same `LanguageModelSession` path as the app and have hard run limits.
 
 **Tech Stack:** Swift 6.0 strict concurrency, SwiftUI, iOS 27, Xcode 27, Apple Foundation Models, Google LiteRT-LM `0.16.0`, XCTest, Ruby `xcodeproj 1.27.0`.
 
@@ -31,9 +31,13 @@
 - Do not add app-level thinking/reasoning configuration, UI, transcript storage, or output stripping.
 - Normal reply cap is 256 output tokens. Explicit detailed requests and image replies use 512.
 - Normal style is conclusion-first and one to three sentences; detail expands only when requested.
-- Persist only explicit memory commands. Do not infer facts from ordinary utterances or summaries.
+- Give only the Gemma reply session the `rememberMemory`, `forgetMemory`, and `searchMemory` tools. The Apple address classifier never receives memory tools.
+- Use Foundation Models tool-calling mode `.allowed`, never `.required`; ordinary replies must not be forced through an unnecessary tool round trip.
+- Gemma may autonomously save useful facts from ordinary user utterances. A mutation is valid only when its `supportingQuote` occurs in the current user text after Unicode canonical normalization; assistant replies, summaries, tool outputs, and image-only inference cannot become memory sources.
+- Stage memory mutations during generation, commit them only after a successful reply, and show a small transient notice after commit. Do not add a confirmation dialog or blocking memory UI.
 - Use a 20% context reserve: `operationalContextBudget = floor(validatedContextCapacity * 0.8)`.
 - Model context calibration is capped at 14 full-model runs. Vision validation is capped at 8 inference runs.
+- Integrated memory-tool validation is capped at 6 user-turn reply requests.
 - Formal whole-diff review/fix/revalidate is capped at two rounds. A clean first round ends review.
 - Do not repeat full SHA, full build, full test suite, device sweep, or context sweep when inputs and binaries are unchanged.
 - Do not implement production download orchestration, cloud memory, embeddings, unrelated refactors, other models, other LiteRT versions, or a fallback adapter.
@@ -57,6 +61,8 @@ The model is stored under Application Support and excluded from backup. Full SHA
 ## Authoritative references
 
 - Apple custom model protocol: `https://developer.apple.com/documentation/foundationmodels/languagemodel`
+- Apple tool protocol: `https://developer.apple.com/documentation/foundationmodels/tool`
+- Apple tool-calling guide: `https://developer.apple.com/documentation/foundationmodels/expanding-generation-with-tool-calling`
 - Apple context management: `https://developer.apple.com/documentation/foundationmodels/managing-the-context-window`
 - Google Swift overview: `https://developers.google.com/edge/litert-lm/swift`
 - Exact package manifest: `https://github.com/google-ai-edge/LiteRT-LM/blob/v0.16.0/Package.swift`
@@ -83,8 +89,8 @@ Read these exact references only. Do not replace them with current `main`, a new
 - Modify `CatRobot/Conversation/Domain/ConversationServices.swift`: accept `ReplyRequest` and expose explicit Gemma preparation.
 - Modify `CatRobot/Conversation/Domain/ConversationTypes.swift`: model-download and memory errors only where UI recovery needs distinct handling.
 - Modify `CatRobot/Conversation/Integration/ConversationDependencies.swift`: compose Apple classifier availability plus Gemma reply preparation.
-- Modify `CatRobot/Conversation/Integration/ConversationViewModel.swift`: deterministic memory commands and existing cancellation ownership.
-- Modify `CatRobot/Conversation/UI/ConversationViewState.swift` and `ConversationView.swift`: bounded model-preparation progress only.
+- Modify `CatRobot/Conversation/Integration/ConversationViewModel.swift`: memory-tool transaction completion, transient notices, and existing cancellation ownership.
+- Modify `CatRobot/Conversation/UI/ConversationViewState.swift` and `ConversationView.swift`: bounded model-preparation progress and a small nonblocking memory notice.
 
 ### Gemma backend
 
@@ -102,8 +108,12 @@ Read these exact references only. Do not replace them with current `main`, a new
 - Create `CatRobot/Conversation/Context/TokenBudgeting.swift`.
 - Create `CatRobot/Conversation/Context/ConversationContextController.swift`.
 - Create `CatRobot/Conversation/Memory/MemoryFact.swift`.
-- Create `CatRobot/Conversation/Memory/MemoryCommandParser.swift`.
 - Create `CatRobot/Conversation/Memory/LocalMemoryStore.swift`.
+- Create `CatRobot/Conversation/Memory/MemoryToolContext.swift`.
+- Create `CatRobot/Conversation/Memory/RememberMemoryTool.swift`.
+- Create `CatRobot/Conversation/Memory/ForgetMemoryTool.swift`.
+- Create `CatRobot/Conversation/Memory/SearchMemoryTool.swift`.
+- Create `CatRobot/Conversation/UI/MemoryNoticeView.swift`.
 
 ### PoC probes and evidence
 
@@ -391,6 +401,7 @@ git commit -m "refactor: add multimodal reply request"
 **Interfaces:**
 - Consumes: verified model URL and `ReplyRequest`.
 - Produces: cumulative text snapshots from `LanguageModelSession`.
+- Produces: an injectable `[any Tool]` session boundary used by Task 6; the default remains empty until memory is composed.
 - Keeps: Apple content-tagging classifier unchanged.
 
 - [ ] **Step 1: Write failing factory tests around an injectable session client**
@@ -406,7 +417,7 @@ protocol GemmaSessionClient: Sendable {
 }
 ```
 
-The live client creates `LiteRTLanguageModel` and `LanguageModelSession`. Assert vision availability from `model.capabilities`; do not expose reasoning.
+The live factory accepts `[any Tool] = []` and creates `LanguageModelSession(model:tools:instructions:)`. Assert `.vision` and `.toolCalling` availability from `model.capabilities`; do not expose reasoning. Task 6 supplies the live memory tools and explicitly selects `.allowed` for reply requests.
 
 - [ ] **Step 3: Implement reply streaming with existing busy/cancellation semantics**
 
@@ -494,60 +505,106 @@ git commit -m "feat: add bounded Gemma vision probe"
 
 ---
 
-### Task 6: Implement explicit local memory
+### Task 6: Implement tool-driven automatic local memory
 
 **Files:**
 - Create: `CatRobot/Conversation/Memory/MemoryFact.swift`
-- Create: `CatRobot/Conversation/Memory/MemoryCommandParser.swift`
 - Create: `CatRobot/Conversation/Memory/LocalMemoryStore.swift`
+- Create: `CatRobot/Conversation/Memory/MemoryToolContext.swift`
+- Create: `CatRobot/Conversation/Memory/RememberMemoryTool.swift`
+- Create: `CatRobot/Conversation/Memory/ForgetMemoryTool.swift`
+- Create: `CatRobot/Conversation/Memory/SearchMemoryTool.swift`
+- Create: `CatRobot/Conversation/UI/MemoryNoticeView.swift`
 - Test: corresponding memory tests
-- Modify: `ConversationDependencies.swift`, `ConversationViewModel.swift`, and fakes
+- Modify: `GemmaFoundationModelFactory.swift`, `GemmaFoundationModelReplyService.swift`, `ConversationDependencies.swift`, `ConversationViewModel.swift`, `ConversationViewState.swift`, `ConversationView.swift`, and fakes
 
 **Interfaces:**
-- Produces: local-only fact CRUD and deterministic command parsing.
-- Limits: 50 facts and 1,024 injected tokens.
+- Produces: local-only fact CRUD plus Foundation Models `rememberMemory`, `forgetMemory`, and `searchMemory` tools.
+- Produces: per-turn staged mutations that commit only after successful reply generation.
+- Limits: 50 stored facts; per user turn, 5 accepted memory-tool calls, 2 searches, 8 aggregate search results, 1,024 aggregate search-result tokens, and 3 staged mutations.
 
-- [ ] **Step 1: Define the stored record and commands**
+- [ ] **Step 1: Define stored records, notices, and the per-turn transaction boundary**
 
 ```swift
 struct MemoryFact: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var fact: String
+    var supportingQuote: String
     let createdAt: Date
     var updatedAt: Date
-    let sourceTurnID: UInt64
+    var sourceTurnID: UInt64
 }
 
-enum MemoryCommand: Equatable, Sendable {
-    case remember(String)
-    case list
-    case forgetMatching(String)
-    case forgetAll
-    case none
+enum MemoryNotice: Equatable, Sendable {
+    case remembered(String)
+    case forgotten(String)
+}
+
+actor MemoryToolContext {
+    func beginTurn(id: UInt64, userText: String) async
+    func search(query: String, limit: Int) async -> [MemoryFact]
+    func stageRemember(fact: String, supportingQuote: String) async -> String
+    func stageForget(memoryIDs: [UUID], forgetAll: Bool, supportingQuote: String) async -> String
+    func commitTurn() async throws -> [MemoryNotice]
+    func rollbackTurn() async
 }
 ```
 
-- [ ] **Step 2: Write parser and persistence tests first**
+- [ ] **Step 2: Write persistence and transaction tests first**
 
-Cover supported Japanese forms, ordinary utterances returning `.none`, restart reload, bounded count, deterministic duplicate update, individual deletion, full deletion, and deleted facts not appearing in prompt context.
+Cover restart reload, exact normalized duplicate update, stable search ordering, the 50-fact limit, the 8-result/1,024-token bounds, individual deletion, full deletion, three-mutation limit, commit, rollback, and committed facts surviving a new store instance. Verify a staged mutation is invisible after cancellation or generation failure.
 
 - [ ] **Step 3: Implement an actor-backed atomic JSON store**
 
-Store in Application Support. Write to a sibling temporary file and replace atomically. Do not add cloud sync, embeddings, automatic LLM extraction, or encryption UI.
+Store in Application Support. Apply every committed turn as one batch, write to a sibling temporary file, and replace atomically so a multi-tool turn cannot partially commit. Set complete file protection, exclude the file from backup, and never write facts or supporting quotes to production logs. Normalize text with `precomposedStringWithCanonicalMapping`, update the fact, quote, source turn, and timestamp for exact normalized duplicates, and reject a new fact when the 50-fact limit is reached rather than silently evicting one. Search sees committed facts plus the current turn's staged changes and uses deterministic normalized substring/token overlap with recency as the final tie-breaker; an empty query returns the most recently updated facts. Do not add cloud sync, embeddings, or encryption UI.
 
-- [ ] **Step 4: Route commands before reply generation**
+- [ ] **Step 4: Implement the three Foundation Models tools**
 
-Memory commands are handled by deterministic app logic. Gemma may generate the acknowledgement after the store mutation, but it must not decide what is persisted.
+Define `@Generable` arguments as follows:
 
-- [ ] **Step 5: Verify restart and deletion integration tests**
+```swift
+@Generable
+struct RememberMemoryArguments {
+    var fact: String
+    var supportingQuote: String
+}
 
-Expected: explicit facts survive a new store instance; ordinary speech and working summaries do not.
+@Generable
+struct ForgetMemoryArguments {
+    var memoryIDs: [String]
+    var forgetAll: Bool
+    var supportingQuote: String
+}
 
-- [ ] **Step 6: Commit memory**
+@Generable
+struct SearchMemoryArguments {
+    var query: String
+    var limit: Int
+}
+```
+
+`rememberMemory` stages one concise future-useful fact. `searchMemory` returns fact IDs and text, caps output to the remaining per-turn result/token allowance, and returns no private metadata. `forgetMemory` accepts only UUIDs returned by search in the current turn, or `forgetAll == true`. Both mutation tools require a nonempty `supportingQuote` that is an exact substring of the current user text after canonical normalization. Semantically invalid typed values return a short rejection string to Gemma and never mutate storage. A schema/argument decoding failure becomes a `ToolCallError`, and the reply service rolls the whole turn back. Only real store I/O errors throw from a successfully decoded tool call.
+
+- [ ] **Step 5: Compose tools into the Gemma reply session**
+
+Create the reply `LanguageModelSession` with the three tools and set `GenerationOptions.ToolCallingMode.allowed`. Tool descriptions tell Gemma to save stable preferences, relationships, routines, and user-provided facts that are likely useful later; skip transient observations, guesses, assistant-generated claims, summaries, and image-only conclusions. Tell Gemma to search before replacing or deleting a possibly conflicting fact. `MemoryToolContext` rejects calls beyond the per-turn totals with a short "tool budget exhausted; answer without another memory tool" result. Do not give these tools to `FoundationModelAddressClassifier` and do not run a separate extraction model call.
+
+Before each response, call `beginTurn`. On a fully successful response, call `commitTurn`; on cancellation, context failure, or generation failure, call `rollbackTurn`. The reply actor serializes this lifecycle with its existing context transaction so tool mutations and transcript state cannot diverge.
+
+- [ ] **Step 6: Show a small notice only after commit**
+
+Publish committed `MemoryNotice` values to `ConversationViewModel`, combine multiple same-turn mutations into one compact overlay/banner, truncate displayed fact text to 80 characters, and dismiss it after 2.5 seconds with a view-model-owned cancellable task. The notice must not require a tap, pause speech, steal focus, or become part of the conversation transcript. Provide an accessibility label. Do not add confirmation, settings, or memory-management screens.
+
+- [ ] **Step 7: Verify tool and UI integration tests**
+
+Use fake tools/session output to prove automatic remember/search/forget routing, successful-turn atomic commit and one combined notice, failure/cancellation/schema-decode rollback, no notice for search, no address-classifier access, and no deterministic requirement for the words `覚えて` or `忘れて`. Cover a missing/nonmatching quote, excess calls/mutations/results, a stale/unknown UUID, and storage failure; none may partially change the store. Do not duplicate tests for the dependency's unknown-tool JSON parser. No real model inference is used here.
+
+- [ ] **Step 8: Commit memory tools**
 
 ```bash
 git add CatRobot/Conversation/Memory CatRobot/Conversation/Integration CatRobotTests/Conversation
-git commit -m "feat: add explicit local conversation memory"
+git add CatRobot/Conversation/Services CatRobot/Conversation/UI
+git commit -m "feat: add Gemma-driven local memory tools"
 ```
 
 ---
@@ -563,7 +620,7 @@ git commit -m "feat: add explicit local conversation memory"
 
 **Interfaces:**
 - Produces: projected token accounting and a rebuildable context state.
-- Uses: session-scoped summary, four recent turn pairs, persistent facts, current input, image tokens, and output reserve.
+- Uses: session-scoped summary, four recent turn pairs, memory-tool definitions/results, current input, image tokens, and output reserve.
 
 - [ ] **Step 1: Define exact budgeting types**
 
@@ -582,12 +639,13 @@ struct TokenProjection: Equatable, Sendable {
     let instructions: Int
     let summary: Int
     let recentTurns: Int
-    let persistentMemory: Int
+    let memoryToolDefinitions: Int
+    let memoryToolResults: Int
     let currentInput: Int
     let images: Int
     let outputReserve: Int
     let margin: Int
-    var total: Int { instructions + summary + recentTurns + persistentMemory + currentInput + images + outputReserve + margin }
+    var total: Int { instructions + summary + recentTurns + memoryToolDefinitions + memoryToolResults + currentInput + images + outputReserve + margin }
 }
 
 struct ConversationTurn: Equatable, Sendable {
@@ -610,20 +668,20 @@ struct PreparedReplyContext: Equatable, Sendable {
 
 - [ ] **Step 2: Write failing threshold and preservation tests**
 
-Cover 256/512 reserve, image/memory inclusion, exact 80% boundary, summary separation from persistent facts, last four pairs verbatim, prompt exactly once, rollback on cancellation/failure, repeated compaction, and one context-exceeded retry.
+Cover 256/512 reserve, image/tool-definition/tool-result inclusion, exact 80% boundary, persistent store independence from summaries, last four pairs verbatim, prompt exactly once, rollback on cancellation/failure, repeated compaction, and one context-exceeded retry.
 
 - [ ] **Step 3: Implement the context actor**
 
 ```swift
 actor ConversationContextController {
-    func prepare(_ request: ReplyRequest, persistentFacts: [MemoryFact]) async throws -> PreparedReplyContext
+    func prepare(_ request: ReplyRequest) async throws -> PreparedReplyContext
     func record(user: ReplyRequest, assistant: String) async
-    func recoverFromContextExceeded(_ request: ReplyRequest, persistentFacts: [MemoryFact]) async throws -> PreparedReplyContext
+    func recoverFromContextExceeded(_ request: ReplyRequest) async throws -> PreparedReplyContext
     func reset() async
 }
 ```
 
-Compaction summarizes old turns with a dedicated Gemma session, retains four pairs verbatim, targets at most 40% of validated capacity, constructs a replacement transcript/session, then swaps only after successful preparation.
+Compaction summarizes old conversational turns with a dedicated Gemma session, excludes completed tool calls and tool outputs from the summary source, retains four pairs verbatim, reattaches the three tool definitions, targets at most 40% of validated capacity, constructs a replacement transcript/session, then swaps only after successful preparation. Persistent memory remains in `LocalMemoryStore` and is retrieved again through `searchMemory` when needed.
 
 - [ ] **Step 4: Add one retry around context exceeded**
 
@@ -657,7 +715,7 @@ git commit -m "feat: add bounded conversation compaction"
 
 **Interfaces:**
 - Preserves: existing lifecycle generation IDs, turn ownership, classifier sequencing, audio teardown, and reply reset behavior.
-- Adds: bounded preparation progress and memory command results. Vision remains a diagnostic path in Task 5.
+- Adds: bounded preparation progress, memory-tool transaction completion, and transient memory notices. Vision remains a diagnostic path in Task 5.
 
 - [ ] **Step 1: Write integration tests for the new flow**
 
@@ -666,7 +724,8 @@ Required sequences:
 ```text
 voice: recognize -> Apple classify -> Gemma reply -> speak
 typed: submit -> Gemma reply -> speak
-remember: parse -> persist -> acknowledgement
+memory mutation: begin turn -> Gemma tool call -> stage -> successful reply -> commit -> notice
+memory rollback: begin turn -> Gemma tool call -> stage -> cancel/fail -> discard
 contextExceeded: compact -> retry once -> speak or fail
 cancel: stop streaming -> preserve last committed context
 ```
@@ -681,7 +740,7 @@ Voice turns must still call `dependencies.classifier.classify` before the Gemma 
 
 - [ ] **Step 4: Preserve existing concurrency ownership**
 
-Do not introduce detached tasks around session mutation. All context and memory mutations go through their actors; UI changes remain `@MainActor`.
+Do not introduce detached tasks around session mutation. All context and memory mutations go through their actors; UI changes remain `@MainActor`. A transient notice is presentation state only and never delays reply streaming or speech.
 
 - [ ] **Step 5: Run existing and new integration tests**
 
@@ -791,7 +850,7 @@ Run the three fixtures and no-image control under the Task 5 cap. Record raw res
 
 - [ ] **Step 5: Run memory acceptance**
 
-Save one explicit fact, restart, list it, delete it, and prove it is no longer injected. Prove one ordinary utterance is not persisted.
+Use no more than six user-turn reply requests. State one stable preference without saying `覚えて`, prove Gemma calls `rememberMemory`, the successful turn commits it, and a small notice appears without blocking speech. Restart, ask a semantically related question, prove `searchMemory` retrieves the saved fact, then request deletion and prove `forgetMemory` removes it and emits a notice. Also give one clearly transient observation and prove no mutation tool is called. Record each tool name, validated arguments, tool result, commit/rollback outcome, and user-visible notice; do not record unrelated private conversation.
 
 - [ ] **Step 6: Verify warm-cache behavior and offline inference**
 
@@ -799,7 +858,7 @@ On a normal warm launch, prove full SHA does not rerun. After the model is insta
 
 - [ ] **Step 7: Record limitations**
 
-State that LiteRT Swift and the Foundation Models adapter are early-preview dependencies, transcript replay may increase long-context TTFT, the model is about 2.6 GB, and production readiness is not claimed.
+State that LiteRT Swift and the Foundation Models adapter are early-preview dependencies, the v0.16.0 adapter's guided generation and tool selection are soft prompt-driven JSON rather than hard constrained decoding, memory-worthy turns add a tool round trip, transcript replay may increase long-context TTFT, the model is about 2.6 GB, and production readiness is not claimed.
 
 ---
 
@@ -814,7 +873,7 @@ State that LiteRT Swift and the Foundation Models adapter are early-preview depe
 
 - [ ] **Step 1: Dispatch one Sol/xhigh formal reviewer**
 
-Use one `gpt-5.6-sol` subagent at `xhigh` to review requirement compliance, Swift concurrency, Foundation Models/LiteRT routing, model integrity policy, compaction prompt-once semantics, memory privacy, and whether tests prove the required behavior. Do not ask multiple agents to review the same diff.
+Use one `gpt-5.6-sol` subagent at `xhigh` to review requirement compliance, Swift concurrency, Foundation Models/LiteRT routing, model integrity policy, compaction prompt-once semantics, memory-tool authorization/transactionality/privacy, and whether tests prove the required behavior. Do not ask multiple agents to review the same diff.
 
 - [ ] **Step 2: Process round 1**
 
@@ -862,9 +921,9 @@ The PoC is complete only when all items below have evidence in the single valida
 4. Thinking/reasoning mode is absent from app configuration and UI.
 5. Normal replies cap at 256; detailed and image replies cap at 512.
 6. Three deterministic vision fixtures and a no-image control meet their semantic rubric within eight runs.
-7. Only explicit facts persist; restart, listing, individual deletion, and full deletion work.
+7. Gemma can autonomously call `rememberMemory`, `searchMemory`, and `forgetMemory`; a fact can persist without explicit command wording, only validated current-user quotes can source mutations, failed/cancelled turns roll back, restart/search/deletion work, and committed mutations produce only a small nonblocking notice.
 8. Context search finishes within 14 runs and records success/failure bounds plus the three-run stable capacity.
-9. Operational budget is exactly 80% of validated capacity, and a real compaction preserves summary, four recent pairs, persistent facts, and the current prompt exactly once.
+9. Operational budget is exactly 80% of validated capacity, and a real compaction preserves summary, four recent pairs, the independent memory store plus reattached tools, and the current prompt exactly once.
 10. Initial model integrity is verified; unchanged warm launch does not rehash the artifact.
 11. Generator contract, Simulator suite, signed device build, and integrated device acceptance pass.
 12. Formal review consumes at most two rounds and leaves no Critical/Important finding.
