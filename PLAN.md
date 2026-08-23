@@ -33,6 +33,7 @@
 - 通常の文体は結論先行の1〜3文とし、詳細は要求された場合だけ展開する。
 - `rememberMemory`、`forgetMemory`、`searchMemory`、`getCurrentDateTime` toolはGemma reply sessionだけに渡す。Apple住所判定classifierとcompaction専用sessionには渡さない。
 - Foundation Modelsのtool-calling modeは`.allowed`を使い、`.required`は使わない。通常応答に不要なtool round tripを強制しない。
+- reply sessionへ渡す4 toolは、個別tool上限やmutation件数上限を設けず、4 tool合計でuser turnごとに最大12 callとする。13 call目は実行せず、取得済み結果で回答するようGemmaへ返す。
 - `getCurrentDateTime`は端末の現在日時・曜日・timezoneだけを返すread-only toolとする。network access、永続化、memory通知、system clock変更を行わない。
 - Gemmaは通常のユーザー発話から有用な事実を自律的に保存してよい。変更の`supportingQuote`がUnicode正規化後の現在のユーザーtext内に存在する場合だけ有効とする。assistant応答、summary、tool output、画像だけからの推論はmemory sourceにしない。
 - 生成中のmemory変更はstageし、応答成功後だけcommitして小さな一時通知を表示する。確認dialogやblockingなmemory UIは追加しない。
@@ -124,6 +125,7 @@ modelはApplication Support配下へ保存し、backup対象から除外する�
 - `CatRobot/Conversation/Memory/RememberMemoryTool.swift`を作成する。
 - `CatRobot/Conversation/Memory/ForgetMemoryTool.swift`を作成する。
 - `CatRobot/Conversation/Memory/SearchMemoryTool.swift`を作成する。
+- `CatRobot/Conversation/Tools/ReplyToolCallBudget.swift`を作成する。
 - `CatRobot/Conversation/Tools/CurrentDateTimeTool.swift`を作成する。
 - `CatRobot/Conversation/UI/MemoryNoticeView.swift`を作成する。
 
@@ -526,15 +528,16 @@ git commit -m "feat: add bounded Gemma vision probe"
 - 新規作成: `CatRobot/Conversation/Memory/RememberMemoryTool.swift`
 - 新規作成: `CatRobot/Conversation/Memory/ForgetMemoryTool.swift`
 - 新規作成: `CatRobot/Conversation/Memory/SearchMemoryTool.swift`
+- 新規作成: `CatRobot/Conversation/Tools/ReplyToolCallBudget.swift`
 - 新規作成: `CatRobot/Conversation/Tools/CurrentDateTimeTool.swift`
 - 新規作成: `CatRobot/Conversation/UI/MemoryNoticeView.swift`
-- テスト: 対応するmemory testと`CatRobotTests/Conversation/Tools/CurrentDateTimeToolTests.swift`
+- テスト: 対応するmemory test、`CatRobotTests/Conversation/Tools/ReplyToolCallBudgetTests.swift`、`CatRobotTests/Conversation/Tools/CurrentDateTimeToolTests.swift`
 - 変更: `GemmaFoundationModelFactory.swift`、`GemmaFoundationModelReplyService.swift`、`ConversationDependencies.swift`、`ConversationViewModel.swift`、`ConversationViewState.swift`、`ConversationView.swift`、各fake
 
 **インターフェース:**
 - 提供: local-onlyのfact CRUDとFoundation Modelsの`rememberMemory`、`forgetMemory`、`searchMemory`、`getCurrentDateTime` tool。
 - 提供: reply生成成功後だけcommitするturn単位のstaged mutation。
-- 上限: 保存fact 50件。user turnごとに受理するmemory-tool call 5回、search 2回、search result合計8件、search-result token合計1,024、staged mutation 3件、current-date-time call 1回。
+- 上限: 保存fact 50件。user turnごとに4 tool合計12 call、search result合計8件、search-result token合計1,024。個別tool上限とstaged mutation件数上限は設けない。
 
 - [ ] **ステップ1: 保存record、通知、turn単位transaction境界を定義する**
 
@@ -561,11 +564,20 @@ actor MemoryToolContext {
     func commitTurn() async throws -> [MemoryNotice]
     func rollbackTurn() async
 }
+
+actor ReplyToolCallBudget {
+    static let maximumCallsPerTurn = 12
+
+    func beginTurn(id: UInt64)
+    func consumeCall() -> Bool
+}
 ```
+
+4 toolは同じ`ReplyToolCallBudget` instanceを共有する。各toolはdecode後、意味検証や本体処理より先に`consumeCall()`を呼ぶ。最初の12 callは`true`、13 call目以降は`false`を返す。semantic rejectや同じtool/argumentの繰り返しも1 callとして数え、cacheによる短絡は行わない。`beginTurn`はcounterだけをresetする。
 
 - [ ] **ステップ2: persistenceとtransactionのtestを先に書く**
 
-restart後のreload、正規化後に完全一致するduplicateのupdate、安定したsearch順序、50 fact上限、8 result/1,024 token上限、個別削除、全削除、3 mutation上限、commit、rollback、新しいstore instanceでもcommit済みfactが残ることを検証する。cancellationまたはgeneration failure後にstaged mutationが見えないことも確認する。
+restart後のreload、正規化後に完全一致するduplicateのupdate、安定したsearch順序、50 fact上限、8 result/1,024 token上限、個別削除、全削除、4件以上のmutationも個別上限ではrejectされないこと、commit、rollback、新しいstore instanceでもcommit済みfactが残ることを検証する。cancellationまたはgeneration failure後にstaged mutationが見えないことも確認する。shared call budgetは4 toolを任意の順で合計12回まで受理し、13回目を実行しないこと、個別tool回数やmutation件数ではrejectしないこと、semantic rejectと同一tool/argumentの繰り返しもcall数へ含むこと、繰り返したtool本体が毎回実行されること、次turnでcounterがresetされることを検証する。
 
 - [ ] **ステップ3: actor-backedのatomic JSON storeを実装する**
 
@@ -619,32 +631,17 @@ struct CurrentDateTimeArguments {
     var includeSeconds: Bool
 }
 
-actor CurrentDateTimeCallGate {
-    private var activeTurnID: UInt64?
-    private var consumed = false
-
-    func beginTurn(id: UInt64) {
-        activeTurnID = id
-        consumed = false
-    }
-
-    func consumeCall() -> Bool {
-        guard activeTurnID != nil, !consumed else { return false }
-        consumed = true
-        return true
-    }
-}
 ```
 
-live providerは`Date.now`、Gregorian `Calendar`、`TimeZone.autoupdatingCurrent`をcall時に読み、`en_US_POSIX`の安定したISO 8601/local表現を生成する。`includeSeconds == true`では`2026-08-24T12:34:56+09:00`/`12:34:56`、falseでは`2026-08-24T12:34+09:00`/`12:34`の粒度にする。`isoWeekday`は月曜を1、日曜を7とする。`CurrentDateTimeTool`はsnapshotをJSON textとして返すだけで、network、file、memory store、UI、system clockを変更しない。`CurrentDateTimeCallGate`で最初の1 callだけを受理し、2回目以降は`current date-time already supplied; answer without calling this tool again`を返す。
+live providerは`Date.now`、Gregorian `Calendar`、`TimeZone.autoupdatingCurrent`をcallごとに読み、`en_US_POSIX`の安定したISO 8601/local表現を生成する。`includeSeconds == true`では`2026-08-24T12:34:56+09:00`/`12:34:56`、falseでは`2026-08-24T12:34+09:00`/`12:34`の粒度にする。`isoWeekday`は月曜を1、日曜を7とする。`CurrentDateTimeTool`はsnapshotをJSON textとして返すだけで、network、file、memory store、UI、system clockを変更しない。日時tool固有のcall gateやcacheは設けず、他の3 toolと同じ`ReplyToolCallBudget`だけを使用する。同一turnで同じargumentが再度呼ばれた場合も、総call budget内なら現在の時計を再取得する。
 
-testでは`FixedCurrentDateTimeProvider`をinjectし、`2026-08-24T12:34:56+09:00`、`Asia/Tokyo`、ISO weekday 1、`includeSeconds`のtrue/false、同一turnの2回目reject、次turnでのgate reset、notificationとmemory mutationが発生しないことを検証する。testはsystem clockへ依存させない。
+testでは`FixedCurrentDateTimeProvider`と時刻を順に返すtest providerをinjectし、`2026-08-24T12:34:56+09:00`、`Asia/Tokyo`、ISO weekday 1、`includeSeconds`のtrue/false、同一turnの同一argumentでもproviderが毎回呼ばれて新しいsnapshotを返すこと、総call budget内で繰り返し実行できること、notificationとmemory mutationが発生しないことを検証する。testはsystem clockへ依存させない。
 
 - [ ] **ステップ6: toolをGemma reply sessionへcomposeする**
 
-4つのtoolを渡してreply用`LanguageModelSession`を生成し、`GenerationOptions.ToolCallingMode.allowed`を設定する。memory tool descriptionでは、後で有用になりそうな安定した好み、人間関係、routine、ユーザー提供factを保存し、一時的な観察、推測、assistantが生成した主張、summary、画像だけからの結論は保存しないようGemmaへ指示する。既存factと競合し得るfactを置換または削除する前にはsearchするよう指示する。日時tool descriptionでは、現在日時、曜日、timezone、相対日付の基準が必要な場合だけ1回呼び、modelの学習知識から現在日時を推測しないよう指示する。`MemoryToolContext`はturn単位上限を超えるcallに、短い`tool budget exhausted; answer without another memory tool` resultを返してrejectする。これらのtoolを`FoundationModelAddressClassifier`やcompaction専用sessionへ渡さず、別のextraction model callも実行しない。
+4つのtoolを渡してreply用`LanguageModelSession`を生成し、`GenerationOptions.ToolCallingMode.allowed`を設定する。memory tool descriptionでは、後で有用になりそうな安定した好み、人間関係、routine、ユーザー提供factを保存し、一時的な観察、推測、assistantが生成した主張、summary、画像だけからの結論は保存しないようGemmaへ指示する。既存factと競合し得るfactを置換または削除する前にはsearchするよう指示する。日時tool descriptionでは、現在日時、曜日、timezone、相対日付の基準が必要な場合だけ呼び、modelの学習知識から現在日時を推測しないよう指示する。4つすべてのtoolへ同じ`ReplyToolCallBudget`をinjectし、13 call目以降は短い`tool budget exhausted; answer using available tool results`を返してtool本体を実行しない。これらのtoolを`FoundationModelAddressClassifier`やcompaction専用sessionへ渡さず、別のextraction model callも実行しない。
 
-各response前にmemory transactionとcurrent-date-time call gateの`beginTurn`を呼ぶ。responseが完全に成功した場合はmemoryの`commitTurn`、cancellation、context failure、generation failureではmemoryの`rollbackTurn`を呼ぶ。日時toolはread-onlyなのでcommit/rollback対象にしない。reply actorはこのlifecycleを既存context transactionと同じ順序でserializeし、tool mutationとtranscript stateが食い違わないようにする。
+各response前にmemory transactionとshared tool-call budgetの`beginTurn`を呼ぶ。responseが完全に成功した場合はmemoryの`commitTurn`、cancellation、context failure、generation failureではmemoryの`rollbackTurn`を呼ぶ。日時toolとtool-call budgetはread-only/ephemeralなのでcommit/rollback対象にしない。reply actorはこのlifecycleを既存context transactionと同じ順序でserializeし、tool mutationとtranscript stateが食い違わないようにする。
 
 - [ ] **ステップ7: memory commit後だけ小さな通知を表示する**
 
@@ -652,7 +649,7 @@ commit済み`MemoryNotice`を`ConversationViewModel`へpublishし、同一turn�
 
 - [ ] **ステップ8: toolとUIのintegration testを確認する**
 
-fake tool/session outputを使用し、自動remember/search/forget routing、成功turnのatomic commitと1つにまとめた通知、failure/cancellation/schema-decode時のrollback、searchと日時取得では通知しないこと、日時取得がmemory transactionへ影響しないこと、住所判定classifierとcompaction専用sessionから全reply toolへaccessできないこと、`覚えて`や`忘れて`という語を決定論的な必須条件にしないことを証明する。quote欠落・不一致、call/mutation/result超過、stale/unknown UUID、storage failureを検証し、いずれもstoreを部分変更してはならない。dependency側のunknown-tool JSON parser testは重複させない。ここでは実model inferenceを使わない。
+fake tool/session outputを使用し、自動remember/search/forget routing、成功turnのatomic commitと1つにまとめた通知、failure/cancellation/schema-decode時のrollback、searchと日時取得では通知しないこと、日時取得がmemory transactionへ影響しないこと、住所判定classifierとcompaction専用sessionから全reply toolへaccessできないこと、`覚えて`や`忘れて`という語を決定論的な必須条件にしないことを証明する。quote欠落・不一致、4 tool共通の12-call超過、result allowance超過、stale/unknown UUID、storage failureを検証し、いずれもstoreを部分変更してはならない。mutation件数だけを理由にrejectするtestは置かない。dependency側のunknown-tool JSON parser testは重複させない。ここでは実model inferenceを使わない。
 
 - [ ] **ステップ9: Gemma reply toolをcommitする**
 
@@ -781,7 +778,7 @@ voice: recognize -> Apple classify -> Gemma reply -> speak
 typed: submit -> Gemma reply -> speak
 memory mutation: begin turn -> Gemma tool call -> stage -> successful reply -> commit -> notice
 memory rollback: begin turn -> Gemma tool call -> stage -> cancel/fail -> discard
-current date/time: begin turn -> Gemma tool call -> read device clock once -> reply without notice
+current date/time: begin turn -> shared 12-call budget -> Gemma tool call -> read current device clock -> reply without notice
 contextExceeded: compact -> retry once -> speak or fail
 cancel: stop streaming -> preserve last committed context
 ```
@@ -908,7 +905,7 @@ voice発話がApple content-tagging classificationの後にFoundation Models-bac
 
 - [ ] **ステップ5: reply tool acceptanceを実行する**
 
-user-turn reply requestは全toolを合わせて6回以内とする。`覚えて`と言わずに安定した好みを1つ述べ、Gemmaが`rememberMemory`を呼ぶこと、成功turnでcommitされること、speechをblockせず小さな通知が表示されることを証明する。restart後、意味的に関連する質問を行い、`searchMemory`が保存factを取得することを証明する。次に削除を依頼し、`forgetMemory`が削除して通知を出すことを証明する。明らかに一時的な観察も1つ与え、mutation toolが呼ばれないことを証明する。5回目に現在日時・曜日・timezoneを尋ね、Gemmaが`getCurrentDateTime`を1回だけ呼ぶこと、返したinstantがtool call前後に取得したdevice clockの範囲内でありtimezone identifier/offsetが端末値と一致すること、通知とmemory mutationがないことを証明する。6回目は日時を必要としない通常質問を行い、`getCurrentDateTime`を呼ばないことを証明する。各tool名、検証済みargument、tool result、commit/rollback outcome、user-visible通知を記録し、無関係なprivate conversationは記録しない。
+tool acceptance用のuser-turn reply requestは検証全体で6 turn以内とする。各user turnでは4 toolのcall合計が12回以内であることを記録する。`覚えて`と言わずに安定した好みを1つ述べ、Gemmaが`rememberMemory`を呼ぶこと、成功turnでcommitされること、speechをblockせず小さな通知が表示されることを証明する。restart後、意味的に関連する質問を行い、`searchMemory`が保存factを取得することを証明する。次に削除を依頼し、`forgetMemory`が削除して通知を出すことを証明する。明らかに一時的な観察も1つ与え、mutation toolが呼ばれないことを証明する。5回目に現在日時・曜日・timezoneを尋ね、Gemmaが必要に応じて`getCurrentDateTime`を呼ぶこと、各返却instantがそれぞれのtool call前後に取得したdevice clockの範囲内でありtimezone identifier/offsetが端末値と一致すること、通知とmemory mutationがないことを証明する。6回目は日時を必要としない通常質問を行い、`getCurrentDateTime`を呼ばないことを証明する。各turnの総call数、各tool名、検証済みargument、tool result、commit/rollback outcome、user-visible通知を記録し、無関係なprivate conversationは記録しない。
 
 - [ ] **ステップ6: warm-cache behaviorとoffline inferenceを確認する**
 
@@ -954,8 +951,8 @@ branch、worktree、base SHA、変更file、厳密なpin、command/result、実�
 4. app configurationとUIにthinking/reasoning modeが存在しない。
 5. 通常replyは256、詳細・画像replyは512を上限とする。
 6. 3つの決定論的vision fixtureとno-image controlが8 run以内でsemantic rubricを満たす。
-7. Gemmaが`rememberMemory`、`searchMemory`、`forgetMemory`を自律的に呼べる。明示的なcommand wordingがなくてもfactを保存できる一方、検証済みの現在user quoteだけをmutation sourceにできる。failure/cancellation時はrollbackし、restart/search/deletionが動作し、commit済みmutationでは小さな非blocking通知だけを表示する。
-8. Gemmaが必要時だけ`getCurrentDateTime`を1 turn 1回以内で呼び、端末由来の現在日時、ISO曜日、timezone identifier、UTC offsetを取得できる。toolはread-onlyで、network、永続化、通知、memory mutationを行わない。
+7. Gemmaが`rememberMemory`、`searchMemory`、`forgetMemory`を自律的に呼べる。明示的なcommand wordingがなくてもfactを保存できる一方、検証済みの現在user quoteだけをmutation sourceにできる。failure/cancellation時はrollbackし、restart/search/deletionが動作し、commit済みmutationでは小さな非blocking通知だけを表示する。mutation件数だけの上限は設けない。
+8. Gemmaが必要時だけ`getCurrentDateTime`を呼び、callごとに端末由来の現在日時、ISO曜日、timezone identifier、UTC offsetを取得できる。4 toolは個別上限なしで1 turn合計12 call以内とし、同じtool/argumentでもcacheせず毎回実行し、13 call目は実行しない。日時toolはread-onlyで、network、永続化、通知、memory mutationを行わない。
 9. Context searchが14 run以内に完了し、success/failure boundと3 run安定したcapacityを記録する。
 10. Operational budgetがvalidated capacityの厳密に80%であり、実際のcompaction後もsummary、直近4 pair、独立memory storeと再attachした4 tool、現在promptの厳密に1回の出現を維持する。
 11. 初回model integrityが検証され、変更のないwarm launchではartifactを再hashしない。
