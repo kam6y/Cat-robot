@@ -1351,7 +1351,7 @@ git commit -m "test: enforce reply tool architecture boundaries"
 - Consumes: Tasks 1-5 commits and all existing independent memory/tool evidence。
 - Produces: one evidence document with exact HEAD、toolchain/device versions、commands、exit status、test counts、xcresult paths、review findings、scope scans、build/install/launch result、known limitations。
 
-- [ ] **Step 1: Run an independent whole-change review before spending final validation budget**
+- [x] **Step 1: Run an independent whole-change review before spending final validation budget**
 
 Provide the reviewer the spec、this plan、base c85da4c、current HEAD、all task reports/diffs。Require severity-ranked findings with file:line evidence and explicit checks for:
 
@@ -1366,7 +1366,7 @@ Provide the reviewer the spec、this plan、base c85da4c、current HEAD、all ta
 
 If Critical/Important findings exist, perform a focused RED → minimal fix → focused GREEN wave and re-review。At most2 waves; do not perform unrelated simplification or scope expansion。
 
-- [ ] **Step 2: Re-enumerate the connected device and record exact identifiers**
+- [x] **Step 2: Re-enumerate the connected device and record exact identifiers**
 
 Run:
 
@@ -1382,7 +1382,7 @@ Expected current mapping is Xcode destination 00008140-000610311A90801C and Core
 
 For every remaining command block, set CATROBOT_XCODE_DEVICE_ID and CATROBOT_CORE_DEVICE_ID to the exact values observed in this step。The assignments below show the currently expected values; replace only the right-hand side when fresh enumeration differs。
 
-- [ ] **Step 3: Run the one final generator contract**
+- [x] **Step 3: Run the one final generator contract**
 
 Run:
 
@@ -1395,7 +1395,7 @@ git diff --exit-code -- CatRobot.xcodeproj/project.pbxproj
 
 Expected: all exit0、generator rerun creates no diff。
 
-- [ ] **Step 4: Run the one fresh focused device bundle**
+- [x] **Step 4: Run the one fresh focused device bundle**
 
 Run with the freshly confirmed destination ID:
 
@@ -1427,7 +1427,7 @@ CATROBOT_XCODE_DEVICE_ID='00008140-000610311A90801C'
 
 Expected: exit0、0 failed、0 skipped、0 expected failures。Use xcresulttool to record exact executed/passed counts and device/OS。
 
-- [ ] **Step 5: Run the one fresh full device regression**
+- [x] **Step 5: Run the one fresh full device regression**
 
 Run:
 
@@ -1443,7 +1443,7 @@ CATROBOT_XCODE_DEVICE_ID='00008140-000610311A90801C'
 
 Expected: exit0、every executed test passes。SpeechAudioConverterTests classだけが既知のunchanged exclusionであり、他のskipを追加しない。
 
-- [ ] **Step 6: Run final scope/privacy/worktree checks**
+- [x] **Step 6: Run final scope/privacy/worktree checks**
 
 Run:
 
@@ -1466,7 +1466,7 @@ git status --short --branch
 
 Expected: host contract PASS、privacy/dependency/logging scans empty、diff check exit0、status has branch header only as a pre-evidence cleanliness checkpoint。This is not the final clean result; Step10 repeats the check after the evidence commit。
 
-- [ ] **Step 7: Build the signed device app**
+- [x] **Step 7: Build the signed device app**
 
 Run with the freshly confirmed destination:
 
@@ -1485,7 +1485,7 @@ CATROBOT_XCODE_DEVICE_ID='00008140-000610311A90801C'
 
 Expected: BUILD SUCCEEDED、automatic signing team VUB4VP6453、bundle com.kamby.CatRobot。CODE_SIGNING_ALLOWED=NOを使わない。
 
-- [ ] **Step 8: Overwrite-install without uninstall and launch normally**
+- [x] **Step 8: Overwrite-install without uninstall and launch normally**
 
 Run with the freshly confirmed CoreDevice ID:
 
@@ -1502,7 +1502,7 @@ CATROBOT_CORE_DEVICE_ID='59199D1B-26D5-5063-8A43-BE38E8008EAD'
 
 Expected: install reports the existing bundle replaced/installed successfully without uninstall、launch reports a running process。Do not send a stochastic tool prompt; leave hands-on typed/voice verification to the user。
 
-- [ ] **Step 9: Write and commit validation evidence**
+- [x] **Step 9: Write and commit validation evidence**
 
 Create docs/validation/2026-08-24-live-reply-tools-integration.md with:
 
@@ -1520,7 +1520,7 @@ git add docs/validation/2026-08-24-live-reply-tools-integration.md
 git commit -m "docs: record live reply tool validation"
 ~~~
 
-- [ ] **Step 10: Prove final completion state**
+- [x] **Step 10: Prove final completion state**
 
 Run:
 
