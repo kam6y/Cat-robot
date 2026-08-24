@@ -422,7 +422,7 @@ actor ToolEnabledReplyService {
 - Internal ToolRuntime contains one store、one context、one budget、and stable [any Tool] in remember/forget/search/date order.
 - streamReplyはisGeneratingを最初のawaitより前にreserveし、準備とturn setup後にone producer Taskを作る。cancelActiveReply cancels and awaits that same Task, so its return is the cleanup completion barrier.
 
-- [ ] **Step 1: Build deterministic fakes and write the service RED suite**
+- [x] **Step 1: Build deterministic fakes and write the service RED suite**
 
 ReplySessionTestDoubles.swiftにactor ReplySessionFactorySpyとactor ReplySessionClientSpyを作る。Factory spyはreceived tool arrays、make count、prepare countを記録する。Client spyはTranscript checkpoint、restore history、options、promptsを記録し、test closureが渡されたactual tool valuesをdowncastしてcallできるようにする。
 
@@ -568,7 +568,7 @@ XCTAssertFalse(didEmitCommitted)
 
 CompletionProbeはReplySessionTestDoubles.swiftに置くactorで、private(set) var isCompleted = falseとfunc markCompleted()を持つ。Decode testはclient spyのsourceをLanguageModelSession.GenerationError.decodingFailure相当のtest failureで終了させ、rollback/restore/no commitをassertする。13th-call test invokes the actual CurrentDateTimeTool 13 times from the fake client and asserts provider call count is12、the 13th body did not run、store is unchanged、restoreCount is1、committed event is absent。Store/session preparation failure testsはstream以前のthrow、0 tool body、0 memory save、0 committed eventをassertする。Restart testは1つのtemporary memories.json URLを2つのmakeMemoryStore closureで共有し、first serviceのactual remember toolでcommit後にserviceを破棄し、second serviceのactual search toolが同じfactを返すことをassertする。Application Support implementation自体は既存LocalMemoryStore.applicationSupport()を変更せず、live initializerのdefault closureがそれを直接呼ぶことをcomposition testでassertする。
 
-- [ ] **Step 2: Regenerate and run RED**
+- [x] **Step 2: Regenerate and run RED**
 
 Run:
 
@@ -583,7 +583,7 @@ ruby scripts/generate_project.rb
 
 Expected: FAIL because ToolEnabledReplyService does not exist。
 
-- [ ] **Step 3: Implement one lazy persistent ToolRuntime and idempotent prepare**
+- [x] **Step 3: Implement one lazy persistent ToolRuntime and idempotent prepare**
 
 Use this exact runtime shape and order:
 
@@ -615,7 +615,7 @@ private func makeRuntime() throws -> ToolRuntime {
 
 prepare()はfactory.prepare()、runtimeの1回だけの生成、sessionFactory.makeSession(tools:)、client.prewarm()を行う。actor reentrancyによる二重session生成を防ぐためprivate var preparationTask: Task<any ReplySessionClient, Error>?とactivePreparationIDを持ち、既存taskがあれば同じvalueをawaitする。runtimeは最初のawaitより前にactor stateへ保存し、成功時だけclientへ保存する。preparationTask/activePreparationIDは成功・failure・cancellationのすべてでin-flight ownerがclearし、completed Taskをstateへ残さない。store init failureは.toolRuntimeFailed、factoryが投げたConversationServiceErrorはそのまま伝播する。
 
-- [ ] **Step 4: Implement the serialized transaction and terminal event**
+- [x] **Step 4: Implement the serialized transaction and terminal event**
 
 streamReplyはguard !isGeneratingの直後、最初のawaitより前にisGenerating = trueとして重複requestをreserveする。setup errorではdeferではなくcatchでtransaction開始有無を確認してrollback/restoreし、isGeneratingをclearする。sequenceは次を崩さない。
 
@@ -650,7 +650,7 @@ continuation.finish()
 
 aggregate rulesは[]→nil、rememberedだけ→.remembered、forgottenだけ→.forgotten、両方→.updated。associated Stringをservice外へ返さない。
 
-- [ ] **Step 5: Implement atomic failure cleanup and the awaitable barrier**
+- [x] **Step 5: Implement atomic failure cleanup and the awaitable barrier**
 
 Commit成功前のcatch pathだけで、source producer cancellation → context.rollbackTurn() → client.restoreTranscript(checkpoint)の順にawaitする。commit後はcancellation/TTS failureでmemoryを戻さない。isGenerating/activeProducerをclearするのはrollback/restoreの後だけにする。
 
@@ -666,7 +666,7 @@ AsyncThrowingStream.onTerminationはproducer.cancel()だけを行う。cleanup�
 
 reset()はactive producerがあればcancel/awaitする。次にin-flight preparationTaskをcancelしてresultをawaitし、そのTaskとactivePreparationIDとclientをclearしてから、同じToolRuntimeを保持した新しいprepare()を1回呼ぶ。これによりreset前のcompleted/in-flight Taskがold clientを復活させない。nonthrowing reset中のfactory failureはpreparation stateとclientをnilのままにし、次のthrowing prepare()でvisibleにする。
 
-- [ ] **Step 6: Run GREEN with unchanged memory/tool suites**
+- [x] **Step 6: Run GREEN with unchanged memory/tool suites**
 
 Run:
 
@@ -687,7 +687,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: all selected tests PASS、0 skipped、0 expected failures。
 
-- [ ] **Step 7: Review Task 2 and commit**
+- [x] **Step 7: Review Task 2 and commit**
 
 Review actor reentrancy、producer ownership、commit/cancellation gap、same-turn budget、stable tools、private payload non-escape、all precommit failure paths。Critical/Important findingを修正しGREENを再実行する。
 
