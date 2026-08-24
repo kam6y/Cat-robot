@@ -95,7 +95,7 @@ struct CurrentDateTimeTool: Tool {
         try await budget.consumeCall()
 
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(provider.snapshot(includeSeconds: arguments.includeSeconds))
         return String(decoding: data, as: UTF8.self)
     }

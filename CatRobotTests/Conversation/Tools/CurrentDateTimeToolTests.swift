@@ -23,6 +23,41 @@ private final class SequencedCurrentDateTimeProvider: CurrentDateTimeProviding, 
     }
 }
 
+private final class SequencedLiveCurrentDateTimeInputs: @unchecked Sendable {
+    private let lock = NSLock()
+    private var dates: [Date]
+    private var timeZones: [TimeZone]
+    private var storedNowReadCount = 0
+    private var storedTimeZoneReadCount = 0
+
+    init(dates: [Date], timeZones: [TimeZone]) {
+        self.dates = dates
+        self.timeZones = timeZones
+    }
+
+    var nowReadCount: Int {
+        lock.withLock { storedNowReadCount }
+    }
+
+    var timeZoneReadCount: Int {
+        lock.withLock { storedTimeZoneReadCount }
+    }
+
+    func nextDate() -> Date {
+        lock.withLock {
+            storedNowReadCount += 1
+            return dates.removeFirst()
+        }
+    }
+
+    func nextTimeZone() -> TimeZone {
+        lock.withLock {
+            storedTimeZoneReadCount += 1
+            return timeZones.removeFirst()
+        }
+    }
+}
+
 final class CurrentDateTimeToolTests: XCTestCase {
     func testToolReturnsExactSortedJSONWithTheSpecifiedIdentity() async throws {
         let snapshot = tokyoSnapshot(second: 56)
@@ -40,7 +75,7 @@ final class CurrentDateTimeToolTests: XCTestCase {
         )
         XCTAssertEqual(
             output,
-            #"{"iso8601":"2026-08-24T12:34:56+09:00","isoWeekday":1,"localDate":"2026-08-24","localTime":"12:34:56","timeZoneIdentifier":"Asia/Tokyo","utcOffsetSeconds":32400}"#
+            #"{"iso8601":"2026-08-24T12:34:56+09:00","isoWeekday":1,"localDate":"2026-08-24","localTime":"12:34:56","timeZoneIdentifier":"Asia\/Tokyo","utcOffsetSeconds":32400}"#
         )
         XCTAssertEqual(
             try JSONDecoder().decode(CurrentDateTimeSnapshot.self, from: Data(output.utf8)),
@@ -61,6 +96,65 @@ final class CurrentDateTimeToolTests: XCTestCase {
 
         XCTAssertNotEqual(first, second)
         XCTAssertEqual(provider.readCount, 2)
+    }
+
+    func testLiveProviderReadsEachInjectedInputAgainForEverySnapshot() {
+        let inputs = SequencedLiveCurrentDateTimeInputs(
+            dates: [
+                Date(timeIntervalSince1970: 1_787_542_496),
+                Date(timeIntervalSince1970: 1_772_955_000),
+            ],
+            timeZones: [
+                TimeZone(identifier: "Asia/Tokyo")!,
+                TimeZone(identifier: "America/New_York")!,
+            ]
+        )
+        let provider = LiveCurrentDateTimeProvider(
+            now: { inputs.nextDate() },
+            timeZone: { inputs.nextTimeZone() }
+        )
+
+        let first = provider.snapshot(includeSeconds: true)
+
+        XCTAssertEqual(first, tokyoSnapshot(second: 56))
+        XCTAssertEqual(inputs.nowReadCount, 1)
+        XCTAssertEqual(inputs.timeZoneReadCount, 1)
+
+        let second = provider.snapshot(includeSeconds: true)
+
+        XCTAssertEqual(
+            second,
+            CurrentDateTimeSnapshot(
+                iso8601: "2026-03-08T03:30:00-04:00",
+                localDate: "2026-03-08",
+                localTime: "03:30:00",
+                isoWeekday: 7,
+                timeZoneIdentifier: "America/New_York",
+                utcOffsetSeconds: -14_400
+            )
+        )
+        XCTAssertEqual(inputs.nowReadCount, 2)
+        XCTAssertEqual(inputs.timeZoneReadCount, 2)
+    }
+
+    func testToolConsumesCallsAlreadyReservedByAnotherConsumer() async throws {
+        let provider = SequencedCurrentDateTimeProvider([tokyoSnapshot(second: 56)])
+        let budget = ReplyToolCallBudget()
+        await budget.beginTurn(id: 8)
+        for _ in 0..<11 {
+            try await budget.consumeCall()
+        }
+        let tool = CurrentDateTimeTool(provider: provider, budget: budget)
+
+        _ = try await tool.call(arguments: .init(includeSeconds: true))
+        do {
+            _ = try await tool.call(arguments: .init(includeSeconds: true))
+            XCTFail("Expected the thirteenth call to throw")
+        } catch {
+            XCTAssertEqual(error as? ReplyToolCallLimitExceeded, .init())
+        }
+
+        XCTAssertEqual(provider.readCount, 1)
     }
 
     func testThirteenthToolCallDoesNotReadTheProvider() async throws {
