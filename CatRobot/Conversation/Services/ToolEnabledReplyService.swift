@@ -59,6 +59,8 @@ actor ToolEnabledReplyService {
     private var isGenerating = false
     private var activeReplyOperation: Task<Void, Never>?
     private var activeReplyOperationID: UUID?
+    private var resetTask: Task<Void, Never>?
+    private var activeResetID: UUID?
 
     init(
         sessionFactory: any ReplySessionFactory,
@@ -118,7 +120,7 @@ actor ToolEnabledReplyService {
     func streamReply(
         to request: ReplyTurnRequest
     ) async throws -> AsyncThrowingStream<ReplyStreamEvent, Error> {
-        guard !isGenerating else {
+        guard !isGenerating, resetTask == nil else {
             throw ConversationServiceError.modelBusy
         }
         isGenerating = true
@@ -175,6 +177,25 @@ actor ToolEnabledReplyService {
     }
 
     func reset() async {
+        if let resetTask {
+            await resetTask.value
+            return
+        }
+
+        let resetID = UUID()
+        let task = Task {
+            await self.performReset()
+        }
+        resetTask = task
+        activeResetID = resetID
+        await task.value
+        if activeResetID == resetID {
+            resetTask = nil
+            activeResetID = nil
+        }
+    }
+
+    private func performReset() async {
         if let operation = activeReplyOperation {
             operation.cancel()
             await operation.value

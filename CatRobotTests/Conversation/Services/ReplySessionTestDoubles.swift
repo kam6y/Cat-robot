@@ -63,6 +63,27 @@ actor CompletionProbe {
     }
 }
 
+actor FirstValue<Value: Sendable> {
+    private var value: Value?
+    private var waiter: CheckedContinuation<Value, Never>?
+
+    func resolve(_ value: Value) {
+        guard self.value == nil else { return }
+        self.value = value
+        waiter?.resume(returning: value)
+        waiter = nil
+    }
+
+    func wait() async -> Value {
+        if let value {
+            return value
+        }
+        return await withCheckedContinuation { continuation in
+            waiter = continuation
+        }
+    }
+}
+
 actor ReplySessionSignal {
     private var isSignalled = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -117,19 +138,26 @@ actor ReplySessionRestoreGate {
 
 actor ReplySessionBlockingGate {
     private var didStart = false
+    private var didObserveCancellation = false
     private var isReleased = false
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var cancellationOrReleaseWaiters: [CheckedContinuation<Bool, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
     func enterAndWaitIgnoringCancellation() async {
-        didStart = true
-        let pending = startWaiters
-        startWaiters.removeAll()
-        pending.forEach { $0.resume() }
+        await withTaskCancellationHandler {
+            didStart = true
+            let pending = startWaiters
+            startWaiters.removeAll()
+            pending.forEach { $0.resume() }
 
-        guard !isReleased else { return }
-        await withCheckedContinuation { continuation in
-            releaseWaiters.append(continuation)
+            guard !isReleased else { return }
+            await withCheckedContinuation { continuation in
+                releaseWaiters.append(continuation)
+            }
+        } onCancel: {
+            Task { await self.recordCancellation() }
         }
     }
 
@@ -140,11 +168,40 @@ actor ReplySessionBlockingGate {
         }
     }
 
+    func waitUntilCancellationObserved() async {
+        guard !didObserveCancellation else { return }
+        await withCheckedContinuation { continuation in
+            cancellationWaiters.append(continuation)
+        }
+    }
+
+    func waitForCancellationOrRelease() async -> Bool {
+        if didObserveCancellation { return true }
+        if isReleased { return false }
+        return await withCheckedContinuation { continuation in
+            cancellationOrReleaseWaiters.append(continuation)
+        }
+    }
+
     func release() {
         isReleased = true
+        let lifecyclePending = cancellationOrReleaseWaiters
+        cancellationOrReleaseWaiters.removeAll()
+        lifecyclePending.forEach { $0.resume(returning: false) }
         let pending = releaseWaiters
         releaseWaiters.removeAll()
         pending.forEach { $0.resume() }
+    }
+
+    private func recordCancellation() {
+        guard !didObserveCancellation else { return }
+        didObserveCancellation = true
+        let cancellationPending = cancellationWaiters
+        cancellationWaiters.removeAll()
+        cancellationPending.forEach { $0.resume() }
+        let lifecyclePending = cancellationOrReleaseWaiters
+        cancellationOrReleaseWaiters.removeAll()
+        lifecyclePending.forEach { $0.resume(returning: true) }
     }
 }
 
@@ -327,6 +384,8 @@ actor ReplySessionFactorySpy: ReplySessionFactory {
     private let clients: [any ReplySessionTestClient]
     private let prepareError: (any Error)?
     private let makeSessionError: (any Error)?
+    private let prepareGate: ReplySessionBlockingGate?
+    private let gatedPrepareCall: Int?
 
     private(set) var receivedToolArrays: [[any Tool]] = []
     private(set) var makeCount = 0
@@ -335,15 +394,22 @@ actor ReplySessionFactorySpy: ReplySessionFactory {
     init(
         clients: [any ReplySessionTestClient],
         prepareError: (any Error)? = nil,
-        makeSessionError: (any Error)? = nil
+        makeSessionError: (any Error)? = nil,
+        prepareGate: ReplySessionBlockingGate? = nil,
+        gatedPrepareCall: Int? = nil
     ) {
         self.clients = clients
         self.prepareError = prepareError
         self.makeSessionError = makeSessionError
+        self.prepareGate = prepareGate
+        self.gatedPrepareCall = gatedPrepareCall
     }
 
     func prepare() async throws {
         prepareCount += 1
+        if let gatedPrepareCall, prepareCount == gatedPrepareCall {
+            await prepareGate?.enterAndWaitIgnoringCancellation()
+        }
         if let prepareError {
             throw prepareError
         }
