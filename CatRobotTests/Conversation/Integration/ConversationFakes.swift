@@ -529,6 +529,7 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
     private let automaticallyFinishes: Bool
     private var prepareError: ConversationServiceError?
     private let speakError: ConversationServiceError?
+    private let stopGate: ConversationTestGate?
     private let log: ConversationTestCallLog
     private var continuations: [Continuation] = []
     private var textWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
@@ -540,11 +541,13 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
         automaticallyFinishes: Bool,
         prepareError: ConversationServiceError?,
         speakError: ConversationServiceError?,
+        stopGate: ConversationTestGate?,
         log: ConversationTestCallLog
     ) {
         self.automaticallyFinishes = automaticallyFinishes
         self.prepareError = prepareError
         self.speakError = speakError
+        self.stopGate = stopGate
         self.log = log
     }
 
@@ -577,6 +580,7 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
     func stop() async {
         stopCount += 1
         log.append(.stopSpeaker)
+        await stopGate?.wait()
         for continuation in continuations {
             continuation.yield(.cancelled)
             continuation.finish()
@@ -692,6 +696,7 @@ final class ConversationHarness {
         speakerAutomaticallyFinishes: Bool = true,
         speakerPrepareError: ConversationServiceError? = nil,
         speakerError: ConversationServiceError? = nil,
+        speakerStopGate: ConversationTestGate? = nil,
         recognizerPrepareGate: ConversationTestGate? = nil,
         recognizerStopGate: ConversationTestGate? = nil,
         recognizerTail: SpeechRecognitionEvent? = nil,
@@ -739,6 +744,7 @@ final class ConversationHarness {
             automaticallyFinishes: speakerAutomaticallyFinishes,
             prepareError: speakerPrepareError,
             speakError: speakerError,
+            stopGate: speakerStopGate,
             log: calls
         )
         let audio = FakeConversationAudioSession(

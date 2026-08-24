@@ -494,6 +494,7 @@ final class ConversationViewModel {
             guard isTypedTurnCurrent(generation, turnID: turnID),
                   !Task.isCancelled else { return }
             guard let committedReply else {
+                viewState.caption = ""
                 await finishTypedTurn(
                     with: .modelGenerationFailed,
                     includesTypedFallback: true,
@@ -510,6 +511,9 @@ final class ConversationViewModel {
             )
         } catch {
             let serviceError = Self.serviceError(from: error)
+            if committedReply == nil {
+                viewState.caption = ""
+            }
             await finishTypedTurn(
                 with: serviceError,
                 includesTypedFallback: true,
@@ -1027,6 +1031,7 @@ final class ConversationViewModel {
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             guard let committedReply else {
+                viewState.caption = ""
                 await finishVoiceFailure(
                     with: .modelGenerationFailed,
                     includesTypedFallback: true,
@@ -1044,6 +1049,9 @@ final class ConversationViewModel {
         } catch {
             let serviceError = Self.serviceError(from: error)
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            if committedReply == nil {
+                viewState.caption = ""
+            }
             await finishVoiceFailure(
                 with: serviceError,
                 includesTypedFallback: true,

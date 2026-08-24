@@ -3,6 +3,47 @@ import XCTest
 
 @MainActor
 final class ConversationRecoveryTests: XCTestCase {
+    func testTypedReplyFailureClearsDraftBeforeCleanupStarts() async {
+        let speakerStopGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            speakerStopGate: speakerStopGate
+        )
+        let submission = Task { await harness.sut.submitTypedText("文字の質問") }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(.draft("未確定の返事"))
+        await harness.waitUntil { harness.sut.viewState.caption == "未確定の返事" }
+
+        await harness.reply.fail(.modelGenerationFailed)
+        await speakerStopGate.waitUntilEntered()
+
+        XCTAssertEqual(harness.sut.viewState.caption, "")
+        await speakerStopGate.open()
+        await submission.value
+    }
+
+    func testVoiceReplyFailureClearsDraftBeforeCleanupStarts() async {
+        let speakerStopGate = ConversationTestGate()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            speakerStopGate: speakerStopGate
+        )
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("猫ちゃん、質問", at: 0)
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(.draft("未確定の返事"))
+        await harness.waitUntil { harness.sut.viewState.caption == "未確定の返事" }
+
+        await harness.reply.fail(.modelGenerationFailed)
+        await speakerStopGate.waitUntilEntered()
+
+        XCTAssertEqual(harness.sut.viewState.caption, "")
+        await speakerStopGate.open()
+        await turn.value
+    }
+
     func testTypedPreparationDoesNotDependOnContentTaggingAvailability() async {
         let harness = ConversationHarness(modelAvailabilityResult: .modelNotReady)
 
