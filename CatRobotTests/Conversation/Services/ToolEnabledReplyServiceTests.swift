@@ -1,0 +1,715 @@
+import Foundation
+import FoundationModels
+import XCTest
+@testable import CatRobot
+
+final class ToolEnabledReplyServiceTests: XCTestCase {
+    func testPrepareIsLazyAndRegistersExactlyFourStableSharedTools() async throws {
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let storeCreationCount = LockedCounter()
+        let client = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(clients: [client])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: {
+                storeCreationCount.increment()
+                return try LocalMemoryStore(persistence: persistence)
+            },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+
+        XCTAssertEqual(storeCreationCount.value, 0)
+        async let first: Void = service.prepare()
+        async let second: Void = service.prepare()
+        try await first
+        try await second
+        try await service.prepare()
+
+        let toolArrays = await factory.receivedToolArrays
+        let prepareCount = await factory.prepareCount
+        let makeCount = await factory.makeCount
+        let prewarmCount = await client.prewarmCount
+        XCTAssertEqual(storeCreationCount.value, 1)
+        XCTAssertEqual(prepareCount, 1)
+        XCTAssertEqual(makeCount, 1)
+        XCTAssertEqual(prewarmCount, 1)
+        XCTAssertEqual(toolArrays.count, 1)
+        let tools = try XCTUnwrap(toolArrays.first)
+        XCTAssertEqual(
+            tools.map(\.name),
+            ["rememberMemory", "forgetMemory", "searchMemory", "getCurrentDateTime"]
+        )
+        XCTAssertTrue(tools[0] is RememberMemoryTool)
+        XCTAssertTrue(tools[1] is ForgetMemoryTool)
+        XCTAssertTrue(tools[2] is SearchMemoryTool)
+        XCTAssertTrue(tools[3] is CurrentDateTimeTool)
+    }
+
+    func testSuccessfulReplyEmitsDraftsThenOneCommittedAfterMemoryCommit() async throws {
+        let harness = try ToolEnabledReplyServiceHarness { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(
+                    arguments: .init(fact: "青が好き", supportingQuote: "青が好き")
+                )
+                continuation.yield("わかった")
+                continuation.yield("わかった、覚えたよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let events = try await harness.collect(
+            request: .init(turnID: 41, userText: "青が好きです")
+        )
+
+        XCTAssertEqual(
+            events,
+            [
+                .draft("わかった"),
+                .draft("わかった、覚えたよ"),
+                .committed(
+                    .init(finalText: "わかった、覚えたよ", memoryChange: .remembered)
+                ),
+            ]
+        )
+        let savedFacts = harness.persistence.savedFacts
+        let timeline = harness.timeline.values
+        let prompts = await harness.client.prompts
+        let options = await harness.client.options
+        let transcriptCount = await harness.client.transcriptCount
+        let restoreCount = await harness.client.restoreCount
+        XCTAssertEqual(savedFacts.count, 1)
+        XCTAssertEqual(savedFacts.first?.fact, "青が好き")
+        XCTAssertEqual(
+            timeline,
+            [.draft, .draft, .memorySaved, .committed]
+        )
+        XCTAssertEqual(prompts, ["青が好きです"])
+        XCTAssertEqual(
+            options,
+            [.init(ReplyGenerationPolicy.live.makeOptions())]
+        )
+        XCTAssertEqual(transcriptCount, 1)
+        XCTAssertEqual(restoreCount, 0)
+    }
+
+    func testCommitAggregatesRememberNoticesAsRemembered() async throws {
+        let harness = try ToolEnabledReplyServiceHarness { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                _ = try await remember.call(arguments: .init(fact: "猫が好き", supportingQuote: "猫が好き"))
+                continuation.yield("覚えたよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let events = try await harness.collect(
+            request: .init(turnID: 1, userText: "青が好きで猫が好き")
+        )
+
+        XCTAssertEqual(events.last, .committed(.init(finalText: "覚えたよ", memoryChange: .remembered)))
+        XCTAssertEqual(Set(harness.persistence.savedFacts.map(\.fact)), ["青が好き", "猫が好き"])
+    }
+
+    func testCommitAggregatesForgetNoticesAsForgotten() async throws {
+        let fact = makeFact(id: "00000000-0000-0000-0000-000000000001", text: "赤が好き")
+        let harness = try ToolEnabledReplyServiceHarness(facts: [fact]) { tools, _, _, continuation in
+            do {
+                let search = try requireTool(SearchMemoryTool.self, in: tools)
+                let forget = try requireTool(ForgetMemoryTool.self, in: tools)
+                let output = try await search.call(arguments: .init(query: "赤", limit: 1))
+                let result = try JSONDecoder().decode([MemorySearchResult].self, from: Data(output.utf8))
+                let id = try XCTUnwrap(result.first?.id)
+                _ = try await forget.call(arguments: .init(memoryIDs: [id], supportingQuote: "赤は忘れて"))
+                continuation.yield("忘れたよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let events = try await harness.collect(
+            request: .init(turnID: 2, userText: "赤は忘れて")
+        )
+
+        XCTAssertEqual(events.last, .committed(.init(finalText: "忘れたよ", memoryChange: .forgotten)))
+        XCTAssertTrue(harness.persistence.savedFacts.isEmpty)
+    }
+
+    func testCommitAggregatesMixedNoticesAsUpdated() async throws {
+        let fact = makeFact(id: "00000000-0000-0000-0000-000000000001", text: "赤が好き")
+        let harness = try ToolEnabledReplyServiceHarness(facts: [fact]) { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                let search = try requireTool(SearchMemoryTool.self, in: tools)
+                let forget = try requireTool(ForgetMemoryTool.self, in: tools)
+                let output = try await search.call(arguments: .init(query: "赤", limit: 1))
+                let result = try JSONDecoder().decode([MemorySearchResult].self, from: Data(output.utf8))
+                let id = try XCTUnwrap(result.first?.id)
+                _ = try await forget.call(arguments: .init(memoryIDs: [id], supportingQuote: "赤は忘れて"))
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield("更新したよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let events = try await harness.collect(
+            request: .init(turnID: 3, userText: "赤は忘れて、青が好き")
+        )
+
+        XCTAssertEqual(events.last, .committed(.init(finalText: "更新したよ", memoryChange: .updated)))
+        XCTAssertEqual(harness.persistence.savedFacts.map(\.fact), ["青が好き"])
+    }
+
+    func testSearchAndDateOnlyReplyCommitsWithoutMemoryChange() async throws {
+        let fact = makeFact(id: "00000000-0000-0000-0000-000000000001", text: "青が好き")
+        let provider = RecordingDateTimeProvider()
+        let harness = try ToolEnabledReplyServiceHarness(
+            facts: [fact],
+            dateTimeProvider: provider
+        ) { tools, _, _, continuation in
+            do {
+                let search = try requireTool(SearchMemoryTool.self, in: tools)
+                let date = try requireTool(CurrentDateTimeTool.self, in: tools)
+                _ = try await search.call(arguments: .init(query: "青", limit: 1))
+                _ = try await date.call(arguments: .init(includeSeconds: false))
+                continuation.yield("今日は月曜日だよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let events = try await harness.collect(
+            request: .init(turnID: 4, userText: "今日と好きな色を教えて")
+        )
+
+        XCTAssertEqual(events.last, .committed(.init(finalText: "今日は月曜日だよ", memoryChange: nil)))
+        XCTAssertEqual(harness.persistence.savedFacts, [fact])
+        XCTAssertEqual(provider.callCount, 1)
+    }
+
+    func testGenerationFailureRollsBackStagedMemoryAndRestoresTranscript() async throws {
+        let harness = try ToolEnabledReplyServiceHarness { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield("覚え")
+                continuation.finish(throwing: ReplyServiceTestFailure.generation)
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let error = await capturedServiceError {
+            _ = try await harness.collect(request: .init(turnID: 5, userText: "青が好き"))
+        }
+        let committedFacts = await harness.store.committedFacts()
+        let restoreCount = await harness.client.restoreCount
+        let didEmitCommitted = await harness.didEmitCommitted
+
+        XCTAssertEqual(error, .modelGenerationFailed)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertTrue(harness.persistence.savedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testToolDecodingFailureRollsBackAndRestoresTranscript() async throws {
+        let harness = try ToolEnabledReplyServiceHarness { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.finish(throwing: ReplyServiceTestFailure.decoding)
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let error = await capturedServiceError {
+            _ = try await harness.collect(request: .init(turnID: 6, userText: "青が好き"))
+        }
+        let committedFacts = await harness.store.committedFacts()
+        let restoreCount = await harness.client.restoreCount
+        let didEmitCommitted = await harness.didEmitCommitted
+
+        XCTAssertEqual(error, .modelGenerationFailed)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testCancellationAfterDraftWaitsForRollbackAndRestoresTranscript() async throws {
+        let draftReceived = ReplySessionSignal()
+        let harness = try ToolEnabledReplyServiceHarness(blocksRestore: true) { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield("覚えた")
+                try await Task.sleep(for: .seconds(60))
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        let consumer = Task {
+            let stream = try await harness.service.streamReply(
+                to: .init(turnID: 7, userText: "青が好き")
+            )
+            for try await event in stream {
+                if case .draft = event {
+                    harness.timeline.append(.draft)
+                    await draftReceived.signal()
+                }
+            }
+        }
+        await draftReceived.wait()
+        consumer.cancel()
+
+        let completion = CompletionProbe()
+        let cleanup = Task {
+            await harness.service.cancelActiveReply()
+            await completion.markCompleted()
+        }
+        await harness.waitUntilRestoreStarted()
+        let completedWhileRestoreWasBlocked = await completion.isCompleted
+        XCTAssertFalse(completedWhileRestoreWasBlocked)
+        await harness.releaseRestore()
+        await cleanup.value
+        _ = await consumer.result
+
+        let committedFacts = await harness.store.committedFacts()
+        let restoreCount = await harness.client.restoreCount
+        let didEmitCommitted = await harness.didEmitCommitted
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testThirteenthToolCallDoesNotRunToolBodyAndRollsBack() async throws {
+        let provider = RecordingDateTimeProvider()
+        let harness = try ToolEnabledReplyServiceHarness(
+            dateTimeProvider: provider
+        ) { tools, _, _, continuation in
+            do {
+                let date = try requireTool(CurrentDateTimeTool.self, in: tools)
+                for _ in 0..<13 {
+                    _ = try await date.call(arguments: .init(includeSeconds: true))
+                }
+                continuation.yield("unreachable")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let error = await capturedServiceError {
+            _ = try await harness.collect(request: .init(turnID: 8, userText: "今何時？"))
+        }
+        let committedFacts = await harness.store.committedFacts()
+        let restoreCount = await harness.client.restoreCount
+        let didEmitCommitted = await harness.didEmitCommitted
+
+        XCTAssertEqual(error, .toolRuntimeFailed)
+        XCTAssertEqual(provider.callCount, 12)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testPersistenceFailureRestoresCheckpointAndDoesNotEmitCommitted() async throws {
+        let harness = try ToolEnabledReplyServiceHarness(shouldFailSave: true) { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield("覚えたよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let error = await capturedServiceError {
+            _ = try await harness.collect(request: .init(turnID: 9, userText: "青が好き"))
+        }
+        let committedFacts = await harness.store.committedFacts()
+        let restoreCount = await harness.client.restoreCount
+        let didEmitCommitted = await harness.didEmitCommitted
+
+        XCTAssertEqual(error, .toolRuntimeFailed)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertTrue(harness.persistence.savedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(didEmitCommitted)
+        XCTAssertEqual(harness.timeline.values, [.draft])
+    }
+
+    func testStoreInitializationFailureDoesNotCreateSessionOrEmitEvents() async throws {
+        let provider = RecordingDateTimeProvider()
+        let client = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(clients: [client])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { throw ReplyServiceTestFailure.storeInitialization },
+            dateTimeProvider: provider
+        )
+
+        let error = await capturedServiceError {
+            _ = try await service.streamReply(to: .init(turnID: 10, userText: "こんにちは"))
+        }
+        let prepareCount = await factory.prepareCount
+        let makeCount = await factory.makeCount
+        let prewarmCount = await client.prewarmCount
+        let promptCount = await client.prompts.count
+
+        XCTAssertEqual(error, .toolRuntimeFailed)
+        XCTAssertEqual(prepareCount, 1)
+        XCTAssertEqual(makeCount, 0)
+        XCTAssertEqual(prewarmCount, 0)
+        XCTAssertEqual(promptCount, 0)
+        XCTAssertEqual(provider.callCount, 0)
+    }
+
+    func testSessionPreparationFailureDoesNotBeginMemoryTurnOrEmitEvents() async throws {
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let storeCreationCount = LockedCounter()
+        let provider = RecordingDateTimeProvider()
+        let client = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(
+            clients: [client],
+            prepareError: ConversationServiceError.modelUnavailable(.modelNotReady)
+        )
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: {
+                storeCreationCount.increment()
+                return try LocalMemoryStore(persistence: persistence)
+            },
+            dateTimeProvider: provider
+        )
+
+        let error = await capturedServiceError {
+            _ = try await service.streamReply(to: .init(turnID: 11, userText: "こんにちは"))
+        }
+        let prepareCount = await factory.prepareCount
+        let makeCount = await factory.makeCount
+        let transcriptCount = await client.transcriptCount
+
+        XCTAssertEqual(error, .modelUnavailable(.modelNotReady))
+        XCTAssertEqual(prepareCount, 1)
+        XCTAssertEqual(makeCount, 0)
+        XCTAssertEqual(storeCreationCount.value, 0)
+        XCTAssertEqual(transcriptCount, 0)
+        XCTAssertTrue(timeline.values.isEmpty)
+        XCTAssertEqual(provider.callCount, 0)
+    }
+
+    func testResetCreatesFreshSessionAndRetainsPersistentToolRuntime() async throws {
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let searchedFact = LockedValue<String?>(nil)
+        let firstClient = ReplySessionClientSpy { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield("覚えた")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        let secondClient = ReplySessionClientSpy { tools, _, _, continuation in
+            do {
+                let search = try requireTool(SearchMemoryTool.self, in: tools)
+                let output = try await search.call(arguments: .init(query: "青", limit: 1))
+                let results = try JSONDecoder().decode([MemorySearchResult].self, from: Data(output.utf8))
+                searchedFact.set(results.first?.fact)
+                continuation.yield("見つけた")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        let factory = ReplySessionFactorySpy(clients: [firstClient, secondClient])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+
+        _ = try await collect(
+            service: service,
+            request: .init(turnID: 12, userText: "青が好き")
+        )
+        await service.reset()
+        let events = try await collect(
+            service: service,
+            request: .init(turnID: 13, userText: "好きな色は？")
+        )
+        let makeCount = await factory.makeCount
+        let firstPrewarmCount = await firstClient.prewarmCount
+        let secondPrewarmCount = await secondClient.prewarmCount
+
+        XCTAssertEqual(makeCount, 2)
+        XCTAssertEqual(firstPrewarmCount, 1)
+        XCTAssertEqual(secondPrewarmCount, 1)
+        XCTAssertEqual(searchedFact.value, "青が好き")
+        XCTAssertEqual(events.last, .committed(.init(finalText: "見つけた", memoryChange: nil)))
+        XCTAssertEqual(persistence.savedFacts.map(\.fact), ["青が好き"])
+    }
+
+    func testSameTurnIDDoesNotResetBudgetButNewTurnIDDoes() async throws {
+        let provider = RecordingDateTimeProvider()
+        let harness = try ToolEnabledReplyServiceHarness(dateTimeProvider: provider) { tools, prompt, _, continuation in
+            do {
+                let date = try requireTool(CurrentDateTimeTool.self, in: tools)
+                let callCount = prompt == "first" ? 12 : 1
+                for _ in 0..<callCount {
+                    _ = try await date.call(arguments: .init(includeSeconds: false))
+                }
+                continuation.yield("ok")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        _ = try await harness.collect(request: .init(turnID: 14, userText: "first"))
+        let sameTurnError = await capturedServiceError {
+            _ = try await harness.collect(request: .init(turnID: 14, userText: "same"))
+        }
+        let newTurnEvents = try await harness.collect(request: .init(turnID: 15, userText: "new"))
+        let restoreCount = await harness.client.restoreCount
+
+        XCTAssertEqual(sameTurnError, .toolRuntimeFailed)
+        XCTAssertEqual(newTurnEvents.last, .committed(.init(finalText: "ok", memoryChange: nil)))
+        XCTAssertEqual(provider.callCount, 13)
+        XCTAssertEqual(restoreCount, 1)
+    }
+
+    func testConcurrentStreamReplyIsRejectedUntilCleanupCompletes() async throws {
+        let draftReceived = ReplySessionSignal()
+        let harness = try ToolEnabledReplyServiceHarness(blocksRestore: true) { _, prompt, _, continuation in
+            if prompt == "first" {
+                do {
+                    continuation.yield("draft")
+                    try await Task.sleep(for: .seconds(60))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            } else {
+                continuation.yield("next")
+                continuation.finish()
+            }
+        }
+        let consumer = Task {
+            let stream = try await harness.service.streamReply(
+                to: .init(turnID: 16, userText: "first")
+            )
+            for try await event in stream {
+                if case .draft = event {
+                    await draftReceived.signal()
+                }
+            }
+        }
+        await draftReceived.wait()
+
+        let busyBeforeCancellation = await capturedServiceError {
+            _ = try await harness.service.streamReply(to: .init(turnID: 17, userText: "second"))
+        }
+        consumer.cancel()
+        let cleanup = Task { await harness.service.cancelActiveReply() }
+        await harness.waitUntilRestoreStarted()
+        let busyDuringRestore = await capturedServiceError {
+            _ = try await harness.service.streamReply(to: .init(turnID: 17, userText: "second"))
+        }
+        await harness.releaseRestore()
+        await cleanup.value
+        _ = await consumer.result
+        let events = try await harness.collect(request: .init(turnID: 17, userText: "second"))
+
+        XCTAssertEqual(busyBeforeCancellation, .modelBusy)
+        XCTAssertEqual(busyDuringRestore, .modelBusy)
+        XCTAssertEqual(events.last, .committed(.init(finalText: "next", memoryChange: nil)))
+    }
+
+    func testEmptyFinalSnapshotRollsBackAndDoesNotCommit() async throws {
+        let harness = try ToolEnabledReplyServiceHarness { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield(" \n ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+
+        let error = await capturedServiceError {
+            _ = try await harness.collect(request: .init(turnID: 18, userText: "青が好き"))
+        }
+        let committedFacts = await harness.store.committedFacts()
+        let restoreCount = await harness.client.restoreCount
+        let didEmitCommitted = await harness.didEmitCommitted
+
+        XCTAssertEqual(error, .modelGenerationFailed)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testNewServiceInstanceLoadsCommittedFactsFromSharedFile() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let fileURL = directory.appendingPathComponent("memories.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let firstClient = ReplySessionClientSpy { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(arguments: .init(fact: "青が好き", supportingQuote: "青が好き"))
+                continuation.yield("覚えた")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        let firstFactory = ReplySessionFactorySpy(clients: [firstClient])
+        var firstService: ToolEnabledReplyService? = ToolEnabledReplyService(
+            sessionFactory: firstFactory,
+            makeMemoryStore: { try LocalMemoryStore(fileURL: fileURL) },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+        _ = try await collect(
+            service: try XCTUnwrap(firstService),
+            request: .init(turnID: 19, userText: "青が好き")
+        )
+        firstService = nil
+
+        let searchedFact = LockedValue<String?>(nil)
+        let secondClient = ReplySessionClientSpy { tools, _, _, continuation in
+            do {
+                let search = try requireTool(SearchMemoryTool.self, in: tools)
+                let output = try await search.call(arguments: .init(query: "青", limit: 1))
+                let results = try JSONDecoder().decode([MemorySearchResult].self, from: Data(output.utf8))
+                searchedFact.set(results.first?.fact)
+                continuation.yield("青だよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        let secondFactory = ReplySessionFactorySpy(clients: [secondClient])
+        let secondService = ToolEnabledReplyService(
+            sessionFactory: secondFactory,
+            makeMemoryStore: { try LocalMemoryStore(fileURL: fileURL) },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+
+        let events = try await collect(
+            service: secondService,
+            request: .init(turnID: 20, userText: "好きな色は？")
+        )
+        let firstMakeCount = await firstFactory.makeCount
+        let secondMakeCount = await secondFactory.makeCount
+
+        XCTAssertEqual(searchedFact.value, "青が好き")
+        XCTAssertEqual(events.last, .committed(.init(finalText: "青だよ", memoryChange: nil)))
+        XCTAssertEqual(firstMakeCount, 1)
+        XCTAssertEqual(secondMakeCount, 1)
+    }
+}
+
+private enum ReplyServiceTestFailure: Error {
+    case generation
+    case decoding
+    case storeInitialization
+    case missingTool
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    var value: Int { lock.withLock { storage } }
+
+    func increment() {
+        lock.withLock { storage += 1 }
+    }
+}
+
+private final class LockedValue<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ value: Value) {
+        storage = value
+    }
+
+    var value: Value { lock.withLock { storage } }
+
+    func set(_ value: Value) {
+        lock.withLock { storage = value }
+    }
+}
+
+private func requireTool<T>(_ type: T.Type, in tools: [any Tool]) throws -> T {
+    guard let tool = tools.first(where: { $0 is T }) as? T else {
+        throw ReplyServiceTestFailure.missingTool
+    }
+    return tool
+}
+
+private func capturedServiceError(
+    _ operation: () async throws -> Void
+) async -> ConversationServiceError? {
+    do {
+        try await operation()
+        XCTFail("Expected a service error")
+        return nil
+    } catch let error as ConversationServiceError {
+        return error
+    } catch {
+        XCTFail("Expected ConversationServiceError")
+        return nil
+    }
+}
+
+private func collect(
+    service: ToolEnabledReplyService,
+    request: ReplyTurnRequest
+) async throws -> [ReplyStreamEvent] {
+    let stream = try await service.streamReply(to: request)
+    var events: [ReplyStreamEvent] = []
+    for try await event in stream {
+        events.append(event)
+    }
+    return events
+}
+
+private func makeFact(id: String, text: String) -> MemoryFact {
+    MemoryFact(
+        id: UUID(uuidString: id)!,
+        fact: text,
+        supportingQuote: text,
+        createdAt: Date(timeIntervalSince1970: 10),
+        updatedAt: Date(timeIntervalSince1970: 10),
+        sourceTurnID: 1
+    )
+}
