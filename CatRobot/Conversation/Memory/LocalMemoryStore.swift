@@ -38,7 +38,12 @@ struct AtomicJSONMemoryPersistence: MemoryPersisting {
         try applyProductionMetadata(to: temporaryURL)
 
         if fileManager.fileExists(atPath: fileURL.path) {
-            _ = try fileManager.replaceItemAt(fileURL, withItemAt: temporaryURL)
+            _ = try fileManager.replaceItemAt(
+                fileURL,
+                withItemAt: temporaryURL,
+                backupItemName: nil,
+                options: .usingNewMetadataOnly
+            )
         } else {
             try fileManager.moveItem(at: temporaryURL, to: fileURL)
         }

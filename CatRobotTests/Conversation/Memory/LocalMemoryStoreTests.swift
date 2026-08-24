@@ -114,6 +114,33 @@ final class LocalMemoryStoreTests: XCTestCase {
         XCTAssertEqual(values.fileProtection, .complete)
     }
 
+    func testReplacingExistingFileOverridesWeakMetadataWithProductionMetadata() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("memories.json")
+        let existingFact = makeFact(id: "00000000-0000-0000-0000-000000000001")
+        try JSONEncoder().encode([existingFact]).write(to: url)
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.none],
+            ofItemAtPath: url.path
+        )
+        var weakMetadata = URLResourceValues()
+        weakMetadata.isExcludedFromBackup = false
+        var mutableURL = url
+        try mutableURL.setResourceValues(weakMetadata)
+
+        let initialValues = try url.resourceValues(forKeys: [.isExcludedFromBackupKey, .fileProtectionKey])
+        XCTAssertEqual(initialValues.isExcludedFromBackup, false)
+        XCTAssertNotEqual(initialValues.fileProtection, .complete)
+
+        let store = try LocalMemoryStore(fileURL: url)
+        try await store.replaceCommittedFacts([makeFact(id: "00000000-0000-0000-0000-000000000002")])
+
+        let finalValues = try url.resourceValues(forKeys: [.isExcludedFromBackupKey, .fileProtectionKey])
+        XCTAssertEqual(finalValues.isExcludedFromBackup, true)
+        XCTAssertEqual(finalValues.fileProtection, .complete)
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
