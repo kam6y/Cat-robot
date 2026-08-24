@@ -35,7 +35,18 @@ final class ConversationViewModelTests: XCTestCase {
         await harness.speaker.yield(.finished)
         await harness.speaker.finish()
         await turn.value
+
+        let didScheduleDismissal = await harness.waitUntil {
+            (await sleeper.durations).count == 1
+        }
+        XCTAssertTrue(didScheduleDismissal)
+
         await sleeper.release(0)
+        let didCompleteDismissal = await harness.waitUntil {
+            await sleeper.completionCount == 1
+        }
+        XCTAssertTrue(didCompleteDismissal)
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
     }
 
     func testSceneInactivityClearsCommittedNoticeAndCancelsOldExpiry() async {
@@ -363,11 +374,17 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
         XCTAssertEqual(harness.sut.viewState.memoryNotice, "記憶しました")
 
-        await sleeper.release(0)
-        let didExpire = await harness.waitUntil {
-            harness.sut.viewState.memoryNotice == nil
+        let didScheduleDismissal = await harness.waitUntil {
+            (await sleeper.durations).count == 1
         }
-        XCTAssertTrue(didExpire)
+        XCTAssertTrue(didScheduleDismissal)
+
+        await sleeper.release(0)
+        let didCompleteDismissal = await harness.waitUntil {
+            await sleeper.completionCount == 1
+        }
+        XCTAssertTrue(didCompleteDismissal)
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
     }
 
     func testShutdownCancelsMemoryNoticeDismissalWithoutClearingCommittedNotice() async {
