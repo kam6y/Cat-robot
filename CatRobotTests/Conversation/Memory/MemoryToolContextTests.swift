@@ -6,6 +6,7 @@ private final class MemoryContextFailingPersistence: MemoryPersisting, @unchecke
     private let lock = NSLock()
     private var storedFacts: [MemoryFact]
     private var shouldFailSave = false
+    private var saveCallCount = 0
 
     init(facts: [MemoryFact]) {
         storedFacts = facts
@@ -17,6 +18,7 @@ private final class MemoryContextFailingPersistence: MemoryPersisting, @unchecke
 
     func save(_ facts: [MemoryFact]) throws {
         try lock.withLock {
+            saveCallCount += 1
             if shouldFailSave {
                 throw CocoaError(.fileWriteUnknown)
             }
@@ -30,6 +32,10 @@ private final class MemoryContextFailingPersistence: MemoryPersisting, @unchecke
 
     func resumeSaves() {
         lock.withLock { shouldFailSave = false }
+    }
+
+    func recordedSaveCallCount() -> Int {
+        lock.withLock { saveCallCount }
     }
 }
 
@@ -260,12 +266,83 @@ final class MemoryToolContextTests: XCTestCase {
         XCTAssertTrue(committed.isEmpty)
     }
 
-    func testCommitSaveFailureRollsBackCandidateAndClearsStaleNotices() async throws {
+    func testInactiveCommitAndRollbackNeverPersistOrEraseSeededFacts() async throws {
         let original = fact(id: "00000000-0000-0000-0000-000000000001", text: "青が好き", updatedAt: 10)
         let persistence = MemoryContextFailingPersistence(facts: [original])
         let store = try LocalMemoryStore(persistence: persistence)
         let context = makeContext(store: store)
+
+        let directCommitNotices = try await context.commitTurn()
+        await context.rollbackTurn()
+        let commitAfterRollbackNotices = try await context.commitTurn()
+        let committed = await store.committedFacts()
+
+        XCTAssertTrue(directCommitNotices.isEmpty)
+        XCTAssertTrue(commitAfterRollbackNotices.isEmpty)
+        XCTAssertEqual(persistence.recordedSaveCallCount(), 0)
+        XCTAssertEqual(committed, [original])
+    }
+
+    func testSuccessfulCommitEndsSearchTurnAndNextBeginResetsRecordAllowance() async throws {
+        let facts = (1...9).map { number in
+            fact(
+                id: String(format: "00000000-0000-0000-0000-%012d", number),
+                text: "fact \(number)",
+                updatedAt: Double(100 - number)
+            )
+        }
+        let store = try makeStore(facts: facts)
+        let context = makeContext(store: store)
+        await context.beginTurn(id: 1, userText: "")
+        let firstTurnResults = await context.search(query: "", limit: 8)
+
+        _ = try await context.commitTurn()
+        let inactiveResults = await context.search(query: "", limit: 8)
+        await context.beginTurn(id: 2, userText: "")
+        let nextTurnResults = await context.search(query: "", limit: 8)
+
+        XCTAssertEqual(firstTurnResults.count, 8)
+        XCTAssertTrue(inactiveResults.isEmpty)
+        XCTAssertEqual(nextTurnResults.count, 8)
+    }
+
+    func testRollbackEndsSearchTurnAndNextBeginResetsByteAllowance() async throws {
+        let large = String(repeating: "x", count: 700)
+        let facts = (1...2).map { number in
+            fact(
+                id: String(format: "00000000-0000-0000-0000-%012d", number),
+                text: "\(large)\(number)",
+                updatedAt: Double(100 - number)
+            )
+        }
+        let store = try makeStore(facts: facts)
+        let context = makeContext(store: store)
+        await context.beginTurn(id: 1, userText: "")
+        let firstTurnResults = await context.search(query: "", limit: 8)
+
+        await context.rollbackTurn()
+        let inactiveResults = await context.search(query: "", limit: 8)
+        await context.beginTurn(id: 2, userText: "")
+        let nextTurnResults = await context.search(query: "", limit: 8)
+
+        XCTAssertEqual(firstTurnResults.count, 1)
+        XCTAssertTrue(inactiveResults.isEmpty)
+        XCTAssertEqual(nextTurnResults.count, 1)
+    }
+
+    func testCommitSaveFailureEndsSearchTurnAndNextBeginResetsRecordAllowance() async throws {
+        let originals = (1...9).map { number in
+            fact(
+                id: String(format: "00000000-0000-0000-0000-%012d", number),
+                text: "fact \(number)",
+                updatedAt: Double(100 - number)
+            )
+        }
+        let persistence = MemoryContextFailingPersistence(facts: originals)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let context = makeContext(store: store)
         await context.beginTurn(id: 5, userText: "猫が好き")
+        let firstTurnResults = await context.search(query: "", limit: 8)
         _ = await context.stageRemember(fact: "猫が好き", supportingQuote: "猫が好き")
         persistence.failFutureSaves()
 
@@ -275,13 +352,19 @@ final class MemoryToolContextTests: XCTestCase {
         } catch {}
 
         let committed = await store.committedFacts()
-        let visibleAfterFailure = await context.search(query: "", limit: 8)
+        let inactiveResults = await context.search(query: "", limit: 8)
         persistence.resumeSaves()
-        let laterNotices = try await context.commitTurn()
+        let inactiveCommitNotices = try await context.commitTurn()
+        await context.beginTurn(id: 6, userText: "")
+        let nextTurnResults = await context.search(query: "", limit: 8)
 
-        XCTAssertEqual(committed, [original])
-        XCTAssertEqual(visibleAfterFailure, [original])
-        XCTAssertTrue(laterNotices.isEmpty)
+        XCTAssertEqual(firstTurnResults.count, 8)
+        XCTAssertEqual(committed, originals)
+        XCTAssertTrue(inactiveResults.isEmpty)
+        XCTAssertTrue(inactiveCommitNotices.isEmpty)
+        XCTAssertEqual(persistence.recordedSaveCallCount(), 1)
+        XCTAssertEqual(nextTurnResults.count, 8)
+        XCTAssertFalse(nextTurnResults.contains(where: { $0.fact == "猫が好き" }))
     }
 
     func testCanonicallyEquivalentStoredFactIsNormalizedAndUpdatedWithoutDuplication() async throws {
@@ -375,7 +458,7 @@ final class MemoryToolContextTests: XCTestCase {
 
         XCTAssertEqual(notices, [.remembered("first")])
         XCTAssertEqual(committed.map(\.fact), ["first"])
-        XCTAssertEqual(visible.map(\.fact), ["first"])
+        XCTAssertTrue(visible.isEmpty)
     }
 
     private func makeStore(facts: [MemoryFact] = []) throws -> LocalMemoryStore {

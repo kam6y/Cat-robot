@@ -44,14 +44,15 @@ actor MemoryToolContext {
         normalizedUserText = normalized(userText)
         committedSnapshot = snapshot
         candidateFacts = snapshot
-        clearTurnTracking()
+        clearTurnMetadata()
+        resetSearchAllowance()
     }
 
     func search(query: String, limit: Int) async -> [MemoryFact] {
         await acquireOperation()
         defer { releaseOperation() }
 
-        guard limit > 0 else { return [] }
+        guard currentTurnID != nil, limit > 0 else { return [] }
 
         let normalizedQuery = normalized(query)
         let ranked = candidateFacts.compactMap { fact -> (fact: MemoryFact, rank: Int)? in
@@ -157,6 +158,8 @@ actor MemoryToolContext {
         await acquireOperation()
         defer { releaseOperation() }
 
+        guard currentTurnID != nil else { return [] }
+
         let factsToCommit = candidateFacts
         let noticesToReturn = notices
 
@@ -168,10 +171,7 @@ actor MemoryToolContext {
         }
 
         committedSnapshot = factsToCommit
-        currentTurnID = nil
-        normalizedUserText = ""
-        candidateFacts = factsToCommit
-        clearTurnTracking()
+        deactivateTurn(candidateFacts: factsToCommit)
         return noticesToReturn
     }
 
@@ -179,6 +179,7 @@ actor MemoryToolContext {
         await acquireOperation()
         defer { releaseOperation() }
 
+        guard currentTurnID != nil else { return }
         rollbackToCommittedSnapshot()
     }
 
@@ -201,17 +202,24 @@ actor MemoryToolContext {
     }
 
     private func rollbackToCommittedSnapshot() {
-        currentTurnID = nil
-        normalizedUserText = ""
-        candidateFacts = committedSnapshot
-        clearTurnTracking()
+        deactivateTurn(candidateFacts: committedSnapshot)
     }
 
-    private func clearTurnTracking() {
+    private func deactivateTurn(candidateFacts: [MemoryFact]) {
+        currentTurnID = nil
+        normalizedUserText = ""
+        self.candidateFacts = candidateFacts
+        clearTurnMetadata()
+    }
+
+    private func clearTurnMetadata() {
         searchedMemoryIDs.removeAll()
+        notices.removeAll()
+    }
+
+    private func resetSearchAllowance() {
         exposedSearchResultCount = 0
         exposedSearchByteCount = 0
-        notices.removeAll()
     }
 
     private func normalized(_ text: String) -> String {
