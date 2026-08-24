@@ -1,33 +1,33 @@
-# Live Reply Tools Integration Design
+# 通常起動アプリへのReply Tool統合設計
 
-**Date:** 2026-08-24
+**日付:** 2026-08-24
 
 **Branch:** `feature/gemma4-independent-tools`
 
-**Starting commit:** `c85da4cc640340f60187b289cd5184ae2eacb48f`
+**開始commit:** `c85da4cc640340f60187b289cd5184ae2eacb48f`
 
-**Related foundation:** `docs/superpowers/specs/2026-08-24-gemma4-independent-tools-design.md`
+**前提となる基盤仕様:** `docs/superpowers/specs/2026-08-24-gemma4-independent-tools-design.md`
 
-## Objective
+## 目的
 
-Make the already implemented `rememberMemory`, `forgetMemory`, `searchMemory`, and `getCurrentDateTime` tools usable from the normally launched Cat Robot app on the connected iPhone. The first live backend is Apple's on-device `SystemLanguageModel(useCase: .general)`. The design must keep the conversation, tool transaction, persistence, and UI layers independent from that concrete model so a later Foundation Models-compatible Gemma session can replace it without rewriting those layers.
+実装済みの`rememberMemory`、`forgetMemory`、`searchMemory`、`getCurrentDateTime`を、接続済みiPhone上で通常起動したCat Robotアプリから利用できるようにする。最初のlive backendにはAppleのon-device `SystemLanguageModel(useCase: .general)`を使う。一方で、会話、tool transaction、永続化、UIの各layerはこの具体的なmodelから独立させ、将来Foundation Models互換のGemma sessionへ置き換える際に書き直さなくてよい設計にする。
 
-This change covers typed and voice replies, a compact nonblocking memory-change notice, signed device installation, and normal app launch. It does not add LiteRT, a Gemma artifact, vision, context compaction, cloud memory, or a memory-management screen.
+この変更にはtyped/voiceの両reply、簡潔でnonblockingなmemory変更通知、signed device install、通常のapp launchを含む。LiteRT、Gemma artifact、vision、context compaction、cloud memory、memory管理screenは追加しない。
 
-## Design Principles
+## 設計原則
 
-1. **One model-independent reply lifecycle.** Turn ownership, tool budget, transactional memory, draft streaming, commit, rollback, and notices belong to a backend-neutral reply service.
-2. **One backend replacement seam.** Apple-specific model construction and readiness live behind a `ReplySessionFactory`. A future Gemma implementation replaces that factory, not the ViewModel, UI, memory store, or tools.
-3. **Foundation Models is the common runtime surface.** Both the current Apple model and the planned Gemma adapter use `LanguageModelSession`, `Tool`, `GenerationOptions`, and `Transcript`. No `SystemLanguageModel` or future LiteRT type may escape the Apple/future-Gemma factory implementation.
-4. **Commit before observable success.** Draft text may be displayed while generation is active. Speech, durable transcript advancement, and memory notices begin only after the memory transaction commits.
-5. **Failure is atomic and visible.** Cancellation, generation failure, tool-limit failure, invalid tool decoding, or persistence failure rolls back staged memory and the session turn. Memory initialization or persistence is never silently disabled.
-6. **Preserve existing ownership.** The current MainActor ViewModel lifecycle generation, voice/typed turn IDs, classifier-before-voice-reply ordering, audio teardown, and reply reset behavior remain authoritative.
+1. **model非依存のreply lifecycleを1つだけ持つ。** Turn ownership、tool budget、transactional memory、draft streaming、commit、rollback、通知はbackend非依存のreply serviceが所有する。
+2. **backendの差し替え点を1か所に限定する。** Apple固有のmodel生成とreadinessは`ReplySessionFactory`の内側へ置く。将来のGemma実装ではこのfactoryだけを差し替え、ViewModel、UI、memory store、toolは変更しない。
+3. **Foundation Modelsを共通runtime surfaceにする。** 現在のApple modelと将来のGemma adapterはどちらも`LanguageModelSession`、`Tool`、`GenerationOptions`、`Transcript`を使用する。`SystemLanguageModel`や将来のLiteRT型をApple/Gemma factory実装の外へ漏らさない。
+4. **観測可能な成功より先にcommitする。** 生成中のdraft textは表示してよい。speech、durableなtranscript進行、memory通知はmemory transactionのcommit後だけ開始する。
+5. **failureをatomicかつvisibleにする。** cancellation、generation failure、tool上限、無効なtool decode、persistence failureではstaged memoryとsession turnをrollbackする。memory初期化・永続化failureを黙って無効化しない。
+6. **既存のownershipを維持する。** 現在のMainActor ViewModelが持つlifecycle generation、voice/typed turn ID、voice reply前のclassifier順序、audio teardown、reply reset behaviorを引き続き正とする。
 
-## Architecture
+## アーキテクチャ
 
 ### Domain reply contract
 
-Replace the string-only reply request/stream contract with explicit turn and commit semantics:
+文字列だけのreply request/stream contractを、turnとcommitの意味が明示されたcontractへ置き換える。
 
 ```swift
 struct ReplyTurnRequest: Equatable, Sendable {
@@ -60,50 +60,50 @@ protocol ReplyGenerating: Sendable {
 }
 ```
 
-`ReplyMemoryChange` is deliberately presentation-safe: it contains no fact, quote, UUID, or tool arguments. Multiple committed mutations in one turn collapse into one value. A mixed remember/forget turn becomes `.updated`. Search-only and date/time-only turns use `nil`.
+`ReplyMemoryChange`はpresentation-safeな情報だけを持ち、fact、quote、UUID、tool argumentを含めない。同一turnの複数のcommit済みmutationは1つの値へ集約する。rememberとforgetが混在するturnは`.updated`とする。searchだけ、または日時取得だけのturnは`nil`とする。
 
-The existing ViewModel turn ID is passed through unchanged for both typed and voice requests. A retry of the same logical turn must not reset the shared tool-call budget; a genuinely new ViewModel turn ID must reset it.
+typedとvoiceの両requestで、既存ViewModelのturn IDを変更せず渡す。同じ論理turnのretryではshared tool-call budgetをresetせず、ViewModelが新しいturn IDを発行した場合だけresetする。
 
-### Backend-neutral orchestration
+### Backend非依存のorchestration
 
-`ToolEnabledReplyService` becomes the concrete live `ReplyGenerating` implementation. It is an actor and owns:
+`ToolEnabledReplyService`をliveの具体的な`ReplyGenerating`実装にする。このactorは次を所有する。
 
-- one lazily initialized `LocalMemoryStore`;
-- one `MemoryToolContext`;
-- one shared `ReplyToolCallBudget`;
-- one stable set of the four tools;
-- one `ReplySessionFactory`;
-- one current `ReplySessionClient`;
-- the existing single-generation exclusion.
+- lazyに初期化する`LocalMemoryStore`を1つ。
+- `MemoryToolContext`を1つ。
+- shared `ReplyToolCallBudget`を1つ。
+- 安定した4 toolのsetを1つ。
+- `ReplySessionFactory`を1つ。
+- 現在の`ReplySessionClient`を1つ。
+- 既存のsingle-generation exclusion。
 
-The service does not know whether its session uses Apple, Gemma, or another Foundation Models-compatible language model. It sees only the session/factory protocols below.
+このserviceは、sessionがApple、Gemma、または別のFoundation Models互換language modelのどれを使用するかを知らない。下記のsession/factory protocolだけを参照する。
 
-For every reply request, the actor performs this serialized sequence:
+各reply requestについて、actorは次のsequenceを直列化して実行する。
 
-1. Reject overlapping generation with the existing `.modelBusy` error.
-2. Ensure the persistent tool runtime and reply session are prepared.
-3. Capture the session's pre-turn `Transcript` checkpoint.
-4. Call `MemoryToolContext.beginTurn(id:userText:)`.
-5. Call `ReplyToolCallBudget.beginTurn(id:)`.
-6. Stream cumulative model snapshots as `.draft` events.
-7. Require a nonblank final snapshot and check cancellation.
-8. Commit memory and obtain `MemoryNotice` values.
-9. Map those notices to at most one privacy-safe `ReplyMemoryChange`.
-10. Emit exactly one terminal `.committed` event, then finish normally.
+1. generationが重複した場合は既存の`.modelBusy` errorでrejectする。
+2. persistent tool runtimeとreply sessionがpreparedであることを保証する。
+3. sessionのturn開始前`Transcript` checkpointを取得する。
+4. `MemoryToolContext.beginTurn(id:userText:)`を呼ぶ。
+5. `ReplyToolCallBudget.beginTurn(id:)`を呼ぶ。
+6. 累積model snapshotを`.draft` eventとしてstreamする。
+7. 空白ではないfinal snapshotを必須とし、cancellationを確認する。
+8. memoryをcommitして`MemoryNotice`を取得する。
+9. そのnoticeをprivacy-safeな`ReplyMemoryChange`最大1件へmapする。
+10. terminalな`.committed` eventを厳密に1件emitし、正常終了する。
 
-On any failure before step 10, the service must:
+ステップ10より前のfailureでは、serviceは次を必ず行う。
 
-1. cancel/finish the active model stream;
-2. call `MemoryToolContext.rollbackTurn()`;
-3. restore the pre-turn session transcript through `ReplySessionClient`;
-4. clear the generating flag only after cleanup finishes;
-5. propagate the mapped recoverable error without emitting `.committed`.
+1. active model streamをcancel/finishする。
+2. `MemoryToolContext.rollbackTurn()`を呼ぶ。
+3. `ReplySessionClient`経由でturn開始前のsession transcriptをrestoreする。
+4. cleanup完了後にだけgenerating flagをclearする。
+5. `.committed`をemitせず、map済みのrecoverable errorを伝播する。
 
-Cancellation that arrives before memory commit rolls back. Once memory commit and the terminal committed event have completed, a later TTS or audio failure does not undo a semantically successful reply or its memory change.
+memory commit前に届いたcancellationはrollbackする。memory commitとterminal committed eventが完了した後にTTSやaudioがfailureになっても、意味的に成功したreplyやmemory変更は取り消さない。
 
-### Replaceable session boundary
+### 差し替え可能なsession境界
 
-The backend seam is intentionally small:
+backend seamは意図的に小さく保つ。
 
 ```swift
 protocol ReplySessionFactory: Sendable {
@@ -124,46 +124,46 @@ protocol ReplySessionClient: Sendable {
 }
 ```
 
-These protocols live in the service layer, where importing `FoundationModels` is appropriate. Domain, integration, memory, and UI code do not refer to `SystemLanguageModel`, LiteRT, or Gemma.
+これらのprotocolは`FoundationModels`のimportが妥当なservice layerへ置く。Domain、integration、memory、UI codeは`SystemLanguageModel`、LiteRT、Gemmaを参照しない。
 
-`AppleSystemReplySessionFactory` is the only Apple reply-backend implementation. It:
+`AppleSystemReplySessionFactory`をApple reply backendの唯一の実装にする。このfactoryは次を担当する。
 
-- owns `SystemLanguageModel(useCase: .general, guardrails: .default)`;
-- checks general-model readiness during `prepare()`;
-- creates a `LanguageModelSession` with exactly the four supplied tools;
-- provides Cat Robot and tool-use instructions;
-- restores a failed turn by replacing or resetting its session to the captured `Transcript` without changing the persistent tool runtime.
+- `SystemLanguageModel(useCase: .general, guardrails: .default)`の所有。
+- `prepare()`におけるgeneral model readinessの確認。
+- 渡された4 toolを厳密に登録した`LanguageModelSession`の生成。
+- Cat Robotの人格とtool使用規則を含むinstructionsの付与。
+- persistent tool runtimeを変更せず、取得済み`Transcript`へsessionを置換またはresetすることによるfailed turnのrestore。
 
-A future `GemmaReplySessionFactory` may download/verify a model and create a Foundation Models-compatible Gemma session. It must implement the same two protocols. Adding it must require only changing live composition (or selecting a factory), with no changes to `ToolEnabledReplyService`, `ConversationViewModel`, `ConversationView`, `LocalMemoryStore`, `MemoryToolContext`, or the four tools.
+将来の`GemmaReplySessionFactory`は、modelをdownload/verifyしてFoundation Models互換のGemma sessionを生成できる。この実装も同じ2 protocolへ適合する。追加時の変更はlive compositionまたはfactory選択だけに限定し、`ToolEnabledReplyService`、`ConversationViewModel`、`ConversationView`、`LocalMemoryStore`、`MemoryToolContext`、4 toolは変更しない。
 
-### Generation policy and instructions
+### Generation policyとinstructions
 
-The live session receives all four tools and uses:
+live sessionへ4 toolすべてを渡し、次のpolicyを使用する。
 
-- tool calling mode `.allowed`, never `.required`;
-- temperature `0.5`;
-- maximum response tokens `256`;
-- no reasoning/thinking UI or reasoning-output exposure.
+- tool calling modeは`.allowed`とし、`.required`は使用しない。
+- temperatureは`0.5`。
+- maximum response tokensは`256`。
+- reasoning/thinking UIやreasoning outputの露出は追加しない。
 
-When compiling for an OS target where the explicit iOS 27 tool-calling option requires availability handling, the iOS 27 runtime path must set `.allowed` explicitly. The project deployment target is not changed solely for this integration.
+明示的なiOS 27 tool-calling optionにavailability handlingが必要なdeployment targetでcompileする場合、iOS 27 runtime pathでは`.allowed`を明示する。この統合だけを理由にproject deployment targetは変更しない。
 
-The backend instructions retain the existing Cat Robot personality and add concise rules:
+backend instructionsは既存のCat Robotの人格を維持し、次の簡潔な規則を追加する。
 
-- remember only stable, user-provided facts likely to help later;
-- copy `supportingQuote` exactly from the current user text;
-- do not remember temporary observations, guesses, assistant claims, summaries, or image-only conclusions;
-- search before replacing or deleting a potentially conflicting fact;
-- use current date/time only when the question requires a current or relative temporal reference;
-- never infer the current date, weekday, or timezone from model knowledge;
-- do not call a tool when the answer does not need one.
+- 将来役立つ可能性が高い、user提供の安定したfactだけをrememberする。
+- `supportingQuote`は現在のuser textから完全に同じ文字列をcopyする。
+- 一時的な観察、推測、assistantの主張、summary、画像だけからの結論をrememberしない。
+- 競合する可能性のあるfactを置換または削除する前にsearchする。
+- 質問に現在の日付・時刻または相対的な日時基準が必要な場合だけ日時toolを使う。
+- 現在の日付、曜日、timezoneをmodel knowledgeから推測しない。
+- 回答に不要なtoolは呼ばない。
 
-Tools are attached only to the reply session. The Apple content-tagging classifier and any future compaction-only session remain tool-free.
+toolを渡すのはreply sessionだけとする。Apple content-tagging classifierと将来のcompaction専用sessionはtool-freeのまま維持する。
 
-### Preparation and composition
+### Preparationとcomposition
 
-`ReplyGenerating.prewarm()` becomes throwing `prepare()` so reply-backend readiness and memory-store initialization can be reported rather than silently ignored.
+reply backendのreadinessとmemory store初期化failureを黙って無視せず報告できるよう、`ReplyGenerating.prewarm()`をthrowingな`prepare()`へ置き換える。
 
-`ConversationDependencies.live()` constructs:
+`ConversationDependencies.live()`は次をcomposeする。
 
 ```text
 AppleSystemReplySessionFactory
@@ -173,158 +173,158 @@ ToolEnabledReplyService
 ReplyGenerating dependency
 ```
 
-The memory store is resolved lazily through `LocalMemoryStore.applicationSupport()` and retained for the process lifetime. Session reset creates a new session through the same factory and reattaches the same four tools, budget actor, context actor, and persistent store.
+memory storeは`LocalMemoryStore.applicationSupport()`を通してlazyに解決し、process lifetime中保持する。Session resetでは同じfactoryから新しいsessionを作り、同じ4 tool、budget actor、context actor、persistent storeを再attachする。
 
-`FoundationModelAvailabilityService` continues to represent Apple `.contentTagging` classifier availability. Reply-backend readiness belongs to `ReplySessionFactory.prepare()`. This separation allows a future Gemma factory to own download, verification, and warmup without changing classifier behavior.
+`FoundationModelAvailabilityService`は引き続きApple `.contentTagging` classifier availabilityを表す。Reply backend readinessは`ReplySessionFactory.prepare()`の責務とする。この分離により、将来のGemma factoryはclassifier behaviorを変更せずにdownload、verification、warmupを所有できる。
 
-## ViewModel and UI Flow
+## ViewModelとUI flow
 
-Typed and voice paths both pass their existing `turnID` and the accepted user text to `ReplyGenerating`.
+typedとvoiceの両pathで、既存の`turnID`と受理したuser textを`ReplyGenerating`へ渡す。
 
-While consuming events:
+eventのconsume中は次のように扱う。
 
-- `.draft(text)` updates the existing caption only;
-- `.committed(commit)` records the final text, publishes an optional transient memory notice, and enables the existing speech path;
-- normal stream completion without `.committed` is a generation failure;
-- a thrown error clears the uncommitted draft before publishing the recovery UI.
+- `.draft(text)`は既存captionだけを更新する。
+- `.committed(commit)`はfinal textを記録し、optionalなtransient memory noticeをpublishして、既存speech pathの開始を許可する。
+- `.committed`なしで正常stream終了した場合はgeneration failureとする。
+- errorがthrowされた場合はuncommitted draftをclearしてからrecovery UIをpublishする。
 
-Voice ordering remains:
+voiceの順序は次を維持する。
 
 ```text
 speech recognition → Apple content-tagging classifier → tool-enabled reply → memory commit → speech
 ```
 
-Typed input continues to bypass address classification and directly uses the same tool-enabled reply service.
+typed inputはこれまでどおりaddress classificationを通さず、同じtool-enabled reply serviceを直接使用する。
 
 ### Memory notice
 
-Add one optional transient notice to `ConversationViewState`. The ViewModel maps the committed `ReplyMemoryChange` to short Japanese text:
+`ConversationViewState`へoptionalなtransient noticeを1件追加する。ViewModelはcommit済み`ReplyMemoryChange`を次の短い日本語へmapする。
 
 - remembered: `記憶しました`
 - forgotten: `記憶を削除しました`
 - mixed/updated: `記憶を更新しました`
 
-The notice:
+noticeは次の要件を満たす。
 
-- appears as a compact top overlay/banner;
-- never shows fact text, supporting quotes, IDs, or tool arguments;
-- never enters the model transcript or caption;
-- does not accept input, steal focus, stop speech, or block typed/voice actions;
-- has an accessibility label and respects Dynamic Type/reduced transparency;
-- replaces an existing notice if a newer committed mutation arrives;
-- disappears automatically using a ViewModel-owned cancellable task;
-- is absent for search, date/time, rollback, and failed commit.
+- compactなtop overlay/bannerとして表示する。
+- fact text、supporting quote、ID、tool argumentを表示しない。
+- model transcriptやcaptionへ入れない。
+- inputを受け付けず、focusを奪わず、speechを停止せず、typed/voice actionをblockしない。
+- accessibility labelを持ち、Dynamic Typeとreduced transparencyへ対応する。
+- より新しいcommit済みmutationが届いた場合は既存noticeを置き換える。
+- ViewModelが所有するcancellable taskによって自動的に消える。
+- search、日時取得、rollback、commit failureでは表示しない。
 
-The exact display duration is presentation detail, not a domain contract.
+具体的な表示時間はpresentation detailであり、domain contractにしない。
 
-## Error and Cancellation Semantics
+## Errorとcancellation semantics
 
-Add a recoverable memory/tool-runtime error presentation rather than silently falling back to tool-free replies. The UI may offer the existing retry and typed-input recoveries as appropriate.
+tool-free replyへ黙ってfallbackせず、recoverableなmemory/tool-runtime error presentationを追加する。UIは必要に応じて既存のretryやtyped-input recoveryを提供してよい。
 
-The following all produce no terminal commit event, no speech, and no notice:
+次のすべてのcaseではterminal commit event、speech、noticeを発生させない。
 
-- persistent store initialization failure;
-- model/session preparation failure;
-- model generation or tool decoding failure;
-- `ReplyToolCallLimitExceeded` on call 13;
-- empty final response;
-- ViewModel cancellation, scene inactivity, pause, or shutdown before commit;
-- memory persistence failure.
+- persistent store初期化failure。
+- model/session preparation failure。
+- model generationまたはtool decoding failure。
+- 13 call目の`ReplyToolCallLimitExceeded`。
+- 空のfinal response。
+- commit前のViewModel cancellation、scene inactivity、pause、shutdown。
+- memory persistence failure。
 
-The service finishes async rollback and transcript restoration before its stream terminates. `onTermination` cancellation must cancel the forwarding task, but synchronous termination callbacks alone are not considered sufficient cleanup.
+serviceはasync rollbackとtranscript restoreを完了してからstreamを終了する。`onTermination` cancellationではforwarding taskをcancelする必要があるが、同期的なtermination callbackだけではcleanup完了とみなさない。
 
-No production log may contain user facts, supporting quotes, search results, tool arguments, or raw prompts.
+production logへuser fact、supporting quote、search result、tool argument、raw promptを出力しない。
 
-## Test Strategy
+## Test方針
 
-All behavior is implemented with red/green TDD and deterministic fakes. Live inference is not the primary correctness test.
+すべてのbehaviorをred/green TDDと決定論的fakeで実装する。Live inferenceを主要なcorrectness testにしない。
 
-### Reply-service tests
+### Reply service test
 
-Cover:
+次をcoverする。
 
-- exact four-tool registration and one shared budget/context runtime;
-- `.allowed` tool mode and 256-token policy on the iOS 27 path;
-- draft events followed by exactly one committed event;
-- memory commit before the terminal event;
-- aggregated remember, forget, and mixed notice mapping;
-- search/date-only success without notice;
-- generation failure after staged mutation rolls back store and transcript;
-- cancellation after a draft rolls back before stream termination;
-- 13th tool call does not execute the body and rolls back;
-- persistence failure restores the checkpoint and emits no commit;
-- reset creates a new session while retaining persistent memory/tool actors;
-- same turn ID does not reset the budget; a new ID does.
+- 厳密な4 tool登録と、1つのshared budget/context runtime。
+- iOS 27 pathにおける`.allowed` tool modeと256-token policy。
+- draft eventの後にterminal committed eventが厳密に1件続くこと。
+- terminal eventより先にmemory commitが完了すること。
+- remember、forget、mixedのnoticeを集約して`ReplyMemoryChange`へmapすること。
+- search/date-only successではnoticeがないこと。
+- staged mutation後のgeneration failureでstoreとtranscriptがrollbackされること。
+- draft後のcancellationがstream終了前にrollbackされること。
+- 13 call目がtool本体を実行せずrollbackすること。
+- persistence failureでcheckpointをrestoreし、commit eventをemitしないこと。
+- resetで新しいsessionを生成しつつpersistent memory/tool actorを保持すること。
+- 同じturn IDではbudgetをresetせず、新しいIDでresetすること。
 
-### ViewModel/integration tests
+### ViewModel/integration test
 
-Extend the existing fakes and harness rather than creating a second conversation stack. Cover both typed and voice paths:
+2つ目のconversation stackを作らず、既存fakeとharnessを拡張する。typedとvoiceの両pathで次をcoverする。
 
-- drafts update caption but never start speech;
-- committed final text starts speech;
-- committed mutation publishes one notice without blocking speech;
-- search/date-only commits publish no notice;
-- reply error/cancellation clears the uncommitted draft and produces no speech/notice;
-- Apple classifier still precedes voice reply;
-- pause/background/shutdown await transaction cleanup;
-- existing lifecycle, recovery, latency, clarification, and typed-input behavior remains green.
+- draftはcaptionを更新するがspeechを開始しない。
+- committed final textがspeechを開始する。
+- commit済みmutationがspeechをblockせずnoticeを1件publishする。
+- search/date-only commitではnoticeをpublishしない。
+- reply error/cancellationでuncommitted draftをclearし、speech/noticeを発生させない。
+- Apple classifierが引き続きvoice replyより先に実行される。
+- pause/background/shutdownがtransaction cleanup完了を待つ。
+- 既存lifecycle、recovery、latency、clarification、typed-input behaviorがgreenのままである。
 
-### UI and composition tests
+### UIとcomposition test
 
-Cover:
+次をcoverする。
 
-- banner visibility, generic private text, accessibility, Dynamic Type, and noninteractive behavior;
-- live composition uses `ToolEnabledReplyService` with `AppleSystemReplySessionFactory`;
-- classifier availability remains `.contentTagging` and independent of reply preparation;
-- no LiteRT/Gemma dependency or type is introduced.
+- banner visibility、private内容を含まないgeneric text、accessibility、Dynamic Type、noninteractive behavior。
+- live compositionが`AppleSystemReplySessionFactory`を持つ`ToolEnabledReplyService`を使用すること。
+- classifier availabilityが`.contentTagging`のままで、reply preparationから独立していること。
+- LiteRT/Gemma dependencyやtypeを追加していないこと。
 
-### Validation and device deployment
+### Validationとdevice deployment
 
-Before installing:
+install前に次を満たす。
 
-1. deterministic project-generator contract passes;
-2. focused reply, memory, tool, ViewModel, composition, and UI tests pass on the connected iPhone;
-3. the full device regression excluding the unchanged `SpeechAudioConverterTests` class passes;
-4. a signed Debug device build succeeds using `/Applications/Xcode-beta.app`;
-5. static scope and privacy checks pass;
-6. an independent review finds no unresolved Critical or Important issue;
-7. the tracked worktree is clean.
+1. 決定論的project-generator contractがPASSする。
+2. focused reply、memory、tool、ViewModel、composition、UI testが接続済みiPhoneでPASSする。
+3. 変更していない`SpeechAudioConverterTests` class全体を除外したfull device regressionがPASSする。
+4. `/Applications/Xcode-beta.app`を使ったsigned Debug device buildが成功する。
+5. static scope/privacy checkがPASSする。
+6. independent reviewで未解決のCritical/Important findingがない。
+7. tracked worktreeがcleanである。
 
-Install the signed app over the existing `com.kamby.CatRobot` bundle without uninstalling it, preserving Application Support data. Re-enumerate the current Xcode and CoreDevice identifiers, install with `devicectl`, launch with `--terminate-existing`, and confirm the process starts normally. Do not consume stochastic live tool prompts during automated validation; the user will perform the hands-on typed and voice usability test.
+既存の`com.kamby.CatRobot` bundleをuninstallせず、signed appを上書きinstallしてApplication Support dataを保持する。現在のXcode/CoreDevice identifierを再列挙し、`devicectl`でinstallし、`--terminate-existing`でlaunchしてprocessが正常に開始することを確認する。自動validation中は確率的なlive tool promptを消費せず、hands-onのtyped/voice usability testはuserが実施する。
 
-## Files and Ownership
+## Fileとownership
 
-Expected new or materially changed areas:
+新規作成または実質的に変更する想定範囲は次のとおり。
 
-- Domain: reply turn request, event, commit, and memory-change contracts.
-- Services: backend-neutral tool-enabled reply service, session protocols, Apple session factory/client, error mapping.
-- Integration: dependency composition and typed/voice event consumption.
-- UI: transient memory notice state and view.
-- Tests: reply service, integration fakes/harness, composition, view state/UI.
-- Generated Xcode project/scheme only through the existing generator when new files require it.
+- Domain: reply turn request、event、commit、memory-change contract。
+- Services: backend非依存のtool-enabled reply service、session protocol、Apple session factory/client、error mapping。
+- Integration: dependency compositionとtyped/voice event consumption。
+- UI: transient memory notice stateとview。
+- Tests: reply service、integration fake/harness、composition、view state/UI。
+- 新規fileの追加で必要な場合に限り、既存generatorを通して生成するXcode project/scheme。
 
-The persistence and tool implementations remain the source of truth; do not duplicate their validation, allowance, authorization, normalization, or budget logic in the reply service or ViewModel.
+persistenceとtool実装をsource of truthとして維持する。validation、allowance、authorization、normalization、budget logicをreply serviceやViewModelへ複製しない。
 
-## Explicit Non-Goals
+## 明示的な対象外
 
-- LiteRT or Gemma dependency/model installation in this change.
-- Gemma model download, integrity verification, context calibration, compaction, or vision.
-- Cloud memory, embeddings, fuzzy search, sync, or a memory-management screen.
-- Passing tools to the content-tagging classifier.
-- A second extraction/classification model call for deciding tool use.
-- Tool-call debug UI, raw tool arguments/results, or private prompt logging.
-- Push, PR creation, merge, or changes to the blocked/comparison worktrees.
+- この変更でのLiteRT/Gemma dependencyまたはmodel install。
+- Gemma model download、integrity verification、context calibration、compaction、vision。
+- Cloud memory、embedding、fuzzy search、sync、memory管理screen。
+- content-tagging classifierへのtool登録。
+- tool使用判断のための2つ目のextraction/classification model call。
+- Tool-call debug UI、raw tool argument/result、private prompt logging。
+- push、PR作成、merge、blocked/comparison worktreeの変更。
 
-## Acceptance Criteria
+## 完了条件
 
-The change is complete only when:
+次のすべてを満たした場合だけ完了とする。
 
-1. A normally launched signed device app uses `ToolEnabledReplyService` with `AppleSystemReplySessionFactory`.
-2. Both typed and classifier-approved voice turns can invoke all four tools through `LanguageModelSession` with `.allowed` tool calling.
-3. Memory mutations commit before speech and produce one privacy-safe nonblocking notice; search/date-only turns do not.
-4. Every pre-commit failure/cancellation rolls back memory and restores the pre-turn transcript.
-5. Restarted app instances load committed facts from Application Support.
-6. The reply lifecycle, memory/tool layers, ViewModel, and UI contain no Apple concrete model or future Gemma/LiteRT dependency.
-7. A future Gemma backend can be introduced by implementing and composing a new `ReplySessionFactory`/`ReplySessionClient`, without changing the shared lifecycle or UI layers.
-8. Fresh focused and regression tests, signed build, install, launch, review, and clean-worktree checks pass.
-9. The existing blocked worktree and comparison branch remain untouched, and no push/PR/merge occurs.
+1. 通常起動したsigned device appが、`AppleSystemReplySessionFactory`を持つ`ToolEnabledReplyService`を使用する。
+2. typed turnとclassifierがaddressedと判定したvoice turnの両方が、`.allowed` tool callingを設定した`LanguageModelSession`経由で4 toolすべてを利用できる。
+3. Memory mutationはspeechより先にcommitされ、privacy-safeでnonblockingなnoticeを1件表示する。search/date-only turnでは表示しない。
+4. commit前のすべてのfailure/cancellationでmemoryをrollbackし、turn開始前のtranscriptをrestoreする。
+5. app restart後のinstanceがApplication Supportからcommit済みfactをloadできる。
+6. reply lifecycle、memory/tool layer、ViewModel、UIはAppleの具体的modelや将来のGemma/LiteRT dependencyを含まない。
+7. 将来のGemma backendは、新しい`ReplySessionFactory`/`ReplySessionClient`を実装・composeするだけで導入でき、shared lifecycleやUI layerを変更しない。
+8. fresh focused/regression test、signed build、install、launch、review、clean-worktree checkがPASSする。
+9. 既存のblocked worktreeとcomparison branchを変更せず、push/PR/mergeを行わない。
