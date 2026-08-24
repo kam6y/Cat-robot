@@ -46,6 +46,10 @@ final class ConversationViewModelTests: XCTestCase {
             await sleeper.completionCount == 1
         }
         XCTAssertTrue(didCompleteDismissal)
+        let didDismissNotice = await harness.waitUntil {
+            harness.sut.viewState.memoryNotice == nil
+        }
+        XCTAssertTrue(didDismissNotice)
         XCTAssertNil(harness.sut.viewState.memoryNotice)
     }
 
@@ -384,6 +388,10 @@ final class ConversationViewModelTests: XCTestCase {
             await sleeper.completionCount == 1
         }
         XCTAssertTrue(didCompleteDismissal)
+        let didDismissNotice = await harness.waitUntil {
+            harness.sut.viewState.memoryNotice == nil
+        }
+        XCTAssertTrue(didDismissNotice)
         XCTAssertNil(harness.sut.viewState.memoryNotice)
     }
 
