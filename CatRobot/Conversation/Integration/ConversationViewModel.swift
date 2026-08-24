@@ -378,8 +378,8 @@ final class ConversationViewModel {
             recognizerPreparationAttempted = true
             try await dependencies.recognizer.prepare()
             guard isCurrent(generation) else { return }
-            await dependencies.reply.prewarm()
-            guard isCurrent(generation) else { return }
+            try await dependencies.reply.prepare()
+            guard isCurrent(generation), !Task.isCancelled else { return }
             try await startCapture(generation: generation, recognizerIsPrepared: true)
         } catch {
             guard isCurrent(generation), !Task.isCancelled else { return }
@@ -434,20 +434,7 @@ final class ConversationViewModel {
         }
 
         do {
-            let availability = await dependencies.modelAvailability.availability()
-            guard isTypedTurnCurrent(generation, turnID: turnID),
-                  !Task.isCancelled else { return }
-            guard availability == .available else {
-                await finishTypedTurn(
-                    with: .modelUnavailable(availability),
-                    includesTypedFallback: true,
-                    generation: generation,
-                    turnID: turnID
-                )
-                return
-            }
-
-            await dependencies.reply.prewarm()
+            try await dependencies.reply.prepare()
             guard isTypedTurnCurrent(generation, turnID: turnID),
                   !Task.isCancelled else { return }
             try await dependencies.speaker.prepare()
@@ -480,20 +467,33 @@ final class ConversationViewModel {
         turnID: UInt64
     ) async {
         transition(to: .thinking)
+        var committedReply: ReplyTurnCommit?
+        defer {
+            if committedReply == nil {
+                viewState.caption = ""
+            }
+        }
         do {
-            let stream = try await dependencies.reply.streamReply(to: submitted)
-            var finalText: String?
-            for try await snapshot in stream {
+            let stream = try await dependencies.reply.streamReply(
+                to: ReplyTurnRequest(turnID: turnID, userText: submitted)
+            )
+            for try await event in stream {
                 guard isTypedTurnCurrent(generation, turnID: turnID),
                       !Task.isCancelled else { return }
-                viewState.caption = snapshot
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    finalText = snapshot
+                switch event {
+                case .draft(let text):
+                    viewState.caption = text
+                case .committed(let value):
+                    guard committedReply == nil else {
+                        throw ConversationServiceError.modelGenerationFailed
+                    }
+                    committedReply = value
+                    viewState.caption = value.finalText
                 }
             }
             guard isTypedTurnCurrent(generation, turnID: turnID),
                   !Task.isCancelled else { return }
-            guard let finalText else {
+            guard let committedReply else {
                 await finishTypedTurn(
                     with: .modelGenerationFailed,
                     includesTypedFallback: true,
@@ -503,7 +503,7 @@ final class ConversationViewModel {
                 return
             }
             await speakTypedReply(
-                finalText,
+                committedReply.finalText,
                 shouldResumeVoice: shouldResumeVoice,
                 generation: generation,
                 turnID: turnID
@@ -996,22 +996,37 @@ final class ConversationViewModel {
         turnID: UInt64
     ) async {
         transition(to: .thinking)
+        var committedReply: ReplyTurnCommit?
+        defer {
+            if committedReply == nil {
+                viewState.caption = ""
+            }
+        }
         do {
-            let stream = try await dependencies.reply.streamReply(to: utterance)
-            var finalText: String?
-            for try await snapshot in stream {
+            let stream = try await dependencies.reply.streamReply(
+                to: ReplyTurnRequest(turnID: turnID, userText: utterance)
+            )
+            for try await event in stream {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                viewState.caption = snapshot
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    recordFirstVoiceCaption(
-                        generation: generation,
-                        turnID: turnID
-                    )
-                    finalText = snapshot
+                switch event {
+                case .draft(let text):
+                    viewState.caption = text
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        recordFirstVoiceCaption(
+                            generation: generation,
+                            turnID: turnID
+                        )
+                    }
+                case .committed(let value):
+                    guard committedReply == nil else {
+                        throw ConversationServiceError.modelGenerationFailed
+                    }
+                    committedReply = value
+                    viewState.caption = value.finalText
                 }
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            guard let finalText else {
+            guard let committedReply else {
                 await finishVoiceFailure(
                     with: .modelGenerationFailed,
                     includesTypedFallback: true,
@@ -1021,7 +1036,7 @@ final class ConversationViewModel {
                 return
             }
             await speakAndResume(
-                finalText,
+                committedReply.finalText,
                 engagementUpdate: engagementUpdate,
                 generation: generation,
                 turnID: turnID
@@ -1244,11 +1259,12 @@ final class ConversationViewModel {
             closingTailSegments.removeAll(keepingCapacity: true)
 
             let cleanup = Task { @MainActor in
+                await dependencies.replyCleanup()
+                await oldTurn?.value
                 await failureCleanupTask.value
                 await oldPreflight?.value
                 await oldCapture?.value
                 await oldClosing?.value
-                await oldTurn?.value
             }
             lifecycleTransitionTask = cleanup
             await cleanup.value
@@ -1296,12 +1312,13 @@ final class ConversationViewModel {
         closingTailSegments.removeAll(keepingCapacity: true)
 
         let cleanup = Task { @MainActor [dependencies] in
+            await dependencies.replyCleanup()
+            await oldTurn?.value
             await oldPreflight?.value
             await dependencies.speaker.stop()
             await dependencies.recognizer.stop()
             await oldCapture?.value
             await oldClosing?.value
-            await oldTurn?.value
             await dependencies.audioSession.deactivate()
         }
         lifecycleTransitionTask = cleanup

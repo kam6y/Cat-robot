@@ -1,7 +1,7 @@
 import Foundation
 import FoundationModels
 
-actor ToolEnabledReplyService {
+actor ToolEnabledReplyService: ReplyGenerating {
     struct TestHooks: Sendable {
         let publicPrepareEnteredDuringReset: (@Sendable () async -> Void)?
         let originalResetOwnerResumed: (@Sendable () async -> Void)?

@@ -8,7 +8,7 @@ enum ConversationTestCall: Equatable, Sendable {
     case prepareSpeaker
     case activateAudio
     case prepareRecognizer
-    case prewarmReply
+    case prepareReply
     case startRecognizer
     case stopRecognizer
     case classify(String)
@@ -421,43 +421,68 @@ actor FakeAddressClassifier: AddressClassifying {
 }
 
 actor FakeReplyService: ReplyGenerating {
-    typealias Continuation = AsyncThrowingStream<String, Error>.Continuation
+    typealias Continuation = AsyncThrowingStream<ReplyStreamEvent, Error>.Continuation
 
     private let automaticSnapshots: [String]?
     private let resetGate: ConversationTestGate?
+    private let cleanupGate: ConversationTestGate?
+    private let prepareError: ConversationServiceError?
     private let log: ConversationTestCallLog
     private var continuations: [Continuation] = []
-    private var promptWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
-    private(set) var prompts: [String] = []
-    private(set) var prewarmCount = 0
+    private var requestWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private(set) var requests: [ReplyTurnRequest] = []
+    private(set) var prepareCount = 0
+    private(set) var cancelActiveReplyCount = 0
     private(set) var resetCount = 0
+
+    var prompts: [String] { requests.map(\.userText) }
 
     init(
         automaticSnapshots: [String]?,
         resetGate: ConversationTestGate?,
+        cleanupGate: ConversationTestGate?,
+        prepareError: ConversationServiceError?,
         log: ConversationTestCallLog
     ) {
         self.automaticSnapshots = automaticSnapshots
         self.resetGate = resetGate
+        self.cleanupGate = cleanupGate
+        self.prepareError = prepareError
         self.log = log
     }
 
-    func prewarm() async {
-        prewarmCount += 1
-        log.append(.prewarmReply)
+    func prepare() async throws {
+        prepareCount += 1
+        log.append(.prepareReply)
+        if let prepareError { throw prepareError }
     }
 
-    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
-        prompts.append(utterance)
-        log.append(.generateReply(utterance))
-        let pair = AsyncThrowingStream<String, Error>.makeStream()
+    func streamReply(
+        to request: ReplyTurnRequest
+    ) async throws -> AsyncThrowingStream<ReplyStreamEvent, Error> {
+        requests.append(request)
+        log.append(.generateReply(request.userText))
+        let pair = AsyncThrowingStream<ReplyStreamEvent, Error>.makeStream()
         continuations.append(pair.continuation)
-        resumePromptWaiters()
+        resumeRequestWaiters()
         if let automaticSnapshots {
-            automaticSnapshots.forEach { pair.continuation.yield($0) }
+            automaticSnapshots.forEach { pair.continuation.yield(.draft($0)) }
+            if let finalText = automaticSnapshots.last(where: {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) {
+                pair.continuation.yield(
+                    .committed(.init(finalText: finalText, memoryChange: nil))
+                )
+            }
             pair.continuation.finish()
         }
         return pair.stream
+    }
+
+    func cancelActiveReply() async {
+        cancelActiveReplyCount += 1
+        await cleanupGate?.wait()
+        continuations.forEach { $0.finish(throwing: ConversationServiceError.cancelled) }
     }
 
     func reset() async {
@@ -465,9 +490,9 @@ actor FakeReplyService: ReplyGenerating {
         await resetGate?.wait()
     }
 
-    func yield(_ snapshot: String, run index: Int = 0) {
+    func yield(_ event: ReplyStreamEvent, run index: Int = 0) {
         guard continuations.indices.contains(index) else { return }
-        continuations[index].yield(snapshot)
+        continuations[index].yield(event)
     }
 
     func finish(run index: Int = 0) {
@@ -480,16 +505,20 @@ actor FakeReplyService: ReplyGenerating {
         continuations[index].finish(throwing: error)
     }
 
-    func waitUntilPromptCount(_ count: Int) async {
-        guard prompts.count < count else { return }
+    func waitUntilRequestCount(_ count: Int) async {
+        guard requests.count < count else { return }
         await withCheckedContinuation { continuation in
-            promptWaiters.append((count, continuation))
+            requestWaiters.append((count, continuation))
         }
     }
 
-    private func resumePromptWaiters() {
-        let ready = promptWaiters.filter { prompts.count >= $0.count }
-        promptWaiters.removeAll { prompts.count >= $0.count }
+    func waitUntilPromptCount(_ count: Int) async {
+        await waitUntilRequestCount(count)
+    }
+
+    private func resumeRequestWaiters() {
+        let ready = requestWaiters.filter { requests.count >= $0.count }
+        requestWaiters.removeAll { requests.count >= $0.count }
         ready.forEach { $0.continuation.resume() }
     }
 }
@@ -669,6 +698,8 @@ final class ConversationHarness {
         recognizerPrepareError: ConversationServiceError? = nil,
         recognizerStartError: ConversationServiceError? = nil,
         replyResetGate: ConversationTestGate? = nil,
+        replyCleanupGate: ConversationTestGate? = nil,
+        replyPrepareError: ConversationServiceError? = nil,
         serviceTeardownGate: ConversationTestGate? = nil,
         audioDeactivateGate: ConversationTestGate? = nil,
         latency: FakeConversationLatencyTracker? = nil,
@@ -700,6 +731,8 @@ final class ConversationHarness {
         let reply = FakeReplyService(
             automaticSnapshots: replySnapshots,
             resetGate: replyResetGate,
+            cleanupGate: replyCleanupGate,
+            prepareError: replyPrepareError,
             log: calls
         )
         let speaker = FakeSpeechSpeaker(
@@ -738,6 +771,7 @@ final class ConversationHarness {
             now: { now.value },
             clarificationDelay: clarificationDelay,
             lifecycleCheckpoint: lifecycleCheckpoint,
+            replyCleanup: { await reply.cancelActiveReply() },
             serviceTeardown: { await teardownProbe.call() }
         )
         self.dependencies = dependencies

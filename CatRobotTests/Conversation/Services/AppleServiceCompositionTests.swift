@@ -5,12 +5,20 @@ import XCTest
 
 @MainActor
 final class AppleServiceCompositionTests: XCTestCase {
+    func testLiveCompositionUsesToolEnabledReplyService() async {
+        let dependencies = ConversationDependencies.live()
+
+        XCTAssertTrue(dependencies.reply is ToolEnabledReplyService)
+    }
+
     func testAppleServiceCompositionConformsToDomainProtocols() {
         let availability: any ModelAvailabilityChecking =
             FoundationModelAvailabilityService()
         let classifier: any AddressClassifying =
             FoundationModelAddressClassifier()
-        let replies: any ReplyGenerating = FoundationModelReplyService()
+        let replies: any ReplyGenerating = ToolEnabledReplyService(
+            sessionFactory: AppleSystemReplySessionFactory()
+        )
         let concreteRecognizer = AppleSpeechRecognizer()
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let shutdown: @Sendable () async -> Void = {

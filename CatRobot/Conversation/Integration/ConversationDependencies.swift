@@ -20,6 +20,7 @@ struct ConversationDependencies: Sendable {
     let now: @Sendable () -> TimeInterval
     let clarificationDelay: @Sendable (Duration) async -> Void
     let lifecycleCheckpoint: @Sendable (ConversationLifecycleCheckpoint) async -> Void
+    let replyCleanup: @Sendable () async -> Void
     let serviceTeardown: @Sendable () async -> Void
 
     init(
@@ -39,6 +40,7 @@ struct ConversationDependencies: Sendable {
             try? await Task.sleep(for: duration)
         },
         lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in },
+        replyCleanup: @escaping @Sendable () async -> Void = {},
         serviceTeardown: @escaping @Sendable () async -> Void = {}
     ) {
         self.microphonePermission = microphonePermission
@@ -53,6 +55,7 @@ struct ConversationDependencies: Sendable {
         self.now = now
         self.clarificationDelay = clarificationDelay
         self.lifecycleCheckpoint = lifecycleCheckpoint
+        self.replyCleanup = replyCleanup
         self.serviceTeardown = serviceTeardown
     }
 }
@@ -60,7 +63,13 @@ struct ConversationDependencies: Sendable {
 extension ConversationDependencies {
     @MainActor
     static func live() -> Self {
-        let reply = FoundationModelReplyService()
+        let replyService = ToolEnabledReplyService(
+            sessionFactory: AppleSystemReplySessionFactory()
+        )
+        let reply: any ReplyGenerating = replyService
+        let replyCleanup: @Sendable () async -> Void = {
+            await replyService.cancelActiveReply()
+        }
         let concreteRecognizer = AppleSpeechRecognizer()
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let speaker = AppleSpeechSynthesizer()
@@ -78,6 +87,7 @@ extension ConversationDependencies {
             speaker: speaker,
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),
+            replyCleanup: replyCleanup,
             serviceTeardown: serviceTeardown
         )
     }

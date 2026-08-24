@@ -3,6 +3,125 @@ import XCTest
 
 @MainActor
 final class ConversationViewModelTests: XCTestCase {
+    func testTypedDraftUpdatesCaptionButDoesNotSpeakUntilCommitted() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        let submission = Task { @MainActor in
+            await harness.sut.submitTypedText("青が好きです")
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(.draft("わかった"))
+        await harness.waitUntil { harness.sut.viewState.caption == "わかった" }
+        let textsBeforeCommit = await harness.speaker.texts
+        XCTAssertEqual(harness.sut.viewState.caption, "わかった")
+        XCTAssertEqual(textsBeforeCommit, [])
+
+        await harness.reply.yield(
+            .committed(.init(finalText: "わかった、覚えたよ", memoryChange: nil))
+        )
+        await harness.reply.finish()
+        await submission.value
+        let spokenTexts = await harness.speaker.texts
+        let requests = await harness.reply.requests
+        XCTAssertEqual(spokenTexts, ["わかった、覚えたよ"])
+        XCTAssertEqual(
+            requests,
+            [.init(turnID: 1, userText: "青が好きです")]
+        )
+    }
+
+    func testTypedRequestForwardsExistingTurnIDAndSubmittedText() async {
+        let harness = ConversationHarness()
+
+        await harness.sut.submitTypedText("  最初の質問  ")
+        await harness.sut.submitTypedText("次の質問")
+
+        let requests = await harness.reply.requests
+        XCTAssertEqual(requests, [
+            .init(turnID: 1, userText: "最初の質問"),
+            .init(turnID: 2, userText: "次の質問"),
+        ])
+    }
+
+    func testVoiceDraftUpdatesCaptionButDoesNotSpeakUntilCommitted() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        await harness.sut.startConversation()
+        let turn = Task { await harness.emitCompletedUtterance("ねこ、質問", at: 0) }
+        await harness.reply.waitUntilRequestCount(1)
+
+        await harness.reply.yield(.draft("途中"))
+        await harness.waitUntil { harness.sut.viewState.caption == "途中" }
+        let textsBeforeCommit = await harness.speaker.texts
+        XCTAssertEqual(textsBeforeCommit, [])
+
+        await harness.reply.yield(
+            .committed(.init(finalText: "最終回答", memoryChange: nil))
+        )
+        await harness.reply.finish()
+        await turn.value
+        let spokenTexts = await harness.speaker.texts
+        let requests = await harness.reply.requests
+        XCTAssertEqual(spokenTexts, ["最終回答"])
+        XCTAssertEqual(requests, [.init(turnID: 1, userText: "質問")])
+    }
+
+    func testVoiceClassifierRunsBeforeToolEnabledReplyAndSpeech() async {
+        let harness = ConversationHarness(classification: .addressed)
+
+        await harness.completeUnengagedTurn("今日どう？", at: 0)
+
+        let calls = harness.calls.values
+        XCTAssertLessThan(
+            calls.firstIndex(of: .classify("今日どう？"))!,
+            calls.firstIndex(of: .generateReply("今日どう？"))!
+        )
+        XCTAssertLessThan(
+            calls.firstIndex(of: .generateReply("今日どう？"))!,
+            calls.firstIndex(of: .speak("わかったよ"))!
+        )
+    }
+
+    func testCommittedFinalStartsSpeechExactlyOnce() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        let submission = Task { await harness.sut.submitTypedText("質問") }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(.draft("下書き1"))
+        await harness.reply.yield(.draft("下書き2"))
+        await harness.reply.yield(
+            .committed(.init(finalText: "確定", memoryChange: nil))
+        )
+        await harness.reply.finish()
+        await submission.value
+
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(spokenTexts, ["確定"])
+    }
+
+    func testReplyFailureClearsUncommittedDraftWithoutSpeech() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        let submission = Task { await harness.sut.submitTypedText("質問") }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(.draft("未確定"))
+        await harness.reply.fail(.modelGenerationFailed)
+        await submission.value
+
+        XCTAssertEqual(harness.sut.viewState.caption, "")
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(spokenTexts, [])
+    }
+
+    func testReplyCancellationClearsUncommittedDraftWithoutSpeech() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        let submission = Task { await harness.sut.submitTypedText("質問") }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(.draft("未確定"))
+        await harness.reply.fail(.cancelled)
+        await submission.value
+
+        XCTAssertEqual(harness.sut.viewState.caption, "")
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(spokenTexts, [])
+    }
+
     func testWakeTurnSkipsClassifierReplacesCumulativeCaptionSpeaksFinalAndResumesOnce() async {
         let harness = ConversationHarness(replySnapshots: ["やあ", "やあ、元気だよ"])
         await harness.sut.startConversation()
@@ -151,26 +270,26 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
     }
 
-    func testPauseDuringReplyStreamingIgnoresLateSnapshotAndDoesNotSpeakOrRestart() async {
+    func testPauseDuringReplyStreamingClearsUncommittedDraftAndDoesNotSpeakOrRestart() async {
         let harness = ConversationHarness(replySnapshots: nil)
         await harness.sut.startConversation()
         let turn = Task { await harness.emitCompletedUtterance("ねこ、質問", at: 0) }
         await harness.reply.waitUntilPromptCount(1)
-        await harness.reply.yield("途中")
+        await harness.reply.yield(.draft("途中"))
         let didPublishFirstSnapshot = await harness.waitUntil {
             harness.sut.viewState.caption == "途中"
         }
         XCTAssertTrue(didPublishFirstSnapshot)
 
         await harness.sut.toggleListening()
-        await harness.reply.yield("古い返事")
+        await harness.reply.yield(.draft("古い返事"))
         await harness.reply.finish()
         await turn.value
 
         let spokenTexts = await harness.speaker.texts
         let recognizerStarts = await harness.recognizer.startCount
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
-        XCTAssertEqual(harness.sut.viewState.caption, "途中")
+        XCTAssertEqual(harness.sut.viewState.caption, "")
         XCTAssertTrue(spokenTexts.isEmpty)
         XCTAssertEqual(recognizerStarts, 1)
     }
