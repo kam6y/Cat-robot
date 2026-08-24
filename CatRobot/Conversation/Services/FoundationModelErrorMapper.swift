@@ -38,6 +38,10 @@ enum FoundationModelErrorMapper {
             return .cancelled
         }
 
+        if error is LanguageModelSession.ToolCallError {
+            return .toolRuntimeFailed
+        }
+
         guard let generationError = error as? LanguageModelSession.GenerationError else {
             return .modelGenerationFailed
         }
