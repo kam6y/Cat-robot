@@ -19,7 +19,14 @@ struct ConversationView: View {
 
             VStack(spacing: 12) {
                 statusHeader
-                conversationBody
+                ZStack(alignment: .top) {
+                    conversationBody
+
+                    if let notice = state.memoryNotice {
+                        memoryNoticeBanner(notice)
+                            .padding(.top, 8)
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -143,6 +150,34 @@ struct ConversationView: View {
         if reduceTransparency {
             AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
         } else {
+            AnyShapeStyle(.regularMaterial)
+        }
+    }
+
+    private func memoryNoticeBanner(_ notice: String) -> some View {
+        let layout = MemoryNoticePresentation.textLayout
+        return Text(notice)
+            .font(.body.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .fixedSize(
+                horizontal: layout.fixedHorizontally,
+                vertical: layout.fixedVertically
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(memoryNoticeBackground, in: Capsule())
+            .accessibilityLabel(MemoryNoticePresentation.accessibilityLabel)
+            .accessibilityValue(notice)
+            .allowsHitTesting(MemoryNoticePresentation.allowsHitTesting)
+    }
+
+    private var memoryNoticeBackground: AnyShapeStyle {
+        switch MemoryNoticePresentation.backgroundStyle(
+            reduceTransparency: reduceTransparency
+        ) {
+        case .opaque:
+            AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
+        case .material:
             AnyShapeStyle(.regularMaterial)
         }
     }

@@ -149,6 +149,7 @@ actor ConversationTestSleeper {
     private var continuations: [CheckedContinuation<Void, Never>?] = []
     private(set) var durations: [Duration] = []
     private(set) var cancellationCount = 0
+    private(set) var completionCount = 0
 
     func sleep(for duration: Duration) async {
         durations.append(duration)
@@ -159,6 +160,7 @@ actor ConversationTestSleeper {
         } onCancel: {
             Task { await self.recordCancellation() }
         }
+        completionCount += 1
     }
 
     private func recordCancellation() {
@@ -711,6 +713,9 @@ final class ConversationHarness {
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
+        memoryNoticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        },
         lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in }
     ) {
         let calls = ConversationTestCallLog()
@@ -776,6 +781,7 @@ final class ConversationHarness {
             latency: latency,
             now: { now.value },
             clarificationDelay: clarificationDelay,
+            memoryNoticeDelay: memoryNoticeDelay,
             lifecycleCheckpoint: lifecycleCheckpoint,
             replyCleanup: { await reply.cancelActiveReply() },
             serviceTeardown: { await teardownProbe.call() }

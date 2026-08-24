@@ -45,6 +45,7 @@ struct ConversationViewState: Equatable, Sendable {
     var activityStatus: String
     var provisionalTranscript: String
     var caption: String
+    var memoryNotice: String?
     var typedText: String
     var showsTypedInput: Bool
     var errorMessage: String?
@@ -103,6 +104,7 @@ extension ConversationViewState {
         activityStatus: "会話を始める準備ができました",
         provisionalTranscript: "",
         caption: "",
+        memoryNotice: nil,
         typedText: "",
         showsTypedInput: false,
         errorMessage: nil,
@@ -117,6 +119,7 @@ extension ConversationViewState {
         activityStatus: "準備しています",
         provisionalTranscript: "",
         caption: "",
+        memoryNotice: nil,
         typedText: "",
         showsTypedInput: false,
         errorMessage: nil,
@@ -131,6 +134,7 @@ extension ConversationViewState {
         activityStatus: "話しかけてください",
         provisionalTranscript: "",
         caption: "",
+        memoryNotice: nil,
         typedText: "",
         showsTypedInput: false,
         errorMessage: nil,
@@ -145,6 +149,7 @@ extension ConversationViewState {
         activityStatus: "考えています",
         provisionalTranscript: "",
         caption: "",
+        memoryNotice: nil,
         typedText: "",
         showsTypedInput: false,
         errorMessage: nil,
@@ -159,6 +164,7 @@ extension ConversationViewState {
         activityStatus: "聞き返しています",
         provisionalTranscript: "",
         caption: "今の、ぼくに言った？",
+        memoryNotice: nil,
         typedText: "",
         showsTypedInput: false,
         errorMessage: nil,
@@ -174,6 +180,7 @@ extension ConversationViewState {
             activityStatus: "話しています",
             provisionalTranscript: "",
             caption: caption,
+            memoryNotice: nil,
             typedText: "",
             showsTypedInput: false,
             errorMessage: nil,
@@ -194,6 +201,7 @@ extension ConversationViewState {
             activityStatus: "会話を続けられません",
             provisionalTranscript: "",
             caption: "",
+            memoryNotice: nil,
             typedText: "",
             showsTypedInput: false,
             errorMessage: message,
