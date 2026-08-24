@@ -743,7 +743,7 @@ replyCleanup: @escaping @Sendable () async -> Void = {}
 Place the initializer parameter immediately before the existing serviceTeardown parameter and assign self.replyCleanup = replyCleanup。live composition captures the concrete ToolEnabledReplyService and calls await reply.cancelActiveReply() from this closure。
 - FakeReplyService implements the same event semantics and an internal cleanup gate; ConversationHarness injects { await reply.cancelActiveReply() } as replyCleanup so it remains the single integration stack.
 
-- [ ] **Step 1: Migrate FakeReplyService and write RED integration tests**
+- [x] **Step 1: Migrate FakeReplyService and write RED integration tests**
 
 FakeReplyService records [ReplyTurnRequest]、prepareCount、prepareError、cancelActiveReplyCount。Manual helpers yield .draft and .committed. Existing replySnapshots convenience maps every snapshot to.draft and appends exactly one.committed using the last nonblank snapshot so old tests remain semantically equivalent。Rename promptWaiters/waitUntilPromptCount to requestWaiters/waitUntilRequestCount and retain a derived prompts property for old assertions。
 
@@ -795,7 +795,7 @@ XCTAssertEqual(
 
 Pause test blocks FakeReplyService.cancelActiveReply() until a test continuation is released, starts pause, proves recognizer/audio teardown has not completed, releases cleanup, then proves pause returns。
 
-- [ ] **Step 2: Flip ReplyGenerating and run compile RED**
+- [x] **Step 2: Flip ReplyGenerating and run compile RED**
 
 Change ConversationServices.swift to the final protocol above and add : ReplyGenerating to ToolEnabledReplyService。Regenerate and run:
 
@@ -813,7 +813,7 @@ ruby scripts/generate_project.rb
 
 Expected: FAIL at old prewarm/string-stream conformances and call sites。
 
-- [ ] **Step 3: Migrate preflight without coupling typed replies to the classifier**
+- [x] **Step 3: Migrate preflight without coupling typed replies to the classifier**
 
 Voice preflight keeps modelAvailability.availability() for.contentTagging, then uses:
 
@@ -831,7 +831,7 @@ guard isTypedTurnCurrent(generation, turnID: turnID),
 
 Speaker/audio setup remains after reply prepare as today。prepare failure flows through existing finishTypedTurn/finishVoiceFailure with the mapped recoverable error。
 
-- [ ] **Step 4: Consume draft and committed events in both paths**
+- [x] **Step 4: Consume draft and committed events in both paths**
 
 Both typed and voice generation pass the existing ID and accepted text:
 
@@ -871,7 +871,7 @@ Voice path applies the same switch to ReplyTurnRequest(turnID:turnID,userText:ut
 
 Declare committedReply outside the do block in each typed/voice generation method so catch can inspect it。Catch paths set viewState.caption = "" only when committedReply == nil。After a commit, later TTS failure preserves final caption and committed memory semantics。
 
-- [ ] **Step 5: Await reply transaction cleanup in lifecycle paths**
+- [x] **Step 5: Await reply transaction cleanup in lifecycle paths**
 
 In both pause branches, after cancelling oldTurn and before treating reply work as joined, call:
 
@@ -882,7 +882,7 @@ await oldTurn?.value
 
 Do the same through shutdown’s forced pause path。Do not call reset() as a cancellation barrier。Failure cleanup and audio teardown may proceed only after the reply cleanup await in the branch owning the active turn。
 
-- [ ] **Step 6: Replace live composition and remove the old Apple service**
+- [x] **Step 6: Replace live composition and remove the old Apple service**
 
 ConversationDependencies.live() composes:
 
@@ -900,7 +900,7 @@ let replyCleanup: @Sendable () async -> Void = {
 
 Delete FoundationModelReplyService.swift and its obsolete tests so SystemLanguageModel(.general) has one production owner only。FoundationModelAvailabilityService stays.contentTagging and is not injected into ToolEnabledReplyService。
 
-- [ ] **Step 7: Run GREEN integration and lifecycle suites**
+- [x] **Step 7: Run GREEN integration and lifecycle suites**
 
 Run:
 
@@ -922,7 +922,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: all selected tests PASS、voice classifier order remains green、typed path succeeds when content-tagging fake is unavailable、pause/shutdown wait for cleanup。
 
-- [ ] **Step 8: Review Task 3 and commit**
+- [x] **Step 8: Review Task 3 and commit**
 
 Review every typed/voice early return、ownership guard、caption clearing、commit-before-speech、pause/background/shutdown ordering、old service absence、classifier independence。Critical/Important findingを修正しGREENを再実行する。
 
