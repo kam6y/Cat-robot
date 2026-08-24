@@ -19,7 +19,9 @@ struct ConversationDependencies: Sendable {
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
     let clarificationDelay: @Sendable (Duration) async -> Void
+    let memoryNoticeDelay: @Sendable (Duration) async -> Void
     let lifecycleCheckpoint: @Sendable (ConversationLifecycleCheckpoint) async -> Void
+    let replyCleanup: @Sendable () async -> Void
     let serviceTeardown: @Sendable () async -> Void
 
     init(
@@ -38,7 +40,11 @@ struct ConversationDependencies: Sendable {
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
+        memoryNoticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        },
         lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in },
+        replyCleanup: @escaping @Sendable () async -> Void = {},
         serviceTeardown: @escaping @Sendable () async -> Void = {}
     ) {
         self.microphonePermission = microphonePermission
@@ -52,7 +58,9 @@ struct ConversationDependencies: Sendable {
         self.addresseePolicy = addresseePolicy
         self.now = now
         self.clarificationDelay = clarificationDelay
+        self.memoryNoticeDelay = memoryNoticeDelay
         self.lifecycleCheckpoint = lifecycleCheckpoint
+        self.replyCleanup = replyCleanup
         self.serviceTeardown = serviceTeardown
     }
 }
@@ -60,7 +68,13 @@ struct ConversationDependencies: Sendable {
 extension ConversationDependencies {
     @MainActor
     static func live() -> Self {
-        let reply = FoundationModelReplyService()
+        let replyService = ToolEnabledReplyService(
+            sessionFactory: AppleSystemReplySessionFactory()
+        )
+        let reply: any ReplyGenerating = replyService
+        let replyCleanup: @Sendable () async -> Void = {
+            await replyService.cancelActiveReply()
+        }
         let concreteRecognizer = AppleSpeechRecognizer()
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let speaker = AppleSpeechSynthesizer()
@@ -78,6 +92,7 @@ extension ConversationDependencies {
             speaker: speaker,
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),
+            replyCleanup: replyCleanup,
             serviceTeardown: serviceTeardown
         )
     }

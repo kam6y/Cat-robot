@@ -76,6 +76,9 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .modelGenerationFailed:
             message = "返事を作れませんでした。もう一度話しかけてください。"
             recoveries = [.retry]
+        case .toolRuntimeFailed:
+            message = "記憶機能を使った返事を完了できませんでした。もう一度話しかけてください。"
+            recoveries = [.retry, .typedInput]
         case .cancelled:
             message = "会話を一時停止しました。"
             recoveries = [.retry]

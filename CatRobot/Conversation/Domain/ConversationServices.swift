@@ -9,8 +9,10 @@ protocol AddressClassifying: Sendable {
 }
 
 protocol ReplyGenerating: Sendable {
-    func prewarm() async
-    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error>
+    func prepare() async throws
+    func streamReply(
+        to request: ReplyTurnRequest
+    ) async throws -> AsyncThrowingStream<ReplyStreamEvent, Error>
     func reset() async
 }
 

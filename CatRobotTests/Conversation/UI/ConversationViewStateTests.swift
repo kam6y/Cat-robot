@@ -2,6 +2,30 @@ import XCTest
 @testable import CatRobot
 
 final class ConversationViewStateTests: XCTestCase {
+    func testMemoryNoticeUsesOnlyGenericJapaneseCopy() {
+        XCTAssertEqual(MemoryNoticePresentation(change: .remembered).text, "記憶しました")
+        XCTAssertEqual(MemoryNoticePresentation(change: .forgotten).text, "記憶を削除しました")
+        XCTAssertEqual(MemoryNoticePresentation(change: .updated).text, "記憶を更新しました")
+    }
+
+    func testMemoryNoticeDefaultsToNilAcrossFactoryStates() {
+        let states: [ConversationViewState] = [
+            .idle,
+            .preparing,
+            .listening,
+            .thinking,
+            .clarifying,
+            .speaking(caption: "返事"),
+            .failed(
+                error: .modelGenerationFailed,
+                message: "失敗しました",
+                recoveries: []
+            ),
+        ]
+
+        XCTAssertTrue(states.allSatisfy { $0.memoryNotice == nil })
+    }
+
     func testListeningCopySeparatesMicrophoneFromAssistantActivity() {
         let state = ConversationViewState.listening
         XCTAssertEqual(state.microphoneStatus, "端末上で聞き取り中")

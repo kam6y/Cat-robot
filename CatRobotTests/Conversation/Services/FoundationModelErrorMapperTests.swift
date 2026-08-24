@@ -1,3 +1,4 @@
+import FoundationModels
 import XCTest
 @testable import CatRobot
 
@@ -27,4 +28,34 @@ final class FoundationModelErrorMapperTests: XCTestCase {
             .cancelled
         )
     }
+
+    func testMapsToolCallErrorsToGenericToolRuntimeFailure() {
+        let error = LanguageModelSession.ToolCallError(
+            tool: FoundationModelErrorMapperTestTool(),
+            underlyingError: FoundationModelErrorMapperTestToolError.storageUnavailable
+        )
+
+        XCTAssertEqual(
+            FoundationModelErrorMapper.map(error),
+            .toolRuntimeFailed
+        )
+    }
+}
+
+@Generable
+private struct FoundationModelErrorMapperTestArguments {
+    var value: String
+}
+
+private struct FoundationModelErrorMapperTestTool: Tool {
+    let name = "mapperTestTool"
+    let description = "Test-only tool."
+
+    func call(arguments: FoundationModelErrorMapperTestArguments) async throws -> String {
+        arguments.value
+    }
+}
+
+private enum FoundationModelErrorMapperTestToolError: Error {
+    case storageUnavailable
 }

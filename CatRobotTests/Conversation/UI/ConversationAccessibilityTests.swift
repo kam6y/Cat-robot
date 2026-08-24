@@ -3,6 +3,36 @@ import SwiftUI
 @testable import CatRobot
 
 final class ConversationAccessibilityTests: XCTestCase {
+    func testMemoryNoticeAccessibilityIsGenericAndNoninteractive() {
+        XCTAssertEqual(MemoryNoticePresentation.accessibilityLabel, "記憶の変更")
+        XCTAssertFalse(MemoryNoticePresentation.allowsHitTesting)
+    }
+
+    func testMemoryNoticeUsesOpaqueFallbackAndMultilineDynamicTypeLayout() {
+        XCTAssertEqual(
+            MemoryNoticePresentation.backgroundStyle(reduceTransparency: true),
+            .opaque
+        )
+        XCTAssertEqual(
+            MemoryNoticePresentation.backgroundStyle(reduceTransparency: false),
+            .material
+        )
+        XCTAssertEqual(
+            MemoryNoticePresentation.textLayout,
+            .init(fixedHorizontally: false, fixedVertically: true)
+        )
+    }
+
+    func testMemoryNoticeChangeDoesNotTriggerCaptionAnnouncement() {
+        let oldState = ConversationViewState.speaking(caption: "覚えたよ")
+        var newState = oldState
+        newState.memoryNotice = "記憶しました"
+
+        XCTAssertNil(
+            ConversationAnnouncementPolicy.announcement(from: oldState, to: newState)
+        )
+    }
+
     func testConversationPresentationRequestsVisibleSystemStatus() {
         XCTAssertFalse(ConversationPresentationPolicy.isStatusBarHidden)
     }

@@ -54,6 +54,8 @@ final class ConversationViewModel {
     @ObservationIgnored private var pendingClarification: PendingClarification?
     @ObservationIgnored private var pendingClarificationExpirationCounter: UInt64 = 0
     @ObservationIgnored private var activePendingClarificationExpirationID: UInt64?
+    @ObservationIgnored private var memoryNoticeCounter: UInt64 = 0
+    @ObservationIgnored private var activeMemoryNoticeID: UInt64?
     @ObservationIgnored private var lifecycleGeneration: UInt64 = 0
     @ObservationIgnored private var captureCounter: UInt64 = 0
     @ObservationIgnored private var turnCounter: UInt64 = 0
@@ -86,6 +88,7 @@ final class ConversationViewModel {
     @ObservationIgnored private var lifecycleTransitionTask: Task<Void, Never>?
     @ObservationIgnored private var failureCleanupTask: Task<Void, Never>?
     @ObservationIgnored private var pendingClarificationExpirationTask: Task<Void, Never>?
+    @ObservationIgnored private var memoryNoticeDismissTask: Task<Void, Never>?
     @ObservationIgnored private var audioEventTask: Task<Void, Never>?
     @ObservationIgnored private var shutdownTask: Task<Void, Never>?
 
@@ -266,6 +269,8 @@ final class ConversationViewModel {
         lifecycleGeneration &+= 1
         wantsListening = false
         clearPendingClarification()
+        cancelMemoryNoticeDismissal()
+        viewState.memoryNotice = nil
         cancelActiveVoiceLatency(reason: .lifecycle)
         activeMicrophonePermissionAwaitID = nil
         releaseMicrophonePermissionCompletion()
@@ -297,6 +302,7 @@ final class ConversationViewModel {
 
     private func performShutdown() async {
         cancelActiveVoiceLatency(reason: .shutdown)
+        cancelMemoryNoticeDismissal()
         await pauseConversation(force: true)
 
         let eventTask = audioEventTask
@@ -378,8 +384,8 @@ final class ConversationViewModel {
             recognizerPreparationAttempted = true
             try await dependencies.recognizer.prepare()
             guard isCurrent(generation) else { return }
-            await dependencies.reply.prewarm()
-            guard isCurrent(generation) else { return }
+            try await dependencies.reply.prepare()
+            guard isCurrent(generation), !Task.isCancelled else { return }
             try await startCapture(generation: generation, recognizerIsPrepared: true)
         } catch {
             guard isCurrent(generation), !Task.isCancelled else { return }
@@ -434,20 +440,7 @@ final class ConversationViewModel {
         }
 
         do {
-            let availability = await dependencies.modelAvailability.availability()
-            guard isTypedTurnCurrent(generation, turnID: turnID),
-                  !Task.isCancelled else { return }
-            guard availability == .available else {
-                await finishTypedTurn(
-                    with: .modelUnavailable(availability),
-                    includesTypedFallback: true,
-                    generation: generation,
-                    turnID: turnID
-                )
-                return
-            }
-
-            await dependencies.reply.prewarm()
+            try await dependencies.reply.prepare()
             guard isTypedTurnCurrent(generation, turnID: turnID),
                   !Task.isCancelled else { return }
             try await dependencies.speaker.prepare()
@@ -480,20 +473,34 @@ final class ConversationViewModel {
         turnID: UInt64
     ) async {
         transition(to: .thinking)
+        var committedReply: ReplyTurnCommit?
+        defer {
+            if committedReply == nil {
+                viewState.caption = ""
+            }
+        }
         do {
-            let stream = try await dependencies.reply.streamReply(to: submitted)
-            var finalText: String?
-            for try await snapshot in stream {
+            let stream = try await dependencies.reply.streamReply(
+                to: ReplyTurnRequest(turnID: turnID, userText: submitted)
+            )
+            for try await event in stream {
                 guard isTypedTurnCurrent(generation, turnID: turnID),
                       !Task.isCancelled else { return }
-                viewState.caption = snapshot
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    finalText = snapshot
+                switch event {
+                case .draft(let text):
+                    viewState.caption = text
+                case .committed(let value):
+                    guard committedReply == nil else {
+                        throw ConversationServiceError.modelGenerationFailed
+                    }
+                    committedReply = value
+                    viewState.caption = value.finalText
                 }
             }
             guard isTypedTurnCurrent(generation, turnID: turnID),
                   !Task.isCancelled else { return }
-            guard let finalText else {
+            guard let committedReply else {
+                viewState.caption = ""
                 await finishTypedTurn(
                     with: .modelGenerationFailed,
                     includesTypedFallback: true,
@@ -502,14 +509,18 @@ final class ConversationViewModel {
                 )
                 return
             }
+            publishMemoryNotice(committedReply.memoryChange)
             await speakTypedReply(
-                finalText,
+                committedReply.finalText,
                 shouldResumeVoice: shouldResumeVoice,
                 generation: generation,
                 turnID: turnID
             )
         } catch {
             let serviceError = Self.serviceError(from: error)
+            if committedReply == nil {
+                viewState.caption = ""
+            }
             await finishTypedTurn(
                 with: serviceError,
                 includesTypedFallback: true,
@@ -989,6 +1000,32 @@ final class ConversationViewModel {
         pendingClarification = nil
     }
 
+    private func publishMemoryNotice(_ change: ReplyMemoryChange?) {
+        guard let change else { return }
+        memoryNoticeDismissTask?.cancel()
+        memoryNoticeCounter &+= 1
+        let noticeID = memoryNoticeCounter
+        activeMemoryNoticeID = noticeID
+        viewState.memoryNotice = MemoryNoticePresentation(change: change).text
+        let delay = dependencies.memoryNoticeDelay
+
+        memoryNoticeDismissTask = Task { @MainActor [weak self] in
+            await delay(.seconds(3))
+            guard !Task.isCancelled,
+                  let self,
+                  self.activeMemoryNoticeID == noticeID else { return }
+            self.viewState.memoryNotice = nil
+            self.activeMemoryNoticeID = nil
+            self.memoryNoticeDismissTask = nil
+        }
+    }
+
+    private func cancelMemoryNoticeDismissal() {
+        memoryNoticeDismissTask?.cancel()
+        memoryNoticeDismissTask = nil
+        activeMemoryNoticeID = nil
+    }
+
     private func generateReply(
         to utterance: String,
         engagementUpdate: EngagementUpdate,
@@ -996,22 +1033,38 @@ final class ConversationViewModel {
         turnID: UInt64
     ) async {
         transition(to: .thinking)
+        var committedReply: ReplyTurnCommit?
+        defer {
+            if committedReply == nil {
+                viewState.caption = ""
+            }
+        }
         do {
-            let stream = try await dependencies.reply.streamReply(to: utterance)
-            var finalText: String?
-            for try await snapshot in stream {
+            let stream = try await dependencies.reply.streamReply(
+                to: ReplyTurnRequest(turnID: turnID, userText: utterance)
+            )
+            for try await event in stream {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                viewState.caption = snapshot
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    recordFirstVoiceCaption(
-                        generation: generation,
-                        turnID: turnID
-                    )
-                    finalText = snapshot
+                switch event {
+                case .draft(let text):
+                    viewState.caption = text
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        recordFirstVoiceCaption(
+                            generation: generation,
+                            turnID: turnID
+                        )
+                    }
+                case .committed(let value):
+                    guard committedReply == nil else {
+                        throw ConversationServiceError.modelGenerationFailed
+                    }
+                    committedReply = value
+                    viewState.caption = value.finalText
                 }
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            guard let finalText else {
+            guard let committedReply else {
+                viewState.caption = ""
                 await finishVoiceFailure(
                     with: .modelGenerationFailed,
                     includesTypedFallback: true,
@@ -1020,8 +1073,9 @@ final class ConversationViewModel {
                 )
                 return
             }
+            publishMemoryNotice(committedReply.memoryChange)
             await speakAndResume(
-                finalText,
+                committedReply.finalText,
                 engagementUpdate: engagementUpdate,
                 generation: generation,
                 turnID: turnID
@@ -1029,6 +1083,9 @@ final class ConversationViewModel {
         } catch {
             let serviceError = Self.serviceError(from: error)
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            if committedReply == nil {
+                viewState.caption = ""
+            }
             await finishVoiceFailure(
                 with: serviceError,
                 includesTypedFallback: true,
@@ -1244,11 +1301,12 @@ final class ConversationViewModel {
             closingTailSegments.removeAll(keepingCapacity: true)
 
             let cleanup = Task { @MainActor in
+                await dependencies.replyCleanup()
+                await oldTurn?.value
                 await failureCleanupTask.value
                 await oldPreflight?.value
                 await oldCapture?.value
                 await oldClosing?.value
-                await oldTurn?.value
             }
             lifecycleTransitionTask = cleanup
             await cleanup.value
@@ -1296,12 +1354,13 @@ final class ConversationViewModel {
         closingTailSegments.removeAll(keepingCapacity: true)
 
         let cleanup = Task { @MainActor [dependencies] in
+            await dependencies.replyCleanup()
+            await oldTurn?.value
             await oldPreflight?.value
             await dependencies.speaker.stop()
             await dependencies.recognizer.stop()
             await oldCapture?.value
             await oldClosing?.value
-            await oldTurn?.value
             await dependencies.audioSession.deactivate()
         }
         lifecycleTransitionTask = cleanup
@@ -1505,6 +1564,7 @@ final class ConversationViewModel {
         let typedText = viewState.typedText
         let showsTypedInput = viewState.showsTypedInput
         let caption = viewState.caption
+        let memoryNotice = viewState.memoryNotice
         viewState = .failed(
             error: error,
             message: presentation.message,
@@ -1513,6 +1573,7 @@ final class ConversationViewModel {
         viewState.typedText = typedText
         viewState.showsTypedInput = showsTypedInput
         viewState.caption = caption
+        viewState.memoryNotice = memoryNotice
     }
 
     private static func serviceError(from error: any Error) -> ConversationServiceError {
