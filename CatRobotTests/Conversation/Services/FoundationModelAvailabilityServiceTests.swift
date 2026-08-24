@@ -42,7 +42,7 @@ final class FoundationModelAvailabilityServiceTests: XCTestCase {
         ]
 
         for (snapshot, expected) in cases {
-            let service = FoundationModelAvailabilityService(locale: locale) { snapshot }
+            let service = FoundationModelAvailabilityService(locale: locale) { _ in snapshot }
 
             let actual = await service.availability()
 
