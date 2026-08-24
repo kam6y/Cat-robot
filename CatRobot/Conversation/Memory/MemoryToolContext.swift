@@ -13,8 +13,8 @@ actor MemoryToolContext {
     private let now: @Sendable () -> Date
     private let makeUUID: @Sendable () -> UUID
 
-    private var generation: UInt64 = 0
-    private var revision: UInt64 = 0
+    private var isOperationActive = false
+    private var operationWaiters: [CheckedContinuation<Void, Never>] = []
     private var currentTurnID: UInt64?
     private var normalizedUserText = ""
     private var committedSnapshot: [MemoryFact] = []
@@ -35,28 +35,22 @@ actor MemoryToolContext {
     }
 
     func beginTurn(id: UInt64, userText: String) async {
-        generation &+= 1
-        revision &+= 1
-        let expectedGeneration = generation
-        currentTurnID = nil
-        normalizedUserText = ""
-        committedSnapshot = []
-        candidateFacts = []
-        searchedMemoryIDs.removeAll()
-        exposedSearchResultCount = 0
-        exposedSearchByteCount = 0
-        notices.removeAll()
+        await acquireOperation()
+        defer { releaseOperation() }
 
-        let snapshot = await store.committedFacts()
-        guard generation == expectedGeneration else { return }
-
+        let storedFacts = await store.committedFacts()
+        let snapshot = storedFacts.map { normalizedMemoryFact($0) }
         currentTurnID = id
         normalizedUserText = normalized(userText)
         committedSnapshot = snapshot
         candidateFacts = snapshot
+        clearTurnTracking()
     }
 
     func search(query: String, limit: Int) async -> [MemoryFact] {
+        await acquireOperation()
+        defer { releaseOperation() }
+
         guard limit > 0 else { return [] }
 
         let normalizedQuery = normalized(query)
@@ -99,6 +93,9 @@ actor MemoryToolContext {
     }
 
     func stageRemember(fact: String, supportingQuote: String) async -> String {
+        await acquireOperation()
+        defer { releaseOperation() }
+
         let normalizedFact = normalized(fact)
         let normalizedQuote = normalized(supportingQuote)
         guard !normalizedFact.isEmpty, !normalizedQuote.isEmpty else {
@@ -128,12 +125,14 @@ actor MemoryToolContext {
                 )
             )
         }
-        revision &+= 1
         notices.append(.remembered(normalizedFact))
         return "Remember staged: \(normalizedFact)"
     }
 
     func stageForget(memoryIDs: [UUID], supportingQuote: String) async -> String {
+        await acquireOperation()
+        defer { releaseOperation() }
+
         guard !memoryIDs.isEmpty else {
             return "Forget rejected: provide at least one memory ID."
         }
@@ -150,33 +149,65 @@ actor MemoryToolContext {
         }
 
         candidateFacts.removeAll { requestedIDs.contains($0.id) }
-        revision &+= 1
         notices.append(.forgotten("\(memoryIDs.count) memory item(s)"))
         return "Forget staged: \(memoryIDs.count) memory item(s)."
     }
 
     func commitTurn() async throws -> [MemoryNotice] {
-        let expectedGeneration = generation
-        let expectedRevision = revision
+        await acquireOperation()
+        defer { releaseOperation() }
+
         let factsToCommit = candidateFacts
         let noticesToReturn = notices
 
-        try await store.replaceCommittedFacts(factsToCommit)
-
-        guard generation == expectedGeneration, revision == expectedRevision else {
-            return noticesToReturn
+        do {
+            try await store.replaceCommittedFacts(factsToCommit)
+        } catch {
+            rollbackToCommittedSnapshot()
+            throw error
         }
+
         committedSnapshot = factsToCommit
-        notices.removeAll()
+        currentTurnID = nil
+        normalizedUserText = ""
+        candidateFacts = factsToCommit
+        clearTurnTracking()
         return noticesToReturn
     }
 
     func rollbackTurn() async {
-        generation &+= 1
-        revision &+= 1
+        await acquireOperation()
+        defer { releaseOperation() }
+
+        rollbackToCommittedSnapshot()
+    }
+
+    private func acquireOperation() async {
+        guard !isOperationActive else {
+            await withCheckedContinuation { continuation in
+                operationWaiters.append(continuation)
+            }
+            return
+        }
+        isOperationActive = true
+    }
+
+    private func releaseOperation() {
+        if operationWaiters.isEmpty {
+            isOperationActive = false
+        } else {
+            operationWaiters.removeFirst().resume()
+        }
+    }
+
+    private func rollbackToCommittedSnapshot() {
         currentTurnID = nil
         normalizedUserText = ""
         candidateFacts = committedSnapshot
+        clearTurnTracking()
+    }
+
+    private func clearTurnTracking() {
         searchedMemoryIDs.removeAll()
         exposedSearchResultCount = 0
         exposedSearchByteCount = 0
@@ -185,6 +216,13 @@ actor MemoryToolContext {
 
     private func normalized(_ text: String) -> String {
         text.precomposedStringWithCanonicalMapping
+    }
+
+    private func normalizedMemoryFact(_ fact: MemoryFact) -> MemoryFact {
+        var normalizedFact = fact
+        normalizedFact.fact = normalized(fact.fact)
+        normalizedFact.supportingQuote = normalized(fact.supportingQuote)
+        return normalizedFact
     }
 
     private func lowercaseID(_ fact: MemoryFact) -> String {

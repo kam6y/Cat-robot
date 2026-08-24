@@ -42,7 +42,6 @@ struct AtomicJSONMemoryPersistence: MemoryPersisting {
         } else {
             try fileManager.moveItem(at: temporaryURL, to: fileURL)
         }
-        try applyProductionMetadata(to: fileURL)
     }
 
     private func applyProductionMetadata(to url: URL) throws {

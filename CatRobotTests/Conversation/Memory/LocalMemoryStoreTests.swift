@@ -100,6 +100,20 @@ final class LocalMemoryStoreTests: XCTestCase {
         XCTAssertEqual(values.fileProtection, .complete)
     }
 
+    func testReplacingExistingMemoryFileRetainsCompleteProtectionAndBackupExclusion() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("memories.json")
+        let store = try LocalMemoryStore(fileURL: url)
+
+        try await store.replaceCommittedFacts([makeFact(id: "00000000-0000-0000-0000-000000000001")])
+        try await store.replaceCommittedFacts([makeFact(id: "00000000-0000-0000-0000-000000000002")])
+
+        let values = try url.resourceValues(forKeys: [.isExcludedFromBackupKey, .fileProtectionKey])
+        XCTAssertEqual(values.isExcludedFromBackup, true)
+        XCTAssertEqual(values.fileProtection, .complete)
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
