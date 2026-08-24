@@ -531,6 +531,7 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
     private let automaticallyFinishes: Bool
     private var prepareError: ConversationServiceError?
     private let speakError: ConversationServiceError?
+    private let speakGate: ConversationTestGate?
     private let stopGate: ConversationTestGate?
     private let log: ConversationTestCallLog
     private var continuations: [Continuation] = []
@@ -543,12 +544,14 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
         automaticallyFinishes: Bool,
         prepareError: ConversationServiceError?,
         speakError: ConversationServiceError?,
+        speakGate: ConversationTestGate?,
         stopGate: ConversationTestGate?,
         log: ConversationTestCallLog
     ) {
         self.automaticallyFinishes = automaticallyFinishes
         self.prepareError = prepareError
         self.speakError = speakError
+        self.speakGate = speakGate
         self.stopGate = stopGate
         self.log = log
     }
@@ -570,6 +573,7 @@ actor FakeSpeechSpeaker: SpeechSpeaking {
         let pair = AsyncThrowingStream<SpeechEvent, Error>.makeStream()
         continuations.append(pair.continuation)
         resumeTextWaiters()
+        await speakGate?.wait()
         if automaticallyFinishes {
             pair.continuation.yield(.started)
             pair.continuation.yield(.willSpeak(range: 0..<max(1, text.count)))
@@ -698,6 +702,7 @@ final class ConversationHarness {
         speakerAutomaticallyFinishes: Bool = true,
         speakerPrepareError: ConversationServiceError? = nil,
         speakerError: ConversationServiceError? = nil,
+        speakerSpeakGate: ConversationTestGate? = nil,
         speakerStopGate: ConversationTestGate? = nil,
         recognizerPrepareGate: ConversationTestGate? = nil,
         recognizerStopGate: ConversationTestGate? = nil,
@@ -749,6 +754,7 @@ final class ConversationHarness {
             automaticallyFinishes: speakerAutomaticallyFinishes,
             prepareError: speakerPrepareError,
             speakError: speakerError,
+            speakGate: speakerSpeakGate,
             stopGate: speakerStopGate,
             log: calls
         )

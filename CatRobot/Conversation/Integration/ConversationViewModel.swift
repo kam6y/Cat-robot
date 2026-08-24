@@ -270,6 +270,7 @@ final class ConversationViewModel {
         wantsListening = false
         clearPendingClarification()
         cancelMemoryNoticeDismissal()
+        viewState.memoryNotice = nil
         cancelActiveVoiceLatency(reason: .lifecycle)
         activeMicrophonePermissionAwaitID = nil
         releaseMicrophonePermissionCompletion()
@@ -494,7 +495,6 @@ final class ConversationViewModel {
                     }
                     committedReply = value
                     viewState.caption = value.finalText
-                    publishMemoryNotice(value.memoryChange)
                 }
             }
             guard isTypedTurnCurrent(generation, turnID: turnID),
@@ -509,6 +509,7 @@ final class ConversationViewModel {
                 )
                 return
             }
+            publishMemoryNotice(committedReply.memoryChange)
             await speakTypedReply(
                 committedReply.finalText,
                 shouldResumeVoice: shouldResumeVoice,
@@ -1059,7 +1060,6 @@ final class ConversationViewModel {
                     }
                     committedReply = value
                     viewState.caption = value.finalText
-                    publishMemoryNotice(value.memoryChange)
                 }
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
@@ -1073,6 +1073,7 @@ final class ConversationViewModel {
                 )
                 return
             }
+            publishMemoryNotice(committedReply.memoryChange)
             await speakAndResume(
                 committedReply.finalText,
                 engagementUpdate: engagementUpdate,

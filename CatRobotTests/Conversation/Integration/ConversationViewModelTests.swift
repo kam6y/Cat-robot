@@ -5,9 +5,11 @@ import XCTest
 final class ConversationViewModelTests: XCTestCase {
     func testCommittedMemoryChangePublishesNoticeWithoutBlockingSpeech() async {
         let sleeper = ConversationTestSleeper()
+        let speakGate = ConversationTestGate()
         let harness = ConversationHarness(
             replySnapshots: nil,
             speakerAutomaticallyFinishes: false,
+            speakerSpeakGate: speakGate,
             memoryNoticeDelay: { duration in
                 await sleeper.sleep(for: duration)
             }
@@ -21,15 +23,12 @@ final class ConversationViewModelTests: XCTestCase {
         await harness.reply.yield(
             .committed(.init(finalText: "覚えたよ", memoryChange: .remembered))
         )
-        let didPublishNotice = await harness.waitUntil {
-            harness.sut.viewState.memoryNotice == "記憶しました"
-        }
-        let speechBeforeReplyCompletion = await harness.speaker.texts
-        XCTAssertTrue(didPublishNotice)
-        XCTAssertTrue(speechBeforeReplyCompletion.isEmpty)
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
 
         await harness.reply.finish()
-        await harness.speaker.waitUntilTextCount(1)
+        await speakGate.waitUntilEntered()
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "記憶しました")
+        await speakGate.open()
         let spokenTexts = await harness.speaker.texts
         XCTAssertEqual(spokenTexts, ["覚えたよ"])
 
@@ -37,6 +36,160 @@ final class ConversationViewModelTests: XCTestCase {
         await harness.speaker.finish()
         await turn.value
         await sleeper.release(0)
+    }
+
+    func testSceneInactivityClearsCommittedNoticeAndCancelsOldExpiry() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            memoryNoticeDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        let submission = Task {
+            await harness.sut.submitTypedText("覚えて")
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(
+            .committed(.init(finalText: "覚えたよ", memoryChange: .remembered))
+        )
+        await harness.reply.finish()
+        await submission.value
+        let didSchedule = await harness.waitUntil {
+            (await sleeper.durations).count == 1
+        }
+        XCTAssertTrue(didSchedule)
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "記憶しました")
+
+        harness.sut.invalidateForSceneInactivity()
+        let didCancel = await harness.waitUntil {
+            await sleeper.cancellationCount == 1
+        }
+        XCTAssertTrue(didCancel)
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+
+        await sleeper.release(0)
+        let didCompleteOldExpiry = await harness.waitUntil {
+            await sleeper.completionCount == 1
+        }
+        XCTAssertTrue(didCompleteOldExpiry)
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+    }
+
+    func testTypedDuplicateCommitPublishesNoNoticeOrSpeech() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            memoryNoticeDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        let submission = Task {
+            await harness.sut.submitTypedText("覚えて")
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(
+            .committed(.init(finalText: "最初", memoryChange: .remembered))
+        )
+        await harness.reply.yield(
+            .committed(.init(finalText: "重複", memoryChange: .forgotten))
+        )
+        await harness.reply.finish()
+        await submission.value
+
+        let durations = await sleeper.durations
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+        XCTAssertTrue(durations.isEmpty)
+        XCTAssertTrue(spokenTexts.isEmpty)
+        await drainScheduledMemoryNotices(sleeper, expectedCount: durations.count, harness: harness)
+    }
+
+    func testTypedCommitThenStreamFailurePublishesNoNoticeOrSpeech() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            memoryNoticeDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        let submission = Task {
+            await harness.sut.submitTypedText("覚えて")
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(
+            .committed(.init(finalText: "未確定", memoryChange: .remembered))
+        )
+        await harness.reply.fail(.toolRuntimeFailed)
+        await submission.value
+
+        let durations = await sleeper.durations
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.toolRuntimeFailed))
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+        XCTAssertTrue(durations.isEmpty)
+        XCTAssertTrue(spokenTexts.isEmpty)
+        await drainScheduledMemoryNotices(sleeper, expectedCount: durations.count, harness: harness)
+    }
+
+    func testVoiceDuplicateCommitPublishesNoNoticeOrSpeech() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            memoryNoticeDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("ねこ、覚えて", at: 0)
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(
+            .committed(.init(finalText: "最初", memoryChange: .remembered))
+        )
+        await harness.reply.yield(
+            .committed(.init(finalText: "重複", memoryChange: .updated))
+        )
+        await harness.reply.finish()
+        await turn.value
+
+        let durations = await sleeper.durations
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+        XCTAssertTrue(durations.isEmpty)
+        XCTAssertTrue(spokenTexts.isEmpty)
+        await drainScheduledMemoryNotices(sleeper, expectedCount: durations.count, harness: harness)
+    }
+
+    func testVoiceCommitThenStreamFailurePublishesNoNoticeOrSpeech() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(
+            replySnapshots: nil,
+            memoryNoticeDelay: { duration in
+                await sleeper.sleep(for: duration)
+            }
+        )
+        await harness.sut.startConversation()
+        let turn = Task {
+            await harness.emitCompletedUtterance("ねこ、覚えて", at: 0)
+        }
+        await harness.reply.waitUntilRequestCount(1)
+        await harness.reply.yield(
+            .committed(.init(finalText: "未確定", memoryChange: .remembered))
+        )
+        await harness.reply.fail(.toolRuntimeFailed)
+        await turn.value
+
+        let durations = await sleeper.durations
+        let spokenTexts = await harness.speaker.texts
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.toolRuntimeFailed))
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+        XCTAssertTrue(durations.isEmpty)
+        XCTAssertTrue(spokenTexts.isEmpty)
+        await drainScheduledMemoryNotices(sleeper, expectedCount: durations.count, harness: harness)
     }
 
     func testSearchOrDateOnlyCommitPublishesNoNotice() async {
@@ -816,5 +969,18 @@ final class ConversationViewModelTests: XCTestCase {
         await turn.value
 
         XCTAssertEqual(harness.sut.viewState.mouthPose, .closed)
+    }
+
+    private func drainScheduledMemoryNotices(
+        _ sleeper: ConversationTestSleeper,
+        expectedCount: Int,
+        harness: ConversationHarness
+    ) async {
+        await sleeper.releaseAll()
+        guard expectedCount > 0 else { return }
+        let didComplete = await harness.waitUntil {
+            await sleeper.completionCount == expectedCount
+        }
+        XCTAssertTrue(didComplete)
     }
 }
