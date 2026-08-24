@@ -461,6 +461,52 @@ final class MemoryToolContextTests: XCTestCase {
         XCTAssertTrue(visible.isEmpty)
     }
 
+    func testCancelledCommitQueuedBehindStoreDoesNotPersistOrDeactivateTurn() async throws {
+        let persistence = SingleSaveBlockingMemoryPersistence()
+        let store = try LocalMemoryStore(persistence: persistence)
+        let context = makeContext(store: store)
+        await context.beginTurn(id: 7, userText: "青が好き")
+        _ = await context.stageRemember(fact: "青が好き", supportingQuote: "青が好き")
+        let baselineSave = Task {
+            try await store.replaceCommittedFacts([])
+        }
+        guard persistence.waitUntilBlockedSaveStarts() else {
+            persistence.releaseBlockedSave()
+            _ = await baselineSave.result
+            XCTFail("Expected the baseline save to block the store actor")
+            return
+        }
+        defer { persistence.releaseBlockedSave() }
+        let commitGate = ReplySessionBlockingGate()
+        let cancelledCommit = Task {
+            await commitGate.enterAndWaitIgnoringCancellation()
+            return try await context.commitTurn()
+        }
+        await commitGate.waitUntilStarted()
+
+        cancelledCommit.cancel()
+        await commitGate.waitUntilCancellationObserved()
+        await commitGate.release()
+        persistence.releaseBlockedSave()
+
+        try await baselineSave.value
+        let commitResult = await cancelledCommit.result
+        let committedFacts = await store.committedFacts()
+        let stagedFacts = await context.search(query: "青", limit: 8)
+
+        switch commitResult {
+        case .success:
+            XCTFail("Expected the cancelled context commit to throw")
+        case let .failure(error):
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(persistence.recordedSaveCallCount, 1)
+        XCTAssertTrue(persistence.savedFacts.isEmpty)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(stagedFacts.map(\.fact), ["青が好き"])
+        await context.rollbackTurn()
+    }
+
     private func makeStore(facts: [MemoryFact] = []) throws -> LocalMemoryStore {
         let persistence = MemoryContextFailingPersistence(facts: facts)
         return try LocalMemoryStore(persistence: persistence)

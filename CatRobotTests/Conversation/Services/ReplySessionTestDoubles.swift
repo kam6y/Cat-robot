@@ -41,6 +41,58 @@ final class RecordingMemoryPersistence: MemoryPersisting, @unchecked Sendable {
     }
 }
 
+final class SingleSaveBlockingMemoryPersistence: MemoryPersisting, @unchecked Sendable {
+    private let lock = NSLock()
+    private let blockedSaveStarted = DispatchSemaphore(value: 0)
+    private let allowBlockedSave = DispatchSemaphore(value: 0)
+    private var facts: [MemoryFact]
+    private var saveCallCount = 0
+    private var didReleaseBlockedSave = false
+
+    init(facts: [MemoryFact] = []) {
+        self.facts = facts
+    }
+
+    var savedFacts: [MemoryFact] {
+        lock.withLock { facts }
+    }
+
+    var recordedSaveCallCount: Int {
+        lock.withLock { saveCallCount }
+    }
+
+    func load() throws -> [MemoryFact] {
+        lock.withLock { facts }
+    }
+
+    func save(_ facts: [MemoryFact]) throws {
+        let callNumber = lock.withLock {
+            saveCallCount += 1
+            return saveCallCount
+        }
+        if callNumber == 1 {
+            blockedSaveStarted.signal()
+            allowBlockedSave.wait()
+        }
+        lock.withLock { self.facts = facts }
+    }
+
+    func waitUntilBlockedSaveStarts() -> Bool {
+        blockedSaveStarted.wait(timeout: .now() + 5) == .success
+    }
+
+    func releaseBlockedSave() {
+        let shouldSignal = lock.withLock {
+            guard !didReleaseBlockedSave else { return false }
+            didReleaseBlockedSave = true
+            return true
+        }
+        if shouldSignal {
+            allowBlockedSave.signal()
+        }
+    }
+}
+
 final class ReplyServiceTimelineRecorder: @unchecked Sendable {
     enum Event: Equatable { case draft, memorySaved, committed }
     private let lock = NSLock()
@@ -164,6 +216,7 @@ actor ReplySessionRestoreGate {
 }
 
 actor ReplySessionBlockingGate {
+    nonisolated let cancellationProbe: ReplySessionCancellationProbe?
     private var didStart = false
     private var didObserveCancellation = false
     private var isReleased = false
@@ -171,6 +224,10 @@ actor ReplySessionBlockingGate {
     private var cancellationWaiters: [CheckedContinuation<Void, Never>] = []
     private var cancellationOrReleaseWaiters: [CheckedContinuation<Bool, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(cancellationProbe: ReplySessionCancellationProbe? = nil) {
+        self.cancellationProbe = cancellationProbe
+    }
 
     func enterAndWaitIgnoringCancellation() async {
         await withTaskCancellationHandler {
@@ -184,6 +241,7 @@ actor ReplySessionBlockingGate {
                 releaseWaiters.append(continuation)
             }
         } onCancel: {
+            cancellationProbe?.recordCancellation()
             Task { await self.recordCancellation() }
         }
     }
@@ -229,6 +287,19 @@ actor ReplySessionBlockingGate {
         let lifecyclePending = cancellationOrReleaseWaiters
         cancellationOrReleaseWaiters.removeAll()
         lifecyclePending.forEach { $0.resume(returning: true) }
+    }
+}
+
+final class ReplySessionCancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didObserveCancellation = false
+
+    var wasCancelled: Bool {
+        lock.withLock { didObserveCancellation }
+    }
+
+    func recordCancellation() {
+        lock.withLock { didObserveCancellation = true }
     }
 }
 

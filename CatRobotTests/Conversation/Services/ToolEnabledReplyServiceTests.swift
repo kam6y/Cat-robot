@@ -54,6 +54,81 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
         XCTAssertTrue(tools[3] is CurrentDateTimeTool)
     }
 
+    func testCancellingJoinedPrepareDoesNotCancelSharedPreparation() async throws {
+        let cancellationProbe = ReplySessionCancellationProbe()
+        let preparationGate = ReplySessionBlockingGate(cancellationProbe: cancellationProbe)
+        let joinedPreparation = ReplySessionSignal()
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let client = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.yield("fresh")
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(
+            clients: [client],
+            prepareGate: preparationGate,
+            gatedPrepareCall: 1
+        )
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider(),
+            testHooks: .init(
+                sharedPreparationJoined: {
+                    await joinedPreparation.signal()
+                }
+            )
+        )
+
+        let firstPrepare = Task { () -> ConversationServiceError? in
+            do {
+                try await service.prepare()
+                return nil
+            } catch let error as ConversationServiceError {
+                return error
+            } catch {
+                return .modelGenerationFailed
+            }
+        }
+        await preparationGate.waitUntilStarted()
+        let cancelledWaiter = Task { () -> ConversationServiceError? in
+            do {
+                try await service.prepare()
+                return nil
+            } catch let error as ConversationServiceError {
+                return error
+            } catch {
+                return .modelGenerationFailed
+            }
+        }
+        await joinedPreparation.wait()
+
+        cancelledWaiter.cancel()
+
+        XCTAssertFalse(cancellationProbe.wasCancelled)
+        await preparationGate.release()
+        let firstError = await firstPrepare.value
+        let cancelledError = await cancelledWaiter.value
+        let events = try await collect(
+            service: service,
+            request: .init(turnID: 40, userText: "after prepare")
+        )
+        let prepareCount = await factory.prepareCount
+        let makeCount = await factory.makeCount
+        let prewarmCount = await client.prewarmCount
+
+        XCTAssertNil(firstError)
+        XCTAssertEqual(cancelledError, .cancelled)
+        XCTAssertEqual(prepareCount, 1)
+        XCTAssertEqual(makeCount, 1)
+        XCTAssertEqual(prewarmCount, 1)
+        XCTAssertEqual(
+            events.last,
+            .committed(.init(finalText: "fresh", memoryChange: nil))
+        )
+    }
+
     func testSuccessfulReplyEmitsDraftsThenOneCommittedAfterMemoryCommit() async throws {
         let sourceFinishGate = ReplySessionBlockingGate()
         let draftsReceived = ReplySessionSignal()
@@ -324,6 +399,87 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
         XCTAssertTrue(committedFacts.isEmpty)
         XCTAssertEqual(restoreCount, 1)
         XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testCancellationWhileCommitWaitsForStoreDoesNotPersistOrEmitCommit() async throws {
+        let persistence = SingleSaveBlockingMemoryPersistence()
+        let store = try LocalMemoryStore(persistence: persistence)
+        let commitGate = ReplySessionBlockingGate()
+        let client = ReplySessionClientSpy { tools, _, _, continuation in
+            do {
+                let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                _ = try await remember.call(
+                    arguments: .init(fact: "青が好き", supportingQuote: "青が好き")
+                )
+                continuation.yield("覚えたよ")
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        let factory = ReplySessionFactorySpy(clients: [client])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider(),
+            testHooks: .init(
+                replyCommitWillBegin: {
+                    await commitGate.enterAndWaitIgnoringCancellation()
+                }
+            )
+        )
+        try await service.prepare()
+        let recordedEvents = ReplyStreamEventRecorder()
+        let consumer = Task {
+            let stream = try await service.streamReply(
+                to: .init(turnID: 70, userText: "青が好き")
+            )
+            for try await event in stream {
+                recordedEvents.append(event)
+            }
+        }
+        await commitGate.waitUntilStarted()
+        let baselineSave = Task {
+            try await store.replaceCommittedFacts([])
+        }
+        guard persistence.waitUntilBlockedSaveStarts() else {
+            persistence.releaseBlockedSave()
+            await commitGate.release()
+            await service.cancelActiveReply()
+            _ = await consumer.result
+            _ = await baselineSave.result
+            XCTFail("Expected the baseline save to block the store actor")
+            return
+        }
+        defer { persistence.releaseBlockedSave() }
+
+        let cleanup = Task {
+            await service.cancelActiveReply()
+        }
+        await commitGate.waitUntilCancellationObserved()
+        await commitGate.release()
+        persistence.releaseBlockedSave()
+
+        try await baselineSave.value
+        await cleanup.value
+        let consumerResult = await consumer.result
+        let committedFacts = await store.committedFacts()
+        let restoreCount = await client.restoreCount
+
+        switch consumerResult {
+        case .success:
+            XCTFail("Expected cancellation to terminate the reply stream")
+        case let .failure(error):
+            XCTAssertEqual(error as? ConversationServiceError, .cancelled)
+        }
+        XCTAssertEqual(persistence.recordedSaveCallCount, 1)
+        XCTAssertTrue(persistence.savedFacts.isEmpty)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+        XCTAssertFalse(recordedEvents.values.contains { event in
+            if case .committed = event { return true }
+            return false
+        })
     }
 
     func testCancellationDuringSetupWaitsForSetupAndCleanupBarrier() async throws {
@@ -1138,6 +1294,19 @@ private final class LockedValue<Value: Sendable>: @unchecked Sendable {
 
     func set(_ value: Value) {
         lock.withLock { storage = value }
+    }
+}
+
+private final class ReplyStreamEventRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [ReplyStreamEvent] = []
+
+    var values: [ReplyStreamEvent] {
+        lock.withLock { storage }
+    }
+
+    func append(_ event: ReplyStreamEvent) {
+        lock.withLock { storage.append(event) }
     }
 }
 

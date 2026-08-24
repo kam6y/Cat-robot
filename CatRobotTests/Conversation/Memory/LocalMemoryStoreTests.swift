@@ -141,6 +141,48 @@ final class LocalMemoryStoreTests: XCTestCase {
         XCTAssertEqual(finalValues.fileProtection, .complete)
     }
 
+    func testCancelledReplacementQueuedBehindStoreDoesNotSaveOrChangeState() async throws {
+        let original = makeFact(id: "00000000-0000-0000-0000-000000000001")
+        let replacement = makeFact(id: "00000000-0000-0000-0000-000000000002")
+        let persistence = SingleSaveBlockingMemoryPersistence(facts: [original])
+        let store = try LocalMemoryStore(persistence: persistence)
+        let baselineSave = Task {
+            try await store.replaceCommittedFacts([original])
+        }
+        guard persistence.waitUntilBlockedSaveStarts() else {
+            persistence.releaseBlockedSave()
+            _ = await baselineSave.result
+            XCTFail("Expected the baseline save to block the store actor")
+            return
+        }
+        defer { persistence.releaseBlockedSave() }
+        let replacementGate = ReplySessionBlockingGate()
+        let cancelledReplacement = Task {
+            await replacementGate.enterAndWaitIgnoringCancellation()
+            try await store.replaceCommittedFacts([replacement])
+        }
+        await replacementGate.waitUntilStarted()
+
+        cancelledReplacement.cancel()
+        await replacementGate.waitUntilCancellationObserved()
+        await replacementGate.release()
+        persistence.releaseBlockedSave()
+
+        try await baselineSave.value
+        let replacementResult = await cancelledReplacement.result
+        let committedFacts = await store.committedFacts()
+
+        switch replacementResult {
+        case .success:
+            XCTFail("Expected the cancelled store replacement to throw")
+        case let .failure(error):
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(persistence.recordedSaveCallCount, 1)
+        XCTAssertEqual(persistence.savedFacts, [original])
+        XCTAssertEqual(committedFacts, [original])
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

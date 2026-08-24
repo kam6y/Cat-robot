@@ -157,6 +157,7 @@ actor MemoryToolContext {
     func commitTurn() async throws -> [MemoryNotice] {
         await acquireOperation()
         defer { releaseOperation() }
+        try Task.checkCancellation()
 
         guard currentTurnID != nil else { return [] }
 

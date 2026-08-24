@@ -6,15 +6,21 @@ actor ToolEnabledReplyService: ReplyGenerating {
         let publicPrepareEnteredDuringReset: (@Sendable () async -> Void)?
         let originalResetOwnerResumed: (@Sendable () async -> Void)?
         let concurrentResetJoined: (@Sendable () async -> Void)?
+        let sharedPreparationJoined: (@Sendable () async -> Void)?
+        let replyCommitWillBegin: (@Sendable () async -> Void)?
 
         init(
             publicPrepareEnteredDuringReset: (@Sendable () async -> Void)? = nil,
             originalResetOwnerResumed: (@Sendable () async -> Void)? = nil,
-            concurrentResetJoined: (@Sendable () async -> Void)? = nil
+            concurrentResetJoined: (@Sendable () async -> Void)? = nil,
+            sharedPreparationJoined: (@Sendable () async -> Void)? = nil,
+            replyCommitWillBegin: (@Sendable () async -> Void)? = nil
         ) {
             self.publicPrepareEnteredDuringReset = publicPrepareEnteredDuringReset
             self.originalResetOwnerResumed = originalResetOwnerResumed
             self.concurrentResetJoined = concurrentResetJoined
+            self.sharedPreparationJoined = sharedPreparationJoined
+            self.replyCommitWillBegin = replyCommitWillBegin
         }
     }
 
@@ -112,10 +118,12 @@ actor ToolEnabledReplyService: ReplyGenerating {
 
         let task: Task<any ReplySessionClient, Error>
         let preparationID: UUID
+        let joinedSharedPreparation: Bool
         if let existingTask = preparationTask,
            let existingID = activePreparationID {
             task = existingTask
             preparationID = existingID
+            joinedSharedPreparation = true
         } else {
             preparationID = UUID()
             let createdTask = Task<any ReplySessionClient, Error> {
@@ -124,13 +132,14 @@ actor ToolEnabledReplyService: ReplyGenerating {
             preparationTask = createdTask
             activePreparationID = preparationID
             task = createdTask
+            joinedSharedPreparation = false
         }
 
-        let result = await withTaskCancellationHandler {
-            await task.result
-        } onCancel: {
-            task.cancel()
+        if joinedSharedPreparation,
+           let hook = testHooks.sharedPreparationJoined {
+            await hook()
         }
+        let result = await task.result
 
         let stillOwnsPreparation = activePreparationID == preparationID
         if stillOwnsPreparation {
@@ -138,13 +147,20 @@ actor ToolEnabledReplyService: ReplyGenerating {
             activePreparationID = nil
         }
 
+        if case let .success(preparedClient) = result,
+           stillOwnsPreparation {
+            client = preparedClient
+        }
+        guard !Task.isCancelled else {
+            throw ConversationServiceError.cancelled
+        }
+
         switch result {
-        case let .success(preparedClient):
+        case .success:
             guard stillOwnsPreparation else {
                 if client != nil { return }
                 throw ConversationServiceError.cancelled
             }
-            client = preparedClient
         case let .failure(error):
             throw mapPreparationError(error)
         }
@@ -366,9 +382,14 @@ actor ToolEnabledReplyService: ReplyGenerating {
                 throw ConversationServiceError.modelGenerationFailed
             }
 
+            if let hook = testHooks.replyCommitWillBegin {
+                await hook()
+            }
             let notices: [MemoryNotice]
             do {
                 notices = try await runtime.context.commitTurn()
+            } catch let error as CancellationError {
+                throw error
             } catch {
                 throw PipelineFailure.toolRuntime
             }

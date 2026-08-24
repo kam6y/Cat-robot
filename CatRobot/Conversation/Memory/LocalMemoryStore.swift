@@ -91,6 +91,7 @@ actor LocalMemoryStore {
     }
 
     func replaceCommittedFacts(_ facts: [MemoryFact]) throws {
+        try Task.checkCancellation()
         try persistence.save(facts)
         self.facts = facts
     }
