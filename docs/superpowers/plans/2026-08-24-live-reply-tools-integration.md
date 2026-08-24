@@ -988,7 +988,7 @@ let memoryNoticeDelay: @Sendable (Duration) async -> Void
 
 with default try? await Task.sleep(for: duration)。ConversationHarness initializerへ同名parameterを追加し、ConversationDependenciesへそのまま渡す。
 
-- [ ] **Step 1: Write RED tests for copy, publish timing, replacement, expiry, and accessibility**
+- [x] **Step 1: Write RED tests for copy, publish timing, replacement, expiry, and accessibility**
 
 Add these tests:
 
@@ -1054,7 +1054,7 @@ XCTAssertNil(harness.sut.viewState.memoryNotice)
 
 Extend ConversationTestSleeper with private(set) var completionCount = 0 and increment it after a stored continuation resumes。This makes the old-expiry race assertion deterministic rather than relying on Task.yield。
 
-- [ ] **Step 2: Regenerate and run RED**
+- [x] **Step 2: Regenerate and run RED**
 
 Run:
 
@@ -1071,7 +1071,7 @@ ruby scripts/generate_project.rb
 
 Expected: FAIL because memory notice state/policy/lifecycle does not exist。
 
-- [ ] **Step 3: Implement ViewModel-owned notice lifecycle**
+- [x] **Step 3: Implement ViewModel-owned notice lifecycle**
 
 Add ObservationIgnored memoryNoticeDismissTask、notice counter、active notice ID。On committed memoryChange:
 
@@ -1098,7 +1098,7 @@ private func publishMemoryNotice(_ change: ReplyMemoryChange?) {
 
 Call it immediately after receiving a valid.committed event and before starting speech。Nil change does nothing。Shutdown cancels the dismiss task。General state transitions and post-commit TTS failure preserve the notice; new committed mutation replaces it。
 
-- [ ] **Step 4: Add presentation-only state and top overlay**
+- [x] **Step 4: Add presentation-only state and top overlay**
 
 Add memoryNotice:nil to every static ConversationViewState constructor。ConversationView wraps conversationBody in ZStack(alignment:.top) and shows a banner only when nonnil。Banner requirements:
 
@@ -1117,7 +1117,7 @@ Text(notice)
 
 memoryNoticeBackground uses Color(uiColor:.secondarySystemBackground) when reduceTransparency is true and.regularMaterial otherwise。Do not add Button、gesture、ConversationActions、caption mutation、transcript mutation。
 
-- [ ] **Step 5: Run GREEN UI/integration suites**
+- [x] **Step 5: Run GREEN UI/integration suites**
 
 Run:
 
@@ -1136,7 +1136,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: all selected tests PASS、notice never blocks speaker fake、old expiry cannot clear replacement。
 
-- [ ] **Step 6: Review Task 4 and commit**
+- [x] **Step 6: Review Task 4 and commit**
 
 Review generic copy only、state reconstruction、timer race、shutdown cancellation、reduced transparency、Dynamic Type、noninteractive/accessibility、no repeated caption announcement。Critical/Important findingを修正しGREENを再実行する。
 
