@@ -597,6 +597,7 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
 
     func testConcurrentResetWaiterCanImmediatelyUseFreshClient() async throws {
         let freshPreparationGate = ReplySessionBlockingGate()
+        let originalResetOwnerAfterAwait = ReplySessionBlockingGate()
         let concurrentResetJoined = ReplySessionSignal()
         let timeline = ReplyServiceTimelineRecorder()
         let persistence = RecordingMemoryPersistence(timeline: timeline)
@@ -618,6 +619,9 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
             makeMemoryStore: { store },
             dateTimeProvider: RecordingDateTimeProvider(),
             testHooks: .init(
+                originalResetOwnerResumed: {
+                    await originalResetOwnerAfterAwait.enterAndWaitIgnoringCancellation()
+                },
                 concurrentResetJoined: {
                     await concurrentResetJoined.signal()
                 }
@@ -625,11 +629,11 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
         )
         try await service.prepare()
 
-        let originalReset = Task(priority: .background) {
+        let originalReset = Task {
             await service.reset()
         }
         await freshPreparationGate.waitUntilStarted()
-        let secondResetAndReply = Task(priority: .userInitiated) {
+        let secondResetAndReply = Task {
             await service.reset()
             do {
                 return Result<[ReplyStreamEvent], ConversationServiceError>.success(
@@ -646,8 +650,10 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
         }
         await concurrentResetJoined.wait()
         await freshPreparationGate.release()
+        await originalResetOwnerAfterAwait.waitUntilStarted()
 
         let result = await secondResetAndReply.value
+        await originalResetOwnerAfterAwait.release()
         await originalReset.value
         let makeCount = await factory.makeCount
         let freshPrompts = await freshClient.prompts

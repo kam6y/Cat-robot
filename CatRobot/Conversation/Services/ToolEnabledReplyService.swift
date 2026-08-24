@@ -4,13 +4,16 @@ import FoundationModels
 actor ToolEnabledReplyService {
     struct TestHooks: Sendable {
         let publicPrepareEnteredDuringReset: (@Sendable () async -> Void)?
+        let originalResetOwnerResumed: (@Sendable () async -> Void)?
         let concurrentResetJoined: (@Sendable () async -> Void)?
 
         init(
             publicPrepareEnteredDuringReset: (@Sendable () async -> Void)? = nil,
+            originalResetOwnerResumed: (@Sendable () async -> Void)? = nil,
             concurrentResetJoined: (@Sendable () async -> Void)? = nil
         ) {
             self.publicPrepareEnteredDuringReset = publicPrepareEnteredDuringReset
+            self.originalResetOwnerResumed = originalResetOwnerResumed
             self.concurrentResetJoined = concurrentResetJoined
         }
     }
@@ -222,6 +225,9 @@ actor ToolEnabledReplyService {
         resetTask = task
         activeResetID = resetID
         await task.value
+        if let hook = testHooks.originalResetOwnerResumed {
+            await hook()
+        }
     }
 
     private func performResetAndRelease(resetID: UUID) async {
