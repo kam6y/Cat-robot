@@ -2,6 +2,19 @@ import Foundation
 import FoundationModels
 
 actor ToolEnabledReplyService {
+    struct TestHooks: Sendable {
+        let publicPrepareEnteredDuringReset: (@Sendable () async -> Void)?
+        let concurrentResetJoined: (@Sendable () async -> Void)?
+
+        init(
+            publicPrepareEnteredDuringReset: (@Sendable () async -> Void)? = nil,
+            concurrentResetJoined: (@Sendable () async -> Void)? = nil
+        ) {
+            self.publicPrepareEnteredDuringReset = publicPrepareEnteredDuringReset
+            self.concurrentResetJoined = concurrentResetJoined
+        }
+    }
+
     private struct ToolRuntime: Sendable {
         let store: LocalMemoryStore
         let context: MemoryToolContext
@@ -51,6 +64,7 @@ actor ToolEnabledReplyService {
     private let sessionFactory: any ReplySessionFactory
     private let makeMemoryStore: @Sendable () throws -> LocalMemoryStore
     private let dateTimeProvider: any CurrentDateTimeProviding
+    private let testHooks: TestHooks
 
     private var runtime: ToolRuntime?
     private var client: (any ReplySessionClient)?
@@ -67,14 +81,30 @@ actor ToolEnabledReplyService {
         makeMemoryStore: @escaping @Sendable () throws -> LocalMemoryStore = {
             try LocalMemoryStore.applicationSupport()
         },
-        dateTimeProvider: any CurrentDateTimeProviding = LiveCurrentDateTimeProvider()
+        dateTimeProvider: any CurrentDateTimeProviding = LiveCurrentDateTimeProvider(),
+        testHooks: TestHooks = TestHooks()
     ) {
         self.sessionFactory = sessionFactory
         self.makeMemoryStore = makeMemoryStore
         self.dateTimeProvider = dateTimeProvider
+        self.testHooks = testHooks
     }
 
     func prepare() async throws {
+        while let resetTask {
+            if let hook = testHooks.publicPrepareEnteredDuringReset {
+                await hook()
+            }
+            await resetTask.value
+            guard !Task.isCancelled else {
+                throw ConversationServiceError.cancelled
+            }
+        }
+
+        try await prepareClientIfNeeded()
+    }
+
+    private func prepareClientIfNeeded() async throws {
         guard client == nil else { return }
 
         let task: Task<any ReplySessionClient, Error>
@@ -178,17 +208,24 @@ actor ToolEnabledReplyService {
 
     func reset() async {
         if let resetTask {
+            if let hook = testHooks.concurrentResetJoined {
+                await hook()
+            }
             await resetTask.value
             return
         }
 
         let resetID = UUID()
         let task = Task {
-            await self.performReset()
+            await self.performResetAndRelease(resetID: resetID)
         }
         resetTask = task
         activeResetID = resetID
         await task.value
+    }
+
+    private func performResetAndRelease(resetID: UUID) async {
+        await performReset()
         if activeResetID == resetID {
             resetTask = nil
             activeResetID = nil
@@ -214,7 +251,7 @@ actor ToolEnabledReplyService {
 
         client = nil
         do {
-            try await prepare()
+            try await prepareClientIfNeeded()
         } catch {
             client = nil
             preparationTask = nil
@@ -282,7 +319,7 @@ actor ToolEnabledReplyService {
         var didResolveSetup = false
 
         do {
-            try await prepare()
+            try await prepareClientIfNeeded()
             try Task.checkCancellation()
 
             guard let client, let runtime else {

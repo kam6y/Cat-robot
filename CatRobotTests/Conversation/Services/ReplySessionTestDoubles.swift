@@ -103,6 +103,33 @@ actor ReplySessionSignal {
     }
 }
 
+actor ReplySessionPulse {
+    private var pendingCount = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func signal() {
+        if waiters.isEmpty {
+            pendingCount += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+
+    func wait() async {
+        if pendingCount > 0 {
+            pendingCount -= 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func discardPending() {
+        pendingCount = 0
+    }
+}
+
 actor ReplySessionRestoreGate {
     private var didStart = false
     private var isReleased = false

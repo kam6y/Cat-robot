@@ -524,6 +524,147 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
         )
     }
 
+    func testCancelledPublicPrepareCannotCancelResetOwnedPreparation() async throws {
+        let freshPreparationGate = ReplySessionBlockingGate()
+        let prepareDuringReset = ReplySessionPulse()
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let oldClient = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.finish()
+        }
+        let freshClient = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.yield("fresh")
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(
+            clients: [oldClient, freshClient],
+            prepareGate: freshPreparationGate,
+            gatedPrepareCall: 2
+        )
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider(),
+            testHooks: .init(
+                publicPrepareEnteredDuringReset: {
+                    await prepareDuringReset.signal()
+                }
+            )
+        )
+        try await service.prepare()
+
+        let reset = Task { await service.reset() }
+        await freshPreparationGate.waitUntilStarted()
+        await prepareDuringReset.discardPending()
+
+        let externalPrepare = Task { () -> ConversationServiceError? in
+            do {
+                try await service.prepare()
+                return nil
+            } catch let error as ConversationServiceError {
+                return error
+            } catch {
+                XCTFail("Expected ConversationServiceError")
+                return nil
+            }
+        }
+        await prepareDuringReset.wait()
+        externalPrepare.cancel()
+        await freshPreparationGate.release()
+        await reset.value
+        let externalPrepareError = await externalPrepare.value
+
+        let makeCountAtResetCompletion = await factory.makeCount
+        let freshPromptsBeforeReply = await freshClient.prompts
+        let events = try await collect(
+            service: service,
+            request: .init(turnID: 724, userText: "after reset")
+        )
+        let makeCountAfterReply = await factory.makeCount
+        let freshPrompts = await freshClient.prompts
+
+        XCTAssertEqual(externalPrepareError, .cancelled)
+        XCTAssertEqual(makeCountAtResetCompletion, 2)
+        XCTAssertEqual(makeCountAfterReply, 2)
+        XCTAssertTrue(freshPromptsBeforeReply.isEmpty)
+        XCTAssertEqual(freshPrompts, ["after reset"])
+        XCTAssertEqual(
+            events.last,
+            .committed(.init(finalText: "fresh", memoryChange: nil))
+        )
+    }
+
+    func testConcurrentResetWaiterCanImmediatelyUseFreshClient() async throws {
+        let freshPreparationGate = ReplySessionBlockingGate()
+        let concurrentResetJoined = ReplySessionSignal()
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let oldClient = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.finish()
+        }
+        let freshClient = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.yield("fresh")
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(
+            clients: [oldClient, freshClient],
+            prepareGate: freshPreparationGate,
+            gatedPrepareCall: 2
+        )
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider(),
+            testHooks: .init(
+                concurrentResetJoined: {
+                    await concurrentResetJoined.signal()
+                }
+            )
+        )
+        try await service.prepare()
+
+        let originalReset = Task(priority: .background) {
+            await service.reset()
+        }
+        await freshPreparationGate.waitUntilStarted()
+        let secondResetAndReply = Task(priority: .userInitiated) {
+            await service.reset()
+            do {
+                return Result<[ReplyStreamEvent], ConversationServiceError>.success(
+                    try await collect(
+                        service: service,
+                        request: .init(turnID: 725, userText: "after shared reset")
+                    )
+                )
+            } catch let error as ConversationServiceError {
+                return .failure(error)
+            } catch {
+                return .failure(.modelGenerationFailed)
+            }
+        }
+        await concurrentResetJoined.wait()
+        await freshPreparationGate.release()
+
+        let result = await secondResetAndReply.value
+        await originalReset.value
+        let makeCount = await factory.makeCount
+        let freshPrompts = await freshClient.prompts
+
+        switch result {
+        case let .success(events):
+            XCTAssertEqual(
+                events.last,
+                .committed(.init(finalText: "fresh", memoryChange: nil))
+            )
+        case let .failure(error):
+            XCTFail("Expected immediate post-reset reply, got \(error)")
+        }
+        XCTAssertEqual(makeCount, 2)
+        XCTAssertEqual(freshPrompts, ["after shared reset"])
+    }
+
     func testCancellationWaitsForPullDrivenSourceBeforeRollbackAndNewTurn() async throws {
         let oldSourceGate = ReplySessionBlockingGate()
         let newSourceGate = ReplySessionBlockingGate()
