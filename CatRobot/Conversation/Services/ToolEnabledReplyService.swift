@@ -27,6 +27,27 @@ actor ToolEnabledReplyService {
         case toolRuntime
     }
 
+    private actor SetupSignal {
+        private var result: Result<Void, ConversationServiceError>?
+        private var waiter: CheckedContinuation<Result<Void, ConversationServiceError>, Never>?
+
+        func wait() async -> Result<Void, ConversationServiceError> {
+            if let result {
+                return result
+            }
+            return await withCheckedContinuation { continuation in
+                waiter = continuation
+            }
+        }
+
+        func resolve(_ result: Result<Void, ConversationServiceError>) {
+            guard self.result == nil else { return }
+            self.result = result
+            waiter?.resume(returning: result)
+            waiter = nil
+        }
+    }
+
     private let sessionFactory: any ReplySessionFactory
     private let makeMemoryStore: @Sendable () throws -> LocalMemoryStore
     private let dateTimeProvider: any CurrentDateTimeProviding
@@ -36,8 +57,8 @@ actor ToolEnabledReplyService {
     private var preparationTask: Task<any ReplySessionClient, Error>?
     private var activePreparationID: UUID?
     private var isGenerating = false
-    private var activeProducer: Task<Void, Never>?
-    private var activeProducerID: UUID?
+    private var activeReplyOperation: Task<Void, Never>?
+    private var activeReplyOperationID: UUID?
 
     init(
         sessionFactory: any ReplySessionFactory,
@@ -102,80 +123,61 @@ actor ToolEnabledReplyService {
         }
         isGenerating = true
 
-        var checkpoint: Transcript?
-        var turnContext: MemoryToolContext?
-
-        do {
-            try await prepare()
-            try Task.checkCancellation()
-
-            guard let client, let runtime else {
-                throw ConversationServiceError.modelGenerationFailed
-            }
-
-            checkpoint = await client.transcript()
-            try Task.checkCancellation()
-
-            turnContext = runtime.context
-            await runtime.context.beginTurn(id: request.turnID, userText: request.userText)
-            try Task.checkCancellation()
-
-            await runtime.budget.beginTurn(id: request.turnID)
-            try Task.checkCancellation()
-
-            let source = await client.snapshots(
-                for: request.userText,
-                options: ReplyGenerationPolicy.live.makeOptions()
-            )
-            try Task.checkCancellation()
-
-            let producerID = UUID()
-            var capturedContinuation: AsyncThrowingStream<ReplyStreamEvent, Error>.Continuation?
-            let stream = AsyncThrowingStream<ReplyStreamEvent, Error> { continuation in
-                capturedContinuation = continuation
-            }
-            guard let continuation = capturedContinuation else {
-                throw ConversationServiceError.modelGenerationFailed
-            }
-
-            let producer = Task {
-                await self.produce(
-                    source: source,
-                    checkpoint: checkpoint,
-                    client: client,
-                    runtime: runtime,
-                    producerID: producerID,
-                    continuation: continuation
-                )
-            }
-            activeProducerID = producerID
-            activeProducer = producer
-            continuation.onTermination = { _ in
-                producer.cancel()
-            }
-            return stream
-        } catch {
-            if let turnContext {
-                await turnContext.rollbackTurn()
-            }
-            if let checkpoint, let client {
-                await client.restoreTranscript(checkpoint)
-            }
+        let operationID = UUID()
+        let setupSignal = SetupSignal()
+        var capturedContinuation: AsyncThrowingStream<ReplyStreamEvent, Error>.Continuation?
+        let stream = AsyncThrowingStream<ReplyStreamEvent, Error> { continuation in
+            capturedContinuation = continuation
+        }
+        guard let continuation = capturedContinuation else {
             isGenerating = false
-            throw mapPipelineError(error)
+            throw ConversationServiceError.modelGenerationFailed
+        }
+
+        let operation = Task {
+            await self.runReplyOperation(
+                request: request,
+                operationID: operationID,
+                setupSignal: setupSignal,
+                continuation: continuation
+            )
+        }
+        activeReplyOperationID = operationID
+        activeReplyOperation = operation
+        continuation.onTermination = { _ in
+            operation.cancel()
+        }
+
+        let setupResult = await withTaskCancellationHandler {
+            await setupSignal.wait()
+        } onCancel: {
+            operation.cancel()
+        }
+        if Task.isCancelled {
+            operation.cancel()
+            await operation.value
+            throw ConversationServiceError.cancelled
+        }
+
+        switch setupResult {
+        case .success:
+            return stream
+        case let .failure(error):
+            await operation.value
+            throw error
         }
     }
 
     func cancelActiveReply() async {
-        guard let producer = activeProducer else { return }
-        producer.cancel()
-        await producer.value
+        guard let operation = activeReplyOperation else { return }
+        operation.cancel()
+        await operation.value
     }
 
     func reset() async {
-        if let producer = activeProducer {
-            producer.cancel()
-            await producer.value
+        if let operation = activeReplyOperation {
+            operation.cancel()
+            await operation.value
         }
 
         let preparationToCancel = preparationTask
@@ -246,22 +248,50 @@ actor ToolEnabledReplyService {
         )
     }
 
-    private func produce(
-        source: AsyncThrowingStream<String, Error>,
-        checkpoint: Transcript?,
-        client: any ReplySessionClient,
-        runtime: ToolRuntime,
-        producerID: UUID,
+    private func runReplyOperation(
+        request: ReplyTurnRequest,
+        operationID: UUID,
+        setupSignal: SetupSignal,
         continuation: AsyncThrowingStream<ReplyStreamEvent, Error>.Continuation
     ) async {
+        var checkpoint: Transcript?
+        var turnContext: MemoryToolContext?
+        var preparedClient: (any ReplySessionClient)?
         var didCommit = false
+        var didResolveSetup = false
 
         do {
+            try await prepare()
+            try Task.checkCancellation()
+
+            guard let client, let runtime else {
+                throw ConversationServiceError.modelGenerationFailed
+            }
+            preparedClient = client
+
+            checkpoint = await client.transcript()
+            try Task.checkCancellation()
+
+            turnContext = runtime.context
+            await runtime.context.beginTurn(id: request.turnID, userText: request.userText)
+            try Task.checkCancellation()
+
+            await runtime.budget.beginTurn(id: request.turnID)
+            try Task.checkCancellation()
+
+            let source = await client.snapshots(
+                for: request.userText,
+                options: ReplyGenerationPolicy.live.makeOptions()
+            )
+            try Task.checkCancellation()
+
+            didResolveSetup = true
+            await setupSignal.resolve(.success(()))
+
             var finalText: String?
             for try await snapshot in source {
                 try Task.checkCancellation()
                 continuation.yield(.draft(snapshot))
-                await Task.yield()
                 if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     finalText = snapshot
                 }
@@ -290,17 +320,29 @@ actor ToolEnabledReplyService {
             continuation.finish()
         } catch {
             if !didCommit {
-                await runtime.context.rollbackTurn()
-                if let checkpoint {
-                    await client.restoreTranscript(checkpoint)
+                if let turnContext {
+                    await turnContext.rollbackTurn()
+                }
+                if let checkpoint, let preparedClient {
+                    await preparedClient.restoreTranscript(checkpoint)
                 }
             }
-            continuation.finish(throwing: mapPipelineError(error))
+            let mappedError = mapPipelineError(error)
+            continuation.finish(throwing: mappedError)
+            finishReplyOperation(id: operationID)
+            if !didResolveSetup {
+                await setupSignal.resolve(.failure(mappedError))
+            }
+            return
         }
 
-        if activeProducerID == producerID {
-            activeProducer = nil
-            activeProducerID = nil
+        finishReplyOperation(id: operationID)
+    }
+
+    private func finishReplyOperation(id: UUID) {
+        if activeReplyOperationID == id {
+            activeReplyOperation = nil
+            activeReplyOperationID = nil
             isGenerating = false
         }
     }

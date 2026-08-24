@@ -49,6 +49,8 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
     }
 
     func testSuccessfulReplyEmitsDraftsThenOneCommittedAfterMemoryCommit() async throws {
+        let sourceFinishGate = ReplySessionBlockingGate()
+        let draftsReceived = ReplySessionSignal()
         let harness = try ToolEnabledReplyServiceHarness { tools, _, _, continuation in
             do {
                 let remember = try requireTool(RememberMemoryTool.self, in: tools)
@@ -57,15 +59,37 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
                 )
                 continuation.yield("わかった")
                 continuation.yield("わかった、覚えたよ")
+                await sourceFinishGate.enterAndWaitIgnoringCancellation()
                 continuation.finish()
             } catch {
                 continuation.finish(throwing: error)
             }
         }
 
-        let events = try await harness.collect(
-            request: .init(turnID: 41, userText: "青が好きです")
-        )
+        let collection = Task { () throws -> [ReplyStreamEvent] in
+            let stream = try await harness.service.streamReply(
+                to: .init(turnID: 41, userText: "青が好きです")
+            )
+            var events: [ReplyStreamEvent] = []
+            var draftCount = 0
+            for try await event in stream {
+                events.append(event)
+                switch event {
+                case .draft:
+                    harness.timeline.append(.draft)
+                    draftCount += 1
+                    if draftCount == 2 {
+                        await draftsReceived.signal()
+                    }
+                case .committed:
+                    harness.timeline.append(.committed)
+                }
+            }
+            return events
+        }
+        await draftsReceived.wait()
+        await sourceFinishGate.release()
+        let events = try await collection.value
 
         XCTAssertEqual(
             events,
@@ -294,6 +318,213 @@ final class ToolEnabledReplyServiceTests: XCTestCase {
         XCTAssertTrue(committedFacts.isEmpty)
         XCTAssertEqual(restoreCount, 1)
         XCTAssertFalse(didEmitCommitted)
+    }
+
+    func testCancellationDuringSetupWaitsForSetupAndCleanupBarrier() async throws {
+        let snapshotsGate = ReplySessionBlockingGate()
+        let toolBodyCount = LockedCounter()
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let client = PullDrivenReplySessionClientSpy(snapshotsGate: snapshotsGate) { tools, _, index in
+            guard index == 0 else { return nil }
+            toolBodyCount.increment()
+            let remember = try requireTool(RememberMemoryTool.self, in: tools)
+            _ = try await remember.call(arguments: .init(fact: "古い記憶", supportingQuote: "古い記憶"))
+            return "古い応答"
+        }
+        let factory = ReplySessionFactorySpy(clients: [client])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+        let request = Task {
+            try await service.streamReply(
+                to: .init(turnID: 71, userText: "古い記憶")
+            )
+        }
+        await snapshotsGate.waitUntilStarted()
+        request.cancel()
+
+        let cleanupStarted = ReplySessionSignal()
+        let completion = CompletionProbe()
+        let cleanup = Task {
+            await cleanupStarted.signal()
+            await service.cancelActiveReply()
+            await completion.markCompleted()
+        }
+        await cleanupStarted.wait()
+        await allowTasksToRun()
+        let completedWhileSetupWasBlocked = await completion.isCompleted
+        await snapshotsGate.release()
+        _ = await request.result
+        await cleanup.value
+
+        let committedFacts = await store.committedFacts()
+        let restoreCount = await client.restoreCount
+        XCTAssertFalse(completedWhileSetupWasBlocked)
+        XCTAssertEqual(toolBodyCount.value, 0)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
+    }
+
+    func testResetDuringSetupWaitsAndPreventsOldClientFromCommitting() async throws {
+        let snapshotsGate = ReplySessionBlockingGate()
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let oldClient = PullDrivenReplySessionClientSpy(snapshotsGate: snapshotsGate) { tools, _, index in
+            guard index == 0 else { return nil }
+            let remember = try requireTool(RememberMemoryTool.self, in: tools)
+            _ = try await remember.call(arguments: .init(fact: "古い記憶", supportingQuote: "古い記憶"))
+            return "古い応答"
+        }
+        let freshClient = ReplySessionClientSpy { _, _, _, continuation in
+            continuation.yield("新しい応答")
+            continuation.finish()
+        }
+        let factory = ReplySessionFactorySpy(clients: [oldClient, freshClient])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+        let oldRequest = Task {
+            try await service.streamReply(
+                to: .init(turnID: 72, userText: "古い記憶")
+            )
+        }
+        await snapshotsGate.waitUntilStarted()
+
+        let resetStarted = ReplySessionSignal()
+        let resetCompletion = CompletionProbe()
+        let reset = Task {
+            await resetStarted.signal()
+            await service.reset()
+            await resetCompletion.markCompleted()
+        }
+        await resetStarted.wait()
+        await allowTasksToRun()
+        let resetReturnedWhileSetupWasBlocked = await resetCompletion.isCompleted
+        await snapshotsGate.release()
+
+        switch await oldRequest.result {
+        case let .success(stream):
+            do {
+                for try await _ in stream {}
+            } catch {}
+        case .failure:
+            break
+        }
+        await reset.value
+        _ = try await collect(
+            service: service,
+            request: .init(turnID: 73, userText: "新しい会話")
+        )
+
+        let committedFacts = await store.committedFacts()
+        let oldRestoreCount = await oldClient.restoreCount
+        XCTAssertFalse(resetReturnedWhileSetupWasBlocked)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(oldRestoreCount, 1)
+    }
+
+    func testCancellationWaitsForPullDrivenSourceBeforeRollbackAndNewTurn() async throws {
+        let oldSourceGate = ReplySessionBlockingGate()
+        let newSourceGate = ReplySessionBlockingGate()
+        let oldMutationFinished = ReplySessionSignal()
+        let timeline = ReplyServiceTimelineRecorder()
+        let persistence = RecordingMemoryPersistence(timeline: timeline)
+        let store = try LocalMemoryStore(persistence: persistence)
+        let client = PullDrivenReplySessionClientSpy { tools, prompt, index in
+            if prompt == "old" {
+                if index == 0 { return "draft" }
+                if index == 1 {
+                    await oldSourceGate.enterAndWaitIgnoringCancellation()
+                    let remember = try requireTool(RememberMemoryTool.self, in: tools)
+                    _ = try await remember.call(
+                        arguments: .init(fact: "古い記憶", supportingQuote: "古い記憶")
+                    )
+                    await oldMutationFinished.signal()
+                }
+                return nil
+            }
+
+            if index == 0 {
+                await newSourceGate.enterAndWaitIgnoringCancellation()
+                return "new"
+            }
+            return nil
+        }
+        let factory = ReplySessionFactorySpy(clients: [client])
+        let service = ToolEnabledReplyService(
+            sessionFactory: factory,
+            makeMemoryStore: { store },
+            dateTimeProvider: RecordingDateTimeProvider()
+        )
+        let oldConsumer = Task {
+            try await collect(
+                service: service,
+                request: .init(turnID: 74, userText: "old")
+            )
+        }
+        await oldSourceGate.waitUntilStarted()
+
+        let cleanupStarted = ReplySessionSignal()
+        let cleanupCompletion = CompletionProbe()
+        let cleanup = Task {
+            await cleanupStarted.signal()
+            await service.cancelActiveReply()
+            await cleanupCompletion.markCompleted()
+        }
+        await cleanupStarted.wait()
+        await allowTasksToRun()
+        let cleanupReturnedBeforeSourceFinished = await cleanupCompletion.isCompleted
+
+        var overlappingNewTurn: Task<Result<[ReplyStreamEvent], Error>, Never>?
+        if cleanupReturnedBeforeSourceFinished {
+            overlappingNewTurn = Task {
+                do {
+                    return .success(
+                        try await collect(
+                            service: service,
+                            request: .init(turnID: 75, userText: "new")
+                        )
+                    )
+                } catch {
+                    return .failure(error)
+                }
+            }
+            await newSourceGate.waitUntilStarted()
+        }
+
+        await oldSourceGate.release()
+        await oldMutationFinished.wait()
+        if overlappingNewTurn != nil {
+            await newSourceGate.release()
+        }
+        _ = await oldConsumer.result
+        await cleanup.value
+        if let overlappingNewTurn {
+            _ = await overlappingNewTurn.value
+        } else {
+            let newTurn = Task {
+                try await collect(
+                    service: service,
+                    request: .init(turnID: 75, userText: "new")
+                )
+            }
+            await newSourceGate.waitUntilStarted()
+            await newSourceGate.release()
+            _ = try await newTurn.value
+        }
+
+        let committedFacts = await store.committedFacts()
+        let restoreCount = await client.restoreCount
+        XCTAssertFalse(cleanupReturnedBeforeSourceFinished)
+        XCTAssertTrue(committedFacts.isEmpty)
+        XCTAssertEqual(restoreCount, 1)
     }
 
     func testThirteenthToolCallDoesNotRunToolBodyAndRollsBack() async throws {
@@ -712,4 +943,10 @@ private func makeFact(id: String, text: String) -> MemoryFact {
         updatedAt: Date(timeIntervalSince1970: 10),
         sourceTurnID: 1
     )
+}
+
+private func allowTasksToRun() async {
+    for _ in 0..<20 {
+        await Task.yield()
+    }
 }

@@ -9,6 +9,7 @@ protocol ReplySessionClient: Sendable {
     func prewarm() async
     func transcript() async -> Transcript
     func restoreTranscript(_ transcript: Transcript) async
+    // Iteration termination must leave no independent backend generation work running.
     func snapshots(
         for prompt: String,
         options: GenerationOptions

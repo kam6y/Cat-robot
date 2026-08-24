@@ -76,6 +76,7 @@ private actor AppleSystemReplySessionClient: ReplySessionClient {
     private let tools: [any Tool]
     private let instructions: String
     private var session: LanguageModelSession
+    private var responseIterator: LanguageModelSession.ResponseStream<String>.AsyncIterator?
 
     init(model: SystemLanguageModel, tools: [any Tool], instructions: String) {
         self.model = model
@@ -97,6 +98,7 @@ private actor AppleSystemReplySessionClient: ReplySessionClient {
     }
 
     func restoreTranscript(_ transcript: Transcript) async {
+        responseIterator = nil
         session = LanguageModelSession(
             model: model,
             tools: tools,
@@ -108,34 +110,23 @@ private actor AppleSystemReplySessionClient: ReplySessionClient {
         for prompt: String,
         options: GenerationOptions
     ) async -> AsyncThrowingStream<String, Error> {
-        return AsyncThrowingStream { continuation in
-            let task = Task { [weak self] in
-                await self?.forwardSnapshots(
-                    for: prompt,
-                    options: options,
-                    to: continuation
-                )
-            }
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
+        responseIterator = session
+            .streamResponse(to: prompt, options: options)
+            .makeAsyncIterator()
+        return AsyncThrowingStream(unfolding: { [weak self] in
+            try await self?.nextSnapshot()
+        })
     }
 
-    private func forwardSnapshots(
-        for prompt: String,
-        options: GenerationOptions,
-        to continuation: AsyncThrowingStream<String, Error>.Continuation
-    ) async {
+    private func nextSnapshot() async throws -> String? {
+        guard var iterator = responseIterator else { return nil }
         do {
-            let source = session.streamResponse(to: prompt, options: options)
-            for try await snapshot in source {
-                try Task.checkCancellation()
-                continuation.yield(snapshot.content)
-            }
-            continuation.finish()
+            let snapshot = try await iterator.next(isolation: self)
+            responseIterator = snapshot == nil ? nil : iterator
+            return snapshot?.content
         } catch {
-            continuation.finish(throwing: FoundationModelErrorMapper.map(error))
+            responseIterator = nil
+            throw FoundationModelErrorMapper.map(error)
         }
     }
 }

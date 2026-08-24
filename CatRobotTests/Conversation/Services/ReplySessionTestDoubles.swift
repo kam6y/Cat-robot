@@ -115,6 +115,39 @@ actor ReplySessionRestoreGate {
     }
 }
 
+actor ReplySessionBlockingGate {
+    private var didStart = false
+    private var isReleased = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func enterAndWaitIgnoringCancellation() async {
+        didStart = true
+        let pending = startWaiters
+        startWaiters.removeAll()
+        pending.forEach { $0.resume() }
+
+        guard !isReleased else { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilStarted() async {
+        guard !didStart else { return }
+        await withCheckedContinuation { continuation in
+            startWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        isReleased = true
+        let pending = releaseWaiters
+        releaseWaiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+}
+
 struct RecordedReplyGenerationOptions: Equatable, Sendable {
     let temperature: Double?
     let maximumResponseTokens: Int?
@@ -132,10 +165,15 @@ typealias ReplySessionSnapshotScript = @Sendable (
     _ continuation: AsyncThrowingStream<String, Error>.Continuation
 ) async -> Void
 
-actor ReplySessionClientSpy: ReplySessionClient {
+protocol ReplySessionTestClient: ReplySessionClient {
+    func install(tools: [any Tool]) async
+}
+
+actor ReplySessionClientSpy: ReplySessionTestClient {
     private let checkpoint: Transcript
     private let script: ReplySessionSnapshotScript
     private let restoreGate: ReplySessionRestoreGate?
+    private let snapshotsGate: ReplySessionBlockingGate?
     private var tools: [any Tool] = []
 
     private(set) var prewarmCount = 0
@@ -147,10 +185,12 @@ actor ReplySessionClientSpy: ReplySessionClient {
     init(
         checkpoint: Transcript = Transcript(),
         restoreGate: ReplySessionRestoreGate? = nil,
+        snapshotsGate: ReplySessionBlockingGate? = nil,
         script: @escaping ReplySessionSnapshotScript
     ) {
         self.checkpoint = checkpoint
         self.restoreGate = restoreGate
+        self.snapshotsGate = snapshotsGate
         self.script = script
     }
 
@@ -184,6 +224,7 @@ actor ReplySessionClientSpy: ReplySessionClient {
         self.options.append(RecordedReplyGenerationOptions(options))
         let script = self.script
         let tools = self.tools
+        await snapshotsGate?.enterAndWaitIgnoringCancellation()
 
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -196,8 +237,94 @@ actor ReplySessionClientSpy: ReplySessionClient {
     }
 }
 
+typealias PullDrivenReplySessionStep = @Sendable (
+    _ tools: [any Tool],
+    _ prompt: String,
+    _ index: Int
+) async throws -> String?
+
+private actor PullDrivenReplySessionState {
+    private let tools: [any Tool]
+    private let prompt: String
+    private let step: PullDrivenReplySessionStep
+    private var index = 0
+
+    init(
+        tools: [any Tool],
+        prompt: String,
+        step: @escaping PullDrivenReplySessionStep
+    ) {
+        self.tools = tools
+        self.prompt = prompt
+        self.step = step
+    }
+
+    func next() async throws -> String? {
+        let currentIndex = index
+        index += 1
+        return try await step(tools, prompt, currentIndex)
+    }
+}
+
+actor PullDrivenReplySessionClientSpy: ReplySessionTestClient {
+    private let checkpoint: Transcript
+    private let snapshotsGate: ReplySessionBlockingGate?
+    private let step: PullDrivenReplySessionStep
+    private var tools: [any Tool] = []
+
+    private(set) var prewarmCount = 0
+    private(set) var restoreHistory: [Transcript] = []
+    private(set) var prompts: [String] = []
+
+    init(
+        checkpoint: Transcript = Transcript(),
+        snapshotsGate: ReplySessionBlockingGate? = nil,
+        step: @escaping PullDrivenReplySessionStep
+    ) {
+        self.checkpoint = checkpoint
+        self.snapshotsGate = snapshotsGate
+        self.step = step
+    }
+
+    var restoreCount: Int {
+        restoreHistory.count
+    }
+
+    func install(tools: [any Tool]) {
+        self.tools = tools
+    }
+
+    func prewarm() async {
+        prewarmCount += 1
+    }
+
+    func transcript() async -> Transcript {
+        checkpoint
+    }
+
+    func restoreTranscript(_ transcript: Transcript) async {
+        restoreHistory.append(transcript)
+    }
+
+    func snapshots(
+        for prompt: String,
+        options: GenerationOptions
+    ) async -> AsyncThrowingStream<String, Error> {
+        prompts.append(prompt)
+        await snapshotsGate?.enterAndWaitIgnoringCancellation()
+        let state = PullDrivenReplySessionState(
+            tools: tools,
+            prompt: prompt,
+            step: step
+        )
+        return AsyncThrowingStream(unfolding: {
+            try await state.next()
+        })
+    }
+}
+
 actor ReplySessionFactorySpy: ReplySessionFactory {
-    private let clients: [ReplySessionClientSpy]
+    private let clients: [any ReplySessionTestClient]
     private let prepareError: (any Error)?
     private let makeSessionError: (any Error)?
 
@@ -206,7 +333,7 @@ actor ReplySessionFactorySpy: ReplySessionFactory {
     private(set) var prepareCount = 0
 
     init(
-        clients: [ReplySessionClientSpy],
+        clients: [any ReplySessionTestClient],
         prepareError: (any Error)? = nil,
         makeSessionError: (any Error)? = nil
     ) {
