@@ -64,6 +64,7 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case contextExceeded
     case modelBusy
     case modelGenerationFailed
+    case toolRuntimeFailed
     case cancelled
 }
 

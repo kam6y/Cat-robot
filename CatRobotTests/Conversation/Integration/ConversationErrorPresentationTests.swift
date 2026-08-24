@@ -32,6 +32,16 @@ final class ConversationErrorPresentationTests: XCTestCase {
         XCTAssertEqual(value.recoveries.map(\.action), [.retry, .showTypedInput])
     }
 
+    func testToolRuntimeFailureOffersRetryAndTypedInputWithoutPrivateDetail() {
+        let presentation = ConversationErrorPresentation(.toolRuntimeFailed)
+
+        XCTAssertEqual(
+            presentation.message,
+            "記憶機能を使った返事を完了できませんでした。もう一度話しかけてください。"
+        )
+        XCTAssertEqual(presentation.recoveries.map(\.action), [.retry, .showTypedInput])
+    }
+
     func testEveryServiceErrorOffersRecoveryWithoutDebugDescriptions() {
         let errors: [ConversationServiceError] = [
             .microphoneDenied,
@@ -55,6 +65,7 @@ final class ConversationErrorPresentationTests: XCTestCase {
             .contextExceeded,
             .modelBusy,
             .modelGenerationFailed,
+            .toolRuntimeFailed,
             .cancelled,
         ]
 
