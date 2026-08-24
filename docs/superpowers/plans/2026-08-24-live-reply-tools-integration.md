@@ -1166,7 +1166,7 @@ git commit -m "feat: show committed memory notices"
 - Consumes: final production composition and presentation from Tasks 1-4。
 - Produces: host filesystem上だけで動くdeterministic architecture contract。Physical-device XCTestからrepository sourceを読まない。
 
-- [ ] **Step 1: Run the missing host contract to establish RED**
+- [x] **Step 1: Run the missing host contract to establish RED**
 
 Run:
 
@@ -1176,7 +1176,7 @@ ruby scripts/test_live_reply_architecture.rb
 
 Expected: FAIL with LoadError because the contract script does not exist。
 
-- [ ] **Step 2: Implement the host contract**
+- [x] **Step 2: Implement the host contract**
 
 Create the script with this exact behavior:
 
@@ -1310,7 +1310,7 @@ puts "live reply architecture contract passed"
 
 Do not scan Services for the supportingQuote word because the approved Apple instructions must contain it。Instead, the all-production logging prohibition prevents Services from emitting prompt/tool/private content。
 
-- [ ] **Step 3: Run the host guard and focused runtime acceptance**
+- [x] **Step 3: Run the host guard and focused runtime acceptance**
 
 Run:
 
@@ -1329,7 +1329,7 @@ ruby scripts/test_live_reply_architecture.rb
 
 Expected: host contract PASS、selected device tests PASS。If a check fails, change only the source boundary/private leak it proves; do not add Gemma implementation、debug UI、logging、second classifier、or dependency。
 
-- [ ] **Step 4: Review Task 5 and commit**
+- [x] **Step 4: Review Task 5 and commit**
 
 Review the script for deterministic sorted reads、physical-device independence、false positives、and exact approved exceptions。
 
