@@ -196,7 +196,7 @@ struct AppleSystemReplySessionFactory: ReplySessionFactory {
 
 - Produces ConversationServiceError.toolRuntimeFailed with generic retry/typed-input presentation.
 
-- [ ] **Step 1: Add RED tests for the domain values, Apple policy, readiness mapping, tool forwarding, and generic error presentation**
+- [x] **Step 1: Add RED tests for the domain values, Apple policy, readiness mapping, tool forwarding, and generic error presentation**
 
 Add tests with these exact expectations:
 
@@ -289,7 +289,7 @@ private struct ReplySessionTestTool: Tool {
 
 AppleSessionConstructionRecorderはactor、RecordingReplySessionClientはTranscript()と空streamを返すtest doubleとする。
 
-- [ ] **Step 2: Regenerate the project and run RED**
+- [x] **Step 2: Regenerate the project and run RED**
 
 Run:
 
@@ -305,7 +305,7 @@ ruby scripts/generate_project.rb
 
 Expected: FAIL because ReplyTurn、ReplySessionFactory、ReplyGenerationPolicy、AppleSystemReplySessionFactory、toolRuntimeFailedがまだ存在しない。
 
-- [ ] **Step 3: Implement the domain values and session protocols exactly as declared**
+- [x] **Step 3: Implement the domain values and session protocols exactly as declared**
 
 ReplyTurn.swiftはFoundationだけをimportする。ReplySession.swiftだけがFoundationModelsをimportする。ReplyGenerationPolicy.makeOptions()はdeployment target 26を維持して次のavailability branchを使う。
 
@@ -325,7 +325,7 @@ func makeOptions() -> GenerationOptions {
 }
 ~~~
 
-- [ ] **Step 4: Implement AppleSystemReplySessionFactory and AppleSystemReplySessionClient**
+- [x] **Step 4: Implement AppleSystemReplySessionFactory and AppleSystemReplySessionClient**
 
 Default factoryはSystemLanguageModel(useCase: .general, guardrails: .default)を1つ所有する。test initializerはavailability closureとclient construction closureだけを差し替える。prepare()はavailabilityを次へmapする。
 
@@ -346,11 +346,11 @@ Apple clientはmodel、tools、instructions、mutable sessionをactor内に保�
 
 instructionsには既存のCat Robot人格とspecのremember/search/forget/current-date規則を全文で固定する。reasoning UIやraw tool result loggingを追加しない。
 
-- [ ] **Step 5: Add toolRuntimeFailed and its presentation**
+- [x] **Step 5: Add toolRuntimeFailed and its presentation**
 
 ConversationTypes.swiftへcase toolRuntimeFailedを追加する。ConversationErrorPresentationは上記の固定messageと[.retry, .typedInput]だけを返す。error associated dataやunderlying ErrorをUIへ渡さない。
 
-- [ ] **Step 6: Run GREEN and the generator contract**
+- [x] **Step 6: Run GREEN and the generator contract**
 
 Run:
 
@@ -369,7 +369,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: generator PASS、selected tests 0 failures、live inference 0 calls。
 
-- [ ] **Step 7: Review Task 1 and commit**
+- [x] **Step 7: Review Task 1 and commit**
 
 Review only Task 1 against the spec: FoundationModels import locality、iOS 26 compile、iOS 27 .allowed、instructions completeness、generic error privacy、no second model call。Critical/Important findingを修正し同じGREEN bundleを再実行する。
 
