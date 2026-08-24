@@ -31,7 +31,7 @@
 - Consumes: `FoundationModelAvailabilitySnapshot` and the existing `ModelAvailabilityChecking` contract.
 - Produces: `FoundationModelAvailabilityPurpose.contentTagging` and a service initializer whose default purpose is content tagging and whose snapshot factory receives that purpose.
 
-- [ ] **Step 1: Write the failing default-purpose test**
+- [x] **Step 1: Write the failing default-purpose test**
 
 Add a test that constructs the service through an injected purpose-aware snapshot factory, records the purpose without creating `SystemLanguageModel`, calls `availability()`, and asserts the recorded value is exactly `.contentTagging`. The production change that makes this test fail is selecting `.general` or omitting the purpose when constructing the live availability snapshot.
 
@@ -65,7 +65,7 @@ func testDefaultAvailabilityPurposeIsContentTagging() async {
 }
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Regenerate the project, then run only `FoundationModelAvailabilityServiceTests`.
 
@@ -76,7 +76,7 @@ ruby scripts/generate_project.rb
 
 Expected: compilation fails because `FoundationModelAvailabilityPurpose` and `snapshotForPurpose` do not exist.
 
-- [ ] **Step 3: Implement the minimal purpose boundary**
+- [x] **Step 3: Implement the minimal purpose boundary**
 
 Define one internal `Equatable, Sendable` purpose case. Make the injected initializer default to `.contentTagging`. Route the live initializer through the same purpose and map its sole case directly to `SystemLanguageModel(useCase: .contentTagging, guardrails: .default)`. Preserve all existing locale and availability mapping behavior.
 
@@ -95,7 +95,7 @@ init(
 }
 ```
 
-- [ ] **Step 4: Run the task validation bundle**
+- [x] **Step 4: Run the task validation bundle**
 
 ```bash
 ruby scripts/test_generate_project.rb
@@ -105,7 +105,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: generator contract passes, both targeted test classes pass with zero failures, and the generic-device build exits 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CatRobot/Conversation/Services/FoundationModelAvailabilityService.swift CatRobotTests/Conversation/Services/FoundationModelAvailabilityServiceTests.swift

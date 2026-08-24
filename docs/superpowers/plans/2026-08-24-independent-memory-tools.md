@@ -40,7 +40,7 @@
 - Consumes: Foundation `UUID`, `Date`, `Codable`, `FileManager`, and a `MemoryPersisting` boundary.
 - Produces: `MemoryFact`, `MemoryNotice`, `LocalMemoryStore`, and `MemoryToolContext` with the signatures in the design spec.
 
-- [ ] **Step 1: Write failing store tests**
+- [x] **Step 1: Write failing store tests**
 
 Create real-temporary-directory tests with literal facts that cover missing-file startup, restart reload, deterministic encoded ordering, committed-state stability after injected save failure, and production persistence metadata.
 
@@ -71,7 +71,7 @@ func testRestartReloadsOnlySuccessfullyCommittedFacts() async throws {
 }
 ```
 
-- [ ] **Step 2: Run store tests and verify RED**
+- [x] **Step 2: Run store tests and verify RED**
 
 ```bash
 ruby scripts/generate_project.rb
@@ -80,7 +80,7 @@ ruby scripts/generate_project.rb
 
 Expected: compilation fails because the memory types do not exist.
 
-- [ ] **Step 3: Implement `MemoryFact` and atomic persistence**
+- [x] **Step 3: Implement `MemoryFact` and atomic persistence**
 
 Use these public-to-module contracts and keep persistence details internal:
 
@@ -121,7 +121,7 @@ actor LocalMemoryStore {
 
 Encode sorted by lowercase UUID for stable bytes. Save to a temporary sibling, mark complete file protection and backup exclusion, replace atomically, and update the actor cache only after `save` succeeds. `applicationSupport()` resolves `<Application Support>/CatRobot/memories.json` and creates its parent directory.
 
-- [ ] **Step 4: Write failing transaction tests**
+- [x] **Step 4: Write failing transaction tests**
 
 Cover canonical quote validation, duplicate update, deterministic exact-before-substring search, empty-query ordering, shared 8-result/1,024-byte allowance, current-turn staged visibility, search-authorized deletion, stale/unknown deletion rejection, more than four staged mutations, commit, rollback, and persistence-failure rollback.
 
@@ -165,7 +165,7 @@ func testForgetRejectsIDNotReturnedByCurrentTurnSearchWithoutPartialMutation() a
 }
 ```
 
-- [ ] **Step 5: Run transaction tests and verify RED**
+- [x] **Step 5: Run transaction tests and verify RED**
 
 ```bash
 ruby scripts/generate_project.rb
@@ -174,7 +174,7 @@ ruby scripts/generate_project.rb
 
 Expected: compilation fails because `MemoryToolContext` and `MemoryNotice` do not exist.
 
-- [ ] **Step 6: Implement the minimal transaction actor**
+- [x] **Step 6: Implement the minimal transaction actor**
 
 ```swift
 enum MemoryNotice: Equatable, Sendable {
@@ -199,7 +199,7 @@ actor MemoryToolContext {
 
 Validate every multi-ID forget before removing any candidate. Preserve the previous committed snapshot until store replacement succeeds. Use the exact success/rejection strings from the design spec. `search` builds `MemorySearchResult` prefixes and encodes them with sorted keys to apply the shared eight-result/1,024-byte allowance to the same representation returned by `SearchMemoryTool`. Do not log facts or quotes.
 
-- [ ] **Step 7: Run the Task 1 validation bundle**
+- [x] **Step 7: Run the Task 1 validation bundle**
 
 ```bash
 ruby scripts/test_generate_project.rb
@@ -209,7 +209,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: generator contract passes, both test classes pass with zero failures, and build exits 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add CatRobot/Conversation/Memory CatRobotTests/Conversation/Memory CatRobot.xcodeproj
@@ -231,7 +231,7 @@ git commit -m "feat: add transactional local memory"
 - Consumes: FoundationModels `Tool`, `@Generable`, Foundation date/calendar/timezone and JSON encoding.
 - Produces: `ReplyToolCallBudget`, `ReplyToolCallLimitExceeded`, `CurrentDateTimeSnapshot`, `CurrentDateTimeProviding`, `LiveCurrentDateTimeProvider`, `CurrentDateTimeArguments`, and `CurrentDateTimeTool`.
 
-- [ ] **Step 1: Write failing budget tests**
+- [x] **Step 1: Write failing budget tests**
 
 Test arbitrary sequential and concurrent consumption through 12 calls, the dedicated 13th-call error, same-turn `beginTurn` preserving the count, and a distinct turn resetting it.
 
@@ -253,7 +253,7 @@ func testThirteenthCallThrowsAndNewTurnResets() async throws {
 }
 ```
 
-- [ ] **Step 2: Run budget tests and verify RED**
+- [x] **Step 2: Run budget tests and verify RED**
 
 ```bash
 ruby scripts/generate_project.rb
@@ -262,7 +262,7 @@ ruby scripts/generate_project.rb
 
 Expected: compilation fails because the budget types do not exist.
 
-- [ ] **Step 3: Implement the budget actor**
+- [x] **Step 3: Implement the budget actor**
 
 ```swift
 struct ReplyToolCallLimitExceeded: Error, Equatable, Sendable {}
@@ -276,7 +276,7 @@ actor ReplyToolCallBudget {
 
 If `beginTurn` receives the current turn ID, keep the existing count. Serialize concurrent consumers through the actor so exactly twelve succeed.
 
-- [ ] **Step 4: Write failing date/time tests**
+- [x] **Step 4: Write failing date/time tests**
 
 Use literal fixed/sequenced providers. Verify the exact Monday snapshot for `2026-08-24T12:34:56+09:00`, seconds/no-seconds output, sorted-key JSON decoding, one provider read per repeated call, and shared budget consumption.
 
@@ -341,7 +341,7 @@ func testRepeatedCallsReadFreshSnapshotsAndShareBudget() async throws {
 }
 ```
 
-- [ ] **Step 5: Run date/time tests and verify RED**
+- [x] **Step 5: Run date/time tests and verify RED**
 
 ```bash
 ruby scripts/generate_project.rb
@@ -350,7 +350,7 @@ ruby scripts/generate_project.rb
 
 Expected: compilation fails because the date/time types do not exist.
 
-- [ ] **Step 6: Implement the provider and Foundation Models tool**
+- [x] **Step 6: Implement the provider and Foundation Models tool**
 
 ```swift
 struct CurrentDateTimeSnapshot: Codable, Equatable, Sendable {
@@ -388,7 +388,7 @@ struct CurrentDateTimeTool: Tool {
 
 Call the budget first, call the provider every time, and encode the snapshot with `JSONEncoder.outputFormatting = [.sortedKeys]`. The live provider constructs fresh POSIX formatters per call and performs no side effects.
 
-- [ ] **Step 7: Run the Task 2 validation bundle**
+- [x] **Step 7: Run the Task 2 validation bundle**
 
 ```bash
 ruby scripts/test_generate_project.rb
@@ -398,7 +398,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: generator contract passes, both test classes pass with zero failures, and build exits 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add CatRobot/Conversation/Tools CatRobotTests/Conversation/Tools CatRobot.xcodeproj
@@ -420,7 +420,7 @@ git commit -m "feat: add shared tool budget and date time"
 - Consumes: `MemoryToolContext`, `ReplyToolCallBudget`, FoundationModels `Tool`, and `@Generable`.
 - Produces: `RememberMemoryArguments`, `ForgetMemoryArguments`, `SearchMemoryArguments` and the three named memory tools.
 
-- [ ] **Step 1: Write failing memory-tool tests**
+- [x] **Step 1: Write failing memory-tool tests**
 
 Directly call each tool with generated argument values. Verify exact names, successful remember/search/forget routing, semantic rejection without mutation, invalid UUID rejection, search JSON exposing only `id` and `fact`, repeated call execution, shared arbitrary ordering through call 12, and call 13 preventing the context body from running.
 
@@ -457,7 +457,7 @@ func testThirteenthMixedToolCallDoesNotExecuteMemoryBody() async throws {
 }
 ```
 
-- [ ] **Step 2: Run tool tests and verify RED**
+- [x] **Step 2: Run tool tests and verify RED**
 
 ```bash
 ruby scripts/generate_project.rb
@@ -466,7 +466,7 @@ ruby scripts/generate_project.rb
 
 Expected: compilation fails because the argument and tool types do not exist.
 
-- [ ] **Step 3: Implement the three tools**
+- [x] **Step 3: Implement the three tools**
 
 ```swift
 @Generable
@@ -505,7 +505,7 @@ struct SearchMemoryTool: Tool {
 
 Each tool conforms to `Tool`, has the exact names `rememberMemory`, `forgetMemory`, and `searchMemory`, and returns `String`. Consume the shared budget as the first statement in every `call`. Return the exact semantic-rejection strings from the design spec. Parse all forget UUIDs before calling the context. Map returned facts to `MemorySearchResult` and encode that array with sorted keys, exposing only `id` and `fact`.
 
-- [ ] **Step 4: Run the Task 3 validation bundle**
+- [x] **Step 4: Run the Task 3 validation bundle**
 
 ```bash
 ruby scripts/test_generate_project.rb
@@ -515,7 +515,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: generator contract passes, all three targeted test classes pass with zero failures, and build exits 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CatRobot/Conversation/Memory CatRobotTests/Conversation/Memory CatRobot.xcodeproj
@@ -534,7 +534,7 @@ git commit -m "feat: add Foundation Models memory tools"
 - Consumes: all production and test interfaces from the preceding tasks.
 - Produces: fresh branch-level evidence and checked plan boxes; no new production behavior.
 
-- [ ] **Step 1: Run final generator, targeted suite, baseline-excluding suite, and build**
+- [x] **Step 1: Run final generator, targeted suite, baseline-excluding suite, and build**
 
 ```bash
 ruby scripts/test_generate_project.rb
@@ -545,7 +545,7 @@ ruby scripts/test_generate_project.rb
 
 Expected: every command exits 0 and every executed test has zero failures.
 
-- [ ] **Step 2: Confirm forbidden dependencies and integrations are absent**
+- [x] **Step 2: Confirm forbidden dependencies and integrations are absent**
 
 ```bash
 rg -n "LiteRT" CatRobot/Conversation/Memory CatRobot/Conversation/Tools CatRobot.xcodeproj/project.pbxproj
@@ -555,14 +555,14 @@ git diff 29958332f4a3b0e5f90bfb45f06effc4d0d79666 -- CatRobot/Conversation/Servi
 
 Expected: the first command has no matches; the diff shows no classifier, reply-service, integration, or UI changes except the intentional availability-service file outside those paths.
 
-- [ ] **Step 3: Check all completed boxes and commit evidence-only plan updates**
+- [x] **Step 3: Check all completed boxes and commit evidence-only plan updates**
 
 ```bash
 git add docs/superpowers/plans/2026-08-24-content-tagging-availability.md docs/superpowers/plans/2026-08-24-independent-memory-tools.md
 git commit -m "docs: record independent tools validation"
 ```
 
-- [ ] **Step 4: Confirm the worktree is clean**
+- [x] **Step 4: Confirm the worktree is clean**
 
 ```bash
 git status --short --branch
