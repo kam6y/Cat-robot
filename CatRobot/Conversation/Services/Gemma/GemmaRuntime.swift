@@ -1,5 +1,11 @@
 import Foundation
 
+/// Measured on iPhone 16 Pro. Larger capacities did not improve recall enough
+/// to justify their latency and memory cost. See the context validation report.
+enum GemmaContext {
+    static let capacity = 8_192
+}
+
 // The model boundary emits deltas. The UI-facing ReplyGenerating boundary emits snapshots.
 protocol GemmaRuntime: Sendable {
     func prepare() async throws

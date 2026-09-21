@@ -1,0 +1,10 @@
+W0000 00:00:1789973308.685788  631713 magic_number_configs_helper.cc:267] Target number hint 32768 is 0 or larger than magic number 32003. Use default target number 32000
+INFO: [magic_number_utils.cc:120]   config[0]: magic_number=32003, target_number=32000, signature_prefix=null
+INFO: [magic_number_utils.cc:536] 439 tensors of signature decode have been updated for magic number  32003 to target number 32000
+INFO: [magic_number_utils.cc:536] 271 tensors of signature prefill_1024 have been updated for magic number  32003 to target number 32000
+INFO: [magic_number_utils.cc:536] 270 tensors of signature prefill_128 have been updated for magic number  32003 to target number 32000
+INFO: [magic_number_utils.cc:536] 444 tensors of signature verify have been updated for magic number  32003 to target number 32000
+INFO: [magic_number_utils.cc:120]   config[0]: magic_number=32003, target_number=32000, signature_prefix=null
+INFO: [magic_number_utils.cc:120]   config[0]: magic_number=32003, target_number=32000, signature_prefix=null
+INFO: [magic_number_utils.cc:120]   config[0]: magic_number=32003, target_number=32000, signature_prefix=null
+INFO: [magic_number_utils.cc:120]   config[0]: magic_number=32003, target_number=32000, signature_prefix=null
