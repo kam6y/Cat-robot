@@ -1,0 +1,119 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "modelName": "iPhone 16 Pro",
+        "osBuildNumber": "24B5084k",
+        "osVersion": "27.2",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 9,
+      "passedTests": 228,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "CatRobot · Built with macOS 26.6.2",
+  "expectedFailures": 0,
+  "failedTests": 9,
+  "finishTime": 1789968984.998,
+  "passedTests": 228,
+  "result": "Failed",
+  "runtimeWarnings": [],
+  "skippedTests": 0,
+  "startTime": 1789968908.699,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 222,
+      "testIdentifierString": "SpeechAudioConverterTests/testConvertDrainsEveryHaveDataBufferWithoutResupplyingInput()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testConvertDrainsEveryHaveDataBufferWithoutResupplyingInput",
+      "testName": "testConvertDrainsEveryHaveDataBufferWithoutResupplyingInput()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 225,
+      "testIdentifierString": "SpeechAudioConverterTests/testEmptyResamplingBufferDoesNotDiscardPendingFlushTail()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testEmptyResamplingBufferDoesNotDiscardPendingFlushTail",
+      "testName": "testEmptyResamplingBufferDoesNotDiscardPendingFlushTail()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 226,
+      "testIdentifierString": "SpeechAudioConverterTests/testFlushReturnsRealPrimedFramesOnlyOnce()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testFlushReturnsRealPrimedFramesOnlyOnce",
+      "testName": "testFlushReturnsRealPrimedFramesOnlyOnce()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 227,
+      "testIdentifierString": "SpeechAudioConverterTests/testMatchingFormatOmitsInvalidSampleTimestamp()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testMatchingFormatOmitsInvalidSampleTimestamp",
+      "testName": "testMatchingFormatOmitsInvalidSampleTimestamp()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 228,
+      "testIdentifierString": "SpeechAudioConverterTests/testMatchingFormatProducesAnalyzerInputWithSourceTimestamp()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testMatchingFormatProducesAnalyzerInputWithSourceTimestamp",
+      "testName": "testMatchingFormatProducesAnalyzerInputWithSourceTimestamp()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 229,
+      "testIdentifierString": "SpeechAudioConverterTests/testOnlyFirstResampledBufferInitializesTimelineUntilFlushResetsIt()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testOnlyFirstResampledBufferInitializesTimelineUntilFlushResetsIt",
+      "testName": "testOnlyFirstResampledBufferInitializesTimelineUntilFlushResetsIt()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 230,
+      "testIdentifierString": "SpeechAudioConverterTests/testResampledOutputTimestampsRemainContinuousAcrossInputBuffers()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testResampledOutputTimestampsRemainContinuousAcrossInputBuffers",
+      "testName": "testResampledOutputTimestampsRemainContinuousAcrossInputBuffers()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 231,
+      "testIdentifierString": "SpeechAudioConverterTests/testResamplesFortyEightKilohertzPCMToSixteenKilohertzPCM()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testResamplesFortyEightKilohertzPCMToSixteenKilohertzPCM",
+      "testName": "testResamplesFortyEightKilohertzPCMToSixteenKilohertzPCM()"
+    },
+    {
+      "failureText": "Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 232,
+      "testIdentifierString": "SpeechAudioConverterTests/testTimestampWithSubHalfSampleRateIsOmitted()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/SpeechAudioConverterTests/testTimestampWithSubHalfSampleRateIsOmitted",
+      "testName": "testTimestampWithSubHalfSampleRateIsOmitted()"
+    }
+  ],
+  "title": "Test - CatRobot",
+  "topInsights": [
+    {
+      "category": "Common Failures",
+      "impact": "100% of failures",
+      "text": "9 runs of 9 tests failed with Crash: CatRobot at +[XCTFailableInvocation invokeErrorConventionInvocation:completion:]"
+    },
+    {
+      "category": "Longest Test Runs",
+      "impact": "80% of duration",
+      "text": "1 longest test run with outlier durations exceeding 0.24s (three standard deviations)"
+    }
+  ],
+  "totalTestCount": 237
+}

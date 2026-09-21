@@ -40,7 +40,7 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "NO">
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
@@ -52,7 +52,9 @@
       </MacroExpansion>
       <Testables>
          <TestableReference
-            skipped = "NO">
+            skipped = "NO"
+            useTestSelectionWhitelist = "YES"
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "EF64A61C91C42E2D07C9D611EB7FC30E"
@@ -60,8 +62,20 @@
                BlueprintName = "CatRobotTests"
                ReferencedContainer = "container:CatRobot.xcodeproj">
             </BuildableReference>
+            <SelectedTests>
+               <Test
+                  Identifier = "GemmaDeviceTests">
+               </Test>
+            </SelectedTests>
          </TestableReference>
       </Testables>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "GEMMA_DEVICE_TESTS"
+            value = "1"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

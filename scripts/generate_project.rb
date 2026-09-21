@@ -43,6 +43,9 @@ def apply_common_settings(target)
   end
 end
 
+# Preserve the resolved dependency lock across deterministic project regeneration.
+lock_path = PROJECT_PATH.join("project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+resolved_lock = lock_path.binread if lock_path.file?
 FileUtils.rm_rf(PROJECT_PATH.to_s)
 project = Xcodeproj::Project.new(PROJECT_PATH.to_s, false, 77)
 project.root_object.attributes["LastUpgradeCheck"] = "2660"
@@ -74,6 +77,18 @@ test_target.add_file_references(swift_references(test_group, ROOT.join("CatRobot
 app_target.add_resources([assets_reference, preview_assets_reference])
 test_target.add_dependency(app_target)
 test_target.add_system_framework("XCTest")
+
+package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
+package.repositoryURL = "https://github.com/google-ai-edge/LiteRT-LM"
+package.requirement = { "kind" => "exactVersion", "version" => "0.17.1" }
+project.root_object.package_references << package
+product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
+product.package = package
+product.product_name = "LiteRTLM"
+test_target.package_product_dependencies << product
+build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+build_file.product_ref = product
+test_target.frameworks_build_phase.files << build_file
 
 apply_common_settings(app_target)
 apply_common_settings(test_target)
@@ -126,3 +141,21 @@ scheme.archive_action.build_configuration = "Release"
 scheme.save_as(PROJECT_PATH.to_s, APP_NAME, true)
 
 puts "Generated #{PROJECT_PATH.relative_path_from(ROOT)} with xcodeproj #{Xcodeproj::VERSION}"
+
+# Device-only experiment; ordinary unit tests never start the model.
+device_scheme = Xcodeproj::XCScheme.new
+device_scheme.configure_with_targets(app_target, test_target, launch_target: true)
+device_scheme.test_action.build_configuration = "Debug"
+device_scheme.test_action.should_use_launch_scheme_args_env = false
+device_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "GEMMA_DEVICE_TESTS", value: "1" }])
+selected_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
+selected_test.identifier = "GemmaDeviceTests"
+device_scheme.test_action.testables.first.selected_tests = [selected_test]
+device_scheme.test_action.testables.first.use_test_selection_whitelist = true
+device_scheme.test_action.testables.first.parallelizable = false
+device_scheme.save_as(PROJECT_PATH.to_s, "GemmaDeviceTests", true)
+
+if resolved_lock
+  FileUtils.mkdir_p(lock_path.dirname)
+  lock_path.binwrite(resolved_lock)
+end
