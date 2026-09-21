@@ -1,0 +1,44 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "modelName": "iPhone 16 Pro",
+        "osBuildNumber": "24B5084k",
+        "osVersion": "27.2",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 1,
+      "passedTests": 0,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "GemmaContextBenchmarkTests · Built with macOS 26.6.2",
+  "expectedFailures": 0,
+  "failedTests": 1,
+  "finishTime": 1789973489.512,
+  "passedTests": 0,
+  "result": "Failed",
+  "runtimeWarnings": [],
+  "skippedTests": 0,
+  "startTime": 1789973187.479,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "failed: caught error: \"CancellationError()\"",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 1,
+      "testIdentifierString": "GemmaContextBenchmarkTests/test32K()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/GemmaContextBenchmarkTests/test32K",
+      "testName": "test32K()"
+    }
+  ],
+  "title": "Test - GemmaContextBenchmarkTests",
+  "topInsights": [],
+  "totalTestCount": 1
+}

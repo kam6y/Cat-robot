@@ -1,0 +1,41 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "modelName": "iPhone 16 Pro",
+        "osBuildNumber": "24B5084k",
+        "osVersion": "27.2",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "passedTests": 247,
+      "skippedTests": 12,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "CatRobot · Built with macOS 26.6.2",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1789974774.563,
+  "passedTests": 247,
+  "result": "Passed",
+  "runtimeWarnings": [],
+  "skippedTests": 12,
+  "startTime": 1789974760.051,
+  "statistics": [],
+  "testFailures": [],
+  "title": "Test - CatRobot",
+  "topInsights": [
+    {
+      "category": "Longest Test Runs",
+      "impact": "72% of duration",
+      "text": "1 longest test run with outlier durations exceeding 0.23s (three standard deviations)"
+    }
+  ],
+  "totalTestCount": 259
+}

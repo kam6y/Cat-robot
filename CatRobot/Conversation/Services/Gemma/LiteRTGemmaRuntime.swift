@@ -28,10 +28,10 @@ actor LiteRTGemmaRuntime: GemmaRuntime {
             try model.validate()
             let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
                                                      appropriateFor: nil, create: true)
-            let cache = caches.appendingPathComponent("Gemma4E2B-0.17.1-8192", isDirectory: true)
+            let cache = caches.appendingPathComponent("Gemma4E2B-0.17.1-\(GemmaContext.capacity)", isDirectory: true)
             try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
             let engine = Engine(engineConfig: try EngineConfig(
-                modelPath: model.url.path, backend: .gpu, maxNumTokens: 8192, cacheDir: cache.path
+                modelPath: model.url.path, backend: .gpu, maxNumTokens: GemmaContext.capacity, cacheDir: cache.path
             ))
             try await engine.initialize()
             return engine

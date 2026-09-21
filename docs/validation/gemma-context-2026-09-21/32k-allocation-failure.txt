@@ -1,0 +1,11 @@
+Failed to start message stream: UNKNOWN: ERROR: [third_party/odml/litert_lm/runtime/executor/litert/state.cc:259]
+└ ERROR: [third_party/odml/litert_lm/runtime/util/tensor_buffer_util.cc:60]
+└ ERROR: [./third_party/odml/litert/litert/cc/litert_tensor_buffer.h:101]
+└ Failed to allocate aligned memory
+=== Source Location Trace: === 
+./third_party/odml/litert/litert/cc/litert_macros.h:570
+third_party/odml/litert_lm/runtime/executor/llm_litert_compiled_model_executor.cc:1349
+third_party/odml/litert_lm/runtime/framework/resource_management/resource_manager.cc:788
+third_party/odml/litert_lm/runtime/framework/resource_management/threaded_execution_manager.cc:1301
+third_party/odml/litert_lm/runtime/core/session_advanced.cc:500
+third_party/odml/litert_lm/runtime/conversation/conversation.cc:619

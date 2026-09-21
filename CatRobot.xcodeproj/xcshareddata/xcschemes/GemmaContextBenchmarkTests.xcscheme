@@ -64,14 +64,14 @@
             </BuildableReference>
             <SelectedTests>
                <Test
-                  Identifier = "GemmaDeviceTests">
+                  Identifier = "GemmaContextBenchmarkTests">
                </Test>
             </SelectedTests>
          </TestableReference>
       </Testables>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "GEMMA_DEVICE_TESTS"
+            key = "GEMMA_CONTEXT_TESTS"
             value = "1"
             isEnabled = "YES">
          </EnvironmentVariable>

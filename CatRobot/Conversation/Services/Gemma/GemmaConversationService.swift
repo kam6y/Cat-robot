@@ -98,8 +98,8 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
             }
             let outputLimit = kind == .reply ? 160 : 16
             // UTF-8 bytes upper-bound byte-fallback tokens. Reserve room for the
-            // system prompt, turn delimiters and output rather than overrun 8K.
-            guard try session.tokenCount() + prompt.utf8.count + outputLimit + kind.instruction.utf8.count + 128 <= 8192 else {
+            // system prompt, turn delimiters and output rather than overrun the configured context.
+            guard try session.tokenCount() + prompt.utf8.count + outputLimit + kind.instruction.utf8.count + 128 <= GemmaContext.capacity else {
                 throw ConversationServiceError.contextExceeded
             }
             let source = try control.start(session, prompt: prompt, outputLimit: outputLimit)
