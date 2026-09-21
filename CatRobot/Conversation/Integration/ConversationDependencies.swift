@@ -60,7 +60,7 @@ struct ConversationDependencies: Sendable {
 extension ConversationDependencies {
     @MainActor
     static func live() -> Self {
-        let reply = FoundationModelReplyService()
+        let gemma = GemmaConversationService()
         let concreteRecognizer = AppleSpeechRecognizer()
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let speaker = AppleSpeechSynthesizer()
@@ -71,10 +71,10 @@ extension ConversationDependencies {
 
         return Self(
             microphonePermission: MicrophonePermissionService(),
-            modelAvailability: FoundationModelAvailabilityService(),
+            modelAvailability: gemma,
             recognizer: recognizer,
-            classifier: FoundationModelAddressClassifier(),
-            reply: reply,
+            classifier: gemma,
+            reply: gemma,
             speaker: speaker,
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),

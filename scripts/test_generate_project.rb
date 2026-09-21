@@ -130,7 +130,7 @@ end
 package_objects = project.objects.select { |object| object.isa == "XCRemoteSwiftPackageReference" }
 assert(package_objects.length == 1, "expected exactly one device-test runtime dependency")
 assert(tests.package_product_dependencies.map(&:product_name) == ["LiteRTLM"], "device tests must link LiteRTLM")
-assert(app.package_product_dependencies.empty?, "production app must remain free of the probe runtime")
+assert(app.package_product_dependencies.map(&:product_name) == ["LiteRTLM"], "app must link the Gemma runtime")
 device_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/GemmaDeviceTests.xcscheme").read)
 opt_in = REXML::XPath.first(device_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='GEMMA_DEVICE_TESTS']")
 assert(opt_in && opt_in.attributes["value"] == "1", "device scheme must opt in to real inference")

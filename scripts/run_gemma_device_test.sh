@@ -17,7 +17,9 @@ RESULT_DIR="${GEMMA_RESULTS_DIR:-$REPO_ROOT/.build/gemma-device/$(date -u +%Y%m%
 BUILD_DIR="${GEMMA_BUILD_DIR:-$REPO_ROOT/.build/gemma-device-derived}"
 PACKAGE_DIR="${GEMMA_PACKAGE_DIR:-$REPO_ROOT/.build/gemma-device-packages}"
 mkdir -p "$RESULT_DIR"
-COMMON=(-project CatRobot.xcodeproj -scheme GemmaDeviceTests
+SCHEME="${GEMMA_TEST_SCHEME:-GemmaDeviceTests}"
+DEVICE_RESULT_PATH="${GEMMA_DEVICE_RESULT_PATH:-Library/Application Support/GemmaDeviceTest-20260921/results.json}"
+COMMON=(-project CatRobot.xcodeproj -scheme "$SCHEME"
   -destination "platform=iOS,id=$DEVICE_ID" -derivedDataPath "$BUILD_DIR"
   -clonedSourcePackagesDirPath "$PACKAGE_DIR" -parallel-testing-enabled NO)
 # The upstream repository contains unrelated LFS binaries; the Apple binary is
@@ -52,7 +54,7 @@ xcrun xcresulttool get test-results summary --path "$RESULT_DIR/test.xcresult" \
 if [[ "$TEST_STATUS" -eq 0 ]]; then
   xcrun devicectl device copy from --device "$DEVICE_ID" \
     --domain-type appDataContainer --domain-identifier com.kamby.CatRobot \
-    --source 'Library/Application Support/GemmaDeviceTest-20260921/results.json' \
+    --source "$DEVICE_RESULT_PATH" \
     --destination "$RESULT_DIR/results.json"
 fi
 printf 'Evidence: %s\n' "$RESULT_DIR"

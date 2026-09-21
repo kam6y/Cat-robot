@@ -39,6 +39,15 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             recoveries = [.retry, .settings]
         case .modelUnavailable(let availability):
             switch availability {
+            case .gemmaModelMissing:
+                message = "Gemmaの会話モデルがまだ入っていません。セットアップ手順に沿ってモデルを転送してください。"
+                recoveries = [.checkAgain]
+            case .gemmaModelInvalid:
+                message = "Gemmaの会話モデルを確認できませんでした。モデルファイルを転送し直してください。"
+                recoveries = [.checkAgain]
+            case .gemmaUnavailable:
+                message = "Gemmaを起動できませんでした。対応するiPhone実機で、アプリを開き直してお試しください。"
+                recoveries = [.checkAgain]
             case .available:
                 message = "会話モデルの状態を確認できませんでした。"
                 recoveries = [.checkAgain]

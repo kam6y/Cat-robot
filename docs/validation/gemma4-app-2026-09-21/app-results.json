@@ -1,0 +1,68 @@
+{
+  "records" : [
+    {
+      "input" : "猫ちゃん、あなたは何が好き？",
+      "kind" : "classification",
+      "result" : "addressed"
+    },
+    {
+      "input" : "お母さん、明日のお弁当を作ってください。",
+      "kind" : "classification",
+      "result" : "notAddressed"
+    },
+    {
+      "input" : "佐藤先生、この問題を教えてください。",
+      "kind" : "classification",
+      "result" : "notAddressed"
+    },
+    {
+      "input" : "独り言だけど、今日は疲れたな。",
+      "kind" : "classification",
+      "result" : "notAddressed"
+    },
+    {
+      "input" : "AIのあなたに教えてほしい。猫は何時間寝るの？",
+      "kind" : "classification",
+      "result" : "addressed"
+    },
+    {
+      "input" : "明日は晴れるかな。",
+      "kind" : "classification",
+      "result" : "ambiguous"
+    },
+    {
+      "caption" : "はい、覚えておきますね。麦茶がお好きなんですね。",
+      "completionSeconds" : 6.5672023333318066,
+      "input" : "私の好きな飲み物は麦茶です。覚えてね。",
+      "kind" : "typed-with-real-speech",
+      "phase" : "paused"
+    },
+    {
+      "caption" : "なるほど、ほうじ茶がお好きなんですね。承知いたしました。",
+      "completionSeconds" : 5.8910394999984419,
+      "input" : "訂正です。私が好きなのはほうじ茶です。",
+      "kind" : "typed-with-real-speech",
+      "phase" : "paused"
+    },
+    {
+      "caption" : "ほうじ茶がお好きなんですよ。",
+      "completionSeconds" : 3.4916410833320697,
+      "input" : "私の好きな飲み物は何？",
+      "kind" : "typed-with-real-speech",
+      "phase" : "paused"
+    },
+    {
+      "caption" : "おかえりなさい。",
+      "kind" : "resume"
+    },
+    {
+      "caption" : "ただいま。",
+      "kind" : "pause-during-generation-and-immediate-resume"
+    },
+    {
+      "caption" : "こんにちは。",
+      "kind" : "reset-after-partial-stream"
+    }
+  ],
+  "runtime" : "LiteRT-LM 0.17.1"
+}

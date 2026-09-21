@@ -82,13 +82,15 @@ package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
 package.repositoryURL = "https://github.com/google-ai-edge/LiteRT-LM"
 package.requirement = { "kind" => "exactVersion", "version" => "0.17.1" }
 project.root_object.package_references << package
-product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
-product.package = package
-product.product_name = "LiteRTLM"
-test_target.package_product_dependencies << product
-build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
-build_file.product_ref = product
-test_target.frameworks_build_phase.files << build_file
+[app_target, test_target].each do |target|
+  product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
+  product.package = package
+  product.product_name = "LiteRTLM"
+  target.package_product_dependencies << product
+  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+  build_file.product_ref = product
+  target.frameworks_build_phase.files << build_file
+end
 
 apply_common_settings(app_target)
 apply_common_settings(test_target)
@@ -154,6 +156,18 @@ device_scheme.test_action.testables.first.selected_tests = [selected_test]
 device_scheme.test_action.testables.first.use_test_selection_whitelist = true
 device_scheme.test_action.testables.first.parallelizable = false
 device_scheme.save_as(PROJECT_PATH.to_s, "GemmaDeviceTests", true)
+
+app_device_scheme = Xcodeproj::XCScheme.new
+app_device_scheme.configure_with_targets(app_target, test_target, launch_target: true)
+app_device_scheme.test_action.build_configuration = "Debug"
+app_device_scheme.test_action.should_use_launch_scheme_args_env = false
+app_device_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "GEMMA_APP_DEVICE_TESTS", value: "1" }])
+app_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
+app_test.identifier = "GemmaAppDeviceTests"
+app_device_scheme.test_action.testables.first.selected_tests = [app_test]
+app_device_scheme.test_action.testables.first.use_test_selection_whitelist = true
+app_device_scheme.test_action.testables.first.parallelizable = false
+app_device_scheme.save_as(PROJECT_PATH.to_s, "GemmaAppDeviceTests", true)
 
 if resolved_lock
   FileUtils.mkdir_p(lock_path.dirname)
