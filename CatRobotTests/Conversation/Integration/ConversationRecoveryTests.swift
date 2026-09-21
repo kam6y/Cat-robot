@@ -379,6 +379,31 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.typedText, "二つ目")
     }
 
+    func testTypedInputTooLongPreservesReplyMemory() async {
+        let harness = ConversationHarness(microphoneAllowed: false, replySnapshots: nil)
+        await harness.sut.startConversation()
+        let turn = Task { await harness.sut.submitTypedText("長すぎる入力") }
+        await harness.reply.waitUntilPromptCount(1)
+        await harness.reply.fail(.inputTooLong)
+        await turn.value
+        let resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 0)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.inputTooLong))
+        XCTAssertFalse(harness.sut.viewState.errorMessage?.contains("リセットしました") ?? true)
+    }
+
+    func testVoiceInputTooLongPreservesReplyMemory() async {
+        let harness = ConversationHarness(replySnapshots: nil)
+        await harness.sut.startConversation()
+        let turn = Task { await harness.emitCompletedUtterance("猫ちゃん、長すぎる入力", at: 0) }
+        await harness.reply.waitUntilPromptCount(1)
+        await harness.reply.fail(.inputTooLong)
+        await turn.value
+        let resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 0)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.inputTooLong))
+    }
+
     func testContextExceededResetsOnceAndDoesNotSilentlyRetryPrompt() async {
         let harness = ConversationHarness(replySnapshots: nil)
         await harness.sut.startConversation()

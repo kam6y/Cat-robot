@@ -4,6 +4,7 @@ import Foundation
 /// Native inference must drain after cancellation before a new operation can use the engine.
 actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvailabilityChecking {
     private let runtime: any GemmaRuntime
+    private var memory = GemmaConversationMemory()
     private var replySession: (any GemmaSession)?
     private var active: Task<Void, Never>?
     private var cancellation: GemmaInferenceCancellation?
@@ -57,7 +58,8 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         resetCount += 1
         cancellation?.cancel()
         await active?.value
-        replySession = nil
+        closeReplySession()
+        memory = GemmaConversationMemory()
         resetCount -= 1
     }
 
@@ -87,32 +89,50 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         into continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async {
         var failure: Error?
+        var candidate = memory
         do {
             try await runtime.prepare()
-            let session: any GemmaSession
-            if kind == .reply, let existing = replySession {
-                session = existing
-            } else {
-                session = try await runtime.makeSession(kind)
-                if kind == .reply { replySession = session }
-            }
-            let outputLimit = kind == .reply ? 160 : 16
-            // UTF-8 bytes upper-bound byte-fallback tokens. Reserve room for the
-            // system prompt, turn delimiters and output rather than overrun 8K.
-            guard try session.tokenCount() + prompt.utf8.count + outputLimit + kind.instruction.utf8.count + 128 <= 8192 else {
-                throw ConversationServiceError.contextExceeded
-            }
-            let source = try control.start(session, prompt: prompt, outputLimit: outputLimit)
-            var snapshot = ""
-            for try await delta in source {
-                if !control.isCancelled, !delta.isEmpty {
-                    snapshot += delta
-                    continuation.yield(snapshot)
+            try checkCancellation(control)
+            if kind == .reply {
+                let promptTokens = try await runtime.countTokens(prompt)
+                // Reject impossible inputs before spending time on a summary.
+                guard promptTokens + GemmaContext.replyOutputLimit + GemmaContext.safetyMargin < GemmaContext.capacity else {
+                    throw ConversationServiceError.inputTooLong
                 }
-            }
-            if control.isCancelled { throw CancellationError() }
-            guard !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ConversationServiceError.modelGenerationFailed
+                if candidate.rawTokens >= GemmaContext.compactionTrigger, candidate.retentionStart > 0 {
+                    candidate = try await compact(candidate, control: control)
+                }
+                var session = try await replySession(for: candidate)
+                // Many short turns can fill the native template budget before raw
+                // text reaches 8K. Compact early in that case rather than overflow.
+                if try !fits(session, prompt: prompt, limit: GemmaContext.replyOutputLimit), candidate.retentionStart > 0 {
+                    candidate = try await compact(candidate, control: control)
+                    session = try await replySession(for: candidate)
+                }
+                let response: String
+                do {
+                    response = try await consume(session, prompt: prompt, limit: GemmaContext.replyOutputLimit,
+                                                 control: control, into: continuation)
+                } catch GemmaGenerationFailure.emptyResponse {
+                    // A long-lived native session can return no text. A single
+                    // replay from committed memory recovered this on device.
+                    // Never retry errors, partial visible answers, or cancellation.
+                    closeReplySession()
+                    try checkCancellation(control)
+                    let rebuilt = try await replySession(for: candidate)
+                    response = try await consume(rebuilt, prompt: prompt, limit: GemmaContext.replyOutputLimit,
+                                                 control: control, into: continuation)
+                }
+                let responseTokens = try await runtime.countTokens(response)
+                candidate.turns.append(GemmaTurn(prompt: prompt, response: response, rawTokens: promptTokens + responseTokens))
+            } else {
+                // LiteRT's GPU session switching can restore stale KV state when
+                // several conversations remain alive. Rebuild replies from memory.
+                closeReplySession()
+                let classifier = try await runtime.makeSession(GemmaSessionConfiguration(kind: .classification))
+                defer { classifier.close() }
+                _ = try await consume(classifier, prompt: prompt, limit: GemmaContext.classificationOutputLimit,
+                                      control: control, into: continuation)
             }
         } catch {
             if control.isCancelled || error is CancellationError {
@@ -124,19 +144,85 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
             } else {
                 failure = ConversationServiceError.modelGenerationFailed
             }
-            // A partial/failed turn must not contaminate the next conversation.
-            if kind == .reply { replySession = nil }
         }
-        // Finalization arbitrates with cancellation atomically. A cancel after
-        // the last chunk still invalidates LiteRT's conversation if it won.
-        if control.finish() {
-            failure = ConversationServiceError.cancelled
-            if kind == .reply { replySession = nil }
+        // Publish both compaction and the new turn only if success wins the
+        // cancellation race. A retry can reconstruct the original committed memory.
+        if control.finish() { failure = ConversationServiceError.cancelled }
+        if kind == .reply {
+            if failure == nil { memory = candidate }
+            else { closeReplySession() }
         }
         cancellation = nil
         active = nil
         continuation.finish(throwing: failure)
     }
+
+    private func replySession(for memory: GemmaConversationMemory) async throws -> any GemmaSession {
+        if let replySession { return replySession }
+        let session = try await runtime.makeSession(GemmaSessionConfiguration(kind: .reply, summary: memory.summary, history: memory.turns))
+        replySession = session
+        return session
+    }
+
+    private func closeReplySession() {
+        replySession?.close()
+        replySession = nil
+    }
+
+    private func compact(_ original: GemmaConversationMemory, control: GemmaInferenceCancellation) async throws -> GemmaConversationMemory {
+        try checkCancellation(control)
+        let keepFrom = original.retentionStart
+        guard keepFrom > 0 else { return original }
+        let evicted = original.turns[..<keepFrom]
+        let prompt = "これまでの記憶:\n" + (original.summary.isEmpty ? "なし" : original.summary)
+            + "\n追加の会話:\n"
+            + evicted.map { "利用者: \($0.prompt)\nAI: \($0.response)" }.joined(separator: "\n")
+            + "\n更新後の記憶だけを短く出力してください。"
+        closeReplySession()
+        let summarizer = try await runtime.makeSession(GemmaSessionConfiguration(kind: .summary))
+        defer { summarizer.close() }
+        // Summary failure is recoverable. Do not route it through the UI's
+        // contextExceeded reset, which would discard the original conversation.
+        guard try fits(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit) else {
+            throw ConversationServiceError.modelGenerationFailed
+        }
+        let summary = try await consume(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit, control: control)
+        guard try await runtime.countTokens(summary) <= GemmaContext.summaryOutputLimit else {
+            throw ConversationServiceError.modelGenerationFailed
+        }
+        return GemmaConversationMemory(summary: summary, turns: Array(original.turns[keepFrom...]))
+    }
+
+    private func fits(_ session: any GemmaSession, prompt: String, limit: Int) throws -> Bool {
+        try session.tokenCount() + session.inputTokenCount(prompt) + limit + GemmaContext.safetyMargin < GemmaContext.capacity
+    }
+
+    private func consume(
+        _ session: any GemmaSession, prompt: String, limit: Int, control: GemmaInferenceCancellation,
+        into continuation: AsyncThrowingStream<String, Error>.Continuation? = nil
+    ) async throws -> String {
+        try checkCancellation(control)
+        guard try fits(session, prompt: prompt, limit: limit) else { throw ConversationServiceError.inputTooLong }
+        let source = try control.start(session, prompt: prompt, outputLimit: limit)
+        defer { control.detach() }
+        var snapshot = ""
+        for try await delta in source {
+            if !control.isCancelled, !delta.isEmpty {
+                snapshot += delta
+                continuation?.yield(snapshot)
+            }
+        }
+        try checkCancellation(control)
+        guard !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GemmaGenerationFailure.emptyResponse
+        }
+        return snapshot
+    }
+
+    private func checkCancellation(_ control: GemmaInferenceCancellation) throws {
+        if control.isCancelled { throw CancellationError() }
+    }
+
 }
 
 /// Cancellation can arrive from the stream consumer on any executor. Starting
@@ -156,6 +242,9 @@ final class GemmaInferenceCancellation: @unchecked Sendable {
         }
     }
 
+    // Called only after a sub-operation has drained, before closing its session.
+    func detach() { lock.withLock { session = nil } }
+
     func cancel() {
         lock.withLock {
             guard !finished, !cancelled else { return }
@@ -171,5 +260,24 @@ final class GemmaInferenceCancellation: @unchecked Sendable {
             session = nil
             return cancelled
         }
+    }
+}
+
+private enum GemmaGenerationFailure: Error { case emptyResponse }
+
+private struct GemmaConversationMemory {
+    var summary = ""
+    var turns: [GemmaTurn] = []
+    var rawTokens: Int { turns.reduce(0) { $0 + $1.rawTokens } }
+
+    /// Retain at least 2K of raw text, rounding up to complete user/AI turns.
+    var retentionStart: Int {
+        var index = turns.count
+        var retained = 0
+        while index > 0, retained < GemmaContext.recentMinimum {
+            index -= 1
+            retained += turns[index].rawTokens
+        }
+        return index
     }
 }

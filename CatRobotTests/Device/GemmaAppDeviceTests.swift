@@ -44,6 +44,13 @@ final class GemmaAppDeviceTests: XCTestCase {
             XCTAssertNotEqual(state.phase, .speaking, "submit must wait for actual speech completion")
         }
         XCTAssertTrue(viewModel.viewState.caption.contains("ほうじ茶"), viewModel.viewState.caption)
+        viewModel.showTypedInput()
+        await viewModel.submitTypedText(String(repeating: "入力が長すぎる場合の履歴確認。", count: 2000))
+        XCTAssertEqual(viewModel.viewState.phase, .failed(.inputTooLong))
+        await viewModel.submitTypedText("私の好きな飲み物は何？")
+        XCTAssertNil(viewModel.viewState.errorMessage)
+        XCTAssertTrue(viewModel.viewState.caption.contains("ほうじ茶"), viewModel.viewState.caption)
+        records.append(["kind": "oversized-input-preserves-memory", "caption": viewModel.viewState.caption])
         await viewModel.sceneBecameInactive()
         XCTAssertEqual(viewModel.viewState.phase, .paused)
         viewModel.showTypedInput()
@@ -99,5 +106,147 @@ final class GemmaAppDeviceTests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
 #endif
+    }
+    func testProductionAutoCompactionAndInterleavedClassification() async throws {
+#if targetEnvironment(simulator)
+        throw XCTSkip("Gemma compaction requires a physical iPhone.")
+#else
+        guard ProcessInfo.processInfo.environment["GEMMA_APP_DEVICE_TESTS"] == "1" else {
+            throw XCTSkip("Run the GemmaAppDeviceTests scheme explicitly.")
+        }
+        executionTimeAllowance = 900
+        let runtime = ObservedGemmaRuntime()
+        let service = GemmaConversationService(runtime: runtime)
+        let availability = await service.availability()
+        XCTAssertEqual(availability, .available)
+        guard availability == .available else { return }
+        var records: [[String: Any]] = []
+        func send(_ prompt: String) async throws -> String {
+            let start = ProcessInfo.processInfo.systemUptime
+            var first: Double?
+            var response = ""
+            for try await text in try await service.streamReply(to: prompt) {
+                if first == nil { first = ProcessInfo.processInfo.systemUptime - start }
+                response = text
+            }
+            XCTAssertFalse(response.isEmpty)
+            print("APP_COMPACTION_REPLY \(response.prefix(100))")
+            records.append(["response": response, "firstVisibleSeconds": first ?? -1,
+                            "completionSeconds": ProcessInfo.processInfo.systemUptime - start])
+            return response
+        }
+        _ = try await send("私の旅行先は金沢、合言葉は青い栞、好きな飲み物はほうじ茶です。返事は『了解』だけ。")
+        var lastCycles = 0
+        for turn in 0..<50 {
+            let notes = (0..<24).map { offset in
+                let i = turn * 24 + offset
+                return "日誌\(i)：\(i % 12 + 1)月\(i % 28 + 1)日、図書館で地図と写真を調べた。風が強く、活動時間は\(15 + i % 80)分だった。"
+            }.joined(separator: "\n")
+            _ = try await send("今日の記録です。返事は『了解』だけ。\n" + notes)
+            let configs = await runtime.configurations
+            let cycles = configs.filter { $0.kind == .summary }.count
+            if cycles > lastCycles {
+                let rebuilt = try XCTUnwrap(configs.last)
+                XCTAssertEqual(rebuilt.kind, .reply)
+                let retained = rebuilt.history.reduce(0) { $0 + $1.rawTokens }
+                XCTAssertGreaterThanOrEqual(retained, 2048)
+                XCTAssertLessThan(retained - (rebuilt.history.first?.rawTokens ?? 0), 2048)
+                XCTAssertFalse(rebuilt.summary.isEmpty)
+                let summaryTokens = try await runtime.countTokens(rebuilt.summary)
+                XCTAssertLessThanOrEqual(summaryTokens, 512)
+                records.append(["compaction": cycles, "retainedRawTokens": retained,
+                                "summaryTokens": summaryTokens, "summary": rebuilt.summary])
+                // Exercise the production session-switching path with saved memory.
+                let target = try await service.classify("お母さん、明日のお弁当を作ってください。")
+                XCTAssertEqual(target, .notAddressed)
+                let reply = try await send("おかえり、とだけ言って。")
+                XCTAssertFalse(["addressed", "notAddressed", "ambiguous"].contains(reply.trimmingCharacters(in: .whitespacesAndNewlines)),
+                               "The reply session must not reuse classifier output")
+                // Record semantic instruction-following separately from lifecycle
+                // correctness; E2B sometimes answers 了解 despite the new request.
+                records.append(["greetingInstructionFollowed": reply.contains("おかえり"), "greeting": reply])
+                lastCycles = cycles
+            }
+            if cycles >= 2 { break }
+        }
+        XCTAssertGreaterThanOrEqual(lastCycles, 2)
+        let budgets = runtime.trace.budgets
+        XCTAssertFalse(budgets.isEmpty)
+        XCTAssertTrue(budgets.allSatisfy { $0 < 12288 }, "Every native request must fit with output and safety reserve")
+        let recall = try await send("私の旅行先と好きな飲み物は何？")
+        records.append(["recall": recall])
+        await service.reset()
+        let data = try JSONSerialization.data(withJSONObject: ["records": records, "nativeBudgets": budgets],
+                                              options: [.prettyPrinted, .sortedKeys])
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "Production Gemma 12K auto-compaction"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                  appropriateFor: nil, create: true)
+        let output = support.appendingPathComponent("GemmaAppDeviceTest", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        try data.write(to: output.appendingPathComponent("compaction.json"), options: .atomic)
+#endif
+    }
+
+}
+
+private actor ObservedGemmaRuntime: GemmaRuntime {
+    private let base = LiteRTGemmaRuntime()
+    nonisolated let trace = GemmaDeviceBudgetTrace()
+    private(set) var configurations: [GemmaSessionConfiguration] = []
+    func prepare() async throws { try await base.prepare() }
+    func countTokens(_ text: String) async throws -> Int {
+        let count = try await base.countTokens(text)
+        print("APP_TOKEN_COUNT kind=\(String(describing: configurations.last?.kind)) count=\(count) chars=\(text.count)")
+        return count
+    }
+    func makeSession(_ configuration: GemmaSessionConfiguration) async throws -> any GemmaSession {
+        let session = try await base.makeSession(configuration)
+        configurations.append(configuration)
+        print("APP_SESSION kind=\(configuration.kind) rawHistory=\(configuration.history.reduce(0) { $0 + $1.rawTokens }) summaryChars=\(configuration.summary.count)")
+        return ObservedGemmaSession(base: session, trace: trace, kind: configuration.kind)
+    }
+}
+
+private final class GemmaDeviceBudgetTrace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Int] = []
+    var budgets: [Int] { lock.withLock { values } }
+    func append(_ value: Int) { lock.withLock { values.append(value) } }
+}
+
+private struct ObservedGemmaSession: GemmaSession {
+    let base: any GemmaSession
+    let trace: GemmaDeviceBudgetTrace
+    let kind: GemmaSessionKind
+    func tokenCount() throws -> Int { try base.tokenCount() }
+    func inputTokenCount(_ prompt: String) throws -> Int { try base.inputTokenCount(prompt) }
+    func cancel() { base.cancel() }
+    func close() { base.close() }
+    func stream(_ prompt: String, outputLimit: Int) -> AsyncThrowingStream<String, Error> {
+        do {
+            let budget = try base.tokenCount() + base.inputTokenCount(prompt) + outputLimit + 32
+            trace.append(budget)
+            print("APP_STREAM_START kind=\(kind) budget=\(budget) limit=\(outputLimit)")
+            let source = base.stream(prompt, outputLimit: outputLimit)
+            let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
+            Task {
+                var response = ""
+                do {
+                    for try await delta in source {
+                        response += delta
+                        continuation.yield(delta)
+                    }
+                    print("APP_STREAM_END kind=\(kind) chars=\(response.count)")
+                    continuation.finish()
+                } catch {
+                    print("APP_STREAM_ERROR kind=\(kind) error=\(error)")
+                    continuation.finish(throwing: error)
+                }
+            }
+            return stream
+        } catch { return AsyncThrowingStream { $0.finish(throwing: error) } }
     }
 }

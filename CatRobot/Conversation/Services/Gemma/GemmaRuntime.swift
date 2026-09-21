@@ -3,18 +3,24 @@ import Foundation
 // The model boundary emits deltas. The UI-facing ReplyGenerating boundary emits snapshots.
 protocol GemmaRuntime: Sendable {
     func prepare() async throws
-    func makeSession(_ kind: GemmaSessionKind) async throws -> any GemmaSession
+    func countTokens(_ text: String) async throws -> Int
+    func makeSession(_ configuration: GemmaSessionConfiguration) async throws -> any GemmaSession
 }
 
 protocol GemmaSession: Sendable {
     func tokenCount() throws -> Int
+    /// Includes system and replayed history when the session has not yet sent a message.
+    func inputTokenCount(_ prompt: String) throws -> Int
     func stream(_ prompt: String, outputLimit: Int) -> AsyncThrowingStream<String, Error>
     func cancel()
+    /// Called only after the native stream drains; releases GPU state before the next session.
+    func close()
 }
 
 enum GemmaSessionKind: Sendable {
     case reply
     case classification
+    case summary
 
     var instruction: String {
         switch self {
@@ -24,6 +30,13 @@ enum GemmaSessionKind: Sendable {
             通常は音声で聞きやすい一文か二文で簡潔に答え、詳しく求められた時だけ広げます。
             訂正された情報を優先し、ユーザーの好みと自分の好みを混同しません。
             自分を人間だと偽りません。絵文字やMarkdownは使いません。
+            """
+        case .summary:
+            return """
+            あなたは会話の記憶を整理します。これまでの記憶と追加の会話から、後で必要な情報を短い箇条書きにまとめます。
+            利用者の好み・旅行先・趣味・合言葉・予定と待ち合わせ、明示的な訂正、未解決の質問を優先します。
+            最新の利用者の訂正を採用し、古い値を現行の情報として残しません。AIの返答を利用者の事実と混同しません。
+            雑談の細部は省略できます。明記されていないことを補いません。記憶だけを出力してください。
             """
         case .classification:
             return """
@@ -52,4 +65,32 @@ enum GemmaRuntimeFailure: Error {
     case missingModel
     case invalidModel
     case unavailable
+}
+
+/// Counts refer to the model tokenizer, not characters or UTF-8 bytes.
+enum GemmaContext {
+    static let capacity = 12_288
+    static let compactionTrigger = 8_192
+    static let recentMinimum = 2_048
+    static let summaryOutputLimit = 512
+    static let replyOutputLimit = 160
+    static let classificationOutputLimit = 16
+    static let safetyMargin = 32
+}
+
+struct GemmaTurn: Sendable {
+    let prompt: String
+    let response: String
+    let rawTokens: Int
+}
+
+struct GemmaSessionConfiguration: Sendable {
+    let kind: GemmaSessionKind
+    var summary = ""
+    var history: [GemmaTurn] = []
+
+    var instruction: String {
+        guard !summary.isEmpty else { return kind.instruction }
+        return kind.instruction + "\n過去の会話の記憶（最近のユーザーの訂正があればそちらを優先）:\n" + summary
+    }
 }

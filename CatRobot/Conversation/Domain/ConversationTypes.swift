@@ -65,6 +65,7 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case guardrailViolation
     case refusal
     case contextExceeded
+    case inputTooLong
     case modelBusy
     case modelGenerationFailed
     case cancelled

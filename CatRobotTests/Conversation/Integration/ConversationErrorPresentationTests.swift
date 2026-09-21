@@ -53,6 +53,7 @@ final class ConversationErrorPresentationTests: XCTestCase {
             .guardrailViolation,
             .refusal,
             .contextExceeded,
+            .inputTooLong,
             .modelBusy,
             .modelGenerationFailed,
             .cancelled,

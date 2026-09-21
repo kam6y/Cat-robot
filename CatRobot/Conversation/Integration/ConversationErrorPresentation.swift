@@ -79,6 +79,9 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .contextExceeded:
             message = "会話が長くなったため、短期の会話内容をリセットしました。もう一度話しかけてください。"
             recoveries = [.retry]
+        case .inputTooLong:
+            message = "今回の内容は一度に扱える長さを超えています。短く分けて、もう一度話しかけてください。"
+            recoveries = [.retry]
         case .modelBusy:
             message = "いまは返事を作っているところです。少し待ってから、もう一度お試しください。"
             recoveries = [.retry]
