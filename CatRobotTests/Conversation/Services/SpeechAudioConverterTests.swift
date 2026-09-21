@@ -6,11 +6,15 @@ import XCTest
 
 final class SpeechAudioConverterTests: XCTestCase {
     func testMatchingFormatProducesAnalyzerInputWithSourceTimestamp() throws {
-        let format = makeFormat(sampleRate: 48_000)
+        let format = makeAnalyzerFormat(sampleRate: 48_000)
         let buffer = makeBuffer(format: format, frameCount: 480)
         let converter = try SpeechAudioConverter(
             sourceFormat: format,
-            analyzerFormat: format
+            analyzerFormat: format,
+            backendFactory: { _, _ in
+                XCTFail("Matching formats must not create a conversion backend")
+                return nil
+            }
         )
 
         let output = try converter.convert(
@@ -19,7 +23,17 @@ final class SpeechAudioConverterTests: XCTestCase {
         )
 
         XCTAssertEqual(output.count, 1)
-        XCTAssertTrue(output[0].buffer === buffer)
+        // AnalyzerInput may materialize a new PCM buffer on newer iOS releases.
+        // Preserve the audio contract, not framework object identity.
+        let actualBuffer = output[0].buffer
+        XCTAssertEqual(actualBuffer.format, buffer.format)
+        XCTAssertEqual(actualBuffer.frameLength, buffer.frameLength)
+        let actualSamples = try XCTUnwrap(actualBuffer.int16ChannelData?[0])
+        let expectedSamples = try XCTUnwrap(buffer.int16ChannelData?[0])
+        XCTAssertEqual(
+            Array(UnsafeBufferPointer(start: actualSamples, count: Int(actualBuffer.frameLength))),
+            Array(UnsafeBufferPointer(start: expectedSamples, count: Int(buffer.frameLength)))
+        )
         XCTAssertEqual(
             output[0].bufferStartTime,
             CMTime(value: 960, timescale: 48_000)
@@ -27,7 +41,7 @@ final class SpeechAudioConverterTests: XCTestCase {
     }
 
     func testMatchingFormatOmitsInvalidSampleTimestamp() throws {
-        let format = makeFormat(sampleRate: 48_000)
+        let format = makeAnalyzerFormat(sampleRate: 48_000)
         let converter = try SpeechAudioConverter(
             sourceFormat: format,
             analyzerFormat: format
@@ -42,7 +56,7 @@ final class SpeechAudioConverterTests: XCTestCase {
     }
 
     func testTimestampWithSubHalfSampleRateIsOmitted() throws {
-        let format = makeFormat(sampleRate: 48_000)
+        let format = makeAnalyzerFormat(sampleRate: 48_000)
         let converter = try SpeechAudioConverter(
             sourceFormat: format,
             analyzerFormat: format
@@ -58,7 +72,7 @@ final class SpeechAudioConverterTests: XCTestCase {
 
     func testResamplesFortyEightKilohertzPCMToSixteenKilohertzPCM() throws {
         let sourceFormat = makeFormat(sampleRate: 48_000)
-        let analyzerFormat = makeFormat(sampleRate: 16_000)
+        let analyzerFormat = makeAnalyzerFormat(sampleRate: 16_000)
         let converter = try SpeechAudioConverter(
             sourceFormat: sourceFormat,
             analyzerFormat: analyzerFormat
@@ -70,9 +84,13 @@ final class SpeechAudioConverterTests: XCTestCase {
         )
 
         let converted = try XCTUnwrap(output.first)
-        XCTAssertGreaterThan(converted.buffer.frameLength, 0)
-        XCTAssertEqual(converted.buffer.format.sampleRate, 16_000)
-        XCTAssertEqual(converted.buffer.format.channelCount, 1)
+        let convertedBuffer = converted.buffer
+        XCTAssertGreaterThan(convertedBuffer.frameLength, 0)
+        XCTAssertEqual(convertedBuffer.format.sampleRate, 16_000)
+        XCTAssertEqual(convertedBuffer.format.channelCount, 1)
+        XCTAssertEqual(convertedBuffer.format.commonFormat, .pcmFormatInt16)
+        let samples = try XCTUnwrap(convertedBuffer.int16ChannelData?[0])
+        XCTAssertTrue(UnsafeBufferPointer(start: samples, count: Int(convertedBuffer.frameLength)).contains { $0 != 0 })
         XCTAssertEqual(
             converted.bufferStartTime,
             CMTime(value: 4_800, timescale: 48_000)
@@ -81,7 +99,7 @@ final class SpeechAudioConverterTests: XCTestCase {
 
     func testResampledOutputTimestampsRemainContinuousAcrossInputBuffers() throws {
         let sourceFormat = makeFormat(sampleRate: 48_000)
-        let analyzerFormat = makeFormat(sampleRate: 16_000)
+        let analyzerFormat = makeAnalyzerFormat(sampleRate: 16_000)
         let converter = try SpeechAudioConverter(
             sourceFormat: sourceFormat,
             analyzerFormat: analyzerFormat
@@ -181,7 +199,7 @@ final class SpeechAudioConverterTests: XCTestCase {
 
     func testFlushReturnsRealPrimedFramesOnlyOnce() throws {
         let sourceFormat = makeFormat(sampleRate: 48_000)
-        let analyzerFormat = makeFormat(sampleRate: 16_000)
+        let analyzerFormat = makeAnalyzerFormat(sampleRate: 16_000)
         let converter = try SpeechAudioConverter(
             sourceFormat: sourceFormat,
             analyzerFormat: analyzerFormat
@@ -248,7 +266,7 @@ final class SpeechAudioConverterTests: XCTestCase {
         XCTAssertThrowsError(
             try SpeechAudioConverter(
                 sourceFormat: invalid,
-                analyzerFormat: makeFormat(sampleRate: 16_000)
+                analyzerFormat: makeAnalyzerFormat(sampleRate: 16_000)
             )
         ) { error in
             XCTAssertEqual(error as? ConversationServiceError, .speechCaptureFailed)
@@ -291,9 +309,18 @@ final class SpeechAudioConverterTests: XCTestCase {
     }
 }
 
-private func makeFormat(sampleRate: Double) -> AVAudioFormat {
+// Real microphone input remains Float32. AnalyzerInput on current iOS requires
+// signed 16-bit PCM; the live driver obtains this via bestAvailableAudioFormat.
+private func makeAnalyzerFormat(sampleRate: Double) -> AVAudioFormat {
+    makeFormat(sampleRate: sampleRate, commonFormat: .pcmFormatInt16)
+}
+
+private func makeFormat(
+    sampleRate: Double,
+    commonFormat: AVAudioCommonFormat = .pcmFormatFloat32
+) -> AVAudioFormat {
     AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
+        commonFormat: commonFormat,
         sampleRate: sampleRate,
         channels: 1,
         interleaved: false
@@ -314,6 +341,10 @@ private func makeBuffer(
         for index in 0..<Int(frameCount) {
             samples[index] = sin(Float(index) * 0.1)
         }
+    } else if let samples = buffer.int16ChannelData?[0] {
+        for index in 0..<Int(frameCount) {
+            samples[index] = Int16(sin(Float(index) * 0.1) * 16_384)
+        }
     }
     return buffer
 }
@@ -323,7 +354,7 @@ private func makeConverter(
 ) throws -> SpeechAudioConverter {
     try SpeechAudioConverter(
         sourceFormat: makeFormat(sampleRate: 48_000),
-        analyzerFormat: makeFormat(sampleRate: 16_000),
+        analyzerFormat: makeAnalyzerFormat(sampleRate: 16_000),
         backendFactory: { _, _ in backend }
     )
 }
