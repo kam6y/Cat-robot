@@ -1,6 +1,6 @@
 # 返答が聞こえるまでの待ち時間を短くする設計
 
-2026-09-23 / written spec review待ち。
+2026-09-23 / ユーザー「おk」で承認。実装計画の確認へ進む。
 ブランチ: `feature/conversation-response-latency`。
 起点: main `066e3a6d75b9a75e1819124d056d59b406807d2b`。
 
