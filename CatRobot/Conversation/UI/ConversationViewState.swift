@@ -38,6 +38,9 @@ struct ConversationRecovery: Equatable, Sendable {
 }
 
 struct ConversationViewState: Equatable, Sendable {
+    var memoryState: ConversationMemoryState = .unsupported
+    var showsForgetConfirmation = false
+    var memoryNotice: String? = nil
     var phase: ConversationPhase
     var catState: CatVisualState
     var mouthPose: MouthPose
@@ -58,6 +61,10 @@ struct ConversationActions {
     var updateTypedText: (String) -> Void
     var sendTypedText: () -> Void
     var performRecovery: (ConversationRecoveryAction) -> Void
+    var requestForget: () -> Void = {}
+    var cancelForget: () -> Void = {}
+    var confirmForget: () -> Void = {}
+    var retryMemory: () -> Void = {}
 }
 
 enum ConversationTypedInputAction: Equatable, Sendable {
@@ -92,7 +99,7 @@ extension ConversationPhase {
 
 extension ConversationViewState {
     var allowsTypedSubmission: Bool {
-        phase.allowsTypedSubmission
+        phase.allowsTypedSubmission && !ConversationMemoryPresentation(state: memoryState).blocksConversation
     }
 
     static let idle = Self(

@@ -27,6 +27,15 @@ struct ConversationView: View {
         .foregroundStyle(.primary)
         .preferredColorScheme(.dark)
         .statusBarHidden(ConversationPresentationPolicy.isStatusBarHidden)
+        .confirmationDialog("会話を忘れる", isPresented: Binding(
+            get: { state.showsForgetConfirmation },
+            set: { if !$0 { actions.cancelForget() } }
+        ), titleVisibility: .visible) {
+            Button("削除する", role: .destructive, action: actions.confirmForget)
+            Button("キャンセル", role: .cancel, action: actions.cancelForget)
+        } message: {
+            Text("このiPhoneに保存した会話の記憶を削除します。元には戻せません。")
+        }
         .onChange(of: state) { oldState, newState in
             guard let announcement = ConversationAnnouncementPolicy.announcement(
                 from: oldState,
@@ -51,6 +60,15 @@ struct ConversationView: View {
                 .accessibilityValue(accessibility.assistantStatus)
 
             Spacer(minLength: 0)
+            if ConversationMemoryPresentation(state: state.memoryState).supportsForget {
+                Menu {
+                    Button("会話を忘れる", role: .destructive, action: actions.requestForget)
+                } label: {
+                    Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("会話の設定")
+                .disabled(state.memoryState == .forgetting)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -107,6 +125,19 @@ struct ConversationView: View {
                 }
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
+            }
+
+            if let message = ConversationMemoryPresentation(state: state.memoryState).message {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(message).fixedSize(horizontal: false, vertical: true)
+                    if ConversationMemoryPresentation(state: state.memoryState).canRetry {
+                        Button(state.memoryState == .unsaved ? "保存を再試行" : "再試行", action: actions.retryMemory)
+                            .buttonStyle(.bordered).frame(minHeight: 44)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+            } else if let notice = state.memoryNotice {
+                Text(notice).font(.subheadline)
             }
 
             if let errorMessage = state.errorMessage {
@@ -270,6 +301,7 @@ struct ConversationView: View {
             usesCompactLabel: usesCompactLabel,
             action: actions.toggleListening
         )
+        .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
     }
 
     @ViewBuilder

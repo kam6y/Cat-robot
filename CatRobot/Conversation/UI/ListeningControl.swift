@@ -118,6 +118,11 @@ enum ConversationAnnouncementPolicy {
         from oldState: ConversationViewState,
         to newState: ConversationViewState
     ) -> String? {
+        if oldState.memoryState != newState.memoryState,
+           let message = ConversationMemoryPresentation(state: newState.memoryState).message {
+            return message
+        }
+        if let notice = newState.memoryNotice, notice != oldState.memoryNotice { return notice }
         if let error = newState.errorMessage,
            oldState.errorMessage != newState.errorMessage
             || oldState.recoveries != newState.recoveries {

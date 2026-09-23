@@ -130,6 +130,18 @@ final class ConversationAppCoordinator {
                 case .showTypedInput:
                     self.viewModel.showTypedInput()
                 }
+            },
+            requestForget: { [weak self] in self?.viewModel.requestForgetConversation() },
+            cancelForget: { [weak self] in self?.viewModel.cancelForgetConversation() },
+            confirmForget: { [weak self] in
+                // Capture the user's decision before SwiftUI dismisses the dialog.
+                guard let self, self.viewModel.viewState.showsForgetConfirmation else { return }
+                self.launchAction { [weak self] in
+                    await self?.viewModel.confirmForgetConversation(confirmationAccepted: true)
+                }
+            },
+            retryMemory: { [weak self] in
+                self?.launchAction { [weak self] in await self?.viewModel.retryMemoryOperation() }
             }
         )
     }

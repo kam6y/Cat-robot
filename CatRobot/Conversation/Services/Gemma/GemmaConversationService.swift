@@ -2,16 +2,161 @@ import Foundation
 
 /// One runtime is shared by ephemeral address classification and a stateful reply session.
 /// Native inference must drain after cancellation before a new operation can use the engine.
-actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvailabilityChecking {
+actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvailabilityChecking, ConversationMemoryManaging {
     private let runtime: any GemmaRuntime
     private var memory = GemmaConversationMemory()
     private var replySession: (any GemmaSession)?
     private var active: Task<Void, Never>?
     private var cancellation: GemmaInferenceCancellation?
-    private var resetCount = 0
+    private let memoryStore: any ConversationMemoryStore
+    private let compatibilityID: String
+    private var persistenceState: ConversationMemoryState = .unprepared
+    private var subscribers: [UUID: AsyncStream<ConversationMemoryState>.Continuation] = [:]
+    private var prepared = false
+    private var revision: UInt64 = 0
+    private var operationEpoch: UInt64 = 0
+    private var preparation: Task<Void, Error>?
+    private var saveRetry: Task<Void, Error>?
+    private var forgetting: Task<Void, Error>?
 
-    init(runtime: any GemmaRuntime = LiteRTGemmaRuntime()) {
+    init(runtime: any GemmaRuntime = LiteRTGemmaRuntime(),
+         memoryStore: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
+         compatibilityID: String = GemmaMemoryCompatibility.current) {
         self.runtime = runtime
+        self.memoryStore = memoryStore
+        self.compatibilityID = compatibilityID
+    }
+
+    func memoryState() -> ConversationMemoryState { persistenceState }
+
+    func memoryUpdates() -> AsyncStream<ConversationMemoryState> {
+        let id = UUID()
+        let (stream, continuation) = AsyncStream<ConversationMemoryState>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        subscribers[id] = continuation
+        continuation.yield(persistenceState)
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeSubscriber(id) }
+        }
+        return stream
+    }
+
+    private func removeSubscriber(_ id: UUID) { subscribers[id] = nil }
+    private func publishMemory(_ state: ConversationMemoryState) {
+        persistenceState = state
+        for subscriber in subscribers.values { subscriber.yield(state) }
+    }
+
+    func prepareMemory() async throws {
+        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
+        if case .forgetFailed = persistenceState { throw ConversationMemoryError.unavailable }
+        if prepared { return }
+        if case .restoreFailed(let error) = persistenceState { throw error }
+        if let preparation { try await preparation.value; return }
+        let epoch = operationEpoch
+        publishMemory(.loading)
+        let task = Task { try await self.restoreMemory(epoch: epoch) }
+        preparation = task
+        try await task.value
+    }
+
+    private func restoreMemory(epoch: UInt64) async throws {
+        defer { if operationEpoch == epoch { preparation = nil } }
+        do {
+            let snapshot = try await memoryStore.load()
+            var restored = GemmaConversationMemory()
+            if let snapshot {
+                try snapshot.validate(expectedCompatibilityID: compatibilityID)
+                try await runtime.prepare()
+                guard try await runtime.countTokens(snapshot.summary) <= GemmaContext.summaryOutputLimit else {
+                    throw ConversationMemoryError.invalidData
+                }
+                restored.summary = snapshot.summary
+                for turn in snapshot.turns {
+                    let prompt = try await runtime.countTokens(turn.prompt)
+                    let response = try await runtime.countTokens(turn.response)
+                    restored.turns.append(GemmaTurn(prompt: turn.prompt, response: turn.response, rawTokens: prompt + response))
+                }
+            }
+            guard operationEpoch == epoch, forgetting == nil else { throw CancellationError() }
+            memory = restored
+            revision = snapshot?.revision ?? 0
+            prepared = true
+            publishMemory(.ready)
+        } catch {
+            guard operationEpoch == epoch, forgetting == nil else { throw CancellationError() }
+            let issue = error as? ConversationMemoryError ?? .readFailed
+            publishMemory(.restoreFailed(issue))
+            throw issue
+        }
+    }
+
+    private func snapshot() -> ConversationMemorySnapshot {
+        ConversationMemorySnapshot(schemaVersion: 1, memoryCompatibilityID: compatibilityID,
+            revision: revision, savedAt: Date(), summary: memory.summary,
+            turns: memory.turns.map { .init(prompt: $0.prompt, response: $0.response) })
+    }
+
+    private func saveMemory(epoch: UInt64) async throws {
+        let value = snapshot()
+        publishMemory(.saving)
+        do {
+            try await memoryStore.save(value)
+            if operationEpoch == epoch { publishMemory(.ready) }
+        } catch {
+            if operationEpoch == epoch { publishMemory(.unsaved) }
+            throw error
+        }
+    }
+
+    func retryMemoryOperation() async throws {
+        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
+        if let saveRetry { try await saveRetry.value; return }
+        guard active == nil, preparation == nil else { throw ConversationServiceError.modelBusy }
+        switch persistenceState {
+        case .unsaved:
+            let epoch = operationEpoch
+            let task = Task { try await self.saveMemory(epoch: epoch) }
+            saveRetry = task
+            defer { saveRetry = nil }
+            try await task.value
+        case .restoreFailed:
+            publishMemory(.unprepared)
+            try await prepareMemory()
+        case .forgetFailed:
+            try await forgetConversation()
+        default: break
+        }
+    }
+
+    func forgetConversation() async throws {
+        if let forgetting { try await forgetting.value; return }
+        operationEpoch &+= 1
+        publishMemory(.forgetting)
+        cancellation?.cancel()
+        let oldActive = active
+        let oldPreparation = preparation
+        let oldRetry = saveRetry
+        let task = Task {
+            await oldActive?.value
+            _ = try? await oldPreparation?.value
+            _ = try? await oldRetry?.value
+            self.preparation = nil
+            self.saveRetry = nil
+            do {
+                try await self.memoryStore.clear()
+                self.closeReplySession()
+                self.memory = GemmaConversationMemory()
+                self.revision = 0
+                self.prepared = true
+                self.publishMemory(.ready)
+            } catch {
+                self.publishMemory(.forgetFailed(.deleteFailed))
+                throw ConversationMemoryError.deleteFailed
+            }
+        }
+        forgetting = task
+        defer { forgetting = nil }
+        try await task.value
     }
 
     func availability() async -> ModelAvailability {
@@ -34,12 +179,20 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
     }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
+        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
+        let epoch = operationEpoch
         await waitForCancelledInference()
+        try await prepareMemory()
+        guard operationEpoch == epoch else { throw ConversationServiceError.cancelled }
         return try start(utterance, kind: .reply)
     }
 
     func classify(_ utterance: String) async throws -> AddressTarget {
+        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
+        let epoch = operationEpoch
         await waitForCancelledInference()
+        try await prepareMemory()
+        guard operationEpoch == epoch else { throw ConversationServiceError.cancelled }
         let stream = try start(utterance, kind: .classification)
         var result = ""
         for try await snapshot in stream {
@@ -55,23 +208,21 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
     }
 
     func reset() async {
-        resetCount += 1
-        cancellation?.cancel()
-        await active?.value
-        closeReplySession()
-        memory = GemmaConversationMemory()
-        resetCount -= 1
+        // Failure remains observable and blocks new replies until deletion succeeds.
+        try? await forgetConversation()
     }
 
     private func waitForCancelledInference() async {
         // UI cleanup waits for its stream consumer, which can finish before the
         // native callback drains. A user resuming immediately joins that drain.
-        if cancellation?.isCancelled == true { await active?.value }
+        if cancellation?.isCancelled == true || persistenceState == .saving { await active?.value }
     }
 
     private func start(_ prompt: String, kind: GemmaSessionKind) throws -> AsyncThrowingStream<String, Error> {
         try Task.checkCancellation()
-        guard active == nil, resetCount == 0 else { throw ConversationServiceError.modelBusy }
+        guard active == nil, forgetting == nil, saveRetry == nil else { throw ConversationServiceError.modelBusy }
+        if case .forgetFailed = persistenceState { throw ConversationMemoryError.unavailable }
+        let epoch = operationEpoch
         let control = GemmaInferenceCancellation()
         cancellation = control
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
@@ -80,12 +231,12 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         }
         // Do not cancel this worker: it must consume the native terminal callback,
         // retaining the session and engine until the GPU operation has ended.
-        active = Task { await self.generate(prompt, kind: kind, control: control, into: continuation) }
+        active = Task { await self.generate(prompt, kind: kind, control: control, epoch: epoch, into: continuation) }
         return stream
     }
 
     private func generate(
-        _ prompt: String, kind: GemmaSessionKind, control: GemmaInferenceCancellation,
+        _ prompt: String, kind: GemmaSessionKind, control: GemmaInferenceCancellation, epoch: UInt64,
         into continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async {
         var failure: Error?
@@ -147,9 +298,15 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         }
         // Publish both compaction and the new turn only if success wins the
         // cancellation race. A retry can reconstruct the original committed memory.
-        if control.finish() { failure = ConversationServiceError.cancelled }
+        if control.finish() || epoch != operationEpoch { failure = ConversationServiceError.cancelled }
         if kind == .reply {
-            if failure == nil { memory = candidate }
+            if failure == nil {
+                memory = candidate
+                revision &+= 1
+                // Saving is part of the owned turn even if the stream consumer
+                // leaves after generation's commit point. Save errors are warnings.
+                try? await saveMemory(epoch: epoch)
+            }
             else { closeReplySession() }
         }
         cancellation = nil
@@ -264,20 +421,3 @@ final class GemmaInferenceCancellation: @unchecked Sendable {
 }
 
 private enum GemmaGenerationFailure: Error { case emptyResponse }
-
-private struct GemmaConversationMemory {
-    var summary = ""
-    var turns: [GemmaTurn] = []
-    var rawTokens: Int { turns.reduce(0) { $0 + $1.rawTokens } }
-
-    /// Retain at least 2K of raw text, rounding up to complete user/AI turns.
-    var retentionStart: Int {
-        var index = turns.count
-        var retained = 0
-        while index > 0, retained < GemmaContext.recentMinimum {
-            index -= 1
-            retained += turns[index].rawTokens
-        }
-        return index
-    }
-}

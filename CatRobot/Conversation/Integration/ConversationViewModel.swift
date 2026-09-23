@@ -89,6 +89,10 @@ final class ConversationViewModel {
     @ObservationIgnored private var audioEventTask: Task<Void, Never>?
     @ObservationIgnored private var shutdownTask: Task<Void, Never>?
 
+    @ObservationIgnored private var memoryEventTask: Task<Void, Never>?
+    @ObservationIgnored private var memoryActionInProgress = false
+    @ObservationIgnored private var forgettingMemory = false
+
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
     }
@@ -98,7 +102,9 @@ final class ConversationViewModel {
     }
 
     func startConversation() async {
-        guard !isShutdown, !isShuttingDown else { return }
+        guard !isShutdown, !isShuttingDown, !memoryActionInProgress,
+              !ConversationMemoryPresentation(state: viewState.memoryState).blocksConversation else { return }
+        ensureMemoryEventConsumer()
         ensureAudioEventConsumer()
 
         if let failureCleanupTask {
@@ -188,6 +194,7 @@ final class ConversationViewModel {
         guard !submitted.isEmpty,
               !isShutdown,
               !isShuttingDown,
+              !memoryActionInProgress,
               viewState.allowsTypedSubmission else { return }
 
         if let failureCleanupTask {
@@ -210,7 +217,8 @@ final class ConversationViewModel {
                   !isShuttingDown else { return }
         }
 
-        guard viewState.allowsTypedSubmission else { return }
+        guard viewState.allowsTypedSubmission, !memoryActionInProgress else { return }
+        ensureMemoryEventConsumer()
         viewState.showsTypedInput = false
 
         cancelActiveVoiceLatency(reason: .typedReplacement)
@@ -303,6 +311,10 @@ final class ConversationViewModel {
         audioEventTask = nil
         eventTask?.cancel()
         await eventTask?.value
+        let memoryEvents = memoryEventTask
+        memoryEventTask = nil
+        memoryEvents?.cancel()
+        await memoryEvents?.value
         await dependencies.serviceTeardown()
         isShutdown = true
         isShuttingDown = false
@@ -328,6 +340,67 @@ final class ConversationViewModel {
             boundaryAt: timestamp
         )
         await closingTask?.value
+    }
+
+    private func ensureMemoryEventConsumer() {
+        guard memoryEventTask == nil, !isShutdown else { return }
+        let manager = dependencies.memory
+        memoryEventTask = Task { @MainActor [weak self] in
+            for await state in await manager.memoryUpdates() {
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+                if !self.forgettingMemory { self.viewState.memoryState = state }
+            }
+        }
+    }
+
+    func requestForgetConversation() {
+        guard !memoryActionInProgress,
+              ConversationMemoryPresentation(state: viewState.memoryState).supportsForget else { return }
+        viewState.showsForgetConfirmation = true
+    }
+
+    func cancelForgetConversation() { viewState.showsForgetConfirmation = false }
+
+    func confirmForgetConversation(confirmationAccepted: Bool = false) async {
+        guard (confirmationAccepted || viewState.showsForgetConfirmation), !memoryActionInProgress else { return }
+        viewState.showsForgetConfirmation = false
+        await performForgetConversation()
+    }
+
+    private func performForgetConversation() async {
+        guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
+        memoryActionInProgress = true
+        forgettingMemory = true
+        viewState.memoryState = .forgetting
+        viewState.memoryNotice = nil
+        defer { memoryActionInProgress = false; forgettingMemory = false }
+        await pauseConversation(force: true)
+        do {
+            try await dependencies.memory.forgetConversation()
+            viewState.caption = ""
+            viewState.provisionalTranscript = ""
+            viewState.typedText = ""
+            viewState.showsTypedInput = false
+            viewState.memoryNotice = "会話の記憶を削除しました"
+        } catch {
+            // The service retains a blocking failure state. Never announce deletion.
+        }
+        viewState.memoryState = await dependencies.memory.memoryState()
+        transition(to: .paused)
+    }
+
+    func retryMemoryOperation() async {
+        guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
+        if case .forgetFailed = viewState.memoryState {
+            await performForgetConversation()
+            return
+        }
+        memoryActionInProgress = true
+        defer { memoryActionInProgress = false }
+        do { try await dependencies.memory.retryMemoryOperation() } catch {}
+        viewState.memoryState = await dependencies.memory.memoryState()
+        // Retrying persistence never restarts capture or synthesis.
     }
 
     private func ensureAudioEventConsumer() {
@@ -370,6 +443,10 @@ final class ConversationViewModel {
                 return
             }
 
+            try await dependencies.memory.prepareMemory()
+            guard isCurrent(generation) else { return }
+            viewState.memoryState = await dependencies.memory.memoryState()
+            guard isCurrent(generation) else { return }
             try await dependencies.speaker.prepare()
             guard isCurrent(generation) else { return }
             audioActivationAttempted = true
@@ -383,6 +460,14 @@ final class ConversationViewModel {
             try await startCapture(generation: generation, recognizerIsPrepared: true)
         } catch {
             guard isCurrent(generation), !Task.isCancelled else { return }
+            if error is ConversationMemoryError {
+                let state = await dependencies.memory.memoryState()
+                guard isCurrent(generation) else { return }
+                wantsListening = false
+                viewState.memoryState = state
+                transition(to: .paused)
+                return
+            }
             let serviceError = Self.serviceError(from: error)
             if audioActivationAttempted {
                 await finishVoiceFailure(
@@ -447,6 +532,10 @@ final class ConversationViewModel {
                 return
             }
 
+            try await dependencies.memory.prepareMemory()
+            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            viewState.memoryState = await dependencies.memory.memoryState()
+            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             await dependencies.reply.prewarm()
             guard isTypedTurnCurrent(generation, turnID: turnID),
                   !Task.isCancelled else { return }
@@ -463,6 +552,13 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         } catch {
+            if error is ConversationMemoryError {
+                let state = await dependencies.memory.memoryState()
+                guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+                viewState.memoryState = state
+                transition(to: .paused)
+                return
+            }
             let serviceError = Self.serviceError(from: error)
             await finishTypedTurn(
                 with: serviceError,
@@ -1505,6 +1601,9 @@ final class ConversationViewModel {
         let typedText = viewState.typedText
         let showsTypedInput = viewState.showsTypedInput
         let caption = viewState.caption
+        let memoryState = viewState.memoryState
+        let memoryNotice = viewState.memoryNotice
+        let confirmation = viewState.showsForgetConfirmation
         viewState = .failed(
             error: error,
             message: presentation.message,
@@ -1513,6 +1612,9 @@ final class ConversationViewModel {
         viewState.typedText = typedText
         viewState.showsTypedInput = showsTypedInput
         viewState.caption = caption
+        viewState.memoryState = memoryState
+        viewState.memoryNotice = memoryNotice
+        viewState.showsForgetConfirmation = confirmation
     }
 
     private static func serviceError(from error: any Error) -> ConversationServiceError {

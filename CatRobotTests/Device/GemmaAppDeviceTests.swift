@@ -4,6 +4,90 @@ import XCTest
 
 @MainActor
 final class GemmaAppDeviceTests: XCTestCase {
+    /// Run each phase in a separate test-host process with the same synthetic UUID.
+    /// The normal device scheme skips this probe unless the harness supplies a phase.
+    func testPersistentMemoryAcrossProcessLaunches() async throws {
+#if targetEnvironment(simulator) || !DEBUG
+        throw XCTSkip("Persistent Gemma process probe requires a DEBUG iPhone build")
+#else
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["GEMMA_APP_DEVICE_TESTS"] == "1",
+              let phase = environment["GEMMA_MEMORY_PHASE"],
+              let rawID = environment["CATROBOT_MEMORY_TEST_ID"], UUID(uuidString: rawID) != nil else {
+            throw XCTSkip("Run isolated persistence phases explicitly")
+        }
+        let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                  appropriateFor: nil, create: true)
+        let directory = try ConversationMemoryLocation.directory(applicationSupport: support, environment: environment)
+        let expectedDirectory = support.appendingPathComponent("CatRobot/DeviceMemoryTests/\(UUID(uuidString: rawID)!.uuidString)", isDirectory: true)
+        guard directory.standardizedFileURL == expectedDirectory.standardizedFileURL else {
+            XCTFail("Refusing to modify a non-test memory directory")
+            return
+        }
+        let store = FileConversationMemoryStore(directory: directory, compatibilityID: GemmaMemoryCompatibility.current)
+        executionTimeAllowance = 600
+        var evidence: [String: Any] = ["phase": phase, "processID": ProcessInfo.processInfo.processIdentifier]
+        if phase == "empty" {
+            let restored = try await store.load()
+            XCTAssertNil(restored, "Forget must survive a new process")
+        } else {
+            let dependencies = ConversationDependencies.live(memoryStore: store)
+            let viewModel = ConversationViewModel(dependencies: dependencies)
+            if phase == "seed" {
+                try await store.clear()
+                for prompt in ["私の好きな飲み物は麦茶です。短く返事して。", "訂正します。私の好きな飲み物はほうじ茶です。覚えてね。"] {
+                    await viewModel.submitTypedText(prompt)
+                    XCTAssertNil(viewModel.viewState.errorMessage)
+                    XCTAssertEqual(viewModel.viewState.memoryState, .ready)
+                }
+                let loaded = try await store.load()
+                let saved = try XCTUnwrap(loaded)
+                XCTAssertEqual(saved.turns.count, 2)
+                XCTAssertTrue(saved.turns.last?.prompt.contains("ほうじ茶") == true)
+                let url = directory.appendingPathComponent("current.json")
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                XCTAssertEqual(attributes[.protectionKey] as? FileProtectionType, .complete)
+                XCTAssertEqual(try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+                evidence["revision"] = saved.revision
+            } else if phase == "recall" {
+                let loaded = try await store.load()
+                let saved = try XCTUnwrap(loaded)
+                XCTAssertEqual(saved.turns.count, 2)
+                let start = ProcessInfo.processInfo.systemUptime
+                await viewModel.submitTypedText("私の好きな飲み物は何？")
+                XCTAssertNil(viewModel.viewState.errorMessage)
+                XCTAssertEqual(viewModel.viewState.memoryState, .ready)
+                evidence["recallCorrect"] = viewModel.viewState.caption.contains("ほうじ茶")
+                evidence["completionSeconds"] = ProcessInfo.processInfo.systemUptime - start
+                evidence["answer"] = viewModel.viewState.caption // synthetic fixture only
+                let reloaded = try await store.load()
+                let updated = try XCTUnwrap(reloaded)
+                XCTAssertEqual(updated.turns.count, 3)
+            } else if phase == "forget" {
+                try await dependencies.memory.prepareMemory()
+                // Populate the view model through the normal typed path, then use its destructive action.
+                await viewModel.submitTypedText("ひとことで挨拶して。")
+                viewModel.requestForgetConversation()
+                await viewModel.confirmForgetConversation()
+                XCTAssertEqual(viewModel.viewState.phase, .paused)
+                XCTAssertEqual(viewModel.viewState.caption, "")
+                XCTAssertNotNil(viewModel.viewState.memoryNotice)
+                let removed = try await store.load()
+                XCTAssertNil(removed)
+            } else { XCTFail("Unknown persistence phase") }
+            await viewModel.shutdown()
+        }
+        let data = try JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys])
+        let output = support.appendingPathComponent("GemmaAppDeviceTest", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        try data.write(to: output.appendingPathComponent("persistence-\(phase).json"), options: .atomic)
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "Persistent memory phase \(phase)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+#endif
+    }
+
     func testLiveGemmaClassificationTypedConversationSpeechAndResume() async throws {
 #if targetEnvironment(simulator)
         throw XCTSkip("Gemma app integration requires a physical iPhone.")
@@ -12,7 +96,7 @@ final class GemmaAppDeviceTests: XCTestCase {
             throw XCTSkip("Run the GemmaAppDeviceTests scheme explicitly.")
         }
         executionTimeAllowance = 600
-        let dependencies = ConversationDependencies.live()
+        let dependencies = ConversationDependencies.live(memoryStore: InMemoryConversationMemoryStore())
         XCTAssertTrue(dependencies.reply is GemmaConversationService)
         XCTAssertTrue(dependencies.classifier is GemmaConversationService)
         XCTAssertTrue(dependencies.modelAvailability is GemmaConversationService)
@@ -116,7 +200,9 @@ final class GemmaAppDeviceTests: XCTestCase {
         }
         executionTimeAllowance = 900
         let runtime = ObservedGemmaRuntime()
-        let service = GemmaConversationService(runtime: runtime)
+        let memoryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("GemmaMemory-\(UUID().uuidString)")
+        let memoryStore = FileConversationMemoryStore(directory: memoryDirectory, compatibilityID: GemmaMemoryCompatibility.current)
+        let service = GemmaConversationService(runtime: runtime, memoryStore: memoryStore)
         let availability = await service.availability()
         XCTAssertEqual(availability, .available)
         guard availability == .available else { return }
@@ -175,7 +261,27 @@ final class GemmaAppDeviceTests: XCTestCase {
         XCTAssertTrue(budgets.allSatisfy { $0 < 12288 }, "Every native request must fit with output and safety reserve")
         let recall = try await send("私の旅行先と好きな飲み物は何？")
         records.append(["recall": recall])
+        let loadedMemory = try await memoryStore.load()
+        let savedMemory = try XCTUnwrap(loadedMemory)
+        XCTAssertFalse(savedMemory.summary.isEmpty)
+        // Classification closes the first service's native reply session. The new
+        // service can then restore the saved text using the same engine safely.
+        _ = try await service.classify("これは独り言です。")
+        let restoredService = GemmaConversationService(runtime: runtime, memoryStore: memoryStore)
+        try await restoredService.prepareMemory()
+        var restoredReply = ""
+        for try await text in try await restoredService.streamReply(to: "私の旅行先と好きな飲み物は何？") {
+            restoredReply = text
+        }
+        let restoredConfigs = await runtime.configurations
+        let restoredConfig = try XCTUnwrap(restoredConfigs.last)
+        XCTAssertEqual(restoredConfig.summary, savedMemory.summary)
+        XCTAssertEqual(restoredConfig.history.map(\.prompt), savedMemory.turns.map(\.prompt))
+        records.append(["restoredRecall": restoredReply, "savedRevision": savedMemory.revision,
+                        "restoredSummaryMatches": restoredConfig.summary == savedMemory.summary])
+        await restoredService.reset()
         await service.reset()
+        try? FileManager.default.removeItem(at: memoryDirectory)
         let data = try JSONSerialization.data(withJSONObject: ["records": records, "nativeBudgets": budgets],
                                               options: [.prettyPrinted, .sortedKeys])
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")

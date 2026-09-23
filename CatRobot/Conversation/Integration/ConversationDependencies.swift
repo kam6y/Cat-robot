@@ -15,6 +15,7 @@ struct ConversationDependencies: Sendable {
     let reply: any ReplyGenerating
     let speaker: any SpeechSpeaking
     let audioSession: any AudioSessionControlling
+    let memory: any ConversationMemoryManaging
     let latency: any ConversationLatencyTracking
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
@@ -31,6 +32,7 @@ struct ConversationDependencies: Sendable {
         speaker: any SpeechSpeaking,
         audioSession: any AudioSessionControlling,
         latency: any ConversationLatencyTracking,
+        memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         addresseePolicy: AddresseePolicy = AddresseePolicy(),
         now: @escaping @Sendable () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
@@ -48,6 +50,7 @@ struct ConversationDependencies: Sendable {
         self.reply = reply
         self.speaker = speaker
         self.audioSession = audioSession
+        self.memory = memory
         self.latency = latency
         self.addresseePolicy = addresseePolicy
         self.now = now
@@ -59,8 +62,13 @@ struct ConversationDependencies: Sendable {
 
 extension ConversationDependencies {
     @MainActor
-    static func live() -> Self {
-        let gemma = GemmaConversationService()
+    static func live(memoryStore: (any ConversationMemoryStore)? = nil) -> Self {
+        let store: any ConversationMemoryStore
+        if let memoryStore { store = memoryStore }
+        else if let directory = try? FileConversationMemoryStore.defaultDirectory() {
+            store = FileConversationMemoryStore(directory: directory, compatibilityID: GemmaMemoryCompatibility.current)
+        } else { store = UnavailableConversationMemoryStore() }
+        let gemma = GemmaConversationService(memoryStore: store)
         let concreteRecognizer = AppleSpeechRecognizer()
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let speaker = AppleSpeechSynthesizer()
@@ -78,6 +86,7 @@ extension ConversationDependencies {
             speaker: speaker,
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),
+            memory: gemma,
             serviceTeardown: serviceTeardown
         )
     }

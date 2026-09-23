@@ -14,6 +14,7 @@ struct OnboardingView: View {
 
                 VStack(alignment: .leading, spacing: 16) {
                     Label("音声と会話はこのiPhone上で処理されます", systemImage: "iphone")
+                    Label("会話の記憶はこのiPhoneに保存され、いつでも削除できます", systemImage: "internaldrive")
                     Label("マイクは会話画面を開いている間だけ使います", systemImage: "mic")
                     Label("AIの返事には間違いが含まれることがあります", systemImage: "exclamationmark.triangle")
                 }

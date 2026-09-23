@@ -8,7 +8,15 @@
 
 **Tech Stack:** Swift concurrency、FoundationファイルI/O/Codable、SwiftUI、XCTest、既存LiteRT-LM。外部依存の追加なし。
 
-**Spec:** [承認済み設計書](../specs/2026-09-23-conversation-memory-persistence-design.md)。2026-09-23のユーザー「ok」で承認。本計画は実装前レビュー待ち。
+**Spec:** [承認済み設計書](../specs/2026-09-23-conversation-memory-persistence-design.md)。2026-09-23のユーザー「ok」で承認。実行方式はユーザー「推奨でいいよ」に基づきnative実装。
+
+## 実行結果（2026-09-23）
+
+Tasks 1〜5の実装と回帰テスト、Task 6の独立レビュー・Simulator全体テスト・実機の別プロセス保存/復元/忘却と2回要約後の復元を完了。
+実際の結果と計画からの変更は[検証記録](../../validation/2026-09-23-conversation-memory-persistence.md)に記載する。
+以下のチェックリストは作成時の手順として残す。段階ごとの小コミット・障害注入フック・既存テストの全コンストラクタ変更は、記録した判断によりまとめたコミット・実権限エラー・インメモリ既定値へ置き換えた。
+UIの手動タップ、ロック中の実機復旧、I/O単体の時間測定は未実施。通常ViewModel/Coordinatorの回帰テストと実機プロセステストの結果を、その代わりに手動検証済みとは扱わない。
+mainへの統合は今回の範囲外であり、featureブランチを保持する。
 
 ## Global Constraints
 

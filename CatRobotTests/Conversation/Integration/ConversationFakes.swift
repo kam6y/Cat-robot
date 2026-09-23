@@ -655,6 +655,7 @@ final class ConversationHarness {
     let sut: ConversationViewModel
 
     init(
+        memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
         microphoneAllowed: Bool = true,
         modelAvailabilityResult: ModelAvailability = .available,
@@ -735,6 +736,7 @@ final class ConversationHarness {
             speaker: speaker,
             audioSession: audio,
             latency: latency,
+            memory: memory,
             now: { now.value },
             clarificationDelay: clarificationDelay,
             lifecycleCheckpoint: lifecycleCheckpoint,
