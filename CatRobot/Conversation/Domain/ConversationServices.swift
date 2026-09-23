@@ -9,9 +9,14 @@ protocol AddressClassifying: Sendable {
 }
 
 protocol ReplyGenerating: Sendable {
+    var supportsStableReplyPrefix: Bool { get }
     func prewarm() async
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error>
     func reset() async
+}
+
+extension ReplyGenerating {
+    var supportsStableReplyPrefix: Bool { false }
 }
 
 protocol SpeechRecognizing: Sendable {

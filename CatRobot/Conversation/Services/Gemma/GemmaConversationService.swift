@@ -3,6 +3,7 @@ import Foundation
 /// One runtime is shared by ephemeral address classification and a stateful reply session.
 /// Native inference must drain after cancellation before a new operation can use the engine.
 actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvailabilityChecking, ConversationMemoryManaging {
+    nonisolated let supportsStableReplyPrefix = true
     private let runtime: any GemmaRuntime
     private var memory = GemmaConversationMemory()
     private var replySession: (any GemmaSession)?
