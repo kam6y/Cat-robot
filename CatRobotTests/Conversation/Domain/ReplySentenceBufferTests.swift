@@ -42,6 +42,27 @@ final class ReplySentenceBufferTests: XCTestCase {
         }
     }
 
+    func testEmbeddedURLsAreNeverSplitAtQueryPunctuation() throws {
+        let cases = [
+            "詳しくはhttps://example.com/?q=cat! を見てください。",
+            "URL:https://example.com/?q=cat! を見てください。",
+            "参照：http://example.com/?q=cat! を見てください。"
+        ]
+        for firstSentence in cases {
+            let text = firstSentence + "次の文です。"
+            for incremental in [false, true] {
+                var buffer = ReplySentenceBuffer()
+                var emitted: [String] = []
+                let snapshots = incremental ? text.indices.map { String(text[...$0]) } : [text]
+                for snapshot in snapshots {
+                    if let first = try buffer.receive(snapshot) { emitted.append(first) }
+                }
+                XCTAssertEqual(emitted, [firstSentence], text)
+                XCTAssertEqual((emitted.first ?? "") + (try buffer.remainder(in: text)), text)
+            }
+        }
+    }
+
     func testOnlySentPrefixIsImmutable() throws {
         var buffer = ReplySentenceBuffer()
         XCTAssertNil(try buffer.receive("途中の仮文"))

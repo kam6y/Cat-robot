@@ -10,9 +10,30 @@ final class ReplyLatencyDeviceTests: XCTestCase {
     private var records: [[String: Any]] = []
     private var runID = UUID()
 
+    func testAudioSessionPreflight() async throws {
+        try requireOptIn()
+        try checkAudioSession()
+    }
+
+    private func checkAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        print("AUDIO_PREFLIGHT appState=\(UIApplication.shared.applicationState.rawValue) permission=\(AVAudioApplication.shared.recordPermission.rawValue) inputAvailable=\(session.isInputAvailable) route=\(session.currentRoute)")
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            try session.setActive(true)
+            print("AUDIO_PREFLIGHT active=true")
+            try session.setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            let value = error as NSError
+            print("AUDIO_PREFLIGHT failure domain=\(value.domain) code=\(value.code) info=\(value.userInfo)")
+            throw error
+        }
+    }
+
     func testPairedWarmResponseLatency() async throws {
         try requireOptIn()
         executionTimeAllowance = 3600
+        try checkAudioSession()
         for repetition in 0..<3 {
             let modes: [ReplyPlaybackMode] = repetition.isMultiple(of: 2)
                 ? [.completeResponse, .firstSentence] : [.firstSentence, .completeResponse]
@@ -114,7 +135,7 @@ final class ReplyLatencyDeviceTests: XCTestCase {
         let overallEnd = ProcessInfo.processInfo.systemUptime
         let events = sink.events
         let terminal = events.last { $0.point == .finished }?.outcome
-        let outcome = terminal ?? (viewModel.viewState.errorMessage == nil ? .noResponse : .generationFailure)
+        let outcome = terminal?.rawValue ?? (viewModel.viewState.errorMessage == nil ? "noResponse" : "preparationFailure")
         let firstSentence = events.first { $0.point == .firstSentence }?.at
         let generated = events.first { $0.point == .generationFinished }?.at
         let encodedEvents = try JSONSerialization.jsonObject(with: JSONEncoder().encode(events))
@@ -124,7 +145,7 @@ final class ReplyLatencyDeviceTests: XCTestCase {
             "fixture": fixture.id, "cohort": fixture.cohort, "mode": mode.rawValue, "path": path,
             "inputKind": path == "typed" ? "typed" : "syntheticRecognition", "repetition": repetition,
             "temperature": temperature, "processID": ProcessInfo.processInfo.processIdentifier,
-            "outcome": outcome.rawValue, "thermalState": thermal, "powerState": power,
+            "outcome": outcome, "thermalState": thermal, "powerState": power,
             "lowPowerMode": ProcessInfo.processInfo.isLowPowerModeEnabled,
             "osVersion": UIDevice.current.systemVersion, "voiceIdentifier": driver.voiceIdentifier ?? "unselected",
             "initialRevision": 1, "events": encodedEvents,
@@ -141,7 +162,7 @@ final class ReplyLatencyDeviceTests: XCTestCase {
         records.append(record)
         await viewModel.shutdown()
         try writeResults() // Preserve completed trials even if a later trial fails.
-        print("REPLY_LATENCY_TRIAL \(records.count) \(record["trialID"]!) outcome=\(outcome.rawValue)")
+        print("REPLY_LATENCY_TRIAL \(records.count) \(record["trialID"]!) outcome=\(outcome)")
     }
 
     private func waitForState(_ viewModel: ConversationViewModel,

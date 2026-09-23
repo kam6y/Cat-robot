@@ -14,7 +14,7 @@ struct ReplySentenceBuffer {
         var ready: String.Index?
         var hasContent = false
         var escaped = false
-        var tokenStart = snapshot.startIndex
+        var isURL = false
         for index in snapshot.indices {
             let character = snapshot[index]
             let next = snapshot.index(after: index)
@@ -33,9 +33,13 @@ struct ReplySentenceBuffer {
                 } else { candidate = nil }
                 continue
             }
-            if character.isWhitespace { tokenStart = next }
-            let token = snapshot[tokenStart...]
-            let isURL = token.hasPrefix("https://") || token.hasPrefix("http://")
+            if character.isWhitespace { isURL = false }
+            // A URL need not be separated from Japanese text by whitespace.
+            // Conservatively protect through the next whitespace; delaying a
+            // split is safer than speaking a query delimiter as a sentence end.
+            if character == "h", snapshot[index...].hasPrefix("https://") || snapshot[index...].hasPrefix("http://") {
+                isURL = true
+            }
             if escaped {
                 escaped = false
                 if content { hasContent = true; candidate = nil }

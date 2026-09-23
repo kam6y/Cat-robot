@@ -1,0 +1,182 @@
+{
+  "nativeBudgets" : [
+    317,
+    1070,
+    1832,
+    2594,
+    3356,
+    4139,
+    4929,
+    5719,
+    6505,
+    7291,
+    8077,
+    8863,
+    6910,
+    3959,
+    331,
+    3978,
+    4771,
+    5561,
+    6347,
+    7133,
+    7919,
+    7923,
+    8710,
+    9497,
+    7512,
+    3961,
+    331,
+    3980
+  ],
+  "records" : [
+    {
+      "completionSeconds" : 1.1241539583133999,
+      "firstVisibleSeconds" : 1.1160303749784362,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.2819454166747164,
+      "firstVisibleSeconds" : 1.2799517083331011,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.2348267083289102,
+      "firstVisibleSeconds" : 1.2269727083330508,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.2934339166677091,
+      "firstVisibleSeconds" : 1.2847106666595209,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.3519415833288804,
+      "firstVisibleSeconds" : 1.3434134166745935,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.4193295416480396,
+      "firstVisibleSeconds" : 1.4110223749885336,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.4857405000075232,
+      "firstVisibleSeconds" : 1.4779495416732971,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.5882172499841545,
+      "firstVisibleSeconds" : 1.5802790833404288,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.6837411666638218,
+      "firstVisibleSeconds" : 1.6747715416422579,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.77049412499764,
+      "firstVisibleSeconds" : 1.7617207499861252,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.8634030000248458,
+      "firstVisibleSeconds" : 1.8542285416915547,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 1.9490394166496117,
+      "firstVisibleSeconds" : 1.9400475416623522,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 53.064565250009764,
+      "firstVisibleSeconds" : 53.054673250007909,
+      "response" : "了解"
+    },
+    {
+      "compaction" : 1,
+      "retainedRawTokens" : 2331,
+      "summary" : "*   **利用者情報:**\n    *   旅行先: 金沢\n*   合言葉:**青い栞\n*   好み:**ほうじ茶\n*   **記録:**\n    *   日誌記帳の記録が多数あり。\n*   **活動時間:**    *   日々の記録があり、活動時間は変動している。\n*   **最新の記録:**\n    *   日誌129：月1月2日、図書館で地図と写真を調べた。風が強く、活動時間は4分だった。\n    *   日誌89：月10月2日、図書館で地図と写真を調べた。風が強く、活動時間は4分だった。\n    *   日誌10：月2月2日、図書館で地図と写真を調べた。風が強く、活動時間は7分だった。\n    *   日誌10：月1月2日、図書館で地図と写真を調べた。風が強く、活動時間は5分だった。\n    *   日誌11171月10日、図書館で地図と写真を調べた。風が強く、活動時間は2分だった。\n    *   日誌16：月1月2日、図書館で地図と写真を調べた。風が強く、活動時間は6分だった。\n    *   日誌6：月1月2日、図書館で地図と写真を調べた。風が強く、活動、活動時間は6分だった。\n    *   日誌6：月2日、図書館で写真を調べた。風が強く、活動時間は7分だった。\n    *   日誌6：月2日、図書館で地図と写真を調べた。風が強く、活動時間は7分だった。\n    *   日誌3：月2月2日、で、図書館で写真を調べた。風が強く、活動時間は8だった。\n    *   日誌3：月2日、図書館でで地図と写真を調べた。風が強く、活動時間は6だった。\n    *   日誌3：月2月2日、図書館ででで地図と写真を調べた。風が。\n    *   日誌3：月2月2日、で、図書館で地図と写真を調べた。\n    *   日3：月2日、図書館でででで写真を調べた。\n    *   日誌3",
+      "summaryTokens" : 512
+    },
+    {
+      "completionSeconds" : 14.25725575000979,
+      "firstVisibleSeconds" : 14.112978499993915,
+      "response" : "おかえり"
+    },
+    {
+      "greeting" : "おかえり",
+      "greetingInstructionFollowed" : true
+    },
+    {
+      "completionSeconds" : 4.3105594583321363,
+      "firstVisibleSeconds" : 4.300783833314199,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 4.5010662499989849,
+      "firstVisibleSeconds" : 4.4903235833335202,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 4.7386596249998547,
+      "firstVisibleSeconds" : 4.7283454999851529,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 4.9849031249759719,
+      "firstVisibleSeconds" : 4.9753059166541789,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 36.346895416645566,
+      "firstVisibleSeconds" : 36.337062291655457,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 4.7403982499963604,
+      "firstVisibleSeconds" : 4.7306409583252389,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 4.7854876666679047,
+      "firstVisibleSeconds" : 4.7754178750037681,
+      "response" : "了解"
+    },
+    {
+      "completionSeconds" : 60.741121208353434,
+      "firstVisibleSeconds" : 60.731386875006137,
+      "response" : "了解"
+    },
+    {
+      "compaction" : 2,
+      "retainedRawTokens" : 2332,
+      "summary" : "*   **利用者情報:**\n    *   *\n        *   旅行先: 金沢\n    *\n*   **好み:**\n        *   ほうじ茶\n*\n*   **記録:**\n        *日誌129：1月2日、図書館で地図と写真を調べ。風が強く、活動時間は4分だった。\n        *\n        誌30：1月2日、図書館で地図と写真を調べ。風が強く、活動時間は5分だった。\n        3：1月2月2、図書館で地図と写真を調べた。風が強く、活動時間は6分だった。\n        3：月2日、図書館で地図と写真を調べた。風が強く、活動時間は8分だった。\n        3：月2日、図書館で地図と写真を調べた。風が強く、活動時間は3分だった。\n        3：月2月2日、図書館で地図と写真を調べた。風が強く、活動時間は4分だった。\n        3：月2日、図書館で地図と写真を調べた。風が強く、活動時間は8分だった。\n        3：月2日、図書館で地図と写真を調べた。風が強く、活動時間は288分だった。\n        \n*   **追加会話:**\n        *   利用者: 今日の記録です。返事は『了解』だけ。\n        \n        \n*   **AI:**了解**\n        \n        \n        *   **利用者:** 今日の記録です。返事は『了解』だけ。\n        \n        \n        *   **AI:**了解\n        \n        \n        \n        \n        *   **利用者:** 今日の日の記録です。返事は『了解』だけ。\n        \n        \n        *   **AI:**了解\n        \n        \n        \n        \n        *   **利用者:** 今日の記録です。返事は『了解』だけ。\n        \n        \n        *   **AI:** 了解\n        \n        \n        \n        \n        *   **利用者:** 今日の記録です。返事は『了解』だけ。\n        \n        \n        *   **AI:**了解\n        \n        \n        *   **利用者:** 今日の記録です。返事は『了解』だけ。\n        \n        \n        \n        *   **AI:**了解\n        \n        \n        *   *\n        *\n        ",
+      "summaryTokens" : 512
+    },
+    {
+      "completionSeconds" : 11.692894083331339,
+      "firstVisibleSeconds" : 11.683379124995554,
+      "response" : "了解"
+    },
+    {
+      "greeting" : "了解",
+      "greetingInstructionFollowed" : false
+    },
+    {
+      "completionSeconds" : 1.1609779999998864,
+      "firstVisibleSeconds" : 0.51422270832699724,
+      "response" : "旅行先は金沢で、好きな飲み物はほうじ茶です。"
+    },
+    {
+      "recall" : "旅行先は金沢で、好きな飲み物はほうじ茶です。"
+    },
+    {
+      "restoredRecall" : "旅行先は金沢、好きな飲み物はほうじ茶です。",
+      "restoredSummaryMatches" : true,
+      "savedRevision" : 24
+    }
+  ]
+}

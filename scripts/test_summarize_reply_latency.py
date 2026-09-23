@@ -87,6 +87,45 @@ class SummaryTests(unittest.TestCase):
                     t['events'] = []
             self.assertFalse(summarize(data)['adopt'])
 
+    def test_each_missing_completion_milestone_blocks_adoption(self):
+        for point in ['generationFinished', 'streamFinished']:
+            with self.subTest(point=point):
+                data = dataset()
+                t = data['trials'][0]
+                t['events'] = [e for e in t['events'] if e['point'] != point]
+                report = summarize(data)
+                self.assertFalse(report['adopt'])
+                self.assertIn(t['trialID'], report['invalidSuccessTrialIDs'])
+
+    def test_completion_order_is_required_for_success(self):
+        for point, at in [('generationFinished', -.1), ('generationFinished', 4.2),
+                          ('streamFinished', 5.1), ('streamFinished', 8.1)]:
+            with self.subTest(point=point, at=at):
+                data = dataset()
+                t = data['trials'][0]
+                next(e for e in t['events'] if e['point'] == point)['at'] = at
+                t['events'].sort(key=lambda e: e['at'])
+                report = summarize(data)
+                self.assertFalse(report['adopt'])
+                self.assertIn(t['trialID'], report['invalidSuccessTrialIDs'])
+
+    def test_first_sentence_can_finish_before_generation_but_remainder_waits(self):
+        for remainder_start, valid in [(3.9, False), (5, True)]:
+            with self.subTest(remainder_start=remainder_start):
+                data = dataset()
+                t = next(t for t in data['trials'] if t['mode'] == 'firstSentence')
+                for e in t['events']:
+                    if e['point'] == 'generationFinished': e['at'] = 4
+                    if e['point'] == 'streamFinished': e['at'] = 4.1
+                    if e['point'] == 'speechStarted': e.update(at=2, part='first')
+                    if e['point'] == 'speechFinished': e.update(at=3, part='first')
+                t['events'].extend([
+                    dict(id=t['trialID'], point='speechStarted', at=remainder_start, part='remainder', source='started'),
+                    dict(id=t['trialID'], point='speechFinished', at=8, part='remainder')])
+                t['events'].sort(key=lambda e: e['at'])
+                report = summarize(data)
+                self.assertEqual(t['trialID'] not in report['invalidSuccessTrialIDs'], valid)
+
     def test_fallback_is_separate_and_not_accepted_as_started(self):
         data = dataset()
         for e in data['trials'][0]['events']:
@@ -164,6 +203,14 @@ class SummaryTests(unittest.TestCase):
         data = dataset()
         next(t for t in data['trials'] if t['cohort'] == 'control')['voiceIdentifier'] = 'different'
         self.assertIn('unmatched_conditions', summarize(data)['reasons'])
+
+    def test_audio_preparation_failures_are_not_generation_results(self):
+        data = dataset()
+        data['trials'][0]['outcome'] = 'preparationFailure'
+        data['trials'][0]['events'] = []
+        result = summarize(data)
+        self.assertFalse(result['adopt'])
+        self.assertEqual(result['outcomes']['preparationFailure'], 1)
 
     def test_cli_writes_non_adoption_as_valid_report_and_schema_error_as_failure(self):
         script = Path(__file__).with_name('summarize_reply_latency.py')

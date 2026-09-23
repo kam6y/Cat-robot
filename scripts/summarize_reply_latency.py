@@ -11,7 +11,7 @@ MODES = ('completeResponse', 'firstSentence')
 FIXTURES = ('cat-sleep', 'rain-play', 'morning-walk', 'reading', 'nervous',
             'spring', 'tidy', 'sunset', 'packing', 'tea')
 CONTROLS = ('control-word', 'control-one-sentence', 'control-number', 'control-url', 'control-quote')
-OUTCOMES = {'success', 'cancelled', 'generationFailure', 'speechFailure', 'saveWarning', 'noResponse', 'ambiguous'}
+OUTCOMES = {'preparationFailure', 'success', 'cancelled', 'generationFailure', 'speechFailure', 'saveWarning', 'noResponse', 'ambiguous'}
 
 
 class SchemaError(ValueError):
@@ -85,7 +85,8 @@ def measurement(trial):
     source = starts[0].get('source') if starts else None
     if trial['outcome'] != 'success':
         return None, source
-    if len(by_point['request']) != 1 or len(by_point['finished']) != 1 or not starts or not by_point['speechFinished']:
+    required = ('request', 'generationFinished', 'streamFinished', 'finished')
+    if any(len(by_point[point]) != 1 for point in required) or not starts or not by_point['speechFinished']:
         return None, source
     if source not in ('started', 'willSpeakFallback') or by_point['finished'][0].get('outcome') != 'success':
         return None, source
@@ -94,6 +95,15 @@ def measurement(trial):
     if len(parts) != len(set(parts)) or sorted(parts) != sorted(ends) or parts not in (['full'], ['first'], ['first', 'remainder']):
         return None, source
     request = by_point['request'][0]['at']
+    generation = by_point['generationFinished'][0]['at']
+    stream = by_point['streamFinished'][0]['at']
+    finished = by_point['finished'][0]['at']
+    if not request <= generation <= stream <= finished:
+        return None, source
+    for start in starts:
+        end = next(event['at'] for event in by_point['speechFinished'] if event['part'] == start['part'])
+        if end < start['at'] or (start['part'] in ('full', 'remainder') and start['at'] < stream):
+            return None, source
     first = starts[0]['at']
     last = max(event['at'] for event in by_point['speechFinished'])
     if first < request or last < first or by_point['finished'][0]['at'] < last:
