@@ -97,10 +97,15 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
     }
 
     private func saveMemory(epoch: UInt64) async throws {
+        let trace = ReplyTraceContext.current
+        trace?.mark(.saveStarted)
+        var outcome = ReplyTraceOutcome.saveWarning
+        defer { trace?.mark(.saveFinished, outcome: outcome) }
         let value = snapshot()
         publishMemory(.saving)
         do {
             try await memoryStore.save(value)
+            outcome = .success
             if operationEpoch == epoch { publishMemory(.ready) }
         } catch {
             if operationEpoch == epoch { publishMemory(.unsaved) }
@@ -274,6 +279,7 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
                     response = try await consume(rebuilt, prompt: prompt, limit: GemmaContext.replyOutputLimit,
                                                  control: control, into: continuation)
                 }
+                ReplyTraceContext.current?.mark(.generationFinished, outcome: .success)
                 let responseTokens = try await runtime.countTokens(response)
                 candidate.turns.append(GemmaTurn(prompt: prompt, response: response, rawTokens: promptTokens + responseTokens))
             } else {
@@ -311,13 +317,19 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         }
         cancellation = nil
         active = nil
+        ReplyTraceContext.current?.mark(.streamFinished, outcome: failure == nil ? .success : .generationFailure)
         continuation.finish(throwing: failure)
     }
 
     private func replySession(for memory: GemmaConversationMemory) async throws -> any GemmaSession {
         if let replySession { return replySession }
+        let trace = ReplyTraceContext.current
+        trace?.mark(.sessionStarted)
+        var outcome = ReplyTraceOutcome.generationFailure
+        defer { trace?.mark(.sessionFinished, outcome: outcome) }
         let session = try await runtime.makeSession(GemmaSessionConfiguration(kind: .reply, summary: memory.summary, history: memory.turns))
         replySession = session
+        outcome = .success
         return session
     }
 
@@ -330,6 +342,10 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         try checkCancellation(control)
         let keepFrom = original.retentionStart
         guard keepFrom > 0 else { return original }
+        let trace = ReplyTraceContext.current
+        trace?.mark(.compactionStarted)
+        var outcome = ReplyTraceOutcome.generationFailure
+        defer { trace?.mark(.compactionFinished, outcome: outcome) }
         let evicted = original.turns[..<keepFrom]
         let prompt = "これまでの記憶:\n" + (original.summary.isEmpty ? "なし" : original.summary)
             + "\n追加の会話:\n"
@@ -347,6 +363,7 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         guard try await runtime.countTokens(summary) <= GemmaContext.summaryOutputLimit else {
             throw ConversationServiceError.modelGenerationFailed
         }
+        outcome = .success
         return GemmaConversationMemory(summary: summary, turns: Array(original.turns[keepFrom...]))
     }
 

@@ -16,6 +16,7 @@ struct ConversationDependencies: Sendable {
     let speaker: any SpeechSpeaking
     let audioSession: any AudioSessionControlling
     let memory: any ConversationMemoryManaging
+    let replyTraceSink: any ReplyTraceSink
     let latency: any ConversationLatencyTracking
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
@@ -32,6 +33,7 @@ struct ConversationDependencies: Sendable {
         speaker: any SpeechSpeaking,
         audioSession: any AudioSessionControlling,
         latency: any ConversationLatencyTracking,
+        replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         addresseePolicy: AddresseePolicy = AddresseePolicy(),
         now: @escaping @Sendable () -> TimeInterval = {
@@ -52,6 +54,7 @@ struct ConversationDependencies: Sendable {
         self.audioSession = audioSession
         self.memory = memory
         self.latency = latency
+        self.replyTraceSink = replyTraceSink
         self.addresseePolicy = addresseePolicy
         self.now = now
         self.clarificationDelay = clarificationDelay
@@ -86,6 +89,7 @@ extension ConversationDependencies {
             speaker: speaker,
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),
+            replyTraceSink: OSReplyTraceSink(),
             memory: gemma,
             serviceTeardown: serviceTeardown
         )

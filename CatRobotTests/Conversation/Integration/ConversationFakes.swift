@@ -655,6 +655,7 @@ final class ConversationHarness {
     let sut: ConversationViewModel
 
     init(
+        replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
         microphoneAllowed: Bool = true,
@@ -736,6 +737,7 @@ final class ConversationHarness {
             speaker: speaker,
             audioSession: audio,
             latency: latency,
+            replyTraceSink: replyTraceSink,
             memory: memory,
             now: { now.value },
             clarificationDelay: clarificationDelay,

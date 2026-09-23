@@ -45,6 +45,7 @@ final class ConversationViewModel {
         let captureID: UInt64
         let turnID: UInt64
         let token: ConversationLatencyToken
+        let trace: ReplyTrace
     }
 
     private let dependencies: ConversationDependencies
@@ -575,15 +576,21 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
+        let trace = ReplyTrace(sink: dependencies.replyTraceSink, now: dependencies.now)
+        defer { trace.finish(Task.isCancelled ? .cancelled : .generationFailure) }
         transition(to: .thinking)
         do {
-            let stream = try await dependencies.reply.streamReply(to: submitted)
+            trace.mark(.request)
+            let stream = try await ReplyTraceContext.$current.withValue(trace) {
+                try await dependencies.reply.streamReply(to: submitted)
+            }
             var finalText: String?
             for try await snapshot in stream {
                 guard isTypedTurnCurrent(generation, turnID: turnID),
                       !Task.isCancelled else { return }
                 viewState.caption = snapshot
                 if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    trace.mark(.firstCaption)
                     finalText = snapshot
                 }
             }
@@ -602,7 +609,8 @@ final class ConversationViewModel {
                 finalText,
                 shouldResumeVoice: shouldResumeVoice,
                 generation: generation,
-                turnID: turnID
+                turnID: turnID,
+                trace: trace
             )
         } catch {
             let serviceError = Self.serviceError(from: error)
@@ -620,8 +628,11 @@ final class ConversationViewModel {
         _ text: String,
         shouldResumeVoice: Bool,
         generation: UInt64,
-        turnID: UInt64
+        turnID: UInt64,
+        trace: ReplyTrace
     ) async {
+        trace.mark(.streamFinished, outcome: .success)
+        trace.mark(.speechEnqueued, part: .full)
         transition(to: .speaking, caption: text)
         do {
             let stream = try await dependencies.speaker.speak(text)
@@ -632,10 +643,13 @@ final class ConversationViewModel {
                       !Task.isCancelled else { return }
                 switch event {
                 case .started:
+                    trace.mark(.speechStarted, part: .full, source: .started)
                     viewState.mouthPose = .small
                 case .willSpeak:
+                    trace.mark(.speechStarted, part: .full, source: .willSpeakFallback)
                     viewState.mouthPose = mouthSequence.nextWordPose()
                 case .finished:
+                    trace.mark(.speechFinished, part: .full)
                     finishedNormally = true
                     viewState.mouthPose = .closed
                 case .cancelled:
@@ -648,6 +662,7 @@ final class ConversationViewModel {
                 throw ConversationServiceError.speechSynthesisFailed
             }
 
+            trace.finish(.success)
             if shouldResumeVoice {
                 engagement.arm(at: dependencies.now())
                 wantsListening = true
@@ -671,6 +686,7 @@ final class ConversationViewModel {
                 transition(to: .paused)
             }
         } catch {
+            trace.finish(Task.isCancelled ? .cancelled : .speechFailure)
             await finishTypedTurn(
                 with: Self.serviceError(from: error),
                 generation: generation,
@@ -865,11 +881,14 @@ final class ConversationViewModel {
             lastASRActivityAt: latestCaptureActivityAt,
             segmentationInterval: Self.segmentationSilenceInterval
         )
+        let trace = ReplyTrace(id: latencyToken.rawValue, sink: dependencies.replyTraceSink, now: dependencies.now)
+        trace.mark(.captureBoundary)
         activeVoiceLatency = ActiveVoiceLatency(
             generation: generation,
             captureID: captureID,
             turnID: turnID,
-            token: latencyToken
+            token: latencyToken,
+            trace: trace
         )
         let consumer = captureTask
         closingTask = Task { @MainActor [weak self] in
@@ -894,6 +913,7 @@ final class ConversationViewModel {
         guard isCurrent(generation),
               activeCaptureID == captureID,
               activeTurnID == turnID else { return }
+        activeVoiceLatency?.trace.mark(.captureClosed)
         let completedUtterance = ([utterance] + closingTailSegments).joined()
         activeCaptureID = nil
         captureTask = nil
@@ -976,7 +996,15 @@ final class ConversationViewModel {
             selectVoiceLatency(.classified, generation: generation, turnID: turnID)
             transition(to: .classifying)
             do {
-                let target = try await dependencies.classifier.classify(candidate)
+                let trace = activeVoiceLatency?.trace
+                trace?.mark(.classificationStarted)
+                var classificationOutcome = ReplyTraceOutcome.generationFailure
+                let target = try await ReplyTraceContext.$current.withValue(trace) {
+                    defer { trace?.mark(.classificationFinished, outcome: classificationOutcome) }
+                    let value = try await dependencies.classifier.classify(candidate)
+                    classificationOutcome = .success
+                    return value
+                }
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch target {
                 case .addressed:
@@ -1091,9 +1119,13 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
+        let trace = activeVoiceLatency?.trace
         transition(to: .thinking)
         do {
-            let stream = try await dependencies.reply.streamReply(to: utterance)
+            trace?.mark(.request)
+            let stream = try await ReplyTraceContext.$current.withValue(trace) {
+                try await dependencies.reply.streamReply(to: utterance)
+            }
             var finalText: String?
             for try await snapshot in stream {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
@@ -1116,6 +1148,7 @@ final class ConversationViewModel {
                 )
                 return
             }
+            trace?.mark(.streamFinished, outcome: .success)
             await speakAndResume(
                 finalText,
                 engagementUpdate: engagementUpdate,
@@ -1142,6 +1175,8 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
+        let trace = activeVoiceLatency?.trace
+        trace?.mark(.speechEnqueued, part: .full)
         transition(to: presentationPhase, caption: text)
         recordFirstVoiceCaption(generation: generation, turnID: turnID)
         do {
@@ -1152,18 +1187,21 @@ final class ConversationViewModel {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch event {
                 case .started:
+                    trace?.mark(.speechStarted, part: .full, source: .started)
                     recordVoiceSpeechStarted(
                         generation: generation,
                         turnID: turnID
                     )
                     viewState.mouthPose = .small
                 case .willSpeak:
+                    trace?.mark(.speechStarted, part: .full, source: .willSpeakFallback)
                     recordVoiceSpeechStarted(
                         generation: generation,
                         turnID: turnID
                     )
                     viewState.mouthPose = mouthSequence.nextWordPose()
                 case .finished:
+                    trace?.mark(.speechFinished, part: .full)
                     finishedNormally = true
                     viewState.mouthPose = .closed
                 case .cancelled:
@@ -1176,6 +1214,7 @@ final class ConversationViewModel {
                 throw ConversationServiceError.speechSynthesisFailed
             }
 
+            trace?.finish(.success)
             switch engagementUpdate {
             case .arm:
                 engagement.arm(at: dependencies.now())
@@ -1186,6 +1225,7 @@ final class ConversationViewModel {
             }
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
+            trace?.finish(Task.isCancelled ? .cancelled : .speechFailure)
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             await finishVoiceFailure(
                 with: Self.serviceError(from: error),
@@ -1429,6 +1469,7 @@ final class ConversationViewModel {
         guard let latency = activeVoiceLatency,
               latency.generation == generation,
               latency.turnID == turnID else { return }
+        latency.trace.mark(.firstCaption)
         dependencies.latency.firstCaptionVisible(
             for: latency.token,
             at: dependencies.now()
@@ -1453,6 +1494,14 @@ final class ConversationViewModel {
     ) {
         guard let latency = activeVoiceLatency else { return }
         activeVoiceLatency = nil
+        let outcome: ReplyTraceOutcome
+        switch reason {
+        case .noResponse, .unselectedPath: outcome = .noResponse
+        case .ambiguous: outcome = .ambiguous
+        case .failure: outcome = .generationFailure
+        default: outcome = .cancelled
+        }
+        latency.trace.finish(outcome)
         dependencies.latency.cancel(
             latency.token,
             reason: reason,

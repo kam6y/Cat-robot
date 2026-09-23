@@ -3,6 +3,21 @@ import XCTest
 
 @MainActor
 final class ConversationLatencyTests: XCTestCase {
+    func testReplyTraceCorrelatesWithVoiceTokenAndEndsForNonResponses() async {
+        for (target, outcome) in [(AddressTarget.addressed, ReplyTraceOutcome.success),
+                                   (.notAddressed, .noResponse), (.ambiguous, .ambiguous)] {
+            let sink = RecordingReplyTraceSink()
+            let harness = ConversationHarness(replyTraceSink: sink, classification: target)
+            await harness.completeUnengagedTurn("今日どう？", at: 20)
+            let token = try! XCTUnwrap(harness.latency.events.first?.token)
+            XCTAssertEqual(Set(sink.events.map(\.id)), [token.rawValue])
+            XCTAssertEqual(sink.events.filter { $0.point == .finished }.map(\.outcome), [outcome])
+            XCTAssertTrue(sink.events.contains { $0.point == .captureClosed })
+            XCTAssertTrue(sink.events.contains { $0.point == .classificationFinished })
+            await harness.sut.shutdown()
+        }
+    }
+
     func testFastGeneratedTurnRecordsBoundaryCaptionAndSpeechWithoutText() async {
         let harness = ConversationHarness(replySnapshots: ["途中", "最終"])
         await harness.sut.startConversation()
