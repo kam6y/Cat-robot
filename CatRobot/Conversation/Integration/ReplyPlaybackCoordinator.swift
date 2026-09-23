@@ -26,7 +26,10 @@ final class ReplyPlaybackCoordinator {
     func run(prompt: String, trace: ReplyTrace?,
              onUpdate: @escaping @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
         guard active == nil else { throw ConversationServiceError.modelBusy }
-        try Task.checkCancellation()
+        guard !Task.isCancelled else {
+            trace?.finish(.cancelled)
+            throw ConversationServiceError.cancelled
+        }
         let id = UUID()
         let task = Task {
             try await ReplyTraceContext.$current.withValue(trace) {

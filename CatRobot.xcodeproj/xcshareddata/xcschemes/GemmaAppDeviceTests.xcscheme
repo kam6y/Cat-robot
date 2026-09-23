@@ -28,7 +28,7 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BC1F59656952C54C24285124D5777D3D"
+               BlueprintIdentifier = "CBA2B301C64E747264139008A0618179"
                BuildableName = "CatRobotTests.xctest"
                BlueprintName = "CatRobotTests"
                ReferencedContainer = "container:CatRobot.xcodeproj">
@@ -57,7 +57,7 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BC1F59656952C54C24285124D5777D3D"
+               BlueprintIdentifier = "CBA2B301C64E747264139008A0618179"
                BuildableName = "CatRobotTests.xctest"
                BlueprintName = "CatRobotTests"
                ReferencedContainer = "container:CatRobot.xcodeproj">

@@ -287,7 +287,7 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
                 // LiteRT's GPU session switching can restore stale KV state when
                 // several conversations remain alive. Rebuild replies from memory.
                 closeReplySession()
-                let classifier = try await runtime.makeSession(GemmaSessionConfiguration(kind: .classification))
+                let classifier = try await makeSession(GemmaSessionConfiguration(kind: .classification))
                 defer { classifier.close() }
                 _ = try await consume(classifier, prompt: prompt, limit: GemmaContext.classificationOutputLimit,
                                       control: control, into: continuation)
@@ -318,18 +318,25 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         }
         cancellation = nil
         active = nil
-        ReplyTraceContext.current?.mark(.streamFinished, outcome: failure == nil ? .success : .generationFailure)
+        if kind == .reply {
+            ReplyTraceContext.current?.mark(.streamFinished, outcome: failure == nil ? .success : .generationFailure)
+        }
         continuation.finish(throwing: failure)
     }
 
     private func replySession(for memory: GemmaConversationMemory) async throws -> any GemmaSession {
         if let replySession { return replySession }
+        let session = try await makeSession(GemmaSessionConfiguration(kind: .reply, summary: memory.summary, history: memory.turns))
+        replySession = session
+        return session
+    }
+
+    private func makeSession(_ configuration: GemmaSessionConfiguration) async throws -> any GemmaSession {
         let trace = ReplyTraceContext.current
         trace?.mark(.sessionStarted)
         var outcome = ReplyTraceOutcome.generationFailure
         defer { trace?.mark(.sessionFinished, outcome: outcome) }
-        let session = try await runtime.makeSession(GemmaSessionConfiguration(kind: .reply, summary: memory.summary, history: memory.turns))
-        replySession = session
+        let session = try await runtime.makeSession(configuration)
         outcome = .success
         return session
     }
@@ -353,7 +360,7 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
             + evicted.map { "利用者: \($0.prompt)\nAI: \($0.response)" }.joined(separator: "\n")
             + "\n更新後の記憶だけを短く出力してください。"
         closeReplySession()
-        let summarizer = try await runtime.makeSession(GemmaSessionConfiguration(kind: .summary))
+        let summarizer = try await makeSession(GemmaSessionConfiguration(kind: .summary))
         defer { summarizer.close() }
         // Summary failure is recoverable. Do not route it through the UI's
         // contextExceeded reset, which would discard the original conversation.
