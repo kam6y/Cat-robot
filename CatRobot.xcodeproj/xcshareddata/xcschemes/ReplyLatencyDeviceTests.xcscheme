@@ -64,14 +64,14 @@
             </BuildableReference>
             <SelectedTests>
                <Test
-                  Identifier = "GemmaAppDeviceTests">
+                  Identifier = "ReplyLatencyDeviceTests">
                </Test>
             </SelectedTests>
          </TestableReference>
       </Testables>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "GEMMA_APP_DEVICE_TESTS"
+            key = "CATROBOT_REPLY_LATENCY_TESTS"
             value = "1"
             isEnabled = "YES">
          </EnvironmentVariable>

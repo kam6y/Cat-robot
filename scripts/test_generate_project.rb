@@ -136,6 +136,11 @@ opt_in = REXML::XPath.first(device_scheme, "//TestAction/EnvironmentVariables/En
 assert(opt_in && opt_in.attributes["value"] == "1", "device scheme must opt in to real inference")
 assert(REXML::XPath.match(device_scheme, "//SelectedTests/Test").map { |node| node.attributes["Identifier"] } == ["GemmaDeviceTests"], "device scheme must select only the device experiment")
 
+latency_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/ReplyLatencyDeviceTests.xcscheme").read)
+latency_opt_in = REXML::XPath.first(latency_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='CATROBOT_REPLY_LATENCY_TESTS']")
+assert(latency_opt_in && latency_opt_in.attributes["value"] == "1", "latency scheme must opt in explicitly")
+assert(REXML::XPath.match(latency_scheme, "//SelectedTests/Test").map { |node| node.attributes["Identifier"] } == ["ReplyLatencyDeviceTests"], "latency scheme must select only its comparison")
+
 scheme = REXML::Document.new(SCHEME_PATH.read)
 testable_names = REXML::XPath.match(scheme, "//TestableReference/BuildableReference").map do |node|
   node.attributes["BlueprintName"]

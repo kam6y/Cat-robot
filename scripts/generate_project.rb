@@ -169,6 +169,18 @@ app_device_scheme.test_action.testables.first.use_test_selection_whitelist = tru
 app_device_scheme.test_action.testables.first.parallelizable = false
 app_device_scheme.save_as(PROJECT_PATH.to_s, "GemmaAppDeviceTests", true)
 
+latency_scheme = Xcodeproj::XCScheme.new
+latency_scheme.configure_with_targets(app_target, test_target, launch_target: true)
+latency_scheme.test_action.build_configuration = "Debug"
+latency_scheme.test_action.should_use_launch_scheme_args_env = false
+latency_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "CATROBOT_REPLY_LATENCY_TESTS", value: "1" }])
+latency_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
+latency_test.identifier = "ReplyLatencyDeviceTests"
+latency_scheme.test_action.testables.first.selected_tests = [latency_test]
+latency_scheme.test_action.testables.first.use_test_selection_whitelist = true
+latency_scheme.test_action.testables.first.parallelizable = false
+latency_scheme.save_as(PROJECT_PATH.to_s, "ReplyLatencyDeviceTests", true)
+
 if resolved_lock
   FileUtils.mkdir_p(lock_path.dirname)
   lock_path.binwrite(resolved_lock)
