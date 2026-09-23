@@ -49,6 +49,8 @@ final class ConversationViewModel {
     }
 
     private let dependencies: ConversationDependencies
+    private let replyPlayback: ReplyPlaybackCoordinator
+    @ObservationIgnored private var playbackMouthSequence = SpeechMouthPoseSequence()
     private(set) var viewState: ConversationViewState = .idle
 
     @ObservationIgnored private var engagement = EngagementWindow()
@@ -96,6 +98,7 @@ final class ConversationViewModel {
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
+        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode)
     }
 
     var isAwaitingMicrophonePermission: Bool {
@@ -577,121 +580,55 @@ final class ConversationViewModel {
         turnID: UInt64
     ) async {
         let trace = ReplyTrace(sink: dependencies.replyTraceSink, now: dependencies.now)
-        defer { trace.finish(Task.isCancelled ? .cancelled : .generationFailure) }
         transition(to: .thinking)
+        playbackMouthSequence = SpeechMouthPoseSequence()
         do {
-            trace.mark(.request)
-            let stream = try await ReplyTraceContext.$current.withValue(trace) {
-                try await dependencies.reply.streamReply(to: submitted)
+            _ = try await replyPlayback.run(prompt: submitted, trace: trace) { [weak self] update in
+                guard let self, self.isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+                self.applyPlaybackUpdate(update)
             }
-            var finalText: String?
-            for try await snapshot in stream {
-                guard isTypedTurnCurrent(generation, turnID: turnID),
-                      !Task.isCancelled else { return }
-                viewState.caption = snapshot
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    trace.mark(.firstCaption)
-                    finalText = snapshot
-                }
-            }
-            guard isTypedTurnCurrent(generation, turnID: turnID),
-                  !Task.isCancelled else { return }
-            guard let finalText else {
-                await finishTypedTurn(
-                    with: .modelGenerationFailed,
-                    includesTypedFallback: true,
-                    generation: generation,
-                    turnID: turnID
-                )
-                return
-            }
-            await speakTypedReply(
-                finalText,
-                shouldResumeVoice: shouldResumeVoice,
-                generation: generation,
-                turnID: turnID,
-                trace: trace
-            )
-        } catch {
-            let serviceError = Self.serviceError(from: error)
-            await finishTypedTurn(
-                with: serviceError,
-                includesTypedFallback: true,
-                resetsReplySession: serviceError == .contextExceeded,
-                generation: generation,
-                turnID: turnID
-            )
-        }
-    }
-
-    private func speakTypedReply(
-        _ text: String,
-        shouldResumeVoice: Bool,
-        generation: UInt64,
-        turnID: UInt64,
-        trace: ReplyTrace
-    ) async {
-        trace.mark(.streamFinished, outcome: .success)
-        trace.mark(.speechEnqueued, part: .full)
-        transition(to: .speaking, caption: text)
-        do {
-            let stream = try await dependencies.speaker.speak(text)
-            var finishedNormally = false
-            var mouthSequence = SpeechMouthPoseSequence()
-            for try await event in stream {
-                guard isTypedTurnCurrent(generation, turnID: turnID),
-                      !Task.isCancelled else { return }
-                switch event {
-                case .started:
-                    trace.mark(.speechStarted, part: .full, source: .started)
-                    viewState.mouthPose = .small
-                case .willSpeak:
-                    trace.mark(.speechStarted, part: .full, source: .willSpeakFallback)
-                    viewState.mouthPose = mouthSequence.nextWordPose()
-                case .finished:
-                    trace.mark(.speechFinished, part: .full)
-                    finishedNormally = true
-                    viewState.mouthPose = .closed
-                case .cancelled:
-                    throw ConversationServiceError.speechSynthesisFailed
-                }
-            }
-            guard isTypedTurnCurrent(generation, turnID: turnID),
-                  !Task.isCancelled else { return }
-            guard finishedNormally else {
-                throw ConversationServiceError.speechSynthesisFailed
-            }
-
-            trace.finish(.success)
+            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             if shouldResumeVoice {
                 engagement.arm(at: dependencies.now())
                 wantsListening = true
                 do {
                     try await startCapture(generation: generation, recognizerIsPrepared: false)
                 } catch {
-                    guard isTypedTurnCurrent(generation, turnID: turnID),
-                          !Task.isCancelled else { return }
+                    guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                     wantsListening = false
                     await dependencies.recognizer.stop()
-                    await finishTypedTurn(
-                        with: Self.serviceError(from: error),
-                        generation: generation,
-                        turnID: turnID
-                    )
+                    await finishTypedTurn(with: Self.serviceError(from: error), generation: generation, turnID: turnID)
                 }
             } else {
                 await dependencies.audioSession.deactivate()
-                guard isTypedTurnCurrent(generation, turnID: turnID),
-                      !Task.isCancelled else { return }
+                guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 transition(to: .paused)
             }
         } catch {
-            trace.finish(Task.isCancelled ? .cancelled : .speechFailure)
+            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            let serviceError = Self.serviceError(from: error)
             await finishTypedTurn(
-                with: Self.serviceError(from: error),
+                with: serviceError,
+                includesTypedFallback: serviceError != .speechSynthesisFailed && serviceError != .speechVoiceUnavailable,
+                resetsReplySession: serviceError == .contextExceeded,
+                speakerAlreadyStopped: true,
                 generation: generation,
                 turnID: turnID
             )
+        }
+    }
+
+    private func applyPlaybackUpdate(_ update: ReplyPlaybackUpdate) {
+        switch update {
+        case .caption(let text): viewState.caption = text
+        case .speechStarted:
+            transition(to: .speaking)
+            viewState.mouthPose = .small
+        case .willSpeak:
+            viewState.mouthPose = playbackMouthSequence.nextWordPose()
+        case .speechFinished:
+            transition(to: .thinking)
+            viewState.mouthPose = .closed
         }
     }
 
@@ -699,10 +636,12 @@ final class ConversationViewModel {
         with error: ConversationServiceError,
         includesTypedFallback: Bool = false,
         resetsReplySession: Bool = false,
+        speakerAlreadyStopped: Bool = false,
         generation: UInt64,
         turnID: UInt64
     ) async {
-        await dependencies.speaker.stop()
+        await replyPlayback.cancelAndWait()
+        if !speakerAlreadyStopped { await dependencies.speaker.stop() }
         await dependencies.audioSession.deactivate()
         if resetsReplySession {
             await dependencies.reply.reset()
@@ -1121,47 +1060,34 @@ final class ConversationViewModel {
     ) async {
         let trace = activeVoiceLatency?.trace
         transition(to: .thinking)
+        playbackMouthSequence = SpeechMouthPoseSequence()
         do {
-            trace?.mark(.request)
-            let stream = try await ReplyTraceContext.$current.withValue(trace) {
-                try await dependencies.reply.streamReply(to: utterance)
-            }
-            var finalText: String?
-            for try await snapshot in stream {
-                guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                viewState.caption = snapshot
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    recordFirstVoiceCaption(
-                        generation: generation,
-                        turnID: turnID
-                    )
-                    finalText = snapshot
+            _ = try await replyPlayback.run(prompt: utterance, trace: trace) { [weak self] update in
+                guard let self, self.isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+                self.applyPlaybackUpdate(update)
+                switch update {
+                case .caption(let text) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                    self.recordFirstVoiceCaption(generation: generation, turnID: turnID)
+                case .speechStarted:
+                    self.recordVoiceSpeechStarted(generation: generation, turnID: turnID)
+                default: break
                 }
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            guard let finalText else {
-                await finishVoiceFailure(
-                    with: .modelGenerationFailed,
-                    includesTypedFallback: true,
-                    stopRecognizer: false,
-                    owner: .turn(generation: generation, turnID: turnID)
-                )
-                return
+            switch engagementUpdate {
+            case .arm: engagement.arm(at: dependencies.now())
+            case .refresh: engagement.refresh(afterReplyAt: dependencies.now())
+            case .none: break
             }
-            trace?.mark(.streamFinished, outcome: .success)
-            await speakAndResume(
-                finalText,
-                engagementUpdate: engagementUpdate,
-                generation: generation,
-                turnID: turnID
-            )
+            await resumeCapture(generation: generation, turnID: turnID)
         } catch {
             let serviceError = Self.serviceError(from: error)
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             await finishVoiceFailure(
                 with: serviceError,
-                includesTypedFallback: true,
+                includesTypedFallback: serviceError != .speechSynthesisFailed && serviceError != .speechVoiceUnavailable,
                 resetsReplySession: serviceError == .contextExceeded,
+                speakerAlreadyStopped: true,
                 stopRecognizer: false,
                 owner: .turn(generation: generation, turnID: turnID)
             )
@@ -1276,6 +1202,7 @@ final class ConversationViewModel {
         with error: ConversationServiceError,
         includesTypedFallback: Bool = false,
         resetsReplySession: Bool = false,
+        speakerAlreadyStopped: Bool = false,
         stopRecognizer: Bool,
         owner: VoiceFailureOwner
     ) async {
@@ -1296,6 +1223,7 @@ final class ConversationViewModel {
                 with: error,
                 includesTypedFallback: includesTypedFallback,
                 resetsReplySession: resetsReplySession,
+                speakerAlreadyStopped: speakerAlreadyStopped,
                 stopRecognizer: stopRecognizer,
                 owner: owner,
                 failureID: failureID
@@ -1309,11 +1237,13 @@ final class ConversationViewModel {
         with error: ConversationServiceError,
         includesTypedFallback: Bool,
         resetsReplySession: Bool,
+        speakerAlreadyStopped: Bool,
         stopRecognizer: Bool,
         owner: VoiceFailureOwner,
         failureID: UInt64
     ) async {
-        await dependencies.speaker.stop()
+        await replyPlayback.cancelAndWait()
+        if !speakerAlreadyStopped { await dependencies.speaker.stop() }
         if stopRecognizer {
             await dependencies.recognizer.stop()
         }
@@ -1431,8 +1361,9 @@ final class ConversationViewModel {
         captureIsClosing = false
         closingTailSegments.removeAll(keepingCapacity: true)
 
-        let cleanup = Task { @MainActor [dependencies] in
+        let cleanup = Task { @MainActor [dependencies, replyPlayback] in
             await oldPreflight?.value
+            await replyPlayback.cancelAndWait()
             await dependencies.speaker.stop()
             await dependencies.recognizer.stop()
             await oldCapture?.value

@@ -604,7 +604,8 @@ final class ConversationRecoveryTests: XCTestCase {
         let typed = Task { await harness.sut.submitTypedText("文字の質問") }
         await deactivateGate.waitUntilEntered()
 
-        XCTAssertEqual(harness.sut.viewState.phase, .speaking)
+        XCTAssertEqual(harness.sut.viewState.phase, .thinking)
+        XCTAssertEqual(harness.sut.viewState.mouthPose, .closed)
         await harness.sut.startConversation()
         let startsBeforeDeactivation = await harness.recognizer.startCount
         XCTAssertEqual(startsBeforeDeactivation, 0)
