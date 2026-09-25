@@ -17,6 +17,8 @@ struct ReplySentenceBuffer {
         var hasContent = false
         var escaped = false
         var isURL = false
+        var codeDelimiter: Int?
+        var codeRunEnd: String.Index?
         for index in snapshot.indices {
             let character = snapshot[index]
             let next = snapshot.index(after: index)
@@ -33,6 +35,23 @@ struct ReplySentenceBuffer {
                     ready = next
                     candidate = next
                 } else { candidate = nil }
+                continue
+            }
+            if let codeRunEnd, index < codeRunEnd { continue }
+            if character == "`" {
+                var end = index
+                var length = 0
+                while end < snapshot.endIndex, snapshot[end] == "`" {
+                    length += 1; end = snapshot.index(after: end)
+                }
+                if codeDelimiter == length { codeDelimiter = nil }
+                else if codeDelimiter == nil { codeDelimiter = length }
+                codeRunEnd = end
+                candidate = nil
+                continue
+            }
+            if codeDelimiter != nil {
+                if content { hasContent = true }
                 continue
             }
             if character.isWhitespace { isURL = false }
