@@ -11,11 +11,19 @@ final class SentenceReplyPlayback {
     }
     func run(prompt: String, trace: ReplyTrace?, onUpdate: @escaping @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
         let channel = SpeechSentenceChannel()
+        // These are cumulative snapshots, not sentences: replacing an unread
+        // snapshot retains its text in the newer one. Observe upstream failure
+        // independently of the bounded sentence queue's playback backpressure.
+        let snapshots = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingNewest(1))
         trace?.mark(.request)
         do {
             let final = try await withThrowingTaskGroup(of: String?.self) { group in
                 group.addTask {
-                    do { return try await self.produce(prompt, channel, trace, onUpdate) }
+                    do { return try await self.produce(prompt, snapshots.continuation, trace, onUpdate) }
+                    catch { throw Failure(error: error, outcome: .generationFailure) }
+                }
+                group.addTask {
+                    do { try await self.enqueue(snapshots.stream, channel, trace); return nil }
                     catch { throw Failure(error: error, outcome: .generationFailure) }
                 }
                 group.addTask {
@@ -48,16 +56,31 @@ final class SentenceReplyPlayback {
             throw failure?.outcome == .speechFailure ? ConversationServiceError.speechSynthesisFailed : .modelGenerationFailed
         }
     }
-    private func produce(_ prompt: String, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?,
+    private func produce(_ prompt: String, _ snapshots: AsyncStream<String>.Continuation, _ trace: ReplyTrace?,
                          _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
+        defer { snapshots.finish() }
         let stream = try await reply.streamReply(to: prompt)
-        var buffer = ReplySentenceStreamBuffer()
         var final = ""
         for try await snapshot in stream {
             try Task.checkCancellation()
+            // Keep the latest cumulative snapshot bounded even if playback stalls.
+            guard snapshot.count <= 2000 else { throw ConversationServiceError.inputTooLong }
             final = snapshot
             onUpdate(.caption(snapshot))
             if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { trace?.mark(.firstCaption) }
+            snapshots.yield(snapshot)
+        }
+        try Task.checkCancellation()
+        guard !final.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ConversationServiceError.modelGenerationFailed }
+        trace?.mark(.streamFinished, outcome: .success)
+        return final
+    }
+    private func enqueue(_ snapshots: AsyncStream<String>, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?) async throws {
+        var buffer = ReplySentenceStreamBuffer()
+        var final = ""
+        for await snapshot in snapshots {
+            try Task.checkCancellation()
+            final = snapshot
             if reply.supportsStableReplyPrefix {
                 for sentence in try buffer.receive(snapshot) {
                     trace?.mark(.firstSentence)
@@ -67,14 +90,11 @@ final class SentenceReplyPlayback {
             }
         }
         try Task.checkCancellation()
-        guard !final.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ConversationServiceError.modelGenerationFailed }
-        trace?.mark(.streamFinished, outcome: .success)
         for sentence in try buffer.receive(final, final: true) {
             trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
             try await channel.send(sentence)
         }
         await channel.finish()
-        return final
     }
     private func play(_ channel: SpeechSentenceChannel, _ trace: ReplyTrace?,
                       _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws {

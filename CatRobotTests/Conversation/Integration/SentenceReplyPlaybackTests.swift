@@ -36,6 +36,31 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
         XCTAssertGreaterThan(player.stops, 0)
     }
+    func testGenerationFailureStopsPlaybackWhileSentenceQueueIsFull() async throws {
+        let reply = ControlledReply()
+        let player = ControlledPCMPlayer()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .sentencePrefetch)
+        let stopped = expectation(description: "Generation failure ends playback without draining queued audio")
+        var received: ConversationServiceError?
+        let run = Task {
+            do { _ = try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }); XCTFail("Expected failure") }
+            catch { received = error as? ConversationServiceError }
+            stopped.fulfill()
+        }
+        await reply.waitUntilRequested()
+        await reply.yield("一文目。二文目。三文目。四文目。五文目。六文目。七文目。")
+        await player.waitForCalls(1)
+        await reply.finish(throwing: ConversationServiceError.modelGenerationFailed)
+        await fulfillment(of: [stopped], timeout: 1)
+        let stoppedBeforeCleanup = player.stops
+        let failureBeforeCleanup = received
+        await sut.cancelAndWait()
+        await run.value
+        XCTAssertGreaterThan(stoppedBeforeCleanup, 0)
+        XCTAssertEqual(failureBeforeCleanup, .modelGenerationFailed)
+        XCTAssertEqual(player.played.count, 1)
+    }
     func testUnstableReplyWaitsForFinalAndMemoryKeepsOriginal() async throws {
         let reply = ControlledReply(stablePrefix: false)
         let player = ControlledPCMPlayer()
@@ -63,6 +88,33 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let saved = await store.load()
         XCTAssertEqual(original, "iPhoneです。Bluetoothです。")
         XCTAssertEqual(saved?.turns.last?.response, original)
+    }
+    func testNewestSnapshotsRetainAllSentencesWhilePlaybackIsBlocked() async throws {
+        let reply = ControlledReply()
+        let player = ControlledPCMPlayer()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+        var spoken: [String] = []
+        speaker.onInput = { original, _ in spoken.append(original) }
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .sentencePrefetch)
+        let updates = PlaybackUpdates()
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
+        await reply.waitUntilRequested()
+        let sentences = (1...8).map { "文\($0)。" }
+        await reply.yield(sentences.prefix(6).joined())
+        await player.waitForCalls(1)
+        let final = sentences.joined()
+        for index in final.indices where String(final[...index]).count > sentences.prefix(6).joined().count {
+            await reply.yield(String(final[...index]))
+        }
+        await reply.finish()
+        await updates.waitForCaption(final)
+        for index in sentences.indices {
+            await player.waitForCalls(index + 1)
+            player.complete(index)
+        }
+        let result = try await run.value
+        XCTAssertEqual(result, final)
+        XCTAssertEqual(spoken, sentences)
     }
     func testOldTraceDecodesWithoutSentenceOrdinal() throws {
         let data = Data(#"{"id":"00000000-0000-0000-0000-000000000001","point":"speechStarted","at":1,"part":"first"}"#.utf8)

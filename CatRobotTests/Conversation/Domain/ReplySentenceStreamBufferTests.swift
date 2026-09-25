@@ -13,6 +13,17 @@ final class ReplySentenceStreamBufferTests: XCTestCase {
             XCTAssertTrue(try buffer.receive(text, final: true).isEmpty)
         }
     }
+    func testMixedCaseURLRemainsProtectedAcrossSentenceSplits() throws {
+        for scheme in ["HTTPS", "HtTp", "https"] {
+            let original = "確認してね。\(scheme)://example.test/?q=iPhone&device=Bluetooth 次。最後。"
+            var buffer = ReplySentenceStreamBuffer()
+            var output: [SpeechSentence] = []
+            for index in original.indices { output += try buffer.receive(String(original[...index])) }
+            output += try buffer.receive(original, final: true)
+            XCTAssertEqual(output.map(\.original).joined(), original)
+            XCTAssertEqual(output.map { SpeechPronunciationNormalizer().normalize($0.original) }.joined(), original)
+        }
+    }
     func testProtectsCodeAndOnlyAllowsUnsentSuffixRevision() throws {
         var buffer = ReplySentenceStreamBuffer()
         XCTAssertEqual(try buffer.receive("前。`iPhone。Bluetooth。`次。後").map(\.original), ["前。", "`iPhone。Bluetooth。`次。"])

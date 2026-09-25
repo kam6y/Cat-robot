@@ -58,7 +58,8 @@ struct ReplySentenceBuffer {
             // A URL need not be separated from Japanese text by whitespace.
             // Conservatively protect through the next whitespace; delaying a
             // split is safer than speaking a query delimiter as a sentence end.
-            if character == "h", snapshot[index...].hasPrefix("https://") || snapshot[index...].hasPrefix("http://") {
+            if character == "h" || character == "H",
+               snapshot[index...].prefix(8).lowercased().hasPrefix("https://") || snapshot[index...].prefix(7).lowercased().hasPrefix("http://") {
                 isURL = true
             }
             if escaped {
