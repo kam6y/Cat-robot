@@ -130,6 +130,7 @@ app_target.build_configurations.each do |configuration|
     "ASSETCATALOG_COMPILER_APPICON_NAME" => "AppIcon",
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" => "AccentColor",
     "CURRENT_PROJECT_VERSION" => "1",
+    "CATROBOT_SOURCE_REVISION" => "unversioned",
     "DEVELOPMENT_ASSET_PATHS" => '"CatRobot/Preview Content"',
     "ENABLE_PREVIEWS" => "YES",
     "GENERATE_INFOPLIST_FILE" => "NO",
@@ -210,6 +211,18 @@ latency_scheme.test_action.testables.first.selected_tests = [latency_test]
 latency_scheme.test_action.testables.first.use_test_selection_whitelist = true
 latency_scheme.test_action.testables.first.parallelizable = false
 latency_scheme.save_as(PROJECT_PATH.to_s, "ReplyLatencyDeviceTests", true)
+
+integration_scheme = Xcodeproj::XCScheme.new
+integration_scheme.configure_with_targets(app_target, test_target, launch_target: true)
+integration_scheme.test_action.build_configuration = "Debug"
+integration_scheme.test_action.should_use_launch_scheme_args_env = false
+integration_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "SUPER_INTEGRATION_TESTS", value: "1" }])
+integration_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
+integration_test.identifier = "SupertonicIntegrationDeviceTests"
+integration_scheme.test_action.testables.first.selected_tests = [integration_test]
+integration_scheme.test_action.testables.first.use_test_selection_whitelist = true
+integration_scheme.test_action.testables.first.parallelizable = false
+integration_scheme.save_as(PROJECT_PATH.to_s, "SupertonicIntegrationDeviceTests", true)
 
 if resolved_lock
   FileUtils.mkdir_p(lock_path.dirname)

@@ -177,3 +177,5 @@ ort = project.root_object.package_references.find { |p| p.repositoryURL.end_with
 assert(ort && ort.requirement == { "kind" => "exactVersion", "version" => "1.24.2" }, "pinned ONNX runtime missing")
 assert(app.resources_build_phase.files_references.any? { |r| r.path == "LocalAssets/Supertonic" }, "Supertonic bundle missing")
 assert(app.shell_script_build_phases.any? { |p| p.name == "Validate Supertonic assets" }, "asset validation missing")
+
+assert(PROJECT_PATH.join("xcshareddata/xcschemes/SupertonicIntegrationDeviceTests.xcscheme").file?, "integration device scheme missing")

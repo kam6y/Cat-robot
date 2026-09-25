@@ -40,5 +40,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CatRobotSourceRevision</key>
+	<string>$(CATROBOT_SOURCE_REVISION)</string>
 </dict>
 </plist>
