@@ -93,6 +93,7 @@ extension ConversationDependencies {
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),
             replyTraceSink: OSReplyTraceSink(),
+            replyPlaybackMode: .firstSentence,
             memory: gemma,
             serviceTeardown: serviceTeardown
         )

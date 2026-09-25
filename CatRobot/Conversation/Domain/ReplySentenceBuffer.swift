@@ -5,7 +5,9 @@ struct ReplySentenceBuffer {
     private var sent: String?
     private static let endings: Set<Character> = ["。", "！", "？", "!", "?"]
     private static let pairs: [Character: Character] = ["「": "」", "『": "』", "（": "）", "(": ")", "“": "”", "\"": "\""]
-    private static let closers = Set(pairs.values)
+    // Matching ASCII closing quotes are consumed by the stack before a split
+    // becomes ready. Once ready, an ASCII quote opens the following sentence.
+    private static let closers = Set(pairs.values).subtracting(["\""])
 
     mutating func receive(_ snapshot: String) throws -> String? {
         if sent != nil { _ = try remainder(in: snapshot); return nil }

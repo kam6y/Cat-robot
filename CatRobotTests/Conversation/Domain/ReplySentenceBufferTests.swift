@@ -63,6 +63,26 @@ final class ReplySentenceBufferTests: XCTestCase {
         }
     }
 
+    func testOpeningASCIIQuoteStaysWithTheFollowingSentence() throws {
+        let cases = [
+            (#"はい。"次です。""#, "はい。", #""次です。""#),
+            (#""はい。" "次です。""#, #""はい。" "#, #""次です。""#),
+            (#"「はい。」"次です。""#, "「はい。」", #""次です。""#)
+        ]
+        for (text, expectedFirst, expectedRemainder) in cases {
+            for incremental in [false, true] {
+                var buffer = ReplySentenceBuffer()
+                var emitted: [String] = []
+                let snapshots = incremental ? text.indices.map { String(text[...$0]) } : [text]
+                for snapshot in snapshots {
+                    if let first = try buffer.receive(snapshot) { emitted.append(first) }
+                }
+                XCTAssertEqual(emitted, [expectedFirst], text)
+                XCTAssertEqual(try buffer.remainder(in: text), expectedRemainder, text)
+            }
+        }
+    }
+
     func testOnlySentPrefixIsImmutable() throws {
         var buffer = ReplySentenceBuffer()
         XCTAssertNil(try buffer.receive("途中の仮文"))
