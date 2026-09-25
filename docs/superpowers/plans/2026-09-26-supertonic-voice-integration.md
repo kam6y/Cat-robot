@@ -1,6 +1,6 @@
 # Supertonic Voice Integration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 通常アプリでF1を初期値に全10声を保存・選択でき、英単語を読み補正し、実機で効果を確認した場合に一文先読みを採用する。
 
@@ -61,7 +61,7 @@ GIT_LFS_SKIP_SMUDGE=1 xcodebuild test \
 
 **Interfaces:** 比較コミットの`SupertonicEngine(root:manifest:)`、`prepare()`、`synthesize(text:voiceID:steps:) -> SpeechPCM`、`SpeechPCM.validate()`、`PCMPlaying.play(_:)`、`PCMPlaying.stop()`を維持する。新規`SupertonicErrorMapper.map(_ error: Error) -> ConversationServiceError`でmissingAssets/invalidAssets/unsupportedVoiceをspeechVoiceUnavailableへ、それ以外をspeechSynthesisFailedへ変換する。CancellationErrorは呼び出し側でcancelledとして扱う。
 
-- [ ] 比較コミットの資産検証・PCM所有権テストを`@testable import CatRobot`へ移植する。比較の記録形式に依存するテストは持ち込まず、エンジン監査・停止待ち・不正PCMのケースを保持する。追加テスト:
+- [x] 比較コミットの資産検証・PCM所有権テストを`@testable import CatRobot`へ移植する。比較の記録形式に依存するテストは持ち込まず、エンジン監査・停止待ち・不正PCMのケースを保持する。追加テスト:
 
 ```swift
 func testCorruptAssetsAreUnavailableRatherThanSynthesisFailure() {
@@ -69,11 +69,11 @@ func testCorruptAssetsAreUnavailableRatherThanSynthesisFailure() {
 }
 ```
 
-- [ ] 対象テストを実行し、移植先型が存在しないことによる失敗を確認する。Ruby契約テストにはORT exactVersionと同梱フォルダの参照を要求する検査を追加し、現状で失敗することを確認する。
-- [ ] `git show 68e9765:<移植元パス>`で上述のソース・テスト・マニフェスト・取得スクリプトを取得する。出典コミットと通常アプリ向けの変更をPROVENANCEへ記載。PCMやエンジンの処理をこの段階で最適化しない。
-- [ ] generatorにORT 1.24.2をapp/testの必要なリンク先へ接続する。資産フォルダ参照は存在時だけ追加する条件にしない。ビルド前検証を追加し、manifestの各ファイルのサイズとSHA-256を検証する。検証CLIは`python3 scripts/validate_supertonic_assets.py --root CatRobot/LocalAssets/Supertonic --manifest CatRobot/Resources/supertonic-manifest.json`とする。ネットワークにはアクセスしない。
-- [ ] 検証CLIのテストは一時フォルダへ小さいファイルと正しいmanifestを作り、正常、欠損、同サイズ改変、パストラバーサルで終了コードを検証する。製品の約401MBの資産を破壊して試さない。
-- [ ] 資産コピー・検証後、Ruby契約、Python、移植Swift試験を実行する。通常アプリの音声注入はまだAppleのまま。コミット: `feat: add pinned Supertonic speech runtime`。
+- [x] 対象テストを実行し、移植先型が存在しないことによる失敗を確認する。Ruby契約テストにはORT exactVersionと同梱フォルダの参照を要求する検査を追加し、現状で失敗することを確認する。
+- [x] `git show 68e9765:<移植元パス>`で上述のソース・テスト・マニフェスト・取得スクリプトを取得する。出典コミットと通常アプリ向けの変更をPROVENANCEへ記載。PCMやエンジンの処理をこの段階で最適化しない。
+- [x] generatorにORT 1.24.2をapp/testの必要なリンク先へ接続する。資産フォルダ参照は存在時だけ追加する条件にしない。ビルド前検証を追加し、manifestの各ファイルのサイズとSHA-256を検証する。検証CLIは`python3 scripts/validate_supertonic_assets.py --root CatRobot/LocalAssets/Supertonic --manifest CatRobot/Resources/supertonic-manifest.json`とする。ネットワークにはアクセスしない。
+- [x] 検証CLIのテストは一時フォルダへ小さいファイルと正しいmanifestを作り、正常、欠損、同サイズ改変、パストラバーサルで終了コードを検証する。製品の約401MBの資産を破壊して試さない。
+- [x] 資産コピー・検証後、Ruby契約、Python、移植Swift試験を実行する。通常アプリの音声注入はまだAppleのまま。コミット: `feat: add pinned Supertonic speech runtime`。
 
 ### Task 2: 声設定と音声専用の読み補正
 
@@ -95,8 +95,8 @@ enum SpeechVoicePreset: String, CaseIterable, Codable, Sendable {
 // func normalize(_ original: String) -> String
 ```
 
-- [ ] 不正値→F1、全10件、同じUserDefaults suiteで再生成して選択を復元するテストを書く。テスト専用suiteをUUIDで作り、deferで削除する。
-- [ ] 辞書のテストを先に追加する。
+- [x] 不正値→F1、全10件、同じUserDefaults suiteで再生成して選択を復元するテストを書く。テスト専用suiteをUUIDで作り、deferで削除する。
+- [x] 辞書のテストを先に追加する。
 
 ```swift
 func testOnlySpeechTextIsNormalized() {
@@ -110,9 +110,9 @@ func testIdentifiersAndProtectedSpansRemainLiteral() {
 }
 ```
 
-- [ ] 同じテストクラスへ大文字小文字、日本語隣接、iPhone 16 Pro、未知語、複数行コード、未閉じバッククォート、連続適用の冪等性を追加し、失敗を確認する。
-- [ ] URL/メール/バッククォートの保護範囲を先に走査し、残りの範囲にだけ`(?i)(?<![A-Za-z0-9_])(iphone|bluetooth)(?![A-Za-z0-9_])`を適用する。保護範囲の判定と置換はString.IndexまたはNSRange/NSStringのいずれかに統一し、UTF-16と文字数を混ぜない。
-- [ ] 状態保持やLLM呼び出しを持たない純粋な変換処理と、UserDefaults注入可能な設定を実装して対象試験を通す。コミット: `feat: persist Supertonic voices and normalize pronunciations`。
+- [x] 同じテストクラスへ大文字小文字、日本語隣接、iPhone 16 Pro、未知語、複数行コード、未閉じバッククォート、連続適用の冪等性を追加し、失敗を確認する。
+- [x] URL/メール/バッククォートの保護範囲を先に走査し、残りの範囲にだけ`(?i)(?<![A-Za-z0-9_])(iphone|bluetooth)(?![A-Za-z0-9_])`を適用する。保護範囲の判定と置換はString.IndexまたはNSRange/NSStringのいずれかに統一し、UTF-16と文字数を混ぜない。
+- [x] 状態保持やLLM呼び出しを持たない純粋な変換処理と、UserDefaults注入可能な設定を実装して対象試験を通す。コミット: `feat: persist Supertonic voices and normalize pronunciations`。
 
 ### Task 3: 複数文の確定と欠落しない受け渡し
 
@@ -139,7 +139,7 @@ protocol SentenceSpeechSpeaking: SpeechSpeaking {
 }
 ```
 
-- [ ] 文バッファの最初のテストを書く。
+- [x] 文バッファの最初のテストを書く。
 
 ```swift
 func testAllSentencesAndFinalFragmentAreEmittedOnce() throws {
@@ -152,11 +152,11 @@ func testAllSentencesAndFinalFragmentAreEmittedOnce() throws {
 }
 ```
 
-- [ ] 一文字ずつのsnapshot、3〜5文、既存引用/括弧/URL/小数、確定prefix変更、未確定末尾の変更、2,000文字超過を追加。バッククォート範囲は閉じるまで分割せず、複数文のコードも丸ごと保護できることを固定する。未閉じコードはfinalまで待つ。
-- [ ] チャネルを満たした3件目sendの待機を観測するテストを書く。next後に送信が再開し全件が順番どおり届くこと、finish(error)/cancelで送信側・受信側が終了することを検証する。Task.sleepによる順序推測ではなく既存ConversationTestGate相当の明示ゲートを使う。
-- [ ] 失敗を確認後、既存parserを再利用して複数文バッファを作る。原文の連結が元のsnapshotと一致する不変条件を持つ。空白・句読点だけを合成依頼にしない。ordinalは0始まりで一返答内単調増加。
-- [ ] チャネルは継続をIDで管理し、一度だけresumeする。キャンセル前登録/登録直後キャンセルの両方を扱う。正常finishは既存キューを読み切ってnil、error/cancelはキューを捨て待機者全員へ同じ終了を伝える。受信者1件、生成側1件を契約とし、送信側自身がsend完了を待つ。
-- [ ] 対象試験と既存ReplySentenceBufferTestsを通す。コミット: `feat: stream bounded reply sentences without dropping text`。
+- [x] 一文字ずつのsnapshot、3〜5文、既存引用/括弧/URL/小数、確定prefix変更、未確定末尾の変更、2,000文字超過を追加。バッククォート範囲は閉じるまで分割せず、複数文のコードも丸ごと保護できることを固定する。未閉じコードはfinalまで待つ。
+- [x] チャネルを満たした3件目sendの待機を観測するテストを書く。next後に送信が再開し全件が順番どおり届くこと、finish(error)/cancelで送信側・受信側が終了することを検証する。Task.sleepによる順序推測ではなく既存ConversationTestGate相当の明示ゲートを使う。
+- [x] 失敗を確認後、既存parserを再利用して複数文バッファを作る。原文の連結が元のsnapshotと一致する不変条件を持つ。空白・句読点だけを合成依頼にしない。ordinalは0始まりで一返答内単調増加。
+- [x] チャネルは継続をIDで管理し、一度だけresumeする。キャンセル前登録/登録直後キャンセルの両方を扱う。正常finishは既存キューを読み切ってnil、error/cancelはキューを捨て待機者全員へ同じ終了を伝える。受信者1件、生成側1件を契約とし、送信側自身がsend完了を待つ。
+- [x] 対象試験と既存ReplySentenceBufferTestsを通す。コミット: `feat: stream bounded reply sentences without dropping text`。
 
 ### Task 4: 一文先読みを所有する音声サービス
 
@@ -167,7 +167,7 @@ func testAllSentencesAndFinalFragmentAreEmittedOnce() throws {
 
 **Interfaces:** `@MainActor final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking`。注入は`player: any PCMPlaying`、`prepare: @Sendable () async throws -> Void`、`voice: @MainActor @Sendable () -> SpeechVoicePreset`、`synthesize: @Sendable (String, SpeechVoicePreset) async throws -> SpeechPCM`。通常speakは一要素のチャネルへ適合し、prepare/stopは既存SpeechSpeaking契約を守る。
 
-- [ ] 単一文にも同じ音声専用補正が使われることを先に固定する（Task 1で移植したTestPCMPlayerを使用）。
+- [x] 単一文にも同じ音声専用補正が使われることを先に固定する（Task 1で移植したTestPCMPlayerを使用）。
 
 ```swift
 @MainActor
@@ -186,12 +186,12 @@ func testSingleSentenceUsesSelectedVoiceAndSpeechOnlyCorrection() async throws {
 }
 ```
 
-- [ ] ControlledPCMPlayerは各playのPCM識別値を保存し、テストからstarted/finishedを送れるようにする。ControlledPCMSynthesizerは呼び出し回数・入力・同時実行数を保存し、各合成の終了をテストが解放できるようにする。
-- [ ] 初回合成完了→最初の再生開始→次文合成開始の順番をゲートで検証する。1文目を再生中に2文目が完成しても3文目は始まらず、2文目再生開始後に3文目が始まるテストを失敗させる。
-- [ ] 停止中の合成結果破棄、次文合成失敗による現在音声停止、旧streamの遅い終了、再生中の呼び出し拒否、辞書適用後の入力、1返答の声固定、原文範囲イベント非転用の失敗テストを追加する。
-- [ ] 最初にvoiceを一度取得して返答全体で保持する。推論呼び出しに渡す直前にnormalizeを適用。prefetch=falseは文ごとの直列実行、trueは現在の再生開始後に次文の取得・合成を開始する。先読みtaskと再生taskを所有し、どちらかの失敗を他方の終了待ちで隠さず直ちに検知する。`async let`を捨てたままreturnしない。
-- [ ] stopはoperation IDを無効化、PCMを停止、チャネル待機を解除、推論終了をjoin、保持PCMを解放する。Cancelledを合成失敗に上書きしない。既存PCMのfloat配列とAVAudioPCMBufferの二重保持も実機のメモリ測定へ含める。
-- [ ] 全ゲートを明示的に解放してテストを完了させ、最大同時合成数1・最大保持文数2・再生順・late PCM不再生を検証する。コミット: `feat: prefetch one sentence during Supertonic playback`。
+- [x] ControlledPCMPlayerは各playのPCM識別値を保存し、テストからstarted/finishedを送れるようにする。ControlledPCMSynthesizerは呼び出し回数・入力・同時実行数を保存し、各合成の終了をテストが解放できるようにする。
+- [x] 初回合成完了→最初の再生開始→次文合成開始の順番をゲートで検証する。1文目を再生中に2文目が完成しても3文目は始まらず、2文目再生開始後に3文目が始まるテストを失敗させる。
+- [x] 停止中の合成結果破棄、次文合成失敗による現在音声停止、旧streamの遅い終了、再生中の呼び出し拒否、辞書適用後の入力、1返答の声固定、原文範囲イベント非転用の失敗テストを追加する。
+- [x] 最初にvoiceを一度取得して返答全体で保持する。推論呼び出しに渡す直前にnormalizeを適用。prefetch=falseは文ごとの直列実行、trueは現在の再生開始後に次文の取得・合成を開始する。先読みtaskと再生taskを所有し、どちらかの失敗を他方の終了待ちで隠さず直ちに検知する。`async let`を捨てたままreturnしない。
+- [x] stopはoperation IDを無効化、PCMを停止、チャネル待機を解除、推論終了をjoin、保持PCMを解放する。Cancelledを合成失敗に上書きしない。既存PCMのfloat配列とAVAudioPCMBufferの二重保持も実機のメモリ測定へ含める。
+- [x] 全ゲートを明示的に解放してテストを完了させ、最大同時合成数1・最大保持文数2・再生順・late PCM不再生を検証する。コミット: `feat: prefetch one sentence during Supertonic playback`。
 
 ### Task 5: 通常アプリ・ライフサイクル・字幕への接続
 
@@ -206,10 +206,10 @@ func testSingleSentenceUsesSelectedVoiceAndSpeechOnlyCorrection() async throws {
 
 **Interfaces:** ReplyPlaybackModeへ`sentenceSerial`、`sentencePrefetch`を追加。SentenceReplyPlaybackは`run(prompt:trace:onUpdate:) async throws -> String`を持ち、既存coordinatorの所有taskから呼ばれる。`ConversationDependencies.live(voiceSettings: SpeechVoiceSettings, memoryStore: (any ConversationMemoryStore)? = nil)`を追加し、既存live呼び出しはデフォルト引数/オーバーロードで維持。`ConversationAppCoordinator`へ`showsVoiceSettings: Bool`、`openVoiceSettings()`、`closeVoiceSettings()`を追加する。
 
-- [ ] 統合テストで、生成完了後も最後の再生中は聞き取りが再開しない、生成失敗が先読みと現在の再生を停止する、非stableサービスはfinalまで無音、字幕と保存返答にiPhone/Bluetooth原文が残ることを失敗させる。
-- [ ] シート表示のテストでは初回権限待ち、通常listen、thinking、speaking、background移行と競合させる。openは停止join後にのみ表示、closeでは自動再開しない、memory reset/forget呼び出し0を確認する。テスト用UserDefaultsを注入し実ユーザーの声を変更しない。
-- [ ] coordinatorがsentence mode時だけSentenceSpeechSpeakingを利用するように接続。生成producerはsentence bufferとawait sendを使い、consumerは各文イベントを処理する。failure経路はチャネル終了・speaker.stop・全child joinを一か所で所有する。非対応speakerには既存firstSentenceを使用し、テストで経路を明示する。
-- [ ] 新旧記録の互換性を次の形で固定する。初期値のない新しい必須キーを増やさない。
+- [x] 統合テストで、生成完了後も最後の再生中は聞き取りが再開しない、生成失敗が先読みと現在の再生を停止する、非stableサービスはfinalまで無音、字幕と保存返答にiPhone/Bluetooth原文が残ることを失敗させる。
+- [x] シート表示のテストでは初回権限待ち、通常listen、thinking、speaking、background移行と競合させる。openは停止join後にのみ表示、closeでは自動再開しない、memory reset/forget呼び出し0を確認する。テスト用UserDefaultsを注入し実ユーザーの声を変更しない。
+- [x] coordinatorがsentence mode時だけSentenceSpeechSpeakingを利用するように接続。生成producerはsentence bufferとawait sendを使い、consumerは各文イベントを処理する。failure経路はチャネル終了・speaker.stop・全child joinを一か所で所有する。非対応speakerには既存firstSentenceを使用し、テストで経路を明示する。
+- [x] 新旧記録の互換性を次の形で固定する。初期値のない新しい必須キーを増やさない。
 
 ```swift
 func testOldTraceWithoutSentenceOrdinalStillDecodes() throws {
@@ -220,10 +220,10 @@ func testOldTraceWithoutSentenceOrdinalStillDecodes() throws {
 }
 ```
 
-- [ ] ReplyTraceEventに`sentenceOrdinal: Int?`を追加し、旧JSONのdecode成功を維持する。`mark`に省略可能引数を加え、speechStartedの重複除去キーへordinalを含める。従来のfirst/remainder/fullは残す。通常ログは本文を含めない。UIへの発話開始は最初の実再生、返答終了は全体のdrain後とする。
-- [ ] CatRobotAppで一つのSpeechVoiceSettingsを生成し、サービスとVoiceSettingsViewが共有する。シートはPickerに全10声、現在選択と「完了」を表示。既存会話操作と統一したアクセシビリティラベルを付ける。シートが開いている間は会話操作を開始できないようにする。
-- [ ] 準備エラーをmapper経由で既存エラーUIへ返す。製品liveではSupertonicに変更するが、性能比較前のplayback modeはfirstSentenceのままにする。prepare時のGemma/TTSの不用意な並列化を避ける。
-- [ ] 関連ライフサイクル・記憶・音声・UI試験を通す。コミット: `feat: use selectable Supertonic voices in the app`。
+- [x] ReplyTraceEventに`sentenceOrdinal: Int?`を追加し、旧JSONのdecode成功を維持する。`mark`に省略可能引数を加え、speechStartedの重複除去キーへordinalを含める。従来のfirst/remainder/fullは残す。通常ログは本文を含めない。UIへの発話開始は最初の実再生、返答終了は全体のdrain後とする。
+- [x] CatRobotAppで一つのSpeechVoiceSettingsを生成し、サービスとVoiceSettingsViewが共有する。シートはPickerに全10声、現在選択と「完了」を表示。既存会話操作と統一したアクセシビリティラベルを付ける。シートが開いている間は会話操作を開始できないようにする。
+- [x] 準備エラーをmapper経由で既存エラーUIへ返す。製品liveではSupertonicに変更するが、性能比較前のplayback modeはfirstSentenceのままにする。prepare時のGemma/TTSの不用意な並列化を避ける。
+- [x] 関連ライフサイクル・記憶・音声・UI試験を通す。コミット: `feat: use selectable Supertonic voices in the app`。
 
 ### Task 6: 実機で3方式を比較し通常設定を確定
 
@@ -235,10 +235,10 @@ func testOldTraceWithoutSentenceOrdinalStillDecodes() throws {
 
 **Interfaces:** 専用scheme `SupertonicIntegrationDeviceTests`。runner CLIは`<UDID> <stage>`、stageは`voices|fixed|gemma|lifecycle|offline`。出力JSONはrunID/sourceRevision/device/OS/mode/fixture/repetition/voice/thermalBefore/thermalAfter/cooldownSeconds/footprintSamples/events/outcomeを含む。eventsはmonotonic timestamp、point、sentenceOrdinal。Gemmaの生成文・補正入力は同意済みの試験文章のみ保存する。
 
-- [ ] 集計のPythonテストで、文境界`次文started - 前文finished`の計算、欠落イベントを0秒にしない、失敗・skipを成功件数へ含めない、runID不一致を拒否するケースを実データ形の小さいJSONで失敗させてから集計器を実装する。
-- [ ] 専用実機schemeは通常の単体試験から除外。runnerはrunID固有の結果パスを使用し、古い結果の混入を拒否する。スクリプト編集中に自身を起動したままにしない。buildとtestのログ・xcresult・JSONを保存する。
-- [ ] fixedの6文章は、2文挨拶、5短文、3長文、引用と小数、iPhone/Bluetooth混在、句点なしの断片を用意する。全3方式×6文章×3回＝54試行。各反復で方式順を回転し、同じvoice F1・8 steps・文字列を使用する。文間を持たない文章は文間統計から除外する。
-- [ ] gemmaは2〜5文を求める6プロンプト×2方式（firstSentence/sentencePrefetch）×3回＝36試行。元のGemma評価と同じ空の独立メモリ・通常設定を使い、利用者の保存済み記憶を上書きしない。文章差を記録し、fixedの性能結果と混ぜない。
+- [x] 集計のPythonテストで、文境界`次文started - 前文finished`の計算、欠落イベントを0秒にしない、失敗・skipを成功件数へ含めない、runID不一致を拒否するケースを実データ形の小さいJSONで失敗させてから集計器を実装する。
+- [x] 専用実機schemeは通常の単体試験から除外。runnerはrunID固有の結果パスを使用し、古い結果の混入を拒否する。スクリプト編集中に自身を起動したままにしない。buildとtestのログ・xcresult・JSONを保存する。
+- [x] fixedの6文章は、2文挨拶、5短文、3長文、引用と小数、iPhone/Bluetooth混在、句点なしの断片を用意する。全3方式×6文章×3回＝54試行。各反復で方式順を回転し、同じvoice F1・8 steps・文字列を使用する。文間を持たない文章は文間統計から除外する。
+- [x] gemmaは2〜5文を求める6プロンプト×2方式（firstSentence/sentencePrefetch）×3回＝36試行。元のGemma評価と同じ空の独立メモリ・通常設定を使い、利用者の保存済み記憶を上書きしない。文章差を記録し、fixedの性能結果と混ぜない。
 - [ ] voicesは10声各1回の音声出力、通常画面で選択・保存・再起動の確認。lifecycleは生成中/再生中/先読み中の停止、background、音声割り込み、route change。各ケースの成功と未検証を個別に記録する。
 - [ ] offlineは起動後にモデルロード前で待機し、利用者の通信OFF確認後に開始する。証明書確認で起動に失敗した試行は合成失敗と分ける。USBなし通常会話の確認は実機接続と内部テストが済んだ時点で依頼する。
 - [ ] thermal serious/criticalでは試行を始めず冷却時間を記録する。段階間で条件を揃える。最初の再生通知、文間、合計、メモリ、発熱、失敗、欠落/重複を集計し、聴感確認も記録する。ソフトウェア時刻を音響計測と表記しない。
