@@ -13,13 +13,13 @@ final class PlaybackIntegrationHarness {
     var recognizer: FakeSpeechRecognizer { infrastructure.recognizer }
     init(service: (any ReplyGenerating)? = nil,
          memory: (any ConversationMemoryManaging)? = nil,
-         speaker: ControlledSpeaker = ControlledSpeaker(), mode: ReplyPlaybackMode = .firstSentence) {
+         speaker: ControlledSpeaker = ControlledSpeaker(), sentenceSpeaker: (any SpeechSpeaking)? = nil, mode: ReplyPlaybackMode = .firstSentence) {
         self.speaker = speaker
         let base = infrastructure
         viewModel = ConversationViewModel(dependencies: ConversationDependencies(
             microphonePermission: base.microphone, modelAvailability: base.modelAvailability,
             recognizer: base.recognizer, classifier: base.classifier,
-            reply: service ?? reply, speaker: speaker, audioSession: base.audio,
+            reply: service ?? reply, speaker: sentenceSpeaker ?? speaker, audioSession: base.audio,
             latency: base.latency, replyTraceSink: traces, replyPlaybackMode: mode,
             memory: memory ?? UnsupportedConversationMemoryManager(), now: { base.now.value }))
     }

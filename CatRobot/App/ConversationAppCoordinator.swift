@@ -15,6 +15,9 @@ enum ConversationAppScenePhase: Equatable, Sendable {
 @MainActor
 @Observable
 final class ConversationAppCoordinator {
+    private(set) var showsVoiceSettings = false
+    private(set) var isOpeningVoiceSettings = false
+    @ObservationIgnored private var voiceSettingsTask: Task<Void, Never>?
     private(set) var destination: ConversationAppDestination = .onboarding
 
     @ObservationIgnored private let viewModel: ConversationViewModel
@@ -44,7 +47,7 @@ final class ConversationAppCoordinator {
     }
 
     func beginConversation() {
-        guard destination == .onboarding else { return }
+        guard destination == .onboarding, !showsVoiceSettings, !isOpeningVoiceSettings else { return }
         destination = .conversation
         acquireWakeLockIfNeeded()
 
@@ -93,6 +96,34 @@ final class ConversationAppCoordinator {
             releaseWakeLockIfNeeded()
             forwardPauseIfNeeded()
         }
+    }
+
+    func openVoiceSettings() {
+        guard scenePhase == .active, !showsVoiceSettings, !isOpeningVoiceSettings else { return }
+        isOpeningVoiceSettings = true
+        invalidateActionTasksForSceneInactivity()
+        let generation = actionSceneGeneration
+        activeStartIntentID = nil
+        deferredPermissionPrompt = false
+        startTask?.cancel()
+        viewModel.invalidateForSceneInactivity()
+        releaseWakeLockIfNeeded()
+        voiceSettingsTask = Task { @MainActor [weak self, viewModel] in
+            await viewModel.sceneBecameInactive()
+            guard let self else { return }
+            self.voiceSettingsTask = nil
+            guard self.scenePhase == .active, self.actionSceneGeneration == generation else {
+                self.isOpeningVoiceSettings = false
+                return
+            }
+            self.isOpeningVoiceSettings = false
+            self.showsVoiceSettings = true
+        }
+    }
+
+    func closeVoiceSettings() {
+        showsVoiceSettings = false
+        acquireWakeLockIfNeeded()
     }
 
     func makeActions(openSettings: @escaping @MainActor () -> Void) -> ConversationActions {
@@ -148,7 +179,7 @@ final class ConversationAppCoordinator {
 
     func waitForOperations() async {
         while true {
-            let tasks = [startTask, pauseTask].compactMap { $0 }
+            let tasks = [startTask, pauseTask, voiceSettingsTask].compactMap { $0 }
                 + Array(actionTasks.values)
             guard !tasks.isEmpty else { return }
             for task in tasks {
@@ -173,7 +204,7 @@ final class ConversationAppCoordinator {
     }
 
     private func launchAction(_ operation: @escaping @MainActor () async -> Void) {
-        guard scenePhase == .active else { return }
+        guard scenePhase == .active, !showsVoiceSettings, !isOpeningVoiceSettings else { return }
         actionCounter &+= 1
         let actionID = actionCounter
         let sceneGeneration = actionSceneGeneration
@@ -181,7 +212,7 @@ final class ConversationAppCoordinator {
             guard let self else { return }
             await self.beforeActionOperation()
             guard !Task.isCancelled,
-                  self.scenePhase == .active,
+                  self.scenePhase == .active, !self.showsVoiceSettings, !self.isOpeningVoiceSettings,
                   self.actionSceneGeneration == sceneGeneration else {
                 self.actionTasks[actionID] = nil
                 return
@@ -201,7 +232,7 @@ final class ConversationAppCoordinator {
 
     private func acquireWakeLockIfNeeded() {
         guard destination == .conversation,
-              scenePhase == .active,
+              scenePhase == .active, !showsVoiceSettings, !isOpeningVoiceSettings,
               wakeLockToken == nil else { return }
         wakeLockToken = wakeLock.acquire()
     }

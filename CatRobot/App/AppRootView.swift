@@ -5,13 +5,16 @@ import UIKit
 struct AppRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
+    private let voiceSettings: SpeechVoiceSettings
     @State private var viewModel: ConversationViewModel
     @State private var coordinator: ConversationAppCoordinator
 
     init(
         dependencies: ConversationDependencies,
+        voiceSettings: SpeechVoiceSettings? = nil,
         wakeLock: ConversationScreenWakeLock = .live()
     ) {
+        self.voiceSettings = voiceSettings ?? SpeechVoiceSettings()
         let viewModel = ConversationViewModel(dependencies: dependencies)
         _viewModel = State(initialValue: viewModel)
         _coordinator = State(
@@ -33,6 +36,19 @@ struct AppRootView: View {
                     actions: coordinator.makeActions(openSettings: openSettings)
                 )
             }
+        }
+        .safeAreaInset(edge: .top, alignment: .trailing) {
+            Button(action: coordinator.openVoiceSettings) {
+                Label("声", systemImage: "speaker.wave.2")
+                    .padding(.horizontal, 18).padding(.vertical, 8)
+            }
+            .accessibilityLabel("声を選ぶ")
+            .accessibilityIdentifier("openVoiceSettings")
+            .disabled(coordinator.isOpeningVoiceSettings)
+        }
+        .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
+                                    set: { if !$0 { coordinator.closeVoiceSettings() } })) {
+            VoiceSettingsView(settings: voiceSettings, onDone: coordinator.closeVoiceSettings)
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase, initial: true) { _, newPhase in

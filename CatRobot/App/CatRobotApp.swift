@@ -2,15 +2,18 @@ import SwiftUI
 
 @main
 struct CatRobotApp: App {
+    private let voiceSettings: SpeechVoiceSettings
     private let dependencies: ConversationDependencies
 
     init() {
-        dependencies = .live()
+        let settings = SpeechVoiceSettings()
+        voiceSettings = settings
+        dependencies = .live(voiceSettings: settings)
     }
 
     var body: some Scene {
         WindowGroup {
-            AppRootView(dependencies: dependencies)
+            AppRootView(dependencies: dependencies, voiceSettings: voiceSettings)
         }
     }
 }

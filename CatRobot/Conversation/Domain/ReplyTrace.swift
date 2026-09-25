@@ -18,6 +18,7 @@ struct ReplyTraceEvent: Codable, Sendable {
     let part: ReplySpeechPart?
     let source: ReplySpeechStartSource?
     let outcome: ReplyTraceOutcome?
+    var sentenceOrdinal: Int? = nil
 }
 protocol ReplyTraceSink: Sendable { func record(_ event: ReplyTraceEvent) }
 struct NoopReplyTraceSink: ReplyTraceSink { func record(_ event: ReplyTraceEvent) {} }
@@ -41,7 +42,7 @@ final class ReplyTrace: @unchecked Sendable {
     }
 
     func mark(_ point: ReplyTracePoint, part: ReplySpeechPart? = nil,
-              source: ReplySpeechStartSource? = nil, outcome: ReplyTraceOutcome? = nil) {
+              source: ReplySpeechStartSource? = nil, outcome: ReplyTraceOutcome? = nil, sentenceOrdinal: Int? = nil) {
         lock.withLock {
             if let start = Self.ends[point] {
                 guard intervals[start, default: 0] > 0 else { return }
@@ -52,11 +53,11 @@ final class ReplyTrace: @unchecked Sendable {
             }
             switch point {
             case .firstCaption, .firstSentence, .speechStarted, .generationFinished, .streamFinished:
-                guard once.insert(point.rawValue + (part?.rawValue ?? "")).inserted else { return }
+                guard once.insert(point.rawValue + (part?.rawValue ?? "") + (sentenceOrdinal.map(String.init) ?? "")).inserted else { return }
             default: break
             }
             if point == .finished { terminal = true }
-            sink.record(ReplyTraceEvent(id: id, point: point, at: now(), part: part, source: source, outcome: outcome))
+            sink.record(ReplyTraceEvent(id: id, point: point, at: now(), part: part, source: source, outcome: outcome, sentenceOrdinal: sentenceOrdinal))
         }
     }
     func finish(_ outcome: ReplyTraceOutcome) { mark(.finished, outcome: outcome) }
