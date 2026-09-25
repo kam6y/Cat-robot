@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 require "pathname"
 require "rubygems"
 require "xcodeproj"
@@ -91,6 +92,35 @@ project.root_object.package_references << package
   build_file.product_ref = product
   target.frameworks_build_phase.files << build_file
 end
+
+ort_package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
+ort_package.repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"
+ort_package.requirement = { "kind" => "exactVersion", "version" => "1.24.2" }
+project.root_object.package_references << ort_package
+[app_target].each do |target|
+  product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
+  product.package = ort_package
+  product.product_name = "onnxruntime"
+  target.package_product_dependencies << product
+  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+  build_file.product_ref = product
+  target.frameworks_build_phase.files << build_file
+end
+app_target.add_resources([resources_group.new_file("supertonic-manifest.json")])
+asset = app_group.new_file("LocalAssets/Supertonic")
+asset.last_known_file_type = "folder"
+app_target.add_resources([asset])
+license = app_group.new_file("Vendor/Supertonic/LICENSE")
+app_target.add_resources([license])
+validation = app_target.new_shell_script_build_phase("Validate Supertonic assets")
+validation.shell_script = 'PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 "$SRCROOT/scripts/validate_supertonic_assets.py" --root "$SRCROOT/CatRobot/LocalAssets/Supertonic" --manifest "$SRCROOT/CatRobot/Resources/supertonic-manifest.json"'
+validation.input_paths = ["$(SRCROOT)/scripts/validate_supertonic_assets.py", "$(SRCROOT)/scripts/prepare_supertonic_assets.py", "$(SRCROOT)/CatRobot/Resources/supertonic-manifest.json", "$(SRCROOT)/CatRobot/LocalAssets/Supertonic"]
+JSON.parse(ROOT.join("CatRobot/Resources/supertonic-manifest.json").read).fetch("files").each do |entry|
+  validation.input_paths << "$(SRCROOT)/CatRobot/LocalAssets/Supertonic/#{entry.fetch('path')}"
+end
+validation.always_out_of_date = "1"
+app_target.build_phases.delete(validation)
+app_target.build_phases.insert(0, validation)
 
 apply_common_settings(app_target)
 apply_common_settings(test_target)

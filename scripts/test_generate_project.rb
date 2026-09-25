@@ -128,9 +128,9 @@ tests.build_configurations.each do |configuration|
 end
 
 package_objects = project.objects.select { |object| object.isa == "XCRemoteSwiftPackageReference" }
-assert(package_objects.length == 1, "expected exactly one device-test runtime dependency")
+assert(package_objects.length == 2, "expected exactly two runtime dependencies")
 assert(tests.package_product_dependencies.map(&:product_name) == ["LiteRTLM"], "device tests must link LiteRTLM")
-assert(app.package_product_dependencies.map(&:product_name) == ["LiteRTLM"], "app must link the Gemma runtime")
+assert(app.package_product_dependencies.map(&:product_name) == ["LiteRTLM", "onnxruntime"], "app must link the Gemma runtime")
 device_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/GemmaDeviceTests.xcscheme").read)
 opt_in = REXML::XPath.first(device_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='GEMMA_DEVICE_TESTS']")
 assert(opt_in && opt_in.attributes["value"] == "1", "device scheme must opt in to real inference")
@@ -172,3 +172,8 @@ with_probe_sources do
 end
 
 puts "PASS: deterministic CatRobot project contract"
+
+ort = project.root_object.package_references.find { |p| p.repositoryURL.end_with?("onnxruntime-swift-package-manager") }
+assert(ort && ort.requirement == { "kind" => "exactVersion", "version" => "1.24.2" }, "pinned ONNX runtime missing")
+assert(app.resources_build_phase.files_references.any? { |r| r.path == "LocalAssets/Supertonic" }, "Supertonic bundle missing")
+assert(app.shell_script_build_phases.any? { |p| p.name == "Validate Supertonic assets" }, "asset validation missing")
