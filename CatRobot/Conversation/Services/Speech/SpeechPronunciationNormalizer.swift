@@ -10,6 +10,8 @@ struct SpeechPronunciationNormalizer: Sendable {
     func normalize(_ original: String) -> String {
         let text = original as NSString
         let full = NSRange(location: 0, length: text.length)
+        let matches = Self.words.matches(in: original, range: full)
+        guard !matches.isEmpty else { return original }
         var protected = Self.protectedExpression.matches(in: original, range: full).map(\.range)
         var cursor = 0
         while cursor < text.length {
@@ -24,7 +26,7 @@ struct SpeechPronunciationNormalizer: Sendable {
             cursor = last
         }
         let result = NSMutableString(string: original)
-        for match in Self.words.matches(in: original, range: full).reversed() {
+        for match in matches.reversed() {
             guard !protected.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
             let replacement = text.substring(with: match.range).lowercased() == "iphone" ? "アイフォーン" : "ブルートゥース"
             result.replaceCharacters(in: match.range, with: replacement)
