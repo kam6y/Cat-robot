@@ -1,0 +1,28 @@
+{
+  "voices/firstSentence": {
+    "totalTrials": 10,
+    "successfulTrials": 10,
+    "start": {
+      "count": 10,
+      "median": 0.5177494583331281,
+      "p95": 0.6087899583326362
+    },
+    "gap": {
+      "count": 10,
+      "median": 0.5902062291679613,
+      "p95": 0.6542214166656777
+    },
+    "total": {
+      "count": 10,
+      "median": 4.705850250000367,
+      "p95": 4.852950458331179
+    },
+    "footprintBytes": {
+      "count": 10,
+      "median": 540461640.0,
+      "p95": 550324808
+    },
+    "cooldownSeconds": 0.0005130833269504365,
+    "hotEnds": 0
+  }
+}

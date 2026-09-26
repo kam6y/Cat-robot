@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 require "pathname"
 require "rubygems"
 require "xcodeproj"
@@ -92,6 +93,35 @@ project.root_object.package_references << package
   target.frameworks_build_phase.files << build_file
 end
 
+ort_package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
+ort_package.repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"
+ort_package.requirement = { "kind" => "exactVersion", "version" => "1.24.2" }
+project.root_object.package_references << ort_package
+[app_target].each do |target|
+  product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
+  product.package = ort_package
+  product.product_name = "onnxruntime"
+  target.package_product_dependencies << product
+  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+  build_file.product_ref = product
+  target.frameworks_build_phase.files << build_file
+end
+app_target.add_resources([resources_group.new_file("supertonic-manifest.json")])
+asset = app_group.new_file("LocalAssets/Supertonic")
+asset.last_known_file_type = "folder"
+app_target.add_resources([asset])
+license = app_group.new_file("Vendor/Supertonic/LICENSE")
+app_target.add_resources([license])
+validation = app_target.new_shell_script_build_phase("Validate Supertonic assets")
+validation.shell_script = 'PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 "$SRCROOT/scripts/validate_supertonic_assets.py" --root "$SRCROOT/CatRobot/LocalAssets/Supertonic" --manifest "$SRCROOT/CatRobot/Resources/supertonic-manifest.json"'
+validation.input_paths = ["$(SRCROOT)/scripts/validate_supertonic_assets.py", "$(SRCROOT)/scripts/prepare_supertonic_assets.py", "$(SRCROOT)/CatRobot/Resources/supertonic-manifest.json", "$(SRCROOT)/CatRobot/LocalAssets/Supertonic"]
+JSON.parse(ROOT.join("CatRobot/Resources/supertonic-manifest.json").read).fetch("files").each do |entry|
+  validation.input_paths << "$(SRCROOT)/CatRobot/LocalAssets/Supertonic/#{entry.fetch('path')}"
+end
+validation.always_out_of_date = "1"
+app_target.build_phases.delete(validation)
+app_target.build_phases.insert(0, validation)
+
 apply_common_settings(app_target)
 apply_common_settings(test_target)
 
@@ -100,6 +130,7 @@ app_target.build_configurations.each do |configuration|
     "ASSETCATALOG_COMPILER_APPICON_NAME" => "AppIcon",
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" => "AccentColor",
     "CURRENT_PROJECT_VERSION" => "1",
+    "CATROBOT_SOURCE_REVISION" => "unversioned",
     "DEVELOPMENT_ASSET_PATHS" => '"CatRobot/Preview Content"',
     "ENABLE_PREVIEWS" => "YES",
     "GENERATE_INFOPLIST_FILE" => "NO",
@@ -180,6 +211,18 @@ latency_scheme.test_action.testables.first.selected_tests = [latency_test]
 latency_scheme.test_action.testables.first.use_test_selection_whitelist = true
 latency_scheme.test_action.testables.first.parallelizable = false
 latency_scheme.save_as(PROJECT_PATH.to_s, "ReplyLatencyDeviceTests", true)
+
+integration_scheme = Xcodeproj::XCScheme.new
+integration_scheme.configure_with_targets(app_target, test_target, launch_target: true)
+integration_scheme.test_action.build_configuration = "Debug"
+integration_scheme.test_action.should_use_launch_scheme_args_env = false
+integration_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "SUPER_INTEGRATION_TESTS", value: "1" }])
+integration_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
+integration_test.identifier = "SupertonicIntegrationDeviceTests"
+integration_scheme.test_action.testables.first.selected_tests = [integration_test]
+integration_scheme.test_action.testables.first.use_test_selection_whitelist = true
+integration_scheme.test_action.testables.first.parallelizable = false
+integration_scheme.save_as(PROJECT_PATH.to_s, "SupertonicIntegrationDeviceTests", true)
 
 if resolved_lock
   FileUtils.mkdir_p(lock_path.dirname)

@@ -17,6 +17,8 @@ struct ReplySentenceBuffer {
         var hasContent = false
         var escaped = false
         var isURL = false
+        var codeDelimiter: Int?
+        var codeRunEnd: String.Index?
         for index in snapshot.indices {
             let character = snapshot[index]
             let next = snapshot.index(after: index)
@@ -35,11 +37,29 @@ struct ReplySentenceBuffer {
                 } else { candidate = nil }
                 continue
             }
+            if let codeRunEnd, index < codeRunEnd { continue }
+            if character == "`" {
+                var end = index
+                var length = 0
+                while end < snapshot.endIndex, snapshot[end] == "`" {
+                    length += 1; end = snapshot.index(after: end)
+                }
+                if codeDelimiter == length { codeDelimiter = nil }
+                else if codeDelimiter == nil { codeDelimiter = length }
+                codeRunEnd = end
+                candidate = nil
+                continue
+            }
+            if codeDelimiter != nil {
+                if content { hasContent = true }
+                continue
+            }
             if character.isWhitespace { isURL = false }
             // A URL need not be separated from Japanese text by whitespace.
             // Conservatively protect through the next whitespace; delaying a
             // split is safer than speaking a query delimiter as a sentence end.
-            if character == "h", snapshot[index...].hasPrefix("https://") || snapshot[index...].hasPrefix("http://") {
+            if character == "h" || character == "H",
+               snapshot[index...].prefix(8).lowercased().hasPrefix("https://") || snapshot[index...].prefix(7).lowercased().hasPrefix("http://") {
                 isURL = true
             }
             if escaped {
@@ -74,7 +94,7 @@ struct ReplySentenceBuffer {
         return String(finalSnapshot.dropFirst(sent.count))
     }
 
-    private static func isContent(_ character: Character) -> Bool {
+    static func isContent(_ character: Character) -> Bool {
         character.isLetter || character.isNumber || character.unicodeScalars.contains {
             $0.properties.isEmojiPresentation
         }

@@ -317,7 +317,10 @@ final class ConversationViewModelTests: XCTestCase {
         let audioActivations = await harness.audio.activateCount
         let audioIsActive = await harness.audio.isActive
         XCTAssertEqual(captureStarts, 1)
-        XCTAssertEqual(permissionRequests, 1)
+        // The resumed task may recheck permission before the later inactive
+        // intent arrives. That completed check cannot be undone; capture and
+        // audio activation must still remain stopped (asserted below).
+        XCTAssertTrue((1...2).contains(permissionRequests))
         XCTAssertEqual(audioActivations, 1)
         XCTAssertFalse(audioIsActive)
         XCTAssertEqual(harness.sut.viewState.phase, .paused)

@@ -4,3 +4,6 @@ DerivedData/
 xcuserdata/
 .worktrees/
 
+
+CatRobot/LocalAssets/
+__pycache__/

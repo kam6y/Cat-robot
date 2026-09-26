@@ -1,6 +1,6 @@
 import Foundation
 
-enum ReplyPlaybackMode: String, Codable, Sendable { case completeResponse, firstSentence }
+enum ReplyPlaybackMode: String, Codable, Sendable { case completeResponse, firstSentence, sentenceSerial, sentencePrefetch }
 enum ReplyPlaybackUpdate: Sendable {
     case caption(String)
     case speechStarted(ReplySpeechPart, ReplySpeechStartSource)
@@ -53,6 +53,10 @@ final class ReplyPlaybackCoordinator {
 
     private func perform(prompt: String, trace: ReplyTrace?,
                          onUpdate: @escaping @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
+        if (mode == .sentenceSerial || mode == .sentencePrefetch), let sentenceSpeaker = speaker as? any SentenceSpeechSpeaking {
+            return try await SentenceReplyPlayback(reply: reply, speaker: sentenceSpeaker, prefetch: mode == .sentencePrefetch)
+                .run(prompt: prompt, trace: trace, onUpdate: onUpdate)
+        }
         let parts = AsyncThrowingStream<Part, Error>.makeStream(bufferingPolicy: .bufferingOldest(2))
         trace?.mark(.request)
         do {
@@ -114,7 +118,7 @@ final class ReplyPlaybackCoordinator {
         var buffer = ReplySentenceBuffer()
         var final = ""
         var sentFirst = false
-        let early = mode == .firstSentence && reply.supportsStableReplyPrefix
+        let early = mode != .completeResponse && reply.supportsStableReplyPrefix
         for try await snapshot in stream {
             try Task.checkCancellation()
             if early, let first = try buffer.receive(snapshot) {
