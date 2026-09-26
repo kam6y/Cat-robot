@@ -1553,23 +1553,11 @@ final class ConversationViewModel {
            !presentation.offersTypedInput {
             recoveries.append(.typedInput)
         }
-        let typedText = viewState.typedText
-        let showsTypedInput = viewState.showsTypedInput
-        let caption = viewState.caption
-        let memoryState = viewState.memoryState
-        let memoryNotice = viewState.memoryNotice
-        let confirmation = viewState.showsForgetConfirmation
-        viewState = .failed(
+        viewState.presentFailure(
             error: error,
             message: presentation.message,
             recoveries: recoveries
         )
-        viewState.typedText = typedText
-        viewState.showsTypedInput = showsTypedInput
-        viewState.caption = caption
-        viewState.memoryState = memoryState
-        viewState.memoryNotice = memoryNotice
-        viewState.showsForgetConfirmation = confirmation
     }
 
     private static func serviceError(from error: any Error) -> ConversationServiceError {

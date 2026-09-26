@@ -1,7 +1,7 @@
 import Foundation
 
 enum GemmaMemoryCompatibility {
-    static let current = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c-memory-v1"
+    static let current = GemmaModelFile.sha256 + "-memory-v1"
 }
 
 struct GemmaConversationMemory: Sendable {

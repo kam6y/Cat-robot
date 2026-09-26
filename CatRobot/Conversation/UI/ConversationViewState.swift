@@ -140,14 +140,23 @@ extension ConversationViewState {
         message: String,
         recoveries: [ConversationRecovery]
     ) -> Self {
-        Self(
-            phase: .failed(error),
-            catState: .failed,
-            mouthPose: .closed,
-            microphoneStatus: "マイクは待機中",
-            activityStatus: "会話を続けられません",
-            errorMessage: message,
-            recoveries: recoveries
-        )
+        var state = Self.idle
+        state.presentFailure(error: error, message: message, recoveries: recoveries)
+        return state
+    }
+
+    mutating func presentFailure(
+        error: ConversationServiceError,
+        message: String,
+        recoveries: [ConversationRecovery]
+    ) {
+        phase = .failed(error)
+        catState = .failed
+        mouthPose = .closed
+        microphoneStatus = "マイクは待機中"
+        activityStatus = "会話を続けられません"
+        provisionalTranscript = ""
+        errorMessage = message
+        self.recoveries = recoveries
     }
 }
