@@ -364,10 +364,8 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         defer { summarizer.close() }
         // Summary failure is recoverable. Do not route it through the UI's
         // contextExceeded reset, which would discard the original conversation.
-        guard try fits(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit) else {
-            throw ConversationServiceError.modelGenerationFailed
-        }
-        let summary = try await consume(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit, control: control)
+        let summary = try await consume(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit,
+                                        control: control, capacityFailure: .modelGenerationFailed)
         guard try await runtime.countTokens(summary) <= GemmaContext.summaryOutputLimit else {
             throw ConversationServiceError.modelGenerationFailed
         }
@@ -381,10 +379,11 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
 
     private func consume(
         _ session: any GemmaSession, prompt: String, limit: Int, control: GemmaInferenceCancellation,
-        into continuation: AsyncThrowingStream<String, Error>.Continuation? = nil
+        into continuation: AsyncThrowingStream<String, Error>.Continuation? = nil,
+        capacityFailure: ConversationServiceError = .inputTooLong
     ) async throws -> String {
         try checkCancellation(control)
-        guard try fits(session, prompt: prompt, limit: limit) else { throw ConversationServiceError.inputTooLong }
+        guard try fits(session, prompt: prompt, limit: limit) else { throw capacityFailure }
         let source = try control.start(session, prompt: prompt, outputLimit: limit)
         defer { control.detach() }
         var snapshot = ""

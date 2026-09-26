@@ -34,8 +34,12 @@ final class StubGemmaSession: GemmaSession, @unchecked Sendable {
     private var cancelled = false
     var wasCancelled: Bool { lock.withLock { cancelled } }
     var prompts: [String] { lock.withLock { storedPrompts } }
-    init(chunks: [String]?) { self.chunks = chunks }
-    func tokenCount() throws -> Int { 100 }
+    private let usedTokens: Int
+    init(chunks: [String]?, usedTokens: Int = 100) {
+        self.chunks = chunks
+        self.usedTokens = usedTokens
+    }
+    func tokenCount() throws -> Int { usedTokens }
     func inputTokenCount(_ prompt: String) throws -> Int { prompt.count }
     private var closed = false
     var isClosed: Bool { lock.withLock { closed } }

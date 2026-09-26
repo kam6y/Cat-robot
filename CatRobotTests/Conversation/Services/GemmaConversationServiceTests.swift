@@ -248,6 +248,27 @@ final class GemmaConversationServiceTests: XCTestCase {
         XCTAssertEqual(configs.last?.history.reduce(0) { $0 + $1.rawTokens }, 2202)
     }
 
+    func testSummaryCapacityFailurePreservesMemoryAndDoesNotSendOversizedInput() async throws {
+        let oversized = StubGemmaSession(chunks: ["unused"], usedTokens: GemmaContext.capacity)
+        let runtime = RecordingGemmaRuntime(heldSummary: oversized)
+        let service = GemmaConversationService(runtime: runtime)
+        for i in 0..<4 { _ = try await collect(service.streamReply(to: longPrompt(i))) }
+        do {
+            _ = try await collect(service.streamReply(to: "first attempt"))
+            XCTFail("An oversized summary must fail without resetting memory")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed)
+        }
+        XCTAssertTrue(oversized.prompts.isEmpty)
+        XCTAssertTrue(oversized.isClosed)
+        _ = try await collect(service.streamReply(to: "retry"))
+        let requests = await runtime.summaryPrompts
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertTrue(requests[0].contains(longPrompt(0)))
+        let configurations = await runtime.configurations
+        XCTAssertEqual(configurations.last?.history.map(\.prompt), [longPrompt(3)])
+    }
+
     func testFailedSummaryLeavesOriginalHistoryForRetry() async throws {
         let runtime = RecordingGemmaRuntime(summaryOutputs: ["", "recovered memory"])
         let service = GemmaConversationService(runtime: runtime)
