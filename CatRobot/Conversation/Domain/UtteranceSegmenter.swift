@@ -27,6 +27,16 @@ struct UtteranceSegmenter: Sendable {
         self.configuration = configuration
     }
 
+    var silenceInterval: TimeInterval { configuration.silenceInterval }
+
+    func flushDelay(at timestamp: TimeInterval) -> TimeInterval {
+        let hardRemaining = max(
+            0,
+            configuration.maximumDuration - (timestamp - (firstActivityAt ?? timestamp))
+        )
+        return min(configuration.silenceInterval, hardRemaining)
+    }
+
     mutating func receive(_ event: SpeechRecognitionEvent, at timestamp: TimeInterval) {
         let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }

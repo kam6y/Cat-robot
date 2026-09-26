@@ -26,8 +26,6 @@ struct ConversationOperationOwnership {
 @MainActor
 @Observable
 final class ConversationViewModel {
-    private static let segmentationSilenceInterval: TimeInterval = 1.2
-
     private enum VoiceFailureOwner {
         case lifecycle(generation: UInt64)
         case turn(generation: UInt64, turnID: UInt64)
@@ -75,7 +73,6 @@ final class ConversationViewModel {
     @ObservationIgnored private var captureIsClosing = false
     @ObservationIgnored private var closingTailSegments: [String] = []
     @ObservationIgnored private var segmenter = UtteranceSegmenter()
-    @ObservationIgnored private var firstCaptureActivityAt: TimeInterval?
     @ObservationIgnored private var latestCaptureActivityAt: TimeInterval?
     @ObservationIgnored private var wantsListening = false
     @ObservationIgnored private var microphoneWasAllowed = false
@@ -506,7 +503,6 @@ final class ConversationViewModel {
             captureIsClosing = false
             closingTailSegments.removeAll(keepingCapacity: true)
             segmenter = UtteranceSegmenter()
-            firstCaptureActivityAt = nil
             latestCaptureActivityAt = nil
             if let oldClosing {
                 await oldClosing.value
@@ -673,7 +669,6 @@ final class ConversationViewModel {
         captureIsClosing = false
         closingTailSegments.removeAll(keepingCapacity: true)
         segmenter = UtteranceSegmenter()
-        firstCaptureActivityAt = nil
         latestCaptureActivityAt = nil
         transition(to: .listening)
         viewState.provisionalTranscript = ""
@@ -732,7 +727,6 @@ final class ConversationViewModel {
 
         let timestamp = dependencies.now()
         segmenter.receive(event, at: timestamp)
-        firstCaptureActivityAt = firstCaptureActivityAt ?? timestamp
         latestCaptureActivityAt = timestamp
         viewState.provisionalTranscript = text
 
@@ -758,7 +752,6 @@ final class ConversationViewModel {
         guard !segmenter.hasActivity else { return }
         segmentationTask?.cancel()
         segmentationTask = nil
-        firstCaptureActivityAt = nil
         latestCaptureActivityAt = nil
     }
 
@@ -766,7 +759,6 @@ final class ConversationViewModel {
         segmentationTask?.cancel()
         segmentationTask = nil
         segmenter = UtteranceSegmenter()
-        firstCaptureActivityAt = nil
         latestCaptureActivityAt = nil
         viewState.provisionalTranscript = ""
         let presentation = ConversationErrorPresentation(.speechUnrecognized)
@@ -780,11 +772,7 @@ final class ConversationViewModel {
         at timestamp: TimeInterval
     ) {
         segmentationTask?.cancel()
-        let hardRemaining = max(
-            0,
-            20 - (timestamp - (firstCaptureActivityAt ?? timestamp))
-        )
-        let delay = min(Self.segmentationSilenceInterval, hardRemaining)
+        let delay = segmenter.flushDelay(at: timestamp)
         segmentationTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
@@ -818,7 +806,7 @@ final class ConversationViewModel {
             turnID: turnID,
             boundaryAt: boundaryAt,
             lastASRActivityAt: latestCaptureActivityAt,
-            segmentationInterval: Self.segmentationSilenceInterval
+            segmentationInterval: segmenter.silenceInterval
         )
         let trace = ReplyTrace(id: latencyToken.rawValue, sink: dependencies.replyTraceSink, now: dependencies.now)
         trace.mark(.captureBoundary)
@@ -859,7 +847,6 @@ final class ConversationViewModel {
         closingTask = nil
         captureIsClosing = false
         closingTailSegments.removeAll(keepingCapacity: true)
-        firstCaptureActivityAt = nil
         latestCaptureActivityAt = nil
         viewState.provisionalTranscript = ""
 
@@ -901,7 +888,7 @@ final class ConversationViewModel {
         switch explicitWakeRoute {
         case .wakeOnly, .accept(_):
             isExplicitWake = true
-        case .classify(_), .confirmPending(_), .dismissPending, .ignore:
+        case .classify(_), .dismissPending, .ignore:
             isExplicitWake = false
         }
         let route = dependencies.addresseePolicy.route(
@@ -992,14 +979,6 @@ final class ConversationViewModel {
                     owner: .turn(generation: generation, turnID: turnID)
                 )
             }
-        case .confirmPending:
-            clearPendingClarification()
-            cancelVoiceLatency(
-                reason: .noResponse,
-                generation: generation,
-                turnID: turnID
-            )
-            await resumeCapture(generation: generation, turnID: turnID)
         case .dismissPending:
             clearPendingClarification()
             cancelVoiceLatency(
@@ -1264,7 +1243,6 @@ final class ConversationViewModel {
                 captureIsClosing = false
                 closingTailSegments.removeAll(keepingCapacity: true)
                 segmenter = UtteranceSegmenter()
-                firstCaptureActivityAt = nil
                 latestCaptureActivityAt = nil
                 viewState.provisionalTranscript = ""
             }
@@ -1445,10 +1423,7 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) {
-        guard let latency = activeVoiceLatency,
-              latency.generation == generation,
-              latency.turnID == turnID else { return }
-        cancelActiveVoiceLatency(reason: reason)
+        cancelVoiceLatency(reason: reason, owner: .turn(generation: generation, turnID: turnID))
     }
 
     private func cancelVoiceLatency(
@@ -1575,8 +1550,8 @@ final class ConversationViewModel {
         let presentation = ConversationErrorPresentation(error)
         var recoveries = presentation.recoveries
         if includesTypedFallback,
-           !recoveries.contains(where: { $0.action == .showTypedInput }) {
-            recoveries.append(.init(title: "文字で話す", action: .showTypedInput))
+           !presentation.offersTypedInput {
+            recoveries.append(.typedInput)
         }
         let typedText = viewState.typedText
         let showsTypedInput = viewState.showsTypedInput
