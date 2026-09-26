@@ -15,7 +15,8 @@ enum SupertonicAssets {
         do { return try JSONDecoder().decode(SupertonicManifest.self, from: Data(contentsOf: url)) }
         catch { throw SupertonicError.invalidAssets }
     }
-    static func validate(root: URL, manifest: URL) throws {
+    @discardableResult
+    static func validate(root: URL, manifest: URL) throws -> SupertonicManifest {
         let value = try loadManifest(manifest)
         guard !value.files.isEmpty, Set(value.files.map(\.path)).count == value.files.count else { throw SupertonicError.invalidAssets }
         let canonical = root.resolvingSymlinksInPath().standardizedFileURL.path + "/"
@@ -33,5 +34,6 @@ enum SupertonicAssets {
             while let data = try handle.read(upToCount: 4 * 1024 * 1024), !data.isEmpty { digest.update(data: data) }
             guard digest.finalize().map({ String(format: "%02x", $0) }).joined() == entry.sha256 else { throw SupertonicError.invalidAssets }
         }
+        return value
     }
 }

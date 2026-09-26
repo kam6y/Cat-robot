@@ -17,6 +17,7 @@ enum ConversationAppScenePhase: Equatable, Sendable {
 final class ConversationAppCoordinator {
     private(set) var showsVoiceSettings = false
     private(set) var isOpeningVoiceSettings = false
+    private var isVoiceSettingsClosed: Bool { !showsVoiceSettings && !isOpeningVoiceSettings }
     @ObservationIgnored private var voiceSettingsTask: Task<Void, Never>?
     private(set) var destination: ConversationAppDestination = .onboarding
 
@@ -47,7 +48,7 @@ final class ConversationAppCoordinator {
     }
 
     func beginConversation() {
-        guard destination == .onboarding, !showsVoiceSettings, !isOpeningVoiceSettings else { return }
+        guard destination == .onboarding, isVoiceSettingsClosed else { return }
         destination = .conversation
         acquireWakeLockIfNeeded()
 
@@ -99,7 +100,7 @@ final class ConversationAppCoordinator {
     }
 
     func openVoiceSettings() {
-        guard scenePhase == .active, !showsVoiceSettings, !isOpeningVoiceSettings else { return }
+        guard scenePhase == .active, isVoiceSettingsClosed else { return }
         isOpeningVoiceSettings = true
         invalidateActionTasksForSceneInactivity()
         let generation = actionSceneGeneration
@@ -204,7 +205,7 @@ final class ConversationAppCoordinator {
     }
 
     private func launchAction(_ operation: @escaping @MainActor () async -> Void) {
-        guard scenePhase == .active, !showsVoiceSettings, !isOpeningVoiceSettings else { return }
+        guard scenePhase == .active, isVoiceSettingsClosed else { return }
         actionCounter &+= 1
         let actionID = actionCounter
         let sceneGeneration = actionSceneGeneration
@@ -212,7 +213,7 @@ final class ConversationAppCoordinator {
             guard let self else { return }
             await self.beforeActionOperation()
             guard !Task.isCancelled,
-                  self.scenePhase == .active, !self.showsVoiceSettings, !self.isOpeningVoiceSettings,
+                  self.scenePhase == .active, self.isVoiceSettingsClosed,
                   self.actionSceneGeneration == sceneGeneration else {
                 self.actionTasks[actionID] = nil
                 return
@@ -232,7 +233,7 @@ final class ConversationAppCoordinator {
 
     private func acquireWakeLockIfNeeded() {
         guard destination == .conversation,
-              scenePhase == .active, !showsVoiceSettings, !isOpeningVoiceSettings,
+              scenePhase == .active, isVoiceSettingsClosed,
               wakeLockToken == nil else { return }
         wakeLockToken = wakeLock.acquire()
     }

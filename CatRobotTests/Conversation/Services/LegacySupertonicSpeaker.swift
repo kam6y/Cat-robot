@@ -1,4 +1,7 @@
 import Foundation
+@testable import CatRobot
+
+// Retains the imported single-text speaker only for its baseline tests.
 
 typealias SynthesizePCM = @Sendable (String) async throws -> SpeechPCM
 

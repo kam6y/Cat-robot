@@ -15,15 +15,18 @@ final class SupertonicSpeakerTests: XCTestCase {
         XCTAssertTrue(audit.processedChunks.joined().contains("「"))
     }
     func testStopDrainsInferenceAndDiscardsLatePCM() async throws {
-        let gate = PCMInferenceGate()
+        let gate = ConversationTestGate()
         let player = TestPCMPlayer()
-        let speaker = SupertonicSpeaker(player: player, prepare: {}, synthesize: { _ in await gate.wait() })
+        let speaker = SupertonicSpeaker(player: player, prepare: {}, synthesize: { _ in
+            await gate.wait()
+            return SpeechPCM(samples: [0, 0.1, 0], sampleRate: 24000)
+        })
         let events = try await speaker.speak("first")
         await gate.waitUntilEntered()
         let stop = Task { await speaker.stop() }
         await Task.yield()
         do { _ = try await speaker.speak("second"); XCTFail("Must reject concurrent synthesis") } catch {}
-        await gate.release()
+        await gate.open()
         await stop.value
         var collected: [SpeechEvent] = []
         for try await event in events { collected.append(event) }
@@ -48,25 +51,6 @@ final class SupertonicSpeakerTests: XCTestCase {
         let stream = try await speaker.speak("invalid")
         do { for try await _ in stream {}; XCTFail("Expected invalid PCM") } catch {}
         XCTAssertEqual(player.playCount, 0)
-    }
-}
-
-actor PCMInferenceGate {
-    private var continuation: CheckedContinuation<SpeechPCM, Never>?
-    private var entered: CheckedContinuation<Void, Never>?
-    private var released = false
-    func wait() async -> SpeechPCM {
-        if released { return SpeechPCM(samples: [0, 0.1, 0], sampleRate: 24000) }
-        return await withCheckedContinuation { c in continuation = c; entered?.resume(); entered = nil }
-    }
-    func waitUntilEntered() async {
-        if continuation != nil { return }
-        await withCheckedContinuation { entered = $0 }
-    }
-    func release() {
-        released = true
-        continuation?.resume(returning: SpeechPCM(samples: [0, 0.1, 0], sampleRate: 24000))
-        continuation = nil
     }
 }
 

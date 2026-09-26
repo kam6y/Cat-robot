@@ -94,7 +94,7 @@ struct ReplySentenceBuffer {
         return String(finalSnapshot.dropFirst(sent.count))
     }
 
-    private static func isContent(_ character: Character) -> Bool {
+    static func isContent(_ character: Character) -> Bool {
         character.isLetter || character.isNumber || character.unicodeScalars.contains {
             $0.properties.isEmojiPresentation
         }

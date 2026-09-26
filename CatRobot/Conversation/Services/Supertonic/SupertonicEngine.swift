@@ -40,8 +40,7 @@ actor SupertonicEngine {
     init(root: URL, manifest: URL) { self.root = root; self.manifest = manifest }
     func prepare() throws {
         if tts != nil { return }
-        try SupertonicAssets.validate(root: root, manifest: manifest)
-        let files = try SupertonicAssets.loadManifest(manifest)
+        let files = try SupertonicAssets.validate(root: root, manifest: manifest)
         guard files.revision == "aafc6e32416a594460b32413efc49d7fe4ce6d46" else { throw SupertonicError.invalidAssets }
         voices = Set(files.files.filter { $0.path.hasPrefix("voice_styles/") && $0.path.hasSuffix(".json") }
             .map { URL(fileURLWithPath: $0.path).deletingPathExtension().lastPathComponent })
@@ -58,7 +57,7 @@ actor SupertonicEngine {
               text.count <= 2000 else { throw SupertonicError.inferenceFailed }
         // Reject unmapped codepoints before they reach ONNX embedding lookup.
         let (ids, _) = tts.textProcessor.call([text], ["ja"])
-        guard ids.flatMap({ $0 }).allSatisfy({ $0 >= 0 }) else { throw SupertonicError.inferenceFailed }
+        guard ids.allSatisfy({ $0.allSatisfy { $0 >= 0 } }) else { throw SupertonicError.inferenceFailed }
         let style = try loadVoiceStyle([root.appendingPathComponent("voice_styles/\(voiceID).json").path], verbose: false)
         let (samples, duration) = try tts.call(text, "ja", style, steps)
         try Task.checkCancellation()

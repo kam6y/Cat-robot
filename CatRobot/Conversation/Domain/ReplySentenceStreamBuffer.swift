@@ -19,7 +19,7 @@ struct ReplySentenceStreamBuffer {
             pending = String(pending.dropFirst(first.count))
         }
         if final {
-            if pending.contains(where: { $0.isLetter || $0.isNumber || $0.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation }) }) {
+            if pending.contains(where: ReplySentenceBuffer.isContent) {
                 output.append(SpeechSentence(ordinal: ordinal, original: pending))
                 ordinal += 1
             }
