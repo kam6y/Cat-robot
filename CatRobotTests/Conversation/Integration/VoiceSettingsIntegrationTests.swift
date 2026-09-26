@@ -57,10 +57,10 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
             await harness.viewModel.shutdown()
         }
     }
-    func testLiveCompositionUsesSupertonicAndKeepsBaselinePlaybackUntilMeasured() {
+    func testLiveCompositionUsesSupertonicWithMeasuredSentencePrefetch() {
         let defaults = UserDefaults(suiteName: "LiveComposition.\(UUID())")!
         let dependencies = ConversationDependencies.live(voiceSettings: SpeechVoiceSettings(defaults: defaults))
         XCTAssertTrue(dependencies.speaker is SupertonicSentenceSpeaker)
-        XCTAssertEqual(dependencies.replyPlaybackMode, .firstSentence)
+        XCTAssertEqual(dependencies.replyPlaybackMode, .sentencePrefetch)
     }
 }
