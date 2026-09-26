@@ -353,17 +353,17 @@ struct ConversationView: View {
         if state.showsTypedInput {
             dismissTypedInput()
         } else {
-            actions.performTypedInput(.show)
+            actions.showTypedInput()
         }
     }
 
     private func dismissTypedInput() {
-        actions.performTypedInput(.dismiss)
+        actions.hideTypedInput()
     }
 
     private func sendTypedText() {
         guard !state.typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        actions.performTypedInput(.send)
+        actions.sendTypedText()
     }
 }
 

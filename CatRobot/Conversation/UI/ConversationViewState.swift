@@ -46,12 +46,12 @@ struct ConversationViewState: Equatable, Sendable {
     var mouthPose: MouthPose
     var microphoneStatus: String
     var activityStatus: String
-    var provisionalTranscript: String
-    var caption: String
-    var typedText: String
-    var showsTypedInput: Bool
-    var errorMessage: String?
-    var recoveries: [ConversationRecovery]
+    var provisionalTranscript: String = ""
+    var caption: String = ""
+    var typedText: String = ""
+    var showsTypedInput: Bool = false
+    var errorMessage: String? = nil
+    var recoveries: [ConversationRecovery] = []
 }
 
 struct ConversationActions {
@@ -65,25 +65,6 @@ struct ConversationActions {
     var cancelForget: () -> Void = {}
     var confirmForget: () -> Void = {}
     var retryMemory: () -> Void = {}
-}
-
-enum ConversationTypedInputAction: Equatable, Sendable {
-    case show
-    case dismiss
-    case send
-}
-
-extension ConversationActions {
-    func performTypedInput(_ action: ConversationTypedInputAction) {
-        switch action {
-        case .show:
-            showTypedInput()
-        case .dismiss:
-            hideTypedInput()
-        case .send:
-            sendTypedText()
-        }
-    }
 }
 
 extension ConversationPhase {
@@ -107,13 +88,7 @@ extension ConversationViewState {
         catState: .idle,
         mouthPose: .closed,
         microphoneStatus: "マイクは待機中",
-        activityStatus: "会話を始める準備ができました",
-        provisionalTranscript: "",
-        caption: "",
-        typedText: "",
-        showsTypedInput: false,
-        errorMessage: nil,
-        recoveries: []
+        activityStatus: "会話を始める準備ができました"
     )
 
     static let preparing = Self(
@@ -121,13 +96,7 @@ extension ConversationViewState {
         catState: .thinking,
         mouthPose: .closed,
         microphoneStatus: "会話の準備中",
-        activityStatus: "準備しています",
-        provisionalTranscript: "",
-        caption: "",
-        typedText: "",
-        showsTypedInput: false,
-        errorMessage: nil,
-        recoveries: []
+        activityStatus: "準備しています"
     )
 
     static let listening = Self(
@@ -135,13 +104,7 @@ extension ConversationViewState {
         catState: .listening,
         mouthPose: .closed,
         microphoneStatus: "端末上で聞き取り中",
-        activityStatus: "話しかけてください",
-        provisionalTranscript: "",
-        caption: "",
-        typedText: "",
-        showsTypedInput: false,
-        errorMessage: nil,
-        recoveries: []
+        activityStatus: "話しかけてください"
     )
 
     static let thinking = Self(
@@ -149,13 +112,7 @@ extension ConversationViewState {
         catState: .thinking,
         mouthPose: .closed,
         microphoneStatus: "聞き取りを休止",
-        activityStatus: "考えています",
-        provisionalTranscript: "",
-        caption: "",
-        typedText: "",
-        showsTypedInput: false,
-        errorMessage: nil,
-        recoveries: []
+        activityStatus: "考えています"
     )
 
     static let clarifying = Self(
@@ -164,12 +121,7 @@ extension ConversationViewState {
         mouthPose: .small,
         microphoneStatus: "聞き返しの間は聞き取りを休止",
         activityStatus: "聞き返しています",
-        provisionalTranscript: "",
-        caption: "今の、ぼくに言った？",
-        typedText: "",
-        showsTypedInput: false,
-        errorMessage: nil,
-        recoveries: []
+        caption: "今の、ぼくに言った？"
     )
 
     static func speaking(caption: String) -> Self {
@@ -179,12 +131,7 @@ extension ConversationViewState {
             mouthPose: .medium,
             microphoneStatus: "返事の間は聞き取りを休止",
             activityStatus: "話しています",
-            provisionalTranscript: "",
-            caption: caption,
-            typedText: "",
-            showsTypedInput: false,
-            errorMessage: nil,
-            recoveries: []
+            caption: caption
         )
     }
 
@@ -199,10 +146,6 @@ extension ConversationViewState {
             mouthPose: .closed,
             microphoneStatus: "マイクは待機中",
             activityStatus: "会話を続けられません",
-            provisionalTranscript: "",
-            caption: "",
-            typedText: "",
-            showsTypedInput: false,
             errorMessage: message,
             recoveries: recoveries
         )

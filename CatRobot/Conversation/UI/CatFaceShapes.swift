@@ -102,8 +102,13 @@ enum CatFaceGeometry {
             CGPoint(x: 0.242, y: 0.702), CGPoint(x: 0.393, y: 0.657),
             CGPoint(x: 0.269, y: 0.766), CGPoint(x: 0.400, y: 0.684),
         ]
-        return left.map { ($0, CGPoint(x: 1 - $0.x, y: $0.y)) }
+        return left.map { ($0, CatFaceSide.right.point($0)) }
     }()
+
+    static let rightInnerEar = leftInnerEar.mirrored
+    static let rightSclera = leftSclera.mirrored
+    static let rightLid = leftLid.mirrored
+    static let rightWhiskers = leftWhiskers.map(\.mirrored)
 
     static let landmarksAndControlPoints: [CGPoint] = {
         let mouthPoses: [MouthPose] = [.small, .medium, .wide]
@@ -119,7 +124,7 @@ enum CatFaceGeometry {
             CGPoint(x: 0.404, y: 0.455), CGPoint(x: 0.404, y: 0.575),
         ]
         let ellipsePoints = [eyeCenter, muzzleCenter] + leftEyeEllipsePoints
-            + ([eyeCenter, muzzleCenter] + leftEyeEllipsePoints).map { CGPoint(x: 1 - $0.x, y: $0.y) }
+            + ([eyeCenter, muzzleCenter] + leftEyeEllipsePoints).map { CatFaceSide.right.point($0) }
             + [noseCenter, mouthHinge]
         return pathPoints.flatMap(\.points) + ellipsePoints
     }()
@@ -185,12 +190,11 @@ struct NormalizedPath {
         }
 
         var mirrored: Self {
-            func mirror(_ point: CGPoint) -> CGPoint { CGPoint(x: 1 - point.x, y: point.y) }
             return switch self {
-            case let .move(point): Command.move(mirror(point))
-            case let .line(point): Command.line(mirror(point))
+            case let .move(point): Command.move(CatFaceSide.right.point(point))
+            case let .line(point): Command.line(CatFaceSide.right.point(point))
             case let .curve(to, control1, control2):
-                Command.curve(to: mirror(to), control1: mirror(control1), control2: mirror(control2))
+                Command.curve(to: CatFaceSide.right.point(to), control1: CatFaceSide.right.point(control1), control2: CatFaceSide.right.point(control2))
             case .close: Command.close
             }
         }
@@ -204,8 +208,6 @@ struct NormalizedPath {
 
     static func symmetricClosed(leftHalf: [Command], lowerControl: CGPoint) -> Self {
         guard case let .move(start)? = leftHalf.first else { return Self([]) }
-
-        func mirror(_ point: CGPoint) -> CGPoint { CGPoint(x: 1 - point.x, y: point.y) }
 
         var anchors = [start]
         for command in leftHalf.dropFirst() {
@@ -222,17 +224,17 @@ struct NormalizedPath {
             let previous = anchors[index]
             switch command {
             case .line:
-                commands.append(.line(mirror(previous)))
+                commands.append(.line(CatFaceSide.right.point(previous)))
             case let .curve(_, control1, control2):
-                commands.append(.curve(to: mirror(previous),
-                                       control1: mirror(control2),
-                                       control2: mirror(control1)))
+                commands.append(.curve(to: CatFaceSide.right.point(previous),
+                                       control1: CatFaceSide.right.point(control2),
+                                       control2: CatFaceSide.right.point(control1)))
             case .move, .close:
                 break
             }
         }
         commands.append(.curve(to: start,
-                               control1: mirror(lowerControl),
+                               control1: CatFaceSide.right.point(lowerControl),
                                control2: lowerControl))
         commands.append(.close)
         return Self(commands)
@@ -268,21 +270,21 @@ struct CatHeadShape: Shape {
 struct CatInnerEarShape: Shape {
     let side: CatFaceSide
     func path(in rect: CGRect) -> Path {
-        (side == .left ? CatFaceGeometry.leftInnerEar : CatFaceGeometry.leftInnerEar.mirrored).path(in: rect)
+        (side == .left ? CatFaceGeometry.leftInnerEar : CatFaceGeometry.rightInnerEar).path(in: rect)
     }
 }
 
 struct CatScleraShape: Shape {
     let side: CatFaceSide
     func path(in rect: CGRect) -> Path {
-        (side == .left ? CatFaceGeometry.leftSclera : CatFaceGeometry.leftSclera.mirrored).path(in: rect)
+        (side == .left ? CatFaceGeometry.leftSclera : CatFaceGeometry.rightSclera).path(in: rect)
     }
 }
 
 struct CatLidShape: Shape {
     let side: CatFaceSide
     func path(in rect: CGRect) -> Path {
-        (side == .left ? CatFaceGeometry.leftLid : CatFaceGeometry.leftLid.mirrored).path(in: rect)
+        (side == .left ? CatFaceGeometry.leftLid : CatFaceGeometry.rightLid).path(in: rect)
     }
 }
 

@@ -102,10 +102,10 @@ final class ConversationViewStateTests: XCTestCase {
             }
         )
 
-        actions.performTypedInput(.show)
+        actions.showTypedInput()
         XCTAssertTrue(isPresented)
 
-        actions.performTypedInput(.dismiss)
+        actions.hideTypedInput()
         XCTAssertFalse(isPresented)
 
         actions.performRecovery(.showTypedInput)
@@ -113,7 +113,7 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(recoveredActions, [.showTypedInput])
         XCTAssertEqual(showRequestCount, 1)
 
-        actions.performTypedInput(.send)
+        actions.sendTypedText()
         XCTAssertTrue(isPresented)
         XCTAssertEqual(submittedCount, 1)
     }
