@@ -16,7 +16,6 @@ struct UtteranceSegmenter: Sendable {
 
     private let configuration: Configuration
     private var finalizedSegments: [String] = []
-    private var provisionalText: String?
     private var firstActivityAt: TimeInterval?
     private var latestActivityAt: TimeInterval?
 
@@ -37,9 +36,6 @@ struct UtteranceSegmenter: Sendable {
 
         if event.isFinal {
             finalizedSegments.append(text)
-            provisionalText = nil
-        } else {
-            provisionalText = text
         }
     }
 
@@ -65,7 +61,6 @@ struct UtteranceSegmenter: Sendable {
 
     private mutating func reset() {
         finalizedSegments.removeAll(keepingCapacity: true)
-        provisionalText = nil
         firstActivityAt = nil
         latestActivityAt = nil
     }
