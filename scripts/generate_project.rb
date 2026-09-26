@@ -175,54 +175,27 @@ scheme.save_as(PROJECT_PATH.to_s, APP_NAME, true)
 
 puts "Generated #{PROJECT_PATH.relative_path_from(ROOT)} with xcodeproj #{Xcodeproj::VERSION}"
 
-# Device-only experiment; ordinary unit tests never start the model.
-device_scheme = Xcodeproj::XCScheme.new
-device_scheme.configure_with_targets(app_target, test_target, launch_target: true)
-device_scheme.test_action.build_configuration = "Debug"
-device_scheme.test_action.should_use_launch_scheme_args_env = false
-device_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "GEMMA_DEVICE_TESTS", value: "1" }])
-selected_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
-selected_test.identifier = "GemmaDeviceTests"
-device_scheme.test_action.testables.first.selected_tests = [selected_test]
-device_scheme.test_action.testables.first.use_test_selection_whitelist = true
-device_scheme.test_action.testables.first.parallelizable = false
-device_scheme.save_as(PROJECT_PATH.to_s, "GemmaDeviceTests", true)
-
-app_device_scheme = Xcodeproj::XCScheme.new
-app_device_scheme.configure_with_targets(app_target, test_target, launch_target: true)
-app_device_scheme.test_action.build_configuration = "Debug"
-app_device_scheme.test_action.should_use_launch_scheme_args_env = false
-app_device_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "GEMMA_APP_DEVICE_TESTS", value: "1" }])
-app_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
-app_test.identifier = "GemmaAppDeviceTests"
-app_device_scheme.test_action.testables.first.selected_tests = [app_test]
-app_device_scheme.test_action.testables.first.use_test_selection_whitelist = true
-app_device_scheme.test_action.testables.first.parallelizable = false
-app_device_scheme.save_as(PROJECT_PATH.to_s, "GemmaAppDeviceTests", true)
-
-latency_scheme = Xcodeproj::XCScheme.new
-latency_scheme.configure_with_targets(app_target, test_target, launch_target: true)
-latency_scheme.test_action.build_configuration = "Debug"
-latency_scheme.test_action.should_use_launch_scheme_args_env = false
-latency_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "CATROBOT_REPLY_LATENCY_TESTS", value: "1" }])
-latency_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
-latency_test.identifier = "ReplyLatencyDeviceTests"
-latency_scheme.test_action.testables.first.selected_tests = [latency_test]
-latency_scheme.test_action.testables.first.use_test_selection_whitelist = true
-latency_scheme.test_action.testables.first.parallelizable = false
-latency_scheme.save_as(PROJECT_PATH.to_s, "ReplyLatencyDeviceTests", true)
-
-integration_scheme = Xcodeproj::XCScheme.new
-integration_scheme.configure_with_targets(app_target, test_target, launch_target: true)
-integration_scheme.test_action.build_configuration = "Debug"
-integration_scheme.test_action.should_use_launch_scheme_args_env = false
-integration_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([{ key: "SUPER_INTEGRATION_TESTS", value: "1" }])
-integration_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
-integration_test.identifier = "SupertonicIntegrationDeviceTests"
-integration_scheme.test_action.testables.first.selected_tests = [integration_test]
-integration_scheme.test_action.testables.first.use_test_selection_whitelist = true
-integration_scheme.test_action.testables.first.parallelizable = false
-integration_scheme.save_as(PROJECT_PATH.to_s, "SupertonicIntegrationDeviceTests", true)
+# Device-only experiments; ordinary unit tests never start the models.
+[
+  ["GemmaDeviceTests", "GEMMA_DEVICE_TESTS"],
+  ["GemmaAppDeviceTests", "GEMMA_APP_DEVICE_TESTS"],
+  ["ReplyLatencyDeviceTests", "CATROBOT_REPLY_LATENCY_TESTS"],
+  ["SupertonicIntegrationDeviceTests", "SUPER_INTEGRATION_TESTS"]
+].each do |identifier, environment_key|
+  device_scheme = Xcodeproj::XCScheme.new
+  device_scheme.configure_with_targets(app_target, test_target, launch_target: true)
+  device_scheme.test_action.build_configuration = "Debug"
+  device_scheme.test_action.should_use_launch_scheme_args_env = false
+  device_scheme.test_action.environment_variables = Xcodeproj::XCScheme::EnvironmentVariables.new([
+    { key: environment_key, value: "1" }
+  ])
+  selected_test = Xcodeproj::XCScheme::TestAction::TestableReference::Test.new
+  selected_test.identifier = identifier
+  device_scheme.test_action.testables.first.selected_tests = [selected_test]
+  device_scheme.test_action.testables.first.use_test_selection_whitelist = true
+  device_scheme.test_action.testables.first.parallelizable = false
+  device_scheme.save_as(PROJECT_PATH.to_s, identifier, true)
+end
 
 if resolved_lock
   FileUtils.mkdir_p(lock_path.dirname)

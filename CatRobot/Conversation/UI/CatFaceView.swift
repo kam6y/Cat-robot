@@ -7,6 +7,7 @@ struct CatFaceView: View {
 
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var blinkScale: CGFloat = 1
+    private static let mouthPoses: [MouthPose] = [.closed, .small, .medium, .wide]
 
     var body: some View {
         GeometryReader { proxy in
@@ -26,10 +27,12 @@ struct CatFaceView: View {
                         .offset(y: attentionOffset * size.height)
                 }
 
-                ForEach(Array(CatFaceGeometry.foreheadMarks.enumerated()), id: \.offset) { _, mark in
+                ForEach(CatFaceGeometry.foreheadMarks.indices, id: \.self) { index in
+                    let mark = CatFaceGeometry.foreheadMarks[index]
                     CatNormalizedPathShape(definition: mark).fill(Palette.teal)
                 }
-                ForEach(Array(CatFaceGeometry.browMarks.enumerated()), id: \.offset) { _, mark in
+                ForEach(CatFaceGeometry.browMarks.indices, id: \.self) { index in
+                    let mark = CatFaceGeometry.browMarks[index]
                     CatNormalizedPathShape(definition: mark).fill(Palette.cream)
                 }
 
@@ -116,7 +119,8 @@ struct CatFaceView: View {
     @ViewBuilder
     private func mouth(outline: CGFloat) -> some View {
         ZStack {
-            ForEach(Array([MouthPose.closed, .small, .medium, .wide].enumerated()), id: \.offset) { _, pose in
+            ForEach(Self.mouthPoses.indices, id: \.self) { index in
+                let pose = Self.mouthPoses[index]
                 mouthLayer(for: pose, outline: outline)
                     .opacity(pose == mouthPose ? 1 : 0)
             }
@@ -134,13 +138,15 @@ struct CatFaceView: View {
                 CatTongueShape(pose: pose)
                     .fill(Palette.tongue)
 
-                ForEach(Array(CatFaceGeometry.fangs.enumerated()), id: \.offset) { _, fang in
+                ForEach(CatFaceGeometry.fangs.indices, id: \.self) { index in
+                    let fang = CatFaceGeometry.fangs[index]
                     CatNormalizedPathShape(definition: fang).fill(Palette.cream)
                 }
             }
         }
 
-        ForEach(Array(CatFaceGeometry.mouthLines.enumerated()), id: \.offset) { _, line in
+        ForEach(CatFaceGeometry.mouthLines.indices, id: \.self) { index in
+            let line = CatFaceGeometry.mouthLines[index]
             CatNormalizedPathShape(definition: line)
                 .stroke(Palette.outline,
                         style: StrokeStyle(lineWidth: outline * 0.80, lineCap: .round, lineJoin: .round))
@@ -149,11 +155,12 @@ struct CatFaceView: View {
 
     @ViewBuilder
     private func whiskers(outline: CGFloat) -> some View {
-        ForEach(Array(CatFaceGeometry.leftWhiskers.enumerated()), id: \.offset) { _, whisker in
+        ForEach(CatFaceGeometry.leftWhiskers.indices, id: \.self) { index in
+            let whisker = CatFaceGeometry.leftWhiskers[index]
             CatNormalizedPathShape(definition: whisker)
                 .stroke(Palette.cream,
                         style: StrokeStyle(lineWidth: outline * 0.65, lineCap: .round, lineJoin: .round))
-            CatNormalizedPathShape(definition: whisker.mirrored)
+            CatNormalizedPathShape(definition: CatFaceGeometry.rightWhiskers[index])
                 .stroke(Palette.cream,
                         style: StrokeStyle(lineWidth: outline * 0.65, lineCap: .round, lineJoin: .round))
         }

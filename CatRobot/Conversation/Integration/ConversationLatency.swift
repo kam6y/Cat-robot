@@ -100,8 +100,7 @@ protocol ConversationLatencySignposting: AnyObject, Sendable {
 final class ConversationLatencyTracker: ConversationLatencyTracking {
     private struct ActiveTurn {
         var context: ConversationLatencySignpostContext
-        let handles: [ConversationLatencyMetric: ConversationLatencySignpostHandle]
-        var remainingMetrics: Set<ConversationLatencyMetric>
+        var handles: [ConversationLatencyMetric: ConversationLatencySignpostHandle]
         var selectedPath: ConversationLatencyPath?
     }
 
@@ -138,7 +137,6 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
         activeTurns[token] = ActiveTurn(
             context: context,
             handles: handles,
-            remainingMetrics: Set(ConversationLatencyMetric.allCases),
             selectedPath: nil
         )
         return token
@@ -204,7 +202,7 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
     }
 
     private func store(_ turn: ActiveTurn, for token: ConversationLatencyToken) {
-        if turn.remainingMetrics.isEmpty {
+        if turn.handles.isEmpty {
             activeTurns[token] = nil
         } else {
             activeTurns[token] = turn
@@ -217,8 +215,7 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
         outcome: ConversationLatencySignpostOutcome,
         at timestamp: TimeInterval
     ) {
-        guard turn.remainingMetrics.remove(metric) != nil,
-              let handle = turn.handles[metric] else { return }
+        guard let handle = turn.handles.removeValue(forKey: metric) else { return }
 
         signposts.end(
             handle,

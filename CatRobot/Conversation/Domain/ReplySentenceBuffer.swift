@@ -10,7 +10,10 @@ struct ReplySentenceBuffer {
     private static let closers = Set(pairs.values).subtracting(["\""])
 
     mutating func receive(_ snapshot: String) throws -> String? {
-        if sent != nil { _ = try remainder(in: snapshot); return nil }
+        if let sent {
+            guard snapshot.hasPrefix(sent) else { throw ConversationServiceError.modelGenerationFailed }
+            return nil
+        }
         var stack: [Character] = []
         var candidate: String.Index?
         var ready: String.Index?

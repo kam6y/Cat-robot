@@ -4,7 +4,6 @@ import XCTest
 
 final class FoundationModelAvailabilityServiceTests: XCTestCase {
     func testMapsEveryFrameworkAvailabilityReason() async {
-        let locale = Locale(identifier: "ja-JP")
         let cases: [(FoundationModelAvailabilitySnapshot, ModelAvailability)] = [
             (.init(availability: .available, supportsLocale: true), .available),
             (.init(availability: .available, supportsLocale: false), .unsupportedLocale),
@@ -14,7 +13,7 @@ final class FoundationModelAvailabilityServiceTests: XCTestCase {
         ]
 
         for (snapshot, expected) in cases {
-            let service = FoundationModelAvailabilityService(locale: locale) { snapshot }
+            let service = FoundationModelAvailabilityService { snapshot }
 
             let actual = await service.availability()
 

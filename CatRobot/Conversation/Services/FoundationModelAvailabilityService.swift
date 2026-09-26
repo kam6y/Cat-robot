@@ -14,12 +14,11 @@ struct FoundationModelAvailabilitySnapshot: Sendable {
 }
 
 struct FoundationModelAvailabilityService: ModelAvailabilityChecking {
-    private let locale: Locale
     private let snapshot: @Sendable () -> FoundationModelAvailabilitySnapshot
 
     init(locale: Locale = Locale(identifier: "ja-JP")) {
         let model = SystemLanguageModel(useCase: .general, guardrails: .default)
-        self.init(locale: locale) {
+        self.init {
             let availability: FoundationModelAvailabilitySnapshot.Availability
             switch model.availability {
             case .available:
@@ -45,10 +44,8 @@ struct FoundationModelAvailabilityService: ModelAvailabilityChecking {
     }
 
     init(
-        locale: Locale,
         snapshot: @escaping @Sendable () -> FoundationModelAvailabilitySnapshot
     ) {
-        self.locale = locale
         self.snapshot = snapshot
     }
 

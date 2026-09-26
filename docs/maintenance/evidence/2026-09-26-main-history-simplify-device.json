@@ -1,0 +1,346 @@
+{
+  "sourceCommit": "c231a44244e130d85e9890026d9b45fb90255126",
+  "baselineCommit": "dfc9de172f3bd124ae3f7a07ddbafc2ac5725289",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 27.2 (24B5089g)",
+  "connection": "USB",
+  "audioRoutesObserved": [
+    "BluetoothA2DPOutput",
+    "BluetoothHFP"
+  ],
+  "runs": [
+    {
+      "run": "device-voices",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-memory-app",
+      "result": "Failed",
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0
+    },
+    {
+      "run": "baseline-device-app",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-lifecycle",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-memory-seed",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-diagnostic-app",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-memory-recall",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-memory-forget",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-memory-empty",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "run": "device-final-app",
+      "result": "Passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "initialConversation": [
+    {
+      "input": "猫ちゃん、あなたは何が好き？",
+      "kind": "classification",
+      "result": "addressed"
+    },
+    {
+      "input": "お母さん、明日のお弁当を作ってください。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "佐藤先生、この問題を教えてください。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "独り言だけど、今日は疲れたな。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "AIのあなたに教えてほしい。猫は何時間寝るの？",
+      "kind": "classification",
+      "result": "addressed"
+    },
+    {
+      "input": "明日は晴れるかな。",
+      "kind": "classification",
+      "result": "ambiguous"
+    },
+    {
+      "caption": "はい、覚えておきますね。麦茶がお好きなんですね。",
+      "completionSeconds": 5.310010583343683,
+      "input": "私の好きな飲み物は麦茶です。覚えてね。",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "はい、覚えておきますね。麦茶がお好きなんですね。",
+      "completionSeconds": 0.30122233333531767,
+      "input": "訂正です。私が好きなのはほうじ茶です。",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "麦茶がお好きなんですね。",
+      "completionSeconds": 4.027423541672761,
+      "input": "私の好きな飲み物は何？",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "麦茶です。",
+      "kind": "oversized-input-preserves-memory"
+    },
+    {
+      "caption": "おかえりなさい。",
+      "kind": "resume"
+    },
+    {
+      "caption": "ただいま。",
+      "kind": "pause-during-generation-and-immediate-resume"
+    },
+    {
+      "caption": "こんにちは。",
+      "kind": "reset-after-partial-stream"
+    }
+  ],
+  "baselineConversation": [
+    {
+      "input": "猫ちゃん、あなたは何が好き？",
+      "kind": "classification",
+      "result": "addressed"
+    },
+    {
+      "input": "お母さん、明日のお弁当を作ってください。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "佐藤先生、この問題を教えてください。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "独り言だけど、今日は疲れたな。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "AIのあなたに教えてほしい。猫は何時間寝るの？",
+      "kind": "classification",
+      "result": "addressed"
+    },
+    {
+      "input": "明日は晴れるかな。",
+      "kind": "classification",
+      "result": "ambiguous"
+    },
+    {
+      "caption": "はい、覚えておきますね。麦茶がお好きなんですね。",
+      "completionSeconds": 7.0317257916758535,
+      "input": "私の好きな飲み物は麦茶です。覚えてね。",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "なるほど、ほうじ茶がお好きなんですね。承知いたしました。",
+      "completionSeconds": 7.303852791679674,
+      "input": "訂正です。私が好きなのはほうじ茶です。",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "ほうじ茶がお好きなんですよ。",
+      "completionSeconds": 4.153575250005815,
+      "input": "私の好きな飲み物は何？",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "ほうじ茶ですね。",
+      "kind": "oversized-input-preserves-memory"
+    },
+    {
+      "caption": "おかえりなさい。",
+      "kind": "resume"
+    },
+    {
+      "caption": "ただいま。",
+      "kind": "pause-during-generation-and-immediate-resume"
+    },
+    {
+      "caption": "こんにちは。",
+      "kind": "reset-after-partial-stream"
+    }
+  ],
+  "finalConversation": [
+    {
+      "input": "猫ちゃん、あなたは何が好き？",
+      "kind": "classification",
+      "result": "addressed"
+    },
+    {
+      "input": "お母さん、明日のお弁当を作ってください。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "佐藤先生、この問題を教えてください。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "独り言だけど、今日は疲れたな。",
+      "kind": "classification",
+      "result": "notAddressed"
+    },
+    {
+      "input": "AIのあなたに教えてほしい。猫は何時間寝るの？",
+      "kind": "classification",
+      "result": "addressed"
+    },
+    {
+      "input": "明日は晴れるかな。",
+      "kind": "classification",
+      "result": "ambiguous"
+    },
+    {
+      "caption": "はい、覚えておきますね。麦茶がお好きなんですね。",
+      "completionSeconds": 7.49114387499867,
+      "input": "私の好きな飲み物は麦茶です。覚えてね。",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "なるほど、ほうじ茶がお好きなんですね。承知いたしました。",
+      "completionSeconds": 7.3835218333260855,
+      "input": "訂正です。私が好きなのはほうじ茶です。",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "ほうじ茶がお好きなんですよ。",
+      "completionSeconds": 4.1362830416619545,
+      "input": "私の好きな飲み物は何？",
+      "kind": "typed-with-real-speech",
+      "phase": "paused"
+    },
+    {
+      "caption": "ほうじ茶ですね。",
+      "kind": "oversized-input-preserves-memory"
+    },
+    {
+      "caption": "おかえりなさい。",
+      "kind": "resume"
+    },
+    {
+      "caption": "ただいま。",
+      "kind": "pause-during-generation-and-immediate-resume"
+    },
+    {
+      "caption": "こんにちは。",
+      "kind": "reset-after-partial-stream"
+    }
+  ],
+  "persistence": [
+    {
+      "phase": "seed",
+      "processID": 9602,
+      "revision": 2
+    },
+    {
+      "answer": "ほうじ茶が好きだと覚えておきました。",
+      "completionSeconds": 10.150250499995309,
+      "phase": "recall",
+      "processID": 9652,
+      "recallCorrect": true
+    },
+    {
+      "phase": "forget",
+      "processID": 9657
+    },
+    {
+      "phase": "empty",
+      "processID": 9674
+    }
+  ],
+  "compaction": [
+    {
+      "compaction": 1,
+      "retainedRawTokens": 2331,
+      "summaryTokens": 512
+    },
+    {
+      "compaction": 2,
+      "retainedRawTokens": 2332,
+      "summaryTokens": 512
+    },
+    {
+      "recall": "旅行先は金沢で、好きな飲み物はほうじ茶です。"
+    },
+    {
+      "restoredRecall": "旅行先は金沢、好きな飲み物はほうじ茶です。",
+      "restoredSummaryMatches": true,
+      "savedRevision": 24
+    }
+  ],
+  "diagnostics": {
+    "temporaryChanges": "Notification observers in testLiveGemmaClassificationTypedConversationSpeechAndResume only; removed before final run. No production source change.",
+    "observedRouteChangeReasons": [
+      3
+    ],
+    "observedInterruptions": 0,
+    "initialCancellationTrigger": "Not captured; initial logs have cancelled traces and paused state. Do not claim a confirmed Bluetooth root cause.",
+    "persistenceBuildNote": "recall/forget used a build with the temporary observer in the unrelated live conversation test; the persistence test and production sources were unchanged."
+  },
+  "manualConfirmation": {
+    "request": "USBを外しBluetoothをオフにした本体マイクで「猫ちゃん、こんにちは」に音声で返答するかの確認",
+    "userResponse": "okですマージして下さい。",
+    "source": "User confirmation; not an automated microphone measurement"
+  }
+}

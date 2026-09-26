@@ -135,7 +135,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             state = .running(capture)
             return stream
         case .failure(let error):
-            let mappedError = Self.mapCaptureError(error)
+            let mappedError = mapSpeechCaptureError(error)
             guard case .starting(let active) = state,
                   active.id == id else {
                 throw mappedError
@@ -163,7 +163,6 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
                 lifecycleID: capture.id,
                 forStartID: capture.id
             )
-            capture.output.beginGracefulFinalization()
             let startResult = await capture.startTask.result
             await stopCapture(capture, startResult: startResult)
             completeLifecycle(capture.id)
@@ -187,7 +186,6 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         }
         guard case .running(let capture) = state else { return }
         state = .stopping(capture.id)
-        capture.output.beginGracefulFinalization()
         await stopCapture(capture)
         completeLifecycle(capture.id)
     }
@@ -213,12 +211,10 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
                 lifecycleID: shutdownID,
                 forStartID: capture.id
             )
-            capture.output.beginGracefulFinalization()
             let startResult = await capture.startTask.result
             await stopCapture(capture, startResult: startResult)
         case .running(let capture):
             state = .shuttingDown(shutdownID)
-            capture.output.beginGracefulFinalization()
             await stopCapture(capture)
         case .prepared(let prepared):
             state = .shuttingDown(shutdownID)
@@ -246,12 +242,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             return prepared
         case .preparing(let preparation):
             return try await resolvePreparation(preparation)
-        case .running(let capture):
-            return PreparedCapture(
-                preparationID: capture.preparationID,
-                driver: capture.driver
-            )
-        case .starting(let capture):
+        case .running(let capture), .starting(let capture):
             return PreparedCapture(
                 preparationID: capture.preparationID,
                 driver: capture.driver
@@ -297,9 +288,8 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
                 return prepared
             case .prepared(let active) where active.preparationID == preparation.id:
                 return active
-            case .running(let active) where active.preparationID == preparation.id:
-                return prepared
-            case .starting(let active) where active.preparationID == preparation.id:
+            case .running(let active) where active.preparationID == preparation.id,
+                 .starting(let active) where active.preparationID == preparation.id:
                 return prepared
             default:
                 throw ConversationServiceError.cancelled
@@ -309,7 +299,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
                active.id == preparation.id {
                 state = .unprepared
             }
-            throw Self.mapCaptureError(error)
+            throw mapSpeechCaptureError(error)
         }
     }
 
@@ -318,13 +308,8 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         capture: RunningCapture
     ) async {
         switch state {
-        case .starting(let active) where active.id == capture.id:
-            state = .stopping(capture.id)
-            capture.output.beginImmediateCancellation()
-            capture.output.finish(throwing: error)
-            await capture.driver.cancel()
-            completeLifecycle(capture.id)
-        case .running(let active) where active.id == capture.id:
+        case .starting(let active) where active.id == capture.id,
+             .running(let active) where active.id == capture.id:
             state = .stopping(capture.id)
             capture.output.beginImmediateCancellation()
             capture.output.finish(throwing: error)
@@ -388,7 +373,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         if let startResult, case .failure(let error) = startResult {
             capture.output.beginImmediateCancellation()
             await capture.driver.cancel()
-            capture.output.finish(throwing: Self.mapCaptureError(error))
+            capture.output.finish(throwing: mapSpeechCaptureError(error))
             return
         }
 
@@ -398,7 +383,7 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         } catch {
             capture.output.beginImmediateCancellation()
             await capture.driver.cancel()
-            capture.output.finish(throwing: Self.mapCaptureError(error))
+            capture.output.finish(throwing: mapSpeechCaptureError(error))
         }
     }
 
@@ -418,16 +403,6 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
         case .unprepared, .preparing, .prepared, .starting, .running:
             return false
         }
-    }
-
-    private static func mapCaptureError(_ error: any Error) -> ConversationServiceError {
-        if let domainError = error as? ConversationServiceError {
-            return domainError
-        }
-        if error is CancellationError {
-            return .cancelled
-        }
-        return .speechCaptureFailed
     }
 }
 
@@ -529,7 +504,6 @@ actor SpeechCaptureCancellationCoordinator {
 private final class SpeechCaptureOutputGate: @unchecked Sendable {
     private enum State: Equatable {
         case running
-        case gracefullyFinalizing
         case immediatelyCancelling
         case finished
     }
@@ -546,15 +520,8 @@ private final class SpeechCaptureOutputGate: @unchecked Sendable {
 
     func yield(_ event: SpeechRecognitionEvent) {
         lock.withLock {
-            guard state == .running || state == .gracefullyFinalizing else { return }
-            _ = continuation.yield(event)
-        }
-    }
-
-    func beginGracefulFinalization() {
-        lock.withLock {
             guard state == .running else { return }
-            state = .gracefullyFinalizing
+            _ = continuation.yield(event)
         }
     }
 
@@ -689,7 +656,7 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
             do {
                 _ = try await analyzer.analyzeSequence(analyzerInputs)
             } catch {
-                let mapped = Self.mapBackgroundError(error)
+                let mapped = mapSpeechCaptureError(error)
                 await self?.backgroundFailed(mapped)
                 throw mapped
             }
@@ -704,7 +671,7 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
                     await self?.emit(event)
                 }
             } catch {
-                let mapped = Self.mapBackgroundError(error)
+                let mapped = mapSpeechCaptureError(error)
                 await self?.backgroundFailed(mapped)
                 throw mapped
             }
@@ -740,7 +707,7 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
             }
             clearRunState()
         } catch {
-            throw Self.mapBackgroundError(error)
+            throw mapSpeechCaptureError(error)
         }
     }
 
@@ -792,18 +759,6 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
         eventHandler = nil
         failureHandler = nil
         runPhase.finish()
-    }
-
-    private static func mapBackgroundError(
-        _ error: any Error
-    ) -> ConversationServiceError {
-        if let domainError = error as? ConversationServiceError {
-            return domainError
-        }
-        if error is CancellationError {
-            return .cancelled
-        }
-        return .speechCaptureFailed
     }
 }
 
@@ -882,4 +837,14 @@ private final class SpeechTapBridge: @unchecked Sendable {
         didFinishInput = true
         inputContinuation.finish()
     }
+}
+
+private func mapSpeechCaptureError(_ error: any Error) -> ConversationServiceError {
+    if let domainError = error as? ConversationServiceError {
+        return domainError
+    }
+    if error is CancellationError {
+        return .cancelled
+    }
+    return .speechCaptureFailed
 }

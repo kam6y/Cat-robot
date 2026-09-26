@@ -4,7 +4,6 @@ enum AddresseeRoute: Equatable, Sendable {
     case wakeOnly
     case accept(String)
     case classify(String)
-    case confirmPending(original: String)
     case dismissPending
     case ignore
 }

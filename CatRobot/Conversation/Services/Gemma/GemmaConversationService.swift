@@ -185,21 +185,11 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
     }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
-        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
-        let epoch = operationEpoch
-        await waitForCancelledInference()
-        try await prepareMemory()
-        guard operationEpoch == epoch else { throw ConversationServiceError.cancelled }
-        return try start(utterance, kind: .reply)
+        return try await start(utterance, kind: .reply)
     }
 
     func classify(_ utterance: String) async throws -> AddressTarget {
-        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
-        let epoch = operationEpoch
-        await waitForCancelledInference()
-        try await prepareMemory()
-        guard operationEpoch == epoch else { throw ConversationServiceError.cancelled }
-        let stream = try start(utterance, kind: .classification)
+        let stream = try await start(utterance, kind: .classification)
         var result = ""
         for try await snapshot in stream {
             try Task.checkCancellation()
@@ -224,11 +214,15 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         if cancellation?.isCancelled == true || persistenceState == .saving { await active?.value }
     }
 
-    private func start(_ prompt: String, kind: GemmaSessionKind) throws -> AsyncThrowingStream<String, Error> {
+    private func start(_ prompt: String, kind: GemmaSessionKind) async throws -> AsyncThrowingStream<String, Error> {
+        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
+        let epoch = operationEpoch
+        await waitForCancelledInference()
+        try await prepareMemory()
+        guard operationEpoch == epoch else { throw ConversationServiceError.cancelled }
         try Task.checkCancellation()
         guard active == nil, forgetting == nil, saveRetry == nil else { throw ConversationServiceError.modelBusy }
         if case .forgetFailed = persistenceState { throw ConversationMemoryError.unavailable }
-        let epoch = operationEpoch
         let control = GemmaInferenceCancellation()
         cancellation = control
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
@@ -364,10 +358,8 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
         defer { summarizer.close() }
         // Summary failure is recoverable. Do not route it through the UI's
         // contextExceeded reset, which would discard the original conversation.
-        guard try fits(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit) else {
-            throw ConversationServiceError.modelGenerationFailed
-        }
-        let summary = try await consume(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit, control: control)
+        let summary = try await consume(summarizer, prompt: prompt, limit: GemmaContext.summaryOutputLimit,
+                                        control: control, capacityFailure: .modelGenerationFailed)
         guard try await runtime.countTokens(summary) <= GemmaContext.summaryOutputLimit else {
             throw ConversationServiceError.modelGenerationFailed
         }
@@ -381,10 +373,11 @@ actor GemmaConversationService: ReplyGenerating, AddressClassifying, ModelAvaila
 
     private func consume(
         _ session: any GemmaSession, prompt: String, limit: Int, control: GemmaInferenceCancellation,
-        into continuation: AsyncThrowingStream<String, Error>.Continuation? = nil
+        into continuation: AsyncThrowingStream<String, Error>.Continuation? = nil,
+        capacityFailure: ConversationServiceError = .inputTooLong
     ) async throws -> String {
         try checkCancellation(control)
-        guard try fits(session, prompt: prompt, limit: limit) else { throw ConversationServiceError.inputTooLong }
+        guard try fits(session, prompt: prompt, limit: limit) else { throw capacityFailure }
         let source = try control.start(session, prompt: prompt, outputLimit: limit)
         defer { control.detach() }
         var snapshot = ""

@@ -16,7 +16,6 @@ struct UtteranceSegmenter: Sendable {
 
     private let configuration: Configuration
     private var finalizedSegments: [String] = []
-    private var provisionalText: String?
     private var firstActivityAt: TimeInterval?
     private var latestActivityAt: TimeInterval?
 
@@ -28,6 +27,16 @@ struct UtteranceSegmenter: Sendable {
         self.configuration = configuration
     }
 
+    var silenceInterval: TimeInterval { configuration.silenceInterval }
+
+    func flushDelay(at timestamp: TimeInterval) -> TimeInterval {
+        let hardRemaining = max(
+            0,
+            configuration.maximumDuration - (timestamp - (firstActivityAt ?? timestamp))
+        )
+        return min(configuration.silenceInterval, hardRemaining)
+    }
+
     mutating func receive(_ event: SpeechRecognitionEvent, at timestamp: TimeInterval) {
         let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -37,9 +46,6 @@ struct UtteranceSegmenter: Sendable {
 
         if event.isFinal {
             finalizedSegments.append(text)
-            provisionalText = nil
-        } else {
-            provisionalText = text
         }
     }
 
@@ -65,7 +71,6 @@ struct UtteranceSegmenter: Sendable {
 
     private mutating func reset() {
         finalizedSegments.removeAll(keepingCapacity: true)
-        provisionalText = nil
         firstActivityAt = nil
         latestActivityAt = nil
     }

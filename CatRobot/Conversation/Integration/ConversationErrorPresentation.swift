@@ -95,9 +95,9 @@ struct ConversationErrorPresentation: Equatable, Sendable {
     }
 }
 
-private extension ConversationRecovery {
-    static let retry = Self(title: "もう一度", action: .retry)
-    static let checkAgain = Self(title: "もう一度確認", action: .retry)
-    static let settings = Self(title: "設定を開く", action: .openSettings)
+extension ConversationRecovery {
+    fileprivate static let retry = Self(title: "もう一度", action: .retry)
+    fileprivate static let checkAgain = Self(title: "もう一度確認", action: .retry)
+    fileprivate static let settings = Self(title: "設定を開く", action: .openSettings)
     static let typedInput = Self(title: "文字で話す", action: .showTypedInput)
 }
