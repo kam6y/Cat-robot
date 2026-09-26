@@ -404,8 +404,6 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
             return false
         }
     }
-
-
 }
 
 struct SpeechStartTeardownOwnership: Sendable {
@@ -762,8 +760,6 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
         failureHandler = nil
         runPhase.finish()
     }
-
-
 }
 
 private final class SpeechTapBridge: @unchecked Sendable {
