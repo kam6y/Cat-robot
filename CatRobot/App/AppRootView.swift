@@ -33,18 +33,10 @@ struct AppRootView: View {
             case .conversation:
                 ConversationView(
                     state: viewModel.viewState,
-                    actions: coordinator.makeActions(openSettings: openSettings)
+                    actions: coordinator.makeActions(openSettings: openSettings),
+                    isOpeningVoiceSettings: coordinator.isOpeningVoiceSettings
                 )
             }
-        }
-        .safeAreaInset(edge: .top, alignment: .trailing) {
-            Button(action: coordinator.openVoiceSettings) {
-                Label("声", systemImage: "speaker.wave.2")
-                    .padding(.horizontal, 18).padding(.vertical, 8)
-            }
-            .accessibilityLabel("声を選ぶ")
-            .accessibilityIdentifier("openVoiceSettings")
-            .disabled(coordinator.isOpeningVoiceSettings)
         }
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {

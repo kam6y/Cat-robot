@@ -4,6 +4,7 @@ import SwiftUI
 struct ConversationView: View {
     let state: ConversationViewState
     let actions: ConversationActions
+    var isOpeningVoiceSettings = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -60,15 +61,18 @@ struct ConversationView: View {
                 .accessibilityValue(accessibility.assistantStatus)
 
             Spacer(minLength: 0)
-            if ConversationMemoryPresentation(state: state.memoryState).supportsForget {
-                Menu {
+            Menu {
+                Button("声を選ぶ", systemImage: "speaker.wave.2", action: actions.openVoiceSettings)
+                    .accessibilityIdentifier("openVoiceSettings")
+                if ConversationMemoryPresentation(state: state.memoryState).supportsForget {
                     Button("会話を忘れる", role: .destructive, action: actions.requestForget)
-                } label: {
-                    Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
                 }
-                .accessibilityLabel("会話の設定")
-                .disabled(state.memoryState == .forgetting)
+            } label: {
+                Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
             }
+            .accessibilityLabel("会話の設定")
+            .accessibilityIdentifier("conversationSettings")
+            .disabled(state.memoryState == .forgetting || isOpeningVoiceSettings)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

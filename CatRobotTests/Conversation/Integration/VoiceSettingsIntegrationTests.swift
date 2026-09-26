@@ -7,7 +7,7 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
         let harness = ConversationHarness()
         let coordinator = ConversationAppCoordinator(viewModel: harness.sut, wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
         coordinator.beginConversation(); await coordinator.waitForOperations()
-        coordinator.openVoiceSettings(); await coordinator.waitForOperations()
+        coordinator.makeActions(openSettings: {}).openVoiceSettings(); await coordinator.waitForOperations()
         XCTAssertTrue(coordinator.showsVoiceSettings)
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         coordinator.makeActions(openSettings: {}).toggleListening()
@@ -24,7 +24,7 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
             let harness = ConversationHarness(permissionGate: gate)
             let coordinator = ConversationAppCoordinator(viewModel: harness.sut, wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
             coordinator.beginConversation(); await gate.waitUntilEntered()
-            coordinator.openVoiceSettings()
+            coordinator.makeActions(openSettings: {}).openVoiceSettings()
             if background { coordinator.scenePhaseDidChange(.background) }
             await gate.open(); await coordinator.waitForOperations()
             XCTAssertEqual(coordinator.showsVoiceSettings, !background)
@@ -46,7 +46,7 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
                 await harness.reply.yield("一文目。続き")
                 await player.waitForCalls(1)
             }
-            coordinator.openVoiceSettings()
+            coordinator.makeActions(openSettings: {}).openVoiceSettings()
             await coordinator.waitForOperations(); await run.value
             XCTAssertTrue(coordinator.showsVoiceSettings)
             XCTAssertEqual(harness.viewModel.viewState.phase, .paused)
