@@ -61,6 +61,7 @@ struct ConversationActions {
     var updateTypedText: (String) -> Void
     var sendTypedText: () -> Void
     var performRecovery: (ConversationRecoveryAction) -> Void
+    var openVoiceSettings: () -> Void = {}
     var requestForget: () -> Void = {}
     var cancelForget: () -> Void = {}
     var confirmForget: () -> Void = {}

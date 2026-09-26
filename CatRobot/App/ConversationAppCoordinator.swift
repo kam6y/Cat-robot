@@ -163,6 +163,7 @@ final class ConversationAppCoordinator {
                     self.viewModel.showTypedInput()
                 }
             },
+            openVoiceSettings: { [weak self] in self?.openVoiceSettings() },
             requestForget: { [weak self] in self?.viewModel.requestForgetConversation() },
             cancelForget: { [weak self] in self?.viewModel.cancelForgetConversation() },
             confirmForget: { [weak self] in
