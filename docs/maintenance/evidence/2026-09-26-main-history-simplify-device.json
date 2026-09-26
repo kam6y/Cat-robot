@@ -337,5 +337,10 @@
     "observedInterruptions": 0,
     "initialCancellationTrigger": "Not captured; initial logs have cancelled traces and paused state. Do not claim a confirmed Bluetooth root cause.",
     "persistenceBuildNote": "recall/forget used a build with the temporary observer in the unrelated live conversation test; the persistence test and production sources were unchanged."
+  },
+  "manualConfirmation": {
+    "request": "USBを外しBluetoothをオフにした本体マイクで「猫ちゃん、こんにちは」に音声で返答するかの確認",
+    "userResponse": "okですマージして下さい。",
+    "source": "User confirmation; not an automated microphone measurement"
   }
 }
