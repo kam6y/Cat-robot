@@ -85,9 +85,9 @@ final class AppleSpeechSynthesizer: SpeechSpeaking {
         nextRunID += 1
         let runID = nextRunID
         let pair = AsyncThrowingStream<SpeechEvent, Error>.makeStream()
-        // This also runs after finish(); the captured run guards make normal or
-        // delayed termination a no-op instead of stopping a later utterance.
-        pair.continuation.onTermination = { [weak self] _ in
+        // Only consumer cancellation needs stopping; completed runs are already cleared.
+        pair.continuation.onTermination = { [weak self] termination in
+            guard case .cancelled = termination else { return }
             Task { @MainActor [weak self] in
                 await self?.stop(runID: runID)
             }
