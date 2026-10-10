@@ -206,7 +206,7 @@
 - ツールは `tools:` 配列で渡す（端末側で実行）。サーバ側ツール（Web 検索など）は初版では使わない。
 - 画像は Foundation Models の添付（画像）セグメントとしてツール結果に含める。Opus 5.5 / Sonnet 5.5 / Haiku 5.5 の定数はいずれも画像入力に対応している（パッケージの capability 宣言で確認済み）。
 - `fixedEffort` の既定は `.low`（会話の遅延優先）。設定で `.medium` を選べる。
-- `fallbacks` は `.serverDefault` を使う。これは安全方針上の拒否応答が出たときだけ API が代替モデルで続きを生成する仕組みで、障害・レート制限の代替ではない（それは §6.2 の端末内モデル切り替えが担う）。代替が働いた応答はトランスクリプトに引き継ぎ印が付くので診断ログに残す。
+- `fallbacks` は使わない（`.models([])`。2026-10-11 の実装計画で `.serverDefault` から変更）。`fallbacks` は安全方針上の拒否応答が出たときだけ API が代替モデルで続きを生成する仕組みで、障害・レート制限の代替ではない（それは §6.2 の端末内モデル切り替えが担う）。Haiku 5.5 にはサーバ側の代替が無く、`fallbacks` に既定を指定しても拒否応答はそのまま、モデルの一覧を指定すると 400 になる（公式: Anthropic のモデル移行ガイド「Migrating to Claude Haiku 5.5」Safeguards 節）。パッケージ `ClaudeFallbacks` の注記も非対応モデルへの `fallbacks` 指定を API が拒否するとしている。設定で選べる 3 モデルの構成を揃えるため、どのモデルでも `fallbacks` を付けない。拒否応答は `LanguageModelError.refusal` として既存の文言で短く伝える。
 - `timeout` は 30 秒（パッケージ既定は 60 秒）。超過時は端末内モデルへの切り替え（§6.2）を試みる。
 - 文脈超過（`LanguageModelError.contextSizeExceeded`）は要約してセッションを作り直す（既存方式）。
 
