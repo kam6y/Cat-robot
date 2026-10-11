@@ -81,34 +81,6 @@ struct ConversationAccessibility: Equatable {
     }
 }
 
-enum ConversationLowerControlsLayout: Equatable {
-    case horizontalFirst
-    case stacked
-    case compactHorizontal
-
-    static func preferred(
-        for dynamicTypeSize: DynamicTypeSize,
-        showsTypedInput: Bool
-    ) -> Self {
-        guard dynamicTypeSize.isAccessibilitySize else { return .horizontalFirst }
-        return showsTypedInput ? .compactHorizontal : .stacked
-    }
-}
-
-enum ConversationVerticalLayout: Equatable {
-    case standard
-    case scrollableContentWithFixedControls
-
-    static func preferred(
-        for dynamicTypeSize: DynamicTypeSize,
-        showsTypedInput: Bool
-    ) -> Self {
-        showsTypedInput || dynamicTypeSize.isAccessibilitySize
-            ? .scrollableContentWithFixedControls
-            : .standard
-    }
-}
-
 enum ConversationPresentationPolicy {
     static let isStatusBarHidden = false
 }
@@ -143,42 +115,5 @@ enum ConversationAnnouncementPolicy {
         }
 
         return nil
-    }
-}
-
-struct ListeningControl: View {
-    let phase: ConversationPhase
-    let usesGlass: Bool
-    let usesCompactLabel: Bool
-    let action: () -> Void
-
-    private var labels: ConversationAccessibility {
-        ConversationAccessibility(phase: phase)
-    }
-
-    var body: some View {
-        if usesGlass {
-            button.buttonStyle(.glassProminent)
-        } else {
-            button.buttonStyle(.borderedProminent)
-        }
-    }
-
-    private var button: some View {
-        Button(action: action) {
-            Label(visibleActionLabel, systemImage: labels.listeningSymbol)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel(labels.listeningAction)
-        .accessibilityValue(labels.microphoneValue)
-        .accessibilityHint(labels.listeningHint)
-    }
-
-    private var visibleActionLabel: String {
-        guard usesCompactLabel else { return labels.listeningAction }
-        return labels.listeningSemantic == .pause ? "一時停止" : "再開"
     }
 }

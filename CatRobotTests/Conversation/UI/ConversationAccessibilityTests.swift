@@ -132,33 +132,6 @@ final class ConversationAccessibilityTests: XCTestCase {
         XCTAssertEqual(labels.listeningHint, "マイクの聞き取りを停止します")
     }
 
-    func testAccessibilityDynamicTypePrefersStackedLowerControls() {
-        XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(
-                for: .accessibility1,
-                showsTypedInput: false
-            ),
-            .stacked
-        )
-        XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(
-                for: .large,
-                showsTypedInput: false
-            ),
-            .horizontalFirst
-        )
-    }
-
-    func testAccessibilityTypedInputUsesCompactFixedControls() {
-        XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(
-                for: .accessibility1,
-                showsTypedInput: true
-            ),
-            .compactHorizontal
-        )
-    }
-
     func testAccessibilityTypedPanelUsesCompactHorizontalLayout() {
         XCTAssertEqual(
             TypedInputLayout.preferred(for: .accessibility1),
@@ -170,32 +143,8 @@ final class ConversationAccessibilityTests: XCTestCase {
         )
     }
 
-    func testKeyboardOrAccessibilityOverflowKeepsPrimaryControlsFixed() {
-        XCTAssertEqual(
-            ConversationVerticalLayout.preferred(
-                for: .large,
-                showsTypedInput: true
-            ),
-            .scrollableContentWithFixedControls
-        )
-        XCTAssertEqual(
-            ConversationVerticalLayout.preferred(
-                for: .accessibility1,
-                showsTypedInput: false
-            ),
-            .scrollableContentWithFixedControls
-        )
-        XCTAssertEqual(
-            ConversationVerticalLayout.preferred(
-                for: .large,
-                showsTypedInput: false
-            ),
-            .standard
-        )
-    }
-
     func testSettingsSheetDeclaresItsControls() {
         XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
-                       ["modelPicker", "effortPicker", "voicePresetPicker", "dailyTurnLimitStepper", "memoryFactsList"])
+                       ["modelPicker", "effortPicker", "voicePresetPicker", "dailyTurnLimitStepper", "memoryFactsList", "deleteAllMemoryButton"])
     }
 }

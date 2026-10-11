@@ -7,7 +7,12 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
     private var listeners: [AsyncStream<ConversationMemoryState>.Continuation] = []
     private(set) var forgets = 0
     var failsForget = false
-    init(state: ConversationMemoryState = .ready) { self.state = state }
+    /// 指定すると forgetConversation がこのゲートで待つ（削除中の操作を再現する）。
+    private let forgetGate: ConversationTestGate?
+    init(state: ConversationMemoryState = .ready, forgetGate: ConversationTestGate? = nil) {
+        self.state = state
+        self.forgetGate = forgetGate
+    }
     func setForgetFailure(_ value: Bool) { failsForget = value }
     func prepareMemory() throws {
         if case .restoreFailed(let error) = state { throw error }
@@ -29,6 +34,7 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
     }
     func forgetConversation() async throws {
         forgets += 1
+        await forgetGate?.wait()
         if failsForget { publish(.forgetFailed(.deleteFailed)); throw ConversationMemoryError.deleteFailed }
         publish(.ready)
     }
@@ -36,21 +42,25 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
 
 @MainActor
 final class ConversationMemoryIntegrationTests: XCTestCase {
-    func testConfirmedCoordinatorDeletionSurvivesDialogDismissal() async {
+    func testDeleteAllFromSettingsForgetsWhileTheSheetIsOpenAndListeningResumesOnClose() async {
         let memory = FakeConversationMemoryManager()
         let harness = ConversationHarness(memory: memory)
-        await harness.sut.submitTypedText("覚えて")
         let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
             wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
-        let actions = coordinator.makeActions(openSettings: {})
-        actions.requestForget()
-        actions.confirmForget()
-        // SwiftUI dismisses its dialog before the scheduled action task runs.
-        actions.cancelForget()
-        await coordinator.waitForOperations()
-        XCTAssertEqual(harness.sut.viewState.caption, "")
+        coordinator.beginConversation(); await coordinator.waitForOperations()
+        await harness.sut.submitTypedText("覚えて")
+        XCTAssertEqual(harness.sut.viewState.caption, "わかったよ")
+        coordinator.makeActions(openSettings: {}).openVoiceSettings(); await coordinator.waitForOperations()
+        XCTAssertTrue(coordinator.showsVoiceSettings)
+
+        await coordinator.deleteAllMemory()
         let forgets = await memory.forgets
-        XCTAssertEqual(forgets, 1)
+        XCTAssertEqual(forgets, 1, "シートを開いたまま削除できる")
+        XCTAssertEqual(harness.sut.viewState.caption, "")
+        XCTAssertEqual(harness.sut.viewState.phase, .paused, "シートが開いている間は再開しない")
+
+        coordinator.closeVoiceSettings(); await coordinator.waitForOperations()
+        XCTAssertEqual(harness.sut.viewState.phase, .listening, "閉じたら聞き取りを再開する")
         await harness.sut.shutdown()
     }
 
@@ -99,13 +109,10 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         let harness = ConversationHarness(memory: memory)
         await harness.sut.submitTypedText("こんにちは")
         harness.sut.updateTypedText("送信前の文")
-        harness.sut.requestForgetConversation()
-        harness.sut.cancelForgetConversation()
         let before = await memory.forgets
         XCTAssertEqual(before, 0)
         XCTAssertFalse(harness.sut.viewState.caption.isEmpty)
-        harness.sut.requestForgetConversation()
-        await harness.sut.confirmForgetConversation()
+        await harness.sut.forgetConversation()
         XCTAssertEqual(harness.sut.viewState.caption, "")
         XCTAssertEqual(harness.sut.viewState.typedText, "")
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
@@ -119,8 +126,7 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         let harness = ConversationHarness(memory: memory)
         await harness.sut.submitTypedText("覚えて")
         await memory.setForgetFailure(true)
-        harness.sut.requestForgetConversation()
-        await harness.sut.confirmForgetConversation()
+        await harness.sut.forgetConversation()
         XCTAssertNil(harness.sut.viewState.memoryNotice)
         XCTAssertEqual(harness.sut.viewState.memoryState, .forgetFailed(.deleteFailed))
         XCTAssertFalse(harness.sut.viewState.allowsTypedSubmission)

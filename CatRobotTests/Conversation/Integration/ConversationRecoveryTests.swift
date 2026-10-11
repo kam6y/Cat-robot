@@ -325,7 +325,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         XCTAssertEqual(harness.sut.viewState.caption, "こんにちは、会えてうれしいよ")
         XCTAssertEqual(harness.sut.viewState.typedText, "")
-        XCTAssertFalse(harness.sut.viewState.showsTypedInput)
+        XCTAssertTrue(harness.sut.viewState.showsTypedInput, "送信しても入力欄は閉じない")
     }
 
     func testTypedTurnClosesCaptureLosslesslyDiscardsTailAndResumesVoiceOnce() async {

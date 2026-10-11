@@ -52,7 +52,9 @@ struct AppRootView: View {
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {
             ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
-                                     memory: memoryViewModel, usage: usage, onDone: coordinator.closeVoiceSettings)
+                                     memory: memoryViewModel, usage: usage,
+                                     onDeleteAll: { await coordinator.deleteAllMemory() },
+                                     onDone: coordinator.closeVoiceSettings)
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase, initial: true) { _, newPhase in

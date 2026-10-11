@@ -51,7 +51,18 @@ final class ConversationAppCoordinator {
         guard destination == .onboarding, isVoiceSettingsClosed else { return }
         destination = .conversation
         acquireWakeLockIfNeeded()
+        launchStart()
+    }
 
+    /// 会話画面が前面にある間は聞き取る（要件 FR-RUN-4 の前倒し）。前面復帰、設定を閉じた後、新しい会話の後に呼ぶ。
+    /// 進行中の開始（マイク許可の待ちなど）があるときは重ねない。猫のタップによる一時停止もこれらの出来事で解ける。
+    private func resumeListeningIfNeeded() {
+        guard destination == .conversation, scenePhase == .active, isVoiceSettingsClosed,
+              activeStartIntentID == nil else { return }
+        launchStart()
+    }
+
+    private func launchStart() {
         startIntentCounter &+= 1
         let intentID = startIntentCounter
         activeStartIntentID = intentID
@@ -81,6 +92,7 @@ final class ConversationAppCoordinator {
             deferredPermissionPrompt = false
             didForwardPauseSinceActive = false
             acquireWakeLockIfNeeded()
+            resumeListeningIfNeeded()
         case .inactive:
             invalidateActionTasksForSceneInactivity()
             releaseWakeLockIfNeeded()
@@ -114,7 +126,10 @@ final class ConversationAppCoordinator {
             guard let self else { return }
             self.voiceSettingsTask = nil
             guard self.scenePhase == .active, self.actionSceneGeneration == generation else {
+                // 開く途中で場面が変わりシートを出さない。前面に戻っていれば、ここで聞き取りを再開する。
                 self.isOpeningVoiceSettings = false
+                self.acquireWakeLockIfNeeded()
+                self.resumeListeningIfNeeded()
                 return
             }
             self.isOpeningVoiceSettings = false
@@ -125,6 +140,23 @@ final class ConversationAppCoordinator {
     func closeVoiceSettings() {
         showsVoiceSettings = false
         acquireWakeLockIfNeeded()
+        resumeListeningIfNeeded()
+    }
+
+    /// 設定の「すべて削除」。シートが開いたまま実行し、覚えていることと会話の要約を消す。聞き取りはシートを閉じたときに再開する。
+    func deleteAllMemory() async {
+        actionCounter &+= 1
+        let actionID = actionCounter
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.viewModel.forgetConversation()
+            self.actionTasks[actionID] = nil
+            // 削除中にシートを閉じていると、閉じた時点の再開は削除中のため見送られている。完了後にもう一度評価する。
+            // 削除に失敗した場合は viewModel 側が開始を拒むので、ここで再開しても聞き取りは始まらない。
+            self.resumeListeningIfNeeded()
+        }
+        actionTasks[actionID] = task
+        await task.value
     }
 
     func makeActions(openSettings: @escaping @MainActor () -> Void) -> ConversationActions {
@@ -165,19 +197,25 @@ final class ConversationAppCoordinator {
             },
             openVoiceSettings: { [weak self] in self?.openVoiceSettings() },
             startNewConversation: { [weak self] in
-                self?.launchAction { [weak self] in await self?.viewModel.startNewConversation() }
-            },
-            requestForget: { [weak self] in self?.viewModel.requestForgetConversation() },
-            cancelForget: { [weak self] in self?.viewModel.cancelForgetConversation() },
-            confirmForget: { [weak self] in
-                // Capture the user's decision before SwiftUI dismisses the dialog.
-                guard let self, self.viewModel.viewState.showsForgetConfirmation else { return }
-                self.launchAction { [weak self] in
-                    await self?.viewModel.confirmForgetConversation(confirmationAccepted: true)
+                self?.launchAction { [weak self] in
+                    await self?.viewModel.startNewConversation()
+                    self?.resumeListeningIfNeeded()
                 }
             },
             retryMemory: { [weak self] in
-                self?.launchAction { [weak self] in await self?.viewModel.retryMemoryOperation() }
+                self?.launchAction { [weak self] in
+                    guard let self else { return }
+                    // 削除失敗からの復旧は会話を止めて行うので、成功したら再開する。
+                    // 保存の再試行は聞き取りに触れないので、猫のタップによる一時停止もそのまま残す。
+                    let recoversFromForgetFailure: Bool
+                    if case .forgetFailed = self.viewModel.viewState.memoryState {
+                        recoversFromForgetFailure = true
+                    } else {
+                        recoversFromForgetFailure = false
+                    }
+                    await self.viewModel.retryMemoryOperation()
+                    if recoversFromForgetFailure { self.resumeListeningIfNeeded() }
+                }
             }
         )
     }

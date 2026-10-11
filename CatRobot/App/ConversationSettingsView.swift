@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 設定画面の操作部品の識別子。View は文字列リテラルではなくこの列挙から取る（VoiceOver 確認は Task 10）。
 enum ConversationSettingsIdentifier: String, CaseIterable {
-    case modelPicker, effortPicker, voicePresetPicker, dailyTurnLimitStepper, memoryFactsList
+    case modelPicker, effortPicker, voicePresetPicker, dailyTurnLimitStepper, memoryFactsList, deleteAllMemoryButton
 }
 
 struct ConversationSettingsView: View {
@@ -10,13 +10,18 @@ struct ConversationSettingsView: View {
     @Bindable var modelSettings: ConversationModelSettings
     let memory: LongTermMemoryViewModel
     let usage: any ConversationUsageMetering
+    /// 「すべて削除」の実体。覚えていることと会話の要約を消す。確認はこの画面で済ませる。
+    let onDeleteAll: @MainActor () async -> Void
     let onDone: () -> Void
     @State private var usageSummary: ConversationUsageSummary?
+    @State private var showsDeleteAllConfirmation = false
+    @State private var isDeletingAll = false
 
     init(voiceSettings: SpeechVoiceSettings, modelSettings: ConversationModelSettings,
-         memory: LongTermMemoryViewModel, usage: any ConversationUsageMetering, onDone: @escaping () -> Void) {
+         memory: LongTermMemoryViewModel, usage: any ConversationUsageMetering,
+         onDeleteAll: @escaping @MainActor () async -> Void, onDone: @escaping () -> Void) {
         self.voiceSettings = voiceSettings; self.modelSettings = modelSettings
-        self.memory = memory; self.usage = usage; self.onDone = onDone
+        self.memory = memory; self.usage = usage; self.onDeleteAll = onDeleteAll; self.onDone = onDone
     }
 
     var body: some View {
@@ -31,7 +36,7 @@ struct ConversationSettingsView: View {
                         ForEach(ConversationEffort.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
                     .accessibilityIdentifier(ConversationSettingsIdentifier.effortPicker.rawValue)
-                } header: { Text("Claude") } footer: {
+                } header: { Text("AI モデル") } footer: {
                     Text("変更は「新しい会話を始める」か次回起動から使います。進行中の会話では切り替えません。")
                 }
                 Section {
@@ -54,7 +59,12 @@ struct ConversationSettingsView: View {
                         let targets = offsets.map { memory.facts[$0] }
                         Task { for fact in targets { await memory.forget(fact) } }
                     }
-                } header: { Text("覚えていること") } footer: { Text("会話全体を消すには、会話画面の「会話を忘れる」を使います。") }
+                    Button("すべて削除", role: .destructive) { showsDeleteAllConfirmation = true }
+                        .disabled(isDeletingAll)
+                        .accessibilityIdentifier(ConversationSettingsIdentifier.deleteAllMemoryButton.rawValue)
+                } header: { Text("覚えていること") } footer: {
+                    Text("個別に消した事実は次の返答から反映します。「すべて削除」は会話の要約も消します。")
+                }
                 .accessibilityIdentifier(ConversationSettingsIdentifier.memoryFactsList.rawValue)
                 Section {
                     Stepper("1日の上限 \(modelSettings.dailyTurnLimit) 回", value: $modelSettings.dailyTurnLimit, in: 10...2_000, step: 10)
@@ -74,6 +84,19 @@ struct ConversationSettingsView: View {
             }
             .navigationTitle("設定")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了", action: onDone) } }
+            .confirmationDialog("すべて削除", isPresented: $showsDeleteAllConfirmation, titleVisibility: .visible) {
+                Button("削除する", role: .destructive) {
+                    Task { @MainActor in
+                        isDeletingAll = true
+                        await onDeleteAll()
+                        await memory.load()
+                        isDeletingAll = false
+                    }
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("覚えていることと、このiPhoneに保存した会話の記憶をすべて削除します。元には戻せません。")
+            }
             .task {
                 await memory.load()
                 usageSummary = await usage.summary()

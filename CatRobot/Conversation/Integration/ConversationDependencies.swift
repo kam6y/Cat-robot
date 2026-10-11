@@ -22,6 +22,8 @@ struct ConversationDependencies: Sendable {
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
     let clarificationDelay: @Sendable (Duration) async -> Void
+    /// 「新しい会話を始めました」などの通知を消すまでの待ち。テストでは差し替える。
+    let noticeDelay: @Sendable (Duration) async -> Void
     let lifecycleCheckpoint: @Sendable (ConversationLifecycleCheckpoint) async -> Void
     let serviceTeardown: @Sendable () async -> Void
 
@@ -44,6 +46,9 @@ struct ConversationDependencies: Sendable {
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
+        noticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        },
         lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in },
         serviceTeardown: @escaping @Sendable () async -> Void = {}
     ) {
@@ -61,6 +66,7 @@ struct ConversationDependencies: Sendable {
         self.addresseePolicy = addresseePolicy
         self.now = now
         self.clarificationDelay = clarificationDelay
+        self.noticeDelay = noticeDelay
         self.lifecycleCheckpoint = lifecycleCheckpoint
         self.serviceTeardown = serviceTeardown
     }

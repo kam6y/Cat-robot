@@ -2,9 +2,10 @@ import Foundation
 import FoundationModels
 
 struct ConversationBudget: Equatable, Sendable {
-    var compactionTriggerCharacters = 4_000
-    var retainedCharacters = 1_200
-    var summaryCharacterLimit = 600
+    /// 現行モデルの枠（1M トークン）に対して小さいが、5 分で切れるキャッシュを書き直す費用で上限を決めている。
+    var compactionTriggerCharacters = 12_000
+    var retainedCharacters = 4_000
+    var summaryCharacterLimit = 1_200
     var maximumPromptCharacters = 4_000
     static let `default` = ConversationBudget()
 }
@@ -45,6 +46,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private var activeModel: ConversationModelChoice?
     /// セッションを無効化するたびに進む世代。生成途中に無効化が入った古いセッションは登録しない。
     private var sessionEpoch: UInt64 = 0
+    /// 生きているセッションを作ったときの長期メモの削除世代。設定で事実を消したら次の返答の前に作り直す。
+    private var sessionFactsRevision: UInt64 = 0
     private var isGenerating = false
     private var generation: Task<Void, Never>?
 
@@ -157,6 +160,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
 
     private func generate(_ prompt: String, epoch: UInt64, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
         var failure: ConversationServiceError?
+        // 設定で消した事実を生きているセッションが知り続けないよう、削除があれば作り直す（要約と直近の往復は残る）。
+        if await longTermMemory.factsRevision != sessionFactsRevision { invalidateSession() }
         var candidate = memory
         var response = ""
         do {
@@ -222,6 +227,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         let trace = ReplyTraceContext.current
         trace?.mark(.sessionStarted)
         let settings = await configuration()
+        // 世代を先に読む。間に削除が入っても次の返答で作り直すだけで、古い事実を抱え続けることはない。
+        let factsRevision = await longTermMemory.factsRevision
         let facts = await longTermMemory.renderedBlock()
         let writer = await longTermMemory.makeWriter()
         let instructions = ConversationInstructions(longTermFacts: facts, summary: memory.summary, recentTurns: memory.turns).text
@@ -238,6 +245,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         }
         session = created
         activeModel = settings.model
+        sessionFactsRevision = factsRevision
         trace?.mark(.sessionFinished, outcome: .success)
         return created
     }

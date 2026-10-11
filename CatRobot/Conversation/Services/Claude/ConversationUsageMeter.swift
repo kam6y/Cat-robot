@@ -33,7 +33,8 @@ actor UserDefaultsUsageMeter: ConversationUsageMetering {
         .sonnet5_5: (2, 10, 0.20),
         .haiku5_5: (0.10, 0.50, 0.01)
     ]
-    private static let cachedPrefixTokens = 3_000.0
+    /// 毎ターンのキャッシュ読み取り分の想定。固定部（人格・ツール・覚えていること）約 2,000 と短期記憶上限（12,000 文字）の平均の和。
+    private static let cachedPrefixTokens = 8_000.0
     private let defaults: UserDefaults
     private let calendar: Calendar
     private let now: @Sendable () -> Date

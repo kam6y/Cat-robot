@@ -678,6 +678,9 @@ final class ConversationHarness {
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
+        noticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        },
         lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in }
     ) {
         let calls = ConversationTestCallLog()
@@ -743,6 +746,7 @@ final class ConversationHarness {
             memory: memory,
             now: { now.value },
             clarificationDelay: clarificationDelay,
+            noticeDelay: noticeDelay,
             lifecycleCheckpoint: lifecycleCheckpoint,
             serviceTeardown: { await teardownProbe.call() }
         )

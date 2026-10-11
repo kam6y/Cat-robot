@@ -28,15 +28,6 @@ struct ConversationView: View {
         .foregroundStyle(.primary)
         .preferredColorScheme(.dark)
         .statusBarHidden(ConversationPresentationPolicy.isStatusBarHidden)
-        .confirmationDialog("会話を忘れる", isPresented: Binding(
-            get: { state.showsForgetConfirmation },
-            set: { if !$0 { actions.cancelForget() } }
-        ), titleVisibility: .visible) {
-            Button("削除する", role: .destructive, action: actions.confirmForget)
-            Button("キャンセル", role: .cancel, action: actions.cancelForget)
-        } message: {
-            Text("このiPhoneに保存した会話の記憶を削除します。元には戻せません。")
-        }
         .onChange(of: state) { oldState, newState in
             guard let announcement = ConversationAnnouncementPolicy.announcement(
                 from: oldState,
@@ -62,13 +53,12 @@ struct ConversationView: View {
 
             Spacer(minLength: 0)
             Menu {
+                Button("文字で話しかける", systemImage: "keyboard", action: actions.showTypedInput)
+                    .accessibilityIdentifier("showTypedInput")
                 Button("設定", systemImage: "gearshape", action: actions.openVoiceSettings)
                     .accessibilityIdentifier("openVoiceSettings")
                 Button("新しい会話を始める", systemImage: "arrow.counterclockwise", action: actions.startNewConversation)
                     .accessibilityIdentifier("startNewConversation")
-                if ConversationMemoryPresentation(state: state.memoryState).supportsForget {
-                    Button("会話を忘れる", role: .destructive, action: actions.requestForget)
-                }
             } label: {
                 Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
             }
@@ -103,12 +93,21 @@ struct ConversationView: View {
         }
     }
 
+    /// 猫そのものが一時停止 / 再開のボタン。画面が前面にある間は聞き取っているので、止めたいときだけ触る。
     private var catArtwork: some View {
-        CatFaceView(
-            state: state.catState,
-            mouthPose: state.mouthPose,
-            reduceMotion: reduceMotion
-        )
+        Button(action: actions.toggleListening) {
+            CatFaceView(
+                state: state.catState,
+                mouthPose: state.mouthPose,
+                reduceMotion: reduceMotion
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
+        .accessibilityLabel(accessibility.listeningAction)
+        .accessibilityValue(accessibility.microphoneValue)
+        .accessibilityHint(accessibility.listeningHint)
+        .accessibilityIdentifier("catListeningToggle")
     }
 
     private var transcriptContent: some View {
@@ -195,34 +194,18 @@ struct ConversationView: View {
         }
     }
 
+    /// 本文はスクロールし、文字入力欄は開いている間だけ下に固定する。送信しても閉じない。
     private func verticalBody(usesGlass: Bool) -> some View {
         VStack(spacing: 12) {
             ScrollView {
-                scrollableContent(usesGlass: usesGlass)
+                conversationContent
                     .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
 
-            fixedControls(usesGlass: usesGlass)
-        }
-    }
-
-    @ViewBuilder
-    private func scrollableContent(usesGlass: Bool) -> some View {
-        switch ConversationVerticalLayout.preferred(
-            for: dynamicTypeSize,
-            showsTypedInput: state.showsTypedInput
-        ) {
-        case .standard:
-            conversationContent
-        case .scrollableContentWithFixedControls:
-            VStack(spacing: 12) {
-                conversationContent
-
-                if state.showsTypedInput {
-                    typedInput(usesGlass: usesGlass)
-                }
+            if state.showsTypedInput {
+                typedInput(usesGlass: usesGlass)
             }
         }
     }
@@ -238,110 +221,8 @@ struct ConversationView: View {
             usesGlass: usesGlass,
             isSubmissionAllowed: state.allowsTypedSubmission,
             onSend: sendTypedText,
-            onDismiss: dismissTypedInput
+            onDismiss: actions.hideTypedInput
         )
-    }
-
-    @ViewBuilder
-    private func fixedControls(usesGlass: Bool) -> some View {
-        if usesGlass {
-            controlButtons(usesGlass: true)
-        } else {
-            controlButtons(usesGlass: false)
-                .padding(12)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
-        }
-    }
-
-    @ViewBuilder
-    private func controlButtons(usesGlass: Bool) -> some View {
-        switch ConversationLowerControlsLayout.preferred(
-            for: dynamicTypeSize,
-            showsTypedInput: state.showsTypedInput
-        ) {
-        case .horizontalFirst:
-            ViewThatFits(in: .horizontal) {
-                horizontalControlButtons(usesGlass: usesGlass)
-                stackedControlButtons(usesGlass: usesGlass)
-            }
-        case .stacked:
-            ViewThatFits(in: .horizontal) {
-                stackedControlButtons(usesGlass: usesGlass)
-            }
-        case .compactHorizontal:
-            compactControlButtons(usesGlass: usesGlass)
-        }
-    }
-
-    private func horizontalControlButtons(usesGlass: Bool) -> some View {
-        HStack(spacing: 12) {
-            listeningButton(usesGlass: usesGlass)
-            keyboardButton(usesGlass: usesGlass)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func stackedControlButtons(usesGlass: Bool) -> some View {
-        VStack(spacing: 8) {
-            listeningButton(usesGlass: usesGlass)
-            keyboardButton(usesGlass: usesGlass)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func compactControlButtons(usesGlass: Bool) -> some View {
-        HStack(spacing: 12) {
-            listeningButton(usesGlass: usesGlass, usesCompactLabel: true)
-            keyboardButton(usesGlass: usesGlass, usesCompactLabel: true)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func listeningButton(
-        usesGlass: Bool,
-        usesCompactLabel: Bool = false
-    ) -> some View {
-        ListeningControl(
-            phase: state.phase,
-            usesGlass: usesGlass,
-            usesCompactLabel: usesCompactLabel,
-            action: actions.toggleListening
-        )
-        .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
-    }
-
-    @ViewBuilder
-    private func keyboardButton(
-        usesGlass: Bool,
-        usesCompactLabel: Bool = false
-    ) -> some View {
-        if usesGlass {
-            keyboardButton(usesCompactLabel: usesCompactLabel).buttonStyle(.glass)
-        } else {
-            keyboardButton(usesCompactLabel: usesCompactLabel).buttonStyle(.bordered)
-        }
-    }
-
-    private func keyboardButton(usesCompactLabel: Bool) -> some View {
-        Button(action: toggleTypedInput) {
-            Label(
-                keyboardButtonTitle(usesCompactLabel: usesCompactLabel),
-                systemImage: state.showsTypedInput ? "keyboard.chevron.compact.down" : "keyboard"
-            )
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel(state.showsTypedInput ? "文字入力を閉じる" : "文字入力を開く")
-        .accessibilityValue(state.showsTypedInput ? "開いています" : "閉じています")
-    }
-
-    private func keyboardButtonTitle(usesCompactLabel: Bool) -> String {
-        if usesCompactLabel {
-            return state.showsTypedInput ? "閉じる" : "文字入力"
-        }
-        return state.showsTypedInput ? "文字入力を閉じる" : "文字で入力"
     }
 
     private var microphoneSymbol: String {
@@ -353,18 +234,6 @@ struct ConversationView: View {
         default:
             "mic.badge.xmark"
         }
-    }
-
-    private func toggleTypedInput() {
-        if state.showsTypedInput {
-            dismissTypedInput()
-        } else {
-            actions.showTypedInput()
-        }
-    }
-
-    private func dismissTypedInput() {
-        actions.hideTypedInput()
     }
 
     private func sendTypedText() {

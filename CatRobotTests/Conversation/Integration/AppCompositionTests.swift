@@ -112,7 +112,7 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 
-    func testBackgroundDuringPermissionPromptInvalidatesLateGrantAndDoesNotResumeOnActive() async {
+    func testBackgroundDuringPermissionPromptInvalidatesLateGrantAndResumesOnActive() async {
         let permissionGate = ConversationTestGate()
         let harness = ConversationHarness(permissionGate: permissionGate)
         let idleTimer = TestIdleTimerStorage(initialValue: false)
@@ -140,11 +140,14 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertFalse(idleTimer.value)
 
         coordinator.scenePhaseDidChange(.active)
-        await Task.yield()
+        await coordinator.waitForOperations()
 
+        // 遅れて届いた許可は古い開始を進めない。前面復帰で新しく開始する。許可の問い合わせは開始ごとに行い、OS は保存済みの決定を返す。
         let recognizerStartsAfterActive = await harness.recognizer.startCount
-        XCTAssertEqual(recognizerStartsAfterActive, 0)
-        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        let microphoneRequestsAfterActive = await harness.microphone.requestCount
+        XCTAssertEqual(recognizerStartsAfterActive, 1)
+        XCTAssertEqual(microphoneRequestsAfterActive, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
         XCTAssertTrue(idleTimer.value)
     }
 
@@ -241,9 +244,10 @@ final class AppCompositionTests: XCTestCase {
         await actionGate.open()
         await coordinator.waitForOperations()
 
+        // 前面復帰で再開する。非アクティブ中のタップが再生されていれば、再開の後に一時停止へ戻ってしまう。
         let recognizerStarts = await harness.recognizer.startCount
-        XCTAssertEqual(recognizerStarts, 1)
-        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 
     func testSendActionSnapshotsTextBeforeLaunchingAsyncTurnAndPreservesNewDraft() async {

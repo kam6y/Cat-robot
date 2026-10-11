@@ -14,6 +14,8 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
     private var cached: [LongTermFact]?
     /// clear() のたびに進む。古い世代の writer からの書き込みは拒否する。
     private var generation: UInt64 = 0
+    /// 事実を消すたびに進む（覚えたときは進まない）。会話サービスはこれを見て、消した事実を知らないセッションに作り直す。
+    private(set) var factsRevision: UInt64 = 0
     /// 読み書きを到着順に直列化する簡単なロック。await 中に別の変更が割り込み、古い一覧を保存し直すのを防ぐ。
     private var busy = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -39,6 +41,7 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
         current.removeAll { $0.id == id }
         try await store.save(current)
         cached = current
+        factsRevision &+= 1
     }
 
     func clear() async throws {
@@ -46,6 +49,7 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
         try await store.clear()
         cached = []
         generation &+= 1
+        factsRevision &+= 1
     }
 
     func renderedBlock() async -> String {

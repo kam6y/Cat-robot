@@ -21,26 +21,26 @@ final class ConversationUsageMeterTests: XCTestCase {
         var summary = await meter.summary()
         XCTAssertEqual(summary.turnsToday, 2)
         XCTAssertEqual(summary.turnsThisMonth, 2)
-        XCTAssertEqual(summary.estimatedTokensToday, 6_120)
-        XCTAssertEqual(summary.estimatedTokensThisMonth, 6_120)
-        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.00296, accuracy: 0.000000001)
+        XCTAssertEqual(summary.estimatedTokensToday, 16_120)
+        XCTAssertEqual(summary.estimatedTokensThisMonth, 16_120)
+        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.00496, accuracy: 0.000000001)
 
         clock.advance(by: 1) // 2026-01-02 00:00:00 UTC
         summary = await meter.summary()
         XCTAssertEqual(summary.turnsToday, 0)
         XCTAssertEqual(summary.turnsThisMonth, 2)
         XCTAssertEqual(summary.estimatedTokensToday, 0)
-        XCTAssertEqual(summary.estimatedTokensThisMonth, 6_120)
-        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.00296, accuracy: 0.000000001)
+        XCTAssertEqual(summary.estimatedTokensThisMonth, 16_120)
+        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.00496, accuracy: 0.000000001)
 
         clock.advance(by: 86_400 * 30 - 1) // 2026-01-31 23:59:59 UTC
         await meter.recordTurn(model: .sonnet5_5, promptCharacters: 10, responseCharacters: 10)
         summary = await meter.summary()
         XCTAssertEqual(summary.turnsToday, 1)
         XCTAssertEqual(summary.turnsThisMonth, 3)
-        XCTAssertEqual(summary.estimatedTokensToday, 3_020)
-        XCTAssertEqual(summary.estimatedTokensThisMonth, 9_140)
-        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.00368, accuracy: 0.000000001)
+        XCTAssertEqual(summary.estimatedTokensToday, 8_020)
+        XCTAssertEqual(summary.estimatedTokensThisMonth, 24_140)
+        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.00668, accuracy: 0.000000001)
 
         clock.advance(by: 1) // 2026-02-01 00:00:00 UTC
         summary = await meter.summary()
@@ -49,9 +49,9 @@ final class ConversationUsageMeterTests: XCTestCase {
         summary = await meter.summary()
         XCTAssertEqual(summary.turnsToday, 1)
         XCTAssertEqual(summary.turnsThisMonth, 1)
-        XCTAssertEqual(summary.estimatedTokensToday, 3_002)
-        XCTAssertEqual(summary.estimatedTokensThisMonth, 3_002)
-        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.0000306, accuracy: 0.000000001)
+        XCTAssertEqual(summary.estimatedTokensToday, 8_002)
+        XCTAssertEqual(summary.estimatedTokensThisMonth, 8_002)
+        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.0000806, accuracy: 0.000000001)
     }
 
     func testDailyLimitAndPersistenceAcrossInstances() async {
@@ -79,19 +79,19 @@ final class ConversationUsageMeterTests: XCTestCase {
         let summary = await reloaded.summary()
         XCTAssertEqual(summary.turnsToday, 3)
         XCTAssertEqual(summary.turnsThisMonth, 3)
-        XCTAssertEqual(summary.estimatedTokensToday, 9_006)
-        XCTAssertEqual(summary.estimatedTokensThisMonth, 9_006)
-        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.001872, accuracy: 0.000000001)
+        XCTAssertEqual(summary.estimatedTokensToday, 24_006)
+        XCTAssertEqual(summary.estimatedTokensThisMonth, 24_006)
+        XCTAssertEqual(summary.estimatedCostUSDThisMonth, 0.004872, accuracy: 0.000000001)
     }
 
     func testCostEstimateFollowsSpecTable() {
-        // 固定部 3,000 トークンのキャッシュ読み取り + 入力 100 + 出力 80（要件定義書 §8.6）。
+        // 固定部 8,000 トークンのキャッシュ読み取り + 入力 100 + 出力 80（単価は要件定義書 §8.6、固定部は短期記憶の上限 12,000 文字に合わせた想定）。
         let opus = UserDefaultsUsageMeter.estimatedCostUSD(model: .opus5_5, promptCharacters: 100, responseCharacters: 80)
-        XCTAssertEqual(opus, 0.0026, accuracy: 0.0002)
+        XCTAssertEqual(opus, 0.0036, accuracy: 0.0002)
         let sonnet = UserDefaultsUsageMeter.estimatedCostUSD(model: .sonnet5_5, promptCharacters: 100, responseCharacters: 80)
-        XCTAssertEqual(sonnet, 0.0016, accuracy: 0.000000001)
+        XCTAssertEqual(sonnet, 0.0026, accuracy: 0.000000001)
         let haiku = UserDefaultsUsageMeter.estimatedCostUSD(model: .haiku5_5, promptCharacters: 100, responseCharacters: 80)
-        XCTAssertEqual(haiku, 0.00008, accuracy: 0.000000001)
+        XCTAssertEqual(haiku, 0.00013, accuracy: 0.000000001)
         XCTAssertLessThan(haiku, opus / 10)
     }
 }

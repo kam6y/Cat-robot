@@ -54,7 +54,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         XCTAssertEqual(loads, 1)
     }
     func testInvalidRestorationBlocksReplyAndDoesNotOverwriteFile() async throws {
-        for snapshot in [seed(id: "foreign"), seed(summary: String(repeating: "x", count: 601))] {
+        for snapshot in [seed(id: "foreign"), seed(summary: String(repeating: "x", count: 1_201))] {
             let store = InMemoryConversationMemoryStore(snapshot: snapshot)
             let factory = StubSessionFactory()
             do { try await drain(service(factory, store: store).streamReply(to: "hello")); XCTFail("Must block") } catch {}
@@ -67,7 +67,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
     func testRestoredConversationAboveTriggerCompactsBeforeReply() async throws {
         let initial = ConversationMemorySnapshot(schemaVersion: 1, memoryCompatibilityID: ClaudeMemoryCompatibility.current,
             revision: 1, savedAt: Date(), summary: "前の記憶",
-            turns: (0..<4).map { .init(prompt: "\($0)" + String(repeating: "x", count: 2_100), response: "R") })
+            turns: (0..<4).map { .init(prompt: "\($0)" + String(repeating: "x", count: 4_100), response: "R") })
         let store = InMemoryConversationMemoryStore(snapshot: initial)
         let factory = StubSessionFactory(summaries: ["memory-1"])
         try await drain(service(factory, store: store).streamReply(to: "続き"))

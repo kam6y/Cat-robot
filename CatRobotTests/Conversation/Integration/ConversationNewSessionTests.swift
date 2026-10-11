@@ -19,10 +19,43 @@ final class ConversationNewSessionTests: XCTestCase {
         let harness = ConversationHarness(memory: FakeConversationMemoryManager())
         let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
             wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
+        coordinator.beginConversation()
+        await coordinator.waitForOperations()
         coordinator.makeActions(openSettings: {}).startNewConversation()
         await coordinator.waitForOperations()
         let resets = await harness.reply.resetCount
         XCTAssertEqual(resets, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening, "新しい会話の後は自動で聞き取りに戻る")
+        let starts = await harness.recognizer.startCount
+        XCTAssertEqual(starts, 2)
+        await harness.sut.shutdown()
+    }
+
+    // --- 通知の消え方: 5 秒後か、次に話しかけた時点 ---
+
+    func testNoticeDisappearsAfterTheDelay() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(memory: FakeConversationMemoryManager(),
+                                          noticeDelay: { await sleeper.sleep(for: $0) })
+        await harness.sut.startNewConversation()
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "新しい会話を始めました")
+        let durations = await sleeper.durations
+        XCTAssertEqual(durations, [.seconds(5)])
+        await sleeper.release(0)
+        let cleared = await harness.waitUntil { harness.sut.viewState.memoryNotice == nil }
+        XCTAssertTrue(cleared)
+        await harness.sut.shutdown()
+    }
+
+    func testNoticeDisappearsWhenTheNextUtteranceStarts() async {
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(memory: FakeConversationMemoryManager(),
+                                          noticeDelay: { await sleeper.sleep(for: $0) })
+        await harness.sut.startNewConversation()
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "新しい会話を始めました")
+        await harness.sut.submitTypedText("次の話")
+        XCTAssertNil(harness.sut.viewState.memoryNotice, "話しかけた時点で消える")
+        XCTAssertEqual(harness.sut.viewState.caption, "わかったよ")
         await harness.sut.shutdown()
     }
 

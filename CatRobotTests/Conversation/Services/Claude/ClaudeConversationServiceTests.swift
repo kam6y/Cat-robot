@@ -94,6 +94,39 @@ final class ClaudeConversationServiceTests: XCTestCase {
         XCTAssertEqual(before, after)
     }
 
+    func testDefaultBudgetKeepsLongerContextThanTheFirstRelease() {
+        let budget = ConversationBudget.default
+        XCTAssertEqual(budget.compactionTriggerCharacters, 12_000)
+        XCTAssertEqual(budget.retainedCharacters, 4_000)
+        XCTAssertEqual(budget.summaryCharacterLimit, 1_200)
+        XCTAssertEqual(budget.maximumPromptCharacters, 4_000)
+    }
+
+    func testDeletingAFactRebuildsTheSessionBeforeTheNextReplyButRememberingDoesNot() async throws {
+        let factory = StubSessionFactory()
+        let longTerm = LongTermMemoryManager(store: InMemoryLongTermMemoryStore())
+        _ = try await longTerm.remember("名前はミケ", category: .person)
+        let service = makeService(factory: factory, longTerm: longTerm)
+        _ = try await collect(service.streamReply(to: "一回目"))
+        _ = try await longTerm.remember("好物は鰹節", category: .other)
+        _ = try await collect(service.streamReply(to: "二回目"))
+        var sessions = await factory.sessions
+        XCTAssertEqual(sessions.count, 1, "覚えただけでは作り直さない")
+        XCTAssertTrue(sessions[0].configuration.instructions.contains("名前はミケ"))
+
+        let fact = try await longTerm.facts().first { $0.text == "名前はミケ" }
+        try await longTerm.forget(id: try XCTUnwrap(fact).id)
+        _ = try await collect(service.streamReply(to: "三回目"))
+        sessions = await factory.sessions
+        XCTAssertEqual(sessions.count, 2, "事実を消したら次の返答の前に作り直す")
+        XCTAssertFalse(sessions[1].configuration.instructions.contains("名前はミケ"))
+        XCTAssertTrue(sessions[1].configuration.instructions.contains("好物は鰹節"))
+        XCTAssertTrue(sessions[1].configuration.instructions.contains("利用者: 一回目\n猫: にゃん。"), "直近の往復は引き継ぐ")
+        _ = try await collect(service.streamReply(to: "四回目"))
+        sessions = await factory.sessions
+        XCTAssertEqual(sessions.count, 2, "作り直しは削除ごとに一度だけ")
+    }
+
     func testModelSettingChangeAppliesOnlyWhenSessionIsRebuilt() async throws {
         let settings = Settings(.init(model: .opus5_5))
         let factory = StubSessionFactory()

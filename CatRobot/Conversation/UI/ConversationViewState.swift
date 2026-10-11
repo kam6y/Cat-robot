@@ -39,7 +39,6 @@ struct ConversationRecovery: Equatable, Sendable {
 
 struct ConversationViewState: Equatable, Sendable {
     var memoryState: ConversationMemoryState = .unsupported
-    var showsForgetConfirmation = false
     var memoryNotice: String? = nil
     var phase: ConversationPhase
     var catState: CatVisualState
@@ -63,9 +62,6 @@ struct ConversationActions {
     var performRecovery: (ConversationRecoveryAction) -> Void
     var openVoiceSettings: () -> Void = {}
     var startNewConversation: () -> Void = {}
-    var requestForget: () -> Void = {}
-    var cancelForget: () -> Void = {}
-    var confirmForget: () -> Void = {}
     var retryMemory: () -> Void = {}
 }
 

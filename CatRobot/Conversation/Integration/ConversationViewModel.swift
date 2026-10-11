@@ -92,6 +92,8 @@ final class ConversationViewModel {
     @ObservationIgnored private var memoryEventTask: Task<Void, Never>?
     @ObservationIgnored private var memoryActionInProgress = false
     @ObservationIgnored private var forgettingMemory = false
+    @ObservationIgnored private var noticeExpiryTask: Task<Void, Never>?
+    private static let noticeLifetime: Duration = .seconds(5)
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
@@ -220,7 +222,6 @@ final class ConversationViewModel {
 
         guard viewState.allowsTypedSubmission, !memoryActionInProgress else { return }
         ensureMemoryEventConsumer()
-        viewState.showsTypedInput = false
 
         cancelActiveVoiceLatency(reason: .typedReplacement)
         ensureAudioEventConsumer()
@@ -305,6 +306,8 @@ final class ConversationViewModel {
     }
 
     private func performShutdown() async {
+        noticeExpiryTask?.cancel()
+        noticeExpiryTask = nil
         cancelActiveVoiceLatency(reason: .shutdown)
         await pauseConversation(force: true)
 
@@ -355,17 +358,10 @@ final class ConversationViewModel {
         }
     }
 
-    func requestForgetConversation() {
+    /// 設定の「すべて削除」。確認ダイアログは設定画面側で済ませてから呼ぶ。覚えていることと会話の要約の両方を消す。
+    func forgetConversation() async {
         guard !memoryActionInProgress,
               ConversationMemoryPresentation(state: viewState.memoryState).supportsForget else { return }
-        viewState.showsForgetConfirmation = true
-    }
-
-    func cancelForgetConversation() { viewState.showsForgetConfirmation = false }
-
-    func confirmForgetConversation(confirmationAccepted: Bool = false) async {
-        guard (confirmationAccepted || viewState.showsForgetConfirmation), !memoryActionInProgress else { return }
-        viewState.showsForgetConfirmation = false
         await performForgetConversation()
     }
 
@@ -374,7 +370,7 @@ final class ConversationViewModel {
         memoryActionInProgress = true
         forgettingMemory = true
         viewState.memoryState = .forgetting
-        viewState.memoryNotice = nil
+        clearNotice()
         defer { memoryActionInProgress = false; forgettingMemory = false }
         await pauseConversation(force: true)
         do {
@@ -383,7 +379,7 @@ final class ConversationViewModel {
             viewState.provisionalTranscript = ""
             viewState.typedText = ""
             viewState.showsTypedInput = false
-            viewState.memoryNotice = "会話の記憶を削除しました"
+            showNotice("会話の記憶を削除しました")
         } catch {
             // The service retains a blocking failure state. Never announce deletion.
         }
@@ -396,14 +392,33 @@ final class ConversationViewModel {
         guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
         memoryActionInProgress = true
         defer { memoryActionInProgress = false }
-        viewState.memoryNotice = nil
+        clearNotice()
         await pauseConversation(force: true)
         await dependencies.reply.reset()
         viewState.caption = ""
         viewState.provisionalTranscript = ""
-        viewState.memoryNotice = "新しい会話を始めました"
+        showNotice("新しい会話を始めました")
         viewState.memoryState = await dependencies.memory.memoryState()
         transition(to: .paused)
+    }
+
+    /// 通知は数秒で消す。次に話しかけた時点（transition で classifying / thinking に入る）でも消す。
+    private func showNotice(_ text: String) {
+        noticeExpiryTask?.cancel()
+        viewState.memoryNotice = text
+        noticeExpiryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.dependencies.noticeDelay(Self.noticeLifetime)
+            guard !Task.isCancelled, self.viewState.memoryNotice == text else { return }
+            self.viewState.memoryNotice = nil
+            self.noticeExpiryTask = nil
+        }
+    }
+
+    private func clearNotice() {
+        noticeExpiryTask?.cancel()
+        noticeExpiryTask = nil
+        viewState.memoryNotice = nil
     }
 
     func retryMemoryOperation() async {
@@ -1506,6 +1521,12 @@ final class ConversationViewModel {
         to phase: ConversationPhase,
         caption: String? = nil
     ) {
+        switch phase {
+        case .classifying, .thinking, .clarifying:
+            clearNotice()   // 次に話しかけたら通知は役目を終える
+        default:
+            break
+        }
         viewState.phase = phase
         viewState.errorMessage = nil
         viewState.recoveries = []
