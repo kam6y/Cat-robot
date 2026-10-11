@@ -68,32 +68,7 @@ struct ConversationDependencies: Sendable {
 
 extension ConversationDependencies {
     @MainActor
-    static func live(memoryStore _: (any ConversationMemoryStore)? = nil, voiceSettings: SpeechVoiceSettings? = nil) -> Self {
-        let availability = FoundationModelAvailabilityService()
-        let concreteRecognizer = AppleSpeechRecognizer()
-        let recognizer: any SpeechRecognizing = concreteRecognizer
-        let voices = voiceSettings ?? SpeechVoiceSettings()
-        let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
-        let engine = SupertonicEngine(root: resources.appendingPathComponent("Supertonic"),
-                                      manifest: resources.appendingPathComponent("supertonic-manifest.json"))
-        let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voices.selected })
-        let audioSession = AppleAudioSessionController()
-        let serviceTeardown: @Sendable () async -> Void = {
-            await concreteRecognizer.shutdown()
-        }
-
-        return Self(
-            microphonePermission: MicrophonePermissionService(),
-            modelAvailability: availability,
-            recognizer: recognizer,
-            classifier: FoundationModelAddressClassifier(),
-            reply: FoundationModelReplyService(),
-            speaker: speaker,
-            audioSession: audioSession,
-            latency: ConversationLatencyTracker.live(),
-            replyTraceSink: OSReplyTraceSink(),
-            replyPlaybackMode: .sentencePrefetch,
-            serviceTeardown: serviceTeardown
-        )
+    static func live(voiceSettings: SpeechVoiceSettings? = nil) -> Self {
+        ConversationComposition.live(voiceSettings: voiceSettings ?? SpeechVoiceSettings()).dependencies
     }
 }
