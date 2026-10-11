@@ -4567,6 +4567,51 @@ final class ConversationNewSessionTests: XCTestCase {
         XCTAssertEqual(resets, 1)
         await harness.sut.shutdown()
     }
+
+    // --- 境界: 重複操作・長期/会話記憶の非削除・shutdown 後・返答中 ---
+
+    func testStartNewConversationIgnoresDuplicatesAndKeepsConversationMemory() async {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let memory = FakeConversationMemoryManager()
+        let harness = ConversationHarness(memory: memory, replyResetGate: gate)
+        let first = Task { await harness.sut.startNewConversation() }
+        await gate.waitUntilEntered()               // reset の完了待ちで停止中
+        await harness.sut.startNewConversation()    // 進行中なので何もしない
+        await gate.open()
+        await first.value
+        let resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 1, "重複した操作は reset を重ねない")
+        let forgets = await memory.forgets
+        XCTAssertEqual(forgets, 0, "新しい会話は forgetConversation を呼ばない")
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "新しい会話を始めました")
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        await harness.sut.shutdown()
+    }
+
+    func testStartNewConversationAfterShutdownDoesNothing() async {
+        let harness = ConversationHarness(memory: FakeConversationMemoryManager())
+        await harness.sut.shutdown()
+        let before = await harness.reply.resetCount
+        await harness.sut.startNewConversation()
+        let after = await harness.reply.resetCount
+        XCTAssertEqual(after, before)
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+    }
+
+    func testStartNewConversationDuringReplyStopsItThenResets() async {
+        let harness = ConversationHarness(memory: FakeConversationMemoryManager(), replySnapshots: nil)
+        let turn = Task { await harness.sut.submitTypedText("考え中") }
+        await harness.reply.waitUntilPromptCount(1) // 返答の生成中
+        await harness.sut.startNewConversation()
+        await turn.value
+        let resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 1)
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertEqual(harness.sut.viewState.caption, "")
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "新しい会話を始めました")
+        await harness.sut.shutdown()
+    }
 }
 ```
 
@@ -4596,6 +4641,19 @@ final class LongTermMemoryViewModelTests: XCTestCase {
         await model.load()
         XCTAssertTrue(model.loadFailed)
         XCTAssertTrue(model.facts.isEmpty)
+    }
+
+    func testForgetFailureKeepsTheRowAndReportsIt() async throws {
+        let store = SpyLongTermMemoryStore()
+        let manager = LongTermMemoryManager(store: store)
+        _ = try await manager.remember("A", category: .person)
+        let model = LongTermMemoryViewModel(memory: manager)
+        await model.load()
+        XCTAssertEqual(model.facts.map(\.text), ["A"])
+        await store.setFailsSave(true)
+        await model.forget(model.facts[0])
+        XCTAssertEqual(model.facts.map(\.text), ["A"], "削除に失敗した行は成功扱いで消さない")
+        XCTAssertTrue(model.loadFailed)
     }
 }
 ```
@@ -4666,6 +4724,7 @@ Menu {
 import Foundation
 import Observation
 
+/// 設定画面の「覚えていること」一覧。読み込み失敗は隠さず表示に出す。
 @MainActor @Observable
 final class LongTermMemoryViewModel {
     private(set) var facts: [LongTermFact] = []
@@ -4699,6 +4758,7 @@ final class LongTermMemoryViewModel {
 // ConversationSettingsView.swift
 import SwiftUI
 
+/// 設定画面の操作部品の識別子。View は文字列リテラルではなくこの列挙から取る（VoiceOver 確認は Task 10）。
 enum ConversationSettingsIdentifier: String, CaseIterable {
     case modelPicker, effortPicker, voicePresetPicker, dailyTurnLimitStepper, memoryFactsList
 }
@@ -4741,20 +4801,19 @@ struct ConversationSettingsView: View {
                 Section {
                     if memory.loadFailed { Text("覚えていることを読み込めませんでした") }
                     else if memory.facts.isEmpty { Text("まだ何も覚えていません") }
-                    List {
-                        ForEach(memory.facts) { fact in
-                            HStack {
-                                Text(fact.category.label).font(.caption).foregroundStyle(.secondary)
-                                Text(fact.text)
-                            }
-                        }
-                        .onDelete { offsets in
-                            let targets = offsets.map { memory.facts[$0] }
-                            Task { for fact in targets { await memory.forget(fact) } }
+                    // Form は List なので入れ子の List にせず、行を Section に直接置く。
+                    ForEach(memory.facts) { fact in
+                        HStack {
+                            Text(fact.category.label).font(.caption).foregroundStyle(.secondary)
+                            Text(fact.text)
                         }
                     }
-                    .accessibilityIdentifier(ConversationSettingsIdentifier.memoryFactsList.rawValue)
+                    .onDelete { offsets in
+                        let targets = offsets.map { memory.facts[$0] }
+                        Task { for fact in targets { await memory.forget(fact) } }
+                    }
                 } header: { Text("覚えていること") } footer: { Text("会話全体を消すには、会話画面の「会話を忘れる」を使います。") }
+                .accessibilityIdentifier(ConversationSettingsIdentifier.memoryFactsList.rawValue)
                 Section {
                     Stepper("1日の上限 \(modelSettings.dailyTurnLimit) 回", value: $modelSettings.dailyTurnLimit, in: 10...2_000, step: 10)
                         .accessibilityIdentifier(ConversationSettingsIdentifier.dailyTurnLimitStepper.rawValue)
@@ -4783,12 +4842,22 @@ struct ConversationSettingsView: View {
 }
 ```
 
-`AppRootView` の `init` に `modelSettings`、`memory`、`usage` を任意引数で追加し、シートの中身を次に置き換える:
+`AppRootView` の `init` に `modelSettings`、`memory`、`usage` を任意引数で追加し、`LongTermMemoryViewModel` は `@State` で 1 つ持ってシートに渡す（`.sheet` の中で毎回生成すると、ルートの再描画でインスタンスが作り直されて読み込み済みの一覧が空に戻る）:
 
 ```swift
+// AppRootView.swift（抜粋）
+private let modelSettings: ConversationModelSettings
+private let usage: any ConversationUsageMetering
+/// シートを開くたびに作り直すと一覧が空に戻るので、ルートで 1 つ持つ。
+@State private var memoryViewModel: LongTermMemoryViewModel
+// init: self.modelSettings = modelSettings ?? ConversationModelSettings(); self.usage = usage ?? UserDefaultsUsageMeter()
+//       _memoryViewModel = State(initialValue: LongTermMemoryViewModel(memory: memory ?? LongTermMemoryManager(store: InMemoryLongTermMemoryStore())))
+// .sheet の中身:
 ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
-                         memory: LongTermMemoryViewModel(memory: memory), usage: usage, onDone: coordinator.closeVoiceSettings)
+                         memory: memoryViewModel, usage: usage, onDone: coordinator.closeVoiceSettings)
 ```
+
+「覚えていること」の行は Section に直接 `ForEach(memory.facts) { … }.onDelete` で置く。`Form` 自体が List なので入れ子の `List` にしない（小さなスクロール領域になる）。識別子 `memoryFactsList` は Section に付ける。
 
 `AppRootView` のテストやプレビュー用に、引数が nil のときは `ConversationModelSettings()`、`LongTermMemoryManager(store: InMemoryLongTermMemoryStore())`、`UserDefaultsUsageMeter()` を使う。
 
