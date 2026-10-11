@@ -76,7 +76,7 @@ xcodebuild test \
 
 | 項目 | 状態・追記する内容 |
 |---|---|
-| App integration 登録・ワークスペース支出上限 | 登録済み（2026-10-11）。利用者が Console で App integration を作り、client ID を `CatRobot/Resources/claude-integration.json` に設定してプロジェクトを再生成した。ワークスペースの月間支出上限の設定は未確認 |
+| App integration 登録・ワークスペース支出上限 | 登録済み（2026-10-11）。利用者が Console で App integration を作り、client ID を `CatRobot/Resources/claude-integration.json` に設定してプロジェクトを再生成した。ワークスペースの月間支出上限も利用者が設定した（同日）。Step 1 完了 |
 | App Attest の Debug 予備確認 | 成功（2026-10-11、App Attest 環境 `development`、iPhone 16 Pro）。詳細は下記 |
 | T-AUTH-1: TestFlight の認証 | 未実施。Release 構成・キーなしでの認証と会話成立を確認する |
 | T-AUTH-2: 統合の取り消し | 未実施。取り消しは恒久なので、検証用の別統合で失効時の案内を確認する |

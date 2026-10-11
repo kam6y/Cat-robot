@@ -5077,7 +5077,7 @@ git add -A && git commit -m "feat: wire Claude conversation engine into the app 
 
 このタスクは手作業を含む。各ステップの結果（成功・失敗・未実施）を検証記録に残す。鍵・トークン・会話本文は書かない。
 
-- [ ] **Step 1: Claude Console で App integration を作る（admin / owner 権限が必要）**
+- [x] **Step 1: Claude Console で App integration を作る（admin / owner 権限が必要）**
 
 ワークスペースの設定 → **App integrations** → **Create app integration**。名前 `Cat Robot`、Apple Developer Team ID `VUB4VP6453`、Bundle ID `com.kamby.CatRobot`。**Overview** の `clid_...` を `CatRobot/Resources/claude-integration.json` の `clientID` に入れ、`ruby scripts/generate_project.rb && ruby scripts/test_generate_project.rb` を実行する。ワークスペースに月間の支出上限を設定する（要件定義書 §8.6）。
 
