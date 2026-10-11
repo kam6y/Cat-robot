@@ -97,7 +97,7 @@ xcodebuild test \
 
 判定: App Attest の Debug 予備確認は成功（`development` 環境で認証と会話が成立）。要件 T-AUTH-1 の判定は計画どおり TestFlight（Release 構成、`production` 環境、キーなし）で別途行う。字幕、口の動き、読み上げ、聞き取り再開の詳細と、Task 9 Step 5 の表の項目は未確認のままとする。
 
-T-AUTH-1 の経過（2026-10-12）: Release 構成でアーカイブし（開発用の鍵ファイルは同梱されず、App Attest 環境は `production`、client ID は Info.plist に入ることをアーカイブで確認）、`xcodebuild -exportArchive`（method `app-store-connect`、destination `upload`）でアップロードを試みた。1 回目は App Store Connect にアプリ記録が無く失敗し、利用者がアプリ記録を作成。2 回目は App Store Connect の検証で「120x120 のアイコンが無い」「`CFBundleIconName` が無い」で失敗したため、1024x1024 の不透明なアイコンを `AppIcon.appiconset` に追加し（最初は手描きの仮絵、利用者の要望で codex の画像生成による黒猫の横顔シルエット 3 案から案 3 を選び、背景を純白にして採用）、`ITSAppUsesNonExemptEncryption` = false（通信は HTTPS のみ）を Info.plist に加えて再アーカイブした。`onnxruntime.framework` の dSYM が無い旨の警告は配布に影響しない。TestFlight 版での判定結果は下に追記する。
+T-AUTH-1 の経過（2026-10-12）: Release 構成でアーカイブし（開発用の鍵ファイルは同梱されず、App Attest 環境は `production`、client ID は Info.plist に入ることをアーカイブで確認）、`xcodebuild -exportArchive`（method `app-store-connect`、destination `upload`）でアップロードを試みた。1 回目は App Store Connect にアプリ記録が無く失敗し、利用者がアプリ記録を作成。2 回目は App Store Connect の検証で「120x120 のアイコンが無い」「`CFBundleIconName` が無い」で失敗したため、1024x1024 の不透明なアイコンを `AppIcon.appiconset` に追加し（最初は手描きの仮絵、利用者の要望で codex の画像生成による黒猫の横顔シルエット 3 案から案 3 を選び、背景を純白にして採用）、`ITSAppUsesNonExemptEncryption` = false（通信は HTTPS のみ）を Info.plist に加えて再アーカイブした。3 回目（2026-10-12）は `Uploaded CatRobot` / `EXPORT SUCCEEDED` でアップロードに成功した（ビルド 1.0 (1)）。`onnxruntime.framework` の dSYM が無い旨の警告は配布に影響しない。TestFlight 版での判定結果は下に追記する。
 
 ### 2026-10-11: 遅延の簡易計測（途中）
 
