@@ -5091,7 +5091,7 @@ Debug の予備確認: `: > CatRobot/LocalAssets/claude-api-key.txt` で鍵を�
 
 T-AUTH-1（受入）: Release 構成でアーカイブし、TestFlight で同じ iPhone に配布する。鍵の経路が無い状態で会話が成立し、Console に利用量が記録されること。要件 T-AUTH-1 の判定はこの結果で行い、Debug の結果は予備とする。
 
-- [ ] **Step 3: Apple Intelligence 非対応の iPhone での確認（T-DEV-1、T-DEV-2）**
+- [x] **Step 3: Apple Intelligence 非対応の iPhone での確認（T-DEV-1、T-DEV-2）**
 
 iOS 27 を入れた Apple Intelligence 非対応機（例: iPhone 15 以前）が手元にあれば、同じ Debug ビルドで ① Claude 経由の会話が成立する ② 呼び名なしの曖昧な発話で「今の、ぼくに言った？」が出る（Haiku 経路） ③ 機内モードで「会話不可」の表示になる、を確認する。手元に無い場合は「未実施」と書き、README の動作要件を「Apple Intelligence 対応機で検証済み。非対応機は未検証」とする。
 
@@ -5128,7 +5128,7 @@ PY
 
 `sudo log collect` が使えない環境では Instruments の「os_signpost」テンプレートで同じ区間を記録し、end メッセージの `elapsedFromBoundary` を読む。目標は NFR-PERF-1（`FastPathFirstCaption` の中央値 1.5 秒以下）と NFR-PERF-2（`FastPathSpeechStart` の中央値 2.5 秒以下）。未達でも値を記録し、計画 3 以降の調整項目にする。
 
-- [ ] **Step 5: アクセシビリティの確認（Task 8 の設定画面）**
+- [x] **Step 5: アクセシビリティの確認（Task 8 の設定画面）**
 
 実機で VoiceOver をオンにし、設定シートの各コントロール（モデル、考える深さ、声、1 日の上限、覚えていることの一覧と削除、新しい会話を始める）が日本語の名前と現在値を読み上げること、Dynamic Type を最大のアクセシビリティサイズにしても文字が欠けないこと、Reduce Motion オンで表示が崩れないことを確認して記録する。
 

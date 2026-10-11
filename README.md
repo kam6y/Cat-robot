@@ -29,12 +29,12 @@ Claude 構成の実機遅延はまだ測定していません。Task 10 で高�
 
 実機:
 
-- iOS 27.0 以上の iPhone。受入確認の基準端末は iPhone 16 Pro です。Claude 構成の実機受入は Task 10 で実施予定です。
+- iOS 27.0 以上の iPhone。受入確認の基準端末は iPhone 16 Pro で、Claude 構成の実機確認は 2026-10-11 に Debug ビルドで実施しました（[検証記録](docs/validation/2026-10-11-claude-conversation-engine.md)）。
 - Claude を利用するための通信と認証設定。
 - 日本語の音声認識アセットと、同梱する Supertonic 音声資産。
 - 音声入力にはマイク使用の許可。
 
-Apple Intelligence 非対応機の Claude 会話・宛先判定は未検証です。Task 10 の T-DEV-1 / T-DEV-2 の結果をここへ反映します。端末内モデルが利用できない場合、通信断や日次上限時の代替返答は使えず、会話不可の案内になります。
+Claude 会話、宛先判定、通信断時の切り替えは Apple Intelligence 対応機（iPhone 16 Pro）で検証済みです。Apple Intelligence 非対応機は未検証です（T-DEV-1 / T-DEV-2 は未実施）。端末内モデルが利用できない場合、通信断や日次上限時の代替返答は使えず、会話不可の案内になります。
 
 開発環境:
 
