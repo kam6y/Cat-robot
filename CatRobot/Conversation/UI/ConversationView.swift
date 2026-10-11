@@ -52,6 +52,14 @@ struct ConversationView: View {
                 .accessibilityValue(accessibility.assistantStatus)
 
             Spacer(minLength: 0)
+            // 「新しい会話を始めました」などの短い通知は「…」の左に出す（利用者の要望）。
+            if let notice = state.memoryNotice {
+                Text(notice)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("memoryNotice")
+            }
             Menu {
                 Button("文字で話しかける", systemImage: "keyboard", action: actions.showTypedInput)
                     .accessibilityIdentifier("showTypedInput")
@@ -141,8 +149,6 @@ struct ConversationView: View {
                     }
                 }
                 .accessibilityElement(children: .contain)
-            } else if let notice = state.memoryNotice {
-                Text(notice).font(.subheadline)
             }
 
             if let errorMessage = state.errorMessage {
