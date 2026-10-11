@@ -31,18 +31,18 @@
 - 既定モデル `claude-opus-5-5`、選択肢 `claude-sonnet-5-5` / `claude-haiku-5-5`。effort 既定 `low`、選択肢 `medium`。モデル・effort の変更は **次にセッションを作るとき** だけ反映する（進行中のセッションでは切り替えない）。
 - 要約・長期メモ統合・宛先判定の代替は常に `claude-haiku-5-5`。
 - `fallbacks` は使わない（`.models([])`。要件定義書 §5.3 の `.serverDefault` から変更）。理由: Haiku 5.5 にはサーバ側の代替が無く、`fallbacks` に既定（`.serverDefault`）を指定しても拒否応答はそのまま、モデルの一覧を指定すると 400 になる（Anthropic のモデル移行ガイド「Migrating to Claude Haiku 5.5」Safeguards 節）。パッケージ `ClaudeFallbacks` の注記も非対応モデルへの `fallbacks` 指定を API が拒否するとしている。設定で選べる 3 モデルの構成を揃える。拒否応答は `.refusal` として既存の文言で表示する。
-- Claude の `timeout` は 30 秒。1 ターンの最大出力 600 トークン。
-- 認証: 配布ビルドは App Attest（Bundle `com.kamby.CatRobot`、Team `VUB4VP6453`）。開発ビルド（DEBUG）だけ環境変数 `ANTHROPIC_API_KEY`、または git 管理外の `CatRobot/LocalAssets/claude-api-key.txt` から API キーを読む。Release ビルドにはキーの経路を含めない。クライアント ID（`clid_...`）は秘密ではないので `CatRobot/Resources/claude-integration.json` に置いて Git 管理する。
+- Claude の `timeout` は返答セッション 30 秒、宛先判定（Haiku、ステートレス）15 秒。1 ターンの最大出力 600 トークン。
+- 認証: 配布ビルドは App Attest（Bundle `com.kamby.CatRobot`、Team `VUB4VP6453`）。開発ビルド（DEBUG）だけ環境変数 `ANTHROPIC_API_KEY`、または git 管理外の `CatRobot/LocalAssets/claude-api-key.txt` から API キーを読む。キーのファイルは Debug の資源として同梱し、Release 構成では `EXCLUDED_SOURCE_FILE_NAMES` で除外する（スクリプト段階は使わず、`ENABLE_USER_SCRIPT_SANDBOXING` は全構成で YES のまま）。クライアント ID（`clid_...`）は秘密ではないので `CatRobot/Resources/claude-integration.json` に置いて Git 管理する。
 - 記憶の保存先は既存の `Application Support/CatRobot/ConversationMemory/`。短期記憶は既存の `current.json`（互換 ID `claude-memory-v1`）、長期メモは新設の `facts.json`。完全ファイル保護・バックアップ除外を維持する。音声・画像・生成途中の返答・宛先判定に使った発話は保存しない。
 - 端末外へ送るのは、受け付けた発話の文字、会話要約と長期メモ（指示文として）だけ。アナリティクス・クラッシュ収集 SaaS は入れない。
 - 文字列は日本語のみ。既存のアクセシビリティ水準（VoiceOver、Dynamic Type、Reduce Motion）を下げない。
-- 単体テストはネットワークに出ない。Claude に実際に接続する確認は Task 10 の実機手順だけで行う。
+- 単体テストはネットワークに出ない。Claude に実際に接続する確認は、Task 9 Step 5（開発者が API キーで行う Simulator の手動スモーク）と Task 10（実機、App Attest）だけで行う。
 - 製品コードの変更は各タスクの失敗テスト確認後。タスク単位でコミットする。既存の不具合を見つけたら切り分けて記録し、無関係な機能を書き直さない。
 
 ## Review Focus
 
 1. 返答の途中で通信が切れたとき、端末内モデルへ切り替えて二重に話し始めない。最初の文字が出る前の失敗だけ切り替え、途中失敗は再試行の案内にする（Task 7 のテスト `testFailureAfterFirstSnapshotIsNotSilentlyReplacedByOnDeviceReply`）。
-2. 利用者が「忘れて」で記憶を削除した直後にツールが `remember` を呼んでも、削除後の状態に事実が復活しない（Task 6 の `testForgetClearsLongTermFactsAndRejectsLateRemember`）。
+2. 利用者が「忘れて」で記憶を削除したあと、削除前のセッションから遅れて届いた `remember` は世代不一致として保存されず、削除後の状態に事実が復活しない（Task 6 の `testForgetClearsLongTermFactsAndRejectsLateRemember`、Task 4 の `testMutationsAreSerializedAndStaleWritersAreRejected`）。
 3. 設定でモデルを変えた直後の返答は旧モデルのセッションで続き、「新しい会話を始める」か次回起動で新モデルになる。キャッシュを壊す無断の再生成をしない（Task 6 の `testModelSettingChangeAppliesOnlyWhenSessionIsRebuilt`）。
 4. 1 日の上限に達したあとの発話は Claude に送らず、端末内モデルで短く答え、理由を一言告げる。端末内モデルがない端末では会話不可を表示する（Task 7 の `testDailyLimitRoutesToOnDeviceModelWithNotice` と `testDailyLimitWithoutOnDeviceModelReportsUnavailable`）。
 5. 長期メモの注入文は、同じ事実集合なら保存順・再起動に関係なくバイト単位で同一になり、キャッシュ前方を壊さない（Task 4 の `testRenderedBlockIsByteStableAcrossInsertionOrder`、Task 5 の `testFixedPrefixDoesNotChangeWithMemory`）。
@@ -99,7 +99,7 @@ Swift ファイルを追加・削除したら必ず `ruby scripts/generate_proje
 
 **Files:**
 - Modify: `scripts/generate_project.rb`、`scripts/test_generate_project.rb`、`CatRobot/Resources/Info.plist`、`.gitignore`、`CatRobot/Conversation/Integration/ConversationDependencies.swift`、`CatRobot/Conversation/Domain/ConversationTypes.swift`、`CatRobot/Conversation/Integration/ConversationErrorPresentation.swift`、`CatRobotTests/Conversation/Integration/ReplyTraceTests.swift`、`CatRobotTests/Conversation/Integration/SentenceReplyPlaybackTests.swift`、`CatRobotTests/Device/SupertonicIntegrationDeviceTests.swift`
-- Create: `CatRobot/Conversation/Services/Claude/ClaudeAuthConfiguration.swift`、`CatRobot/Conversation/Services/Memory/ConversationMemoryCompatibility.swift`、`CatRobot/Resources/claude-integration.json`、`CatRobot/Resources/CatRobot.entitlements`、`scripts/copy_claude_dev_key.sh`
+- Create: `CatRobot/Conversation/Services/Claude/ClaudeAuthConfiguration.swift`、`CatRobot/Conversation/Services/Memory/ConversationMemoryCompatibility.swift`、`CatRobot/Resources/claude-integration.json`、`CatRobot/Resources/CatRobot.entitlements`
 - Create: `CatRobotTests/Conversation/Services/Claude/ClaudeAuthConfigurationTests.swift`
 - Delete: `CatRobot/Conversation/Services/Gemma/*.swift`、`CatRobotTests/Conversation/Services/{GemmaConversationServiceTests,GemmaMemoryPersistenceTests,GemmaTestRuntime}.swift`、`CatRobotTests/Device/{GemmaAppDeviceTests,GemmaDeviceTests,ReplyLatencyDeviceTests,ReplyLatencyFixtures}.swift`、`CatRobotTests/Conversation/Integration/ReplyPlaybackMemoryTests.swift`、`scripts/run_gemma_app_test.sh`、`scripts/run_gemma_device_test.sh`、`scripts/summarize_reply_latency.py`、`scripts/test_summarize_reply_latency.py`（入力を作る `ReplyLatencyDeviceTests` が消えるため。`docs/validation/` の過去記録はそのまま残す）
 
@@ -181,12 +181,12 @@ project.root_object.package_references << claude_package
   target.frameworks_build_phase.files << build_file
 end
 
-# 開発用 API キー（Debug だけ、ファイルがあるときだけ）。Release には何もコピーしない。
-dev_key = app_target.new_shell_script_build_phase("Copy Claude development key (Debug only)")
-dev_key.shell_script = '/bin/sh "$SRCROOT/scripts/copy_claude_dev_key.sh"'
-dev_key.input_paths = ["$(SRCROOT)/scripts/copy_claude_dev_key.sh"]
-dev_key.output_paths = ["$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/claude-api-key.txt"]
-dev_key.always_out_of_date = "1"
+# 開発用 API キー。Git 管理外の LocalAssets にあるファイルを Debug の資源として同梱し、Release は除外する。
+# ファイル参照を常に同じにするため、無ければ空ファイルを置く（空は ClaudeAuthConfiguration が「鍵なし」と扱う）。
+dev_key_path = ROOT.join("CatRobot/LocalAssets/claude-api-key.txt")
+FileUtils.mkdir_p(dev_key_path.dirname)
+FileUtils.touch(dev_key_path) unless dev_key_path.file?
+app_target.add_resources([app_group.new_file("LocalAssets/claude-api-key.txt")])
 
 claude_client_id = JSON.parse(ROOT.join("CatRobot/Resources/claude-integration.json").read).fetch("clientID", "")
 app_target.build_configurations.each do |configuration|
@@ -198,18 +198,9 @@ app_target.build_configurations.each do |configuration|
 end
 ```
 
+Release 構成の `EXCLUDED_SOURCE_FILE_NAMES`（既存の `"Preview Assets.xcassets"` を除外している行）に `'"claude-api-key.txt"'` を追加する。Debug には何も足さない。
+
 デバイス専用 scheme の配列から `GemmaDeviceTests`、`GemmaAppDeviceTests`、`ReplyLatencyDeviceTests` を外し、`SupertonicIntegrationDeviceTests` だけ残す。
-
-`scripts/copy_claude_dev_key.sh`:
-
-```sh
-#!/bin/sh
-set -eu
-if [ "${CONFIGURATION:-}" != "Debug" ]; then exit 0; fi
-SOURCE="$SRCROOT/CatRobot/LocalAssets/claude-api-key.txt"
-DEST_DIR="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-if [ -f "$SOURCE" ]; then mkdir -p "$DEST_DIR"; cp "$SOURCE" "$DEST_DIR/claude-api-key.txt"; else rm -f "$DEST_DIR/claude-api-key.txt"; fi
-```
 
 `CatRobot/Resources/claude-integration.json`（Task 10 で実際の ID に置き換える）:
 
@@ -259,7 +250,13 @@ app.build_configurations.each do |configuration|
   assert(settings["CATROBOT_APP_ATTEST_ENVIRONMENT"] == expected_env, "App Attest environment for #{configuration.name}")
   assert(settings.key?("CATROBOT_CLAUDE_CLIENT_ID"), "client id build setting missing")
 end
-assert(app.shell_script_build_phases.any? { |p| p.name == "Copy Claude development key (Debug only)" }, "dev key phase missing")
+dev_key = app.resources_build_phase.files.find { |f| f.file_ref&.path == "LocalAssets/claude-api-key.txt" }
+assert(dev_key, "development key must be a bundled resource reference")
+release = app.build_configurations.find { |c| c.name == "Release" }
+debug = app.build_configurations.find { |c| c.name == "Debug" }
+assert(Array(release.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Release must exclude the development key")
+assert(!Array(debug.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Debug must bundle the development key")
+assert(project.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "YES" }, "script sandboxing must stay on")
 assert(!PROJECT_PATH.join("xcshareddata/xcschemes/GemmaDeviceTests.xcscheme").file?, "Gemma scheme must be gone")
 ```
 
@@ -563,6 +560,7 @@ struct ConversationModelConfiguration: Equatable, Sendable {
 }
 struct ConversationUsageSummary: Equatable, Sendable {
     var turnsToday: Int; var turnsThisMonth: Int; var estimatedCostUSDThisMonth: Double
+    var estimatedTokensToday: Int = 0; var estimatedTokensThisMonth: Int = 0   // 1 文字 1 トークン換算 + 指示文のキャッシュ読み取り分
 }
 protocol ConversationUsageMetering: Sendable {
     func recordTurn(model: ConversationModelChoice, promptCharacters: Int, responseCharacters: Int) async
@@ -631,6 +629,7 @@ final class ConversationUsageMeterTests: XCTestCase {
         await meter.recordTurn(model: .opus5_5, promptCharacters: 20, responseCharacters: 40)
         var summary = await meter.summary()
         XCTAssertEqual(summary.turnsToday, 2); XCTAssertEqual(summary.turnsThisMonth, 2)
+        XCTAssertEqual(summary.estimatedTokensToday, 2 * (3_000 + 60)); XCTAssertEqual(summary.estimatedTokensThisMonth, 2 * (3_000 + 60))
         clock.advance(by: 86_400)
         summary = await meter.summary()
         XCTAssertEqual(summary.turnsToday, 0); XCTAssertEqual(summary.turnsThisMonth, 2)
@@ -733,6 +732,9 @@ struct ConversationUsageSummary: Equatable, Sendable {
     var turnsToday: Int
     var turnsThisMonth: Int
     var estimatedCostUSDThisMonth: Double
+    /// 概算トークン数（要件 §6.9）。1 文字 1 トークン換算に、指示文のキャッシュ読み取り分を足す。
+    var estimatedTokensToday: Int = 0
+    var estimatedTokensThisMonth: Int = 0
 }
 
 protocol ConversationUsageMetering: Sendable {
@@ -744,7 +746,7 @@ protocol ConversationUsageMetering: Sendable {
 actor UserDefaultsUsageMeter: ConversationUsageMetering {
     private struct Record: Codable, Equatable {
         var day: String; var month: String
-        var turnsToday: Int; var turnsThisMonth: Int; var costThisMonth: Double
+        var turnsToday: Int; var turnsThisMonth: Int; var tokensToday: Int; var tokensThisMonth: Int; var costThisMonth: Double
     }
     private static let key = "conversation.claude.usage"
     /// 100 万トークンあたりの USD（入力、出力、キャッシュ読み取り）。要件定義書 §8.6（2026-10-06 時点）。
@@ -773,6 +775,9 @@ actor UserDefaultsUsageMeter: ConversationUsageMetering {
         var record = current()
         record.turnsToday += 1
         record.turnsThisMonth += 1
+        let tokens = Int(Self.cachedPrefixTokens) + promptCharacters + responseCharacters
+        record.tokensToday += tokens
+        record.tokensThisMonth += tokens
         record.costThisMonth += Self.estimatedCostUSD(model: model, promptCharacters: promptCharacters, responseCharacters: responseCharacters)
         store(record)
     }
@@ -782,7 +787,8 @@ actor UserDefaultsUsageMeter: ConversationUsageMetering {
     func summary() -> ConversationUsageSummary {
         let record = current()
         return ConversationUsageSummary(turnsToday: record.turnsToday, turnsThisMonth: record.turnsThisMonth,
-                                        estimatedCostUSDThisMonth: record.costThisMonth)
+                                        estimatedCostUSDThisMonth: record.costThisMonth,
+                                        estimatedTokensToday: record.tokensToday, estimatedTokensThisMonth: record.tokensThisMonth)
     }
 
     private func current() -> Record {
@@ -791,9 +797,9 @@ actor UserDefaultsUsageMeter: ConversationUsageMetering {
         let day = "\(parts.year!)-\(parts.month!)-\(parts.day!)"
         let month = "\(parts.year!)-\(parts.month!)"
         var record = defaults.data(forKey: Self.key).flatMap { try? JSONDecoder().decode(Record.self, from: $0) }
-            ?? Record(day: day, month: month, turnsToday: 0, turnsThisMonth: 0, costThisMonth: 0)
-        if record.month != month { record = Record(day: day, month: month, turnsToday: 0, turnsThisMonth: 0, costThisMonth: 0) }
-        if record.day != day { record.day = day; record.turnsToday = 0 }
+            ?? Record(day: day, month: month, turnsToday: 0, turnsThisMonth: 0, tokensToday: 0, tokensThisMonth: 0, costThisMonth: 0)
+        if record.month != month { record = Record(day: day, month: month, turnsToday: 0, turnsThisMonth: 0, tokensToday: 0, tokensThisMonth: 0, costThisMonth: 0) }
+        if record.day != day { record.day = day; record.turnsToday = 0; record.tokensToday = 0 }
         return record
     }
 
@@ -839,20 +845,23 @@ enum LongTermMemoryPolicy {
     static func exceedsLimits(_ facts: [LongTermFact]) -> Bool
     static func trimmed(_ facts: [LongTermFact]) -> [LongTermFact] // 統合に失敗したときの決定的な切り詰め
 }
-enum LongTermMemoryWriteResult: Equatable, Sendable { case saved, duplicate }
+enum LongTermMemoryWriteResult: Equatable, Sendable { case saved, duplicate, rejected }   // rejected = 削除より前の世代からの書き込み
 protocol LongTermMemoryWriting: Sendable {
     func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult
 }
 actor LongTermMemoryManager: LongTermMemoryWriting {
     init(store: any LongTermMemoryStore, consolidate: @escaping @Sendable ([LongTermFact]) async throws -> [LongTermFact] = { $0 })
     func facts() async throws -> [LongTermFact]
-    func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult
+    func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult   // 現在の世代で書く
     func forget(id: UUID) async throws
-    func clear() async throws
-    func renderedBlock() async -> String                          // 読めないときは ""
+    func clear() async throws                                      // 世代を進める。以後、古い writer の remember は .rejected
+    func renderedBlock() async -> String                           // 読めないときは ""
+    func makeWriter() -> any LongTermMemoryWriting                 // 呼び出し時点の世代に固定された書き込み口（セッションごとに 1 つ）
+    // remember / forget / clear は到着順に直列化され、await 中に別の変更が割り込まない
 }
-protocol ConversationToolProvider: Sendable { func tools() -> [any Tool] }
-struct StaticToolProvider: ConversationToolProvider { init(_ items: [any Tool]) }
+protocol ConversationToolProvider: Sendable { func tools(memory: any LongTermMemoryWriting) -> [any Tool] }  // セッション作成ごとに呼ぶ
+struct RememberToolProvider: ConversationToolProvider {}          // [RememberTool(memory: memory)] を返す
+struct StaticToolProvider: ConversationToolProvider { init(_ items: [any Tool]) }   // テスト用。memory を無視して items を返す
 struct RememberTool: Tool { init(memory: any LongTermMemoryWriting) }  // name "remember"
 ```
 
@@ -920,6 +929,33 @@ final class LongTermMemoryTests: XCTestCase {
         let block = await manager.renderedBlock()
         XCTAssertEqual(block, "")
     }
+    func testMutationsAreSerializedAndStaleWritersAreRejected() async throws {
+        let store = SpyLongTermMemoryStore()
+        let gate = ConversationTestGate()
+        await store.setSaveGate(gate)
+        let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
+        let staleWriter = await manager.makeWriter()
+        // A の保存が store で止まっている間に clear を要求する。clear は A の後に実行され、A が復活することはない。
+        let first = Task { try await manager.remember("A", category: .other) }
+        await gate.waitUntilEntered()
+        let clearing = Task { try await manager.clear() }
+        await gate.open()
+        _ = try await first.value
+        try await clearing.value
+        let afterClear = try await manager.facts()
+        XCTAssertTrue(afterClear.isEmpty)
+        // 削除前に作った writer からの書き込みは拒否され、現在の writer は通る。
+        let stale = try await staleWriter.remember("B", category: .other)
+        XCTAssertEqual(stale, .rejected)
+        let fresh = try await manager.makeWriter().remember("C", category: .other)
+        XCTAssertEqual(fresh, .saved)
+        let texts = try await manager.facts().map(\.text)
+        XCTAssertEqual(texts, ["C"])
+        let saves = await store.saved
+        XCTAssertEqual(saves.map { $0.map(\.text) }, [["A"], ["C"]])
+        let clears = await store.clears
+        XCTAssertEqual(clears, 1)
+    }
 }
 
 /// テスト用の記録付きストア。製品側の InMemoryLongTermMemoryStore とは別物。
@@ -931,7 +967,9 @@ actor SpyLongTermMemoryStore: LongTermMemoryStore {
     func seed(_ value: [LongTermFact]) { facts = value }
     func setFailsLoad(_ value: Bool) { failsLoad = value }
     func load() throws -> [LongTermFact] { if failsLoad { throw ConversationMemoryError.readFailed }; return facts }
-    func save(_ value: [LongTermFact]) { facts = value; saved.append(value) }
+    var saveGate: ConversationTestGate?
+    func setSaveGate(_ gate: ConversationTestGate) { saveGate = gate }
+    func save(_ value: [LongTermFact]) async { if let saveGate { await saveGate.wait() }; facts = value; saved.append(value) }
     func clear() { facts = []; clears += 1 }
 }
 ```
@@ -995,12 +1033,15 @@ final class RememberToolTests: XCTestCase {
         await writer.set(.duplicate)
         let duplicate = try await tool.call(arguments: .init(fact: "ほうじ茶が好き", category: "nonsense"))
         XCTAssertEqual(duplicate, "すでに覚えています: ほうじ茶が好き")
+        await writer.set(.rejected)
+        let rejected = try await tool.call(arguments: .init(fact: "古い会話の事実", category: "event"))
+        XCTAssertEqual(rejected, "この記憶は保存できませんでした（会話がリセットされました）: 古い会話の事実")
         let calls = await writer.calls
-        XCTAssertEqual(calls.map(\.1), [.preference, .other])
+        XCTAssertEqual(calls.map(\.1), [.preference, .other, .event])
     }
-    func testProviderExposesToolNames() {
-        let provider = StaticToolProvider([RememberTool(memory: Writer())])
-        XCTAssertEqual(provider.tools().map(\.name), ["remember"])
+    func testProvidersExposeToolNames() {
+        XCTAssertEqual(RememberToolProvider().tools(memory: Writer()).map(\.name), ["remember"])
+        XCTAssertEqual(StaticToolProvider([]).tools(memory: Writer()).map(\.name), [])
     }
 }
 ```
@@ -1153,7 +1194,7 @@ actor FileLongTermMemoryStore: LongTermMemoryStore {
 // LongTermMemoryManager.swift
 import Foundation
 
-enum LongTermMemoryWriteResult: Equatable, Sendable { case saved, duplicate }
+enum LongTermMemoryWriteResult: Equatable, Sendable { case saved, duplicate, rejected }
 
 protocol LongTermMemoryWriting: Sendable {
     func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult
@@ -1163,6 +1204,11 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
     private let store: any LongTermMemoryStore
     private let consolidate: @Sendable ([LongTermFact]) async throws -> [LongTermFact]
     private var cached: [LongTermFact]?
+    /// clear() のたびに進む。古い世代の writer からの書き込みは拒否する。
+    private var generation: UInt64 = 0
+    /// 変更操作を到着順に直列化する簡単なロック。await 中に別の変更が割り込み、古い一覧を保存し直すのを防ぐ。
+    private var busy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
 
     init(store: any LongTermMemoryStore,
          consolidate: @escaping @Sendable ([LongTermFact]) async throws -> [LongTermFact] = { $0 }) {
@@ -1178,8 +1224,37 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
     }
 
     func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult {
+        try await remember(text, category: category, generation: generation)
+    }
+
+    func forget(id: UUID) async throws {
+        await acquire(); defer { release() }
+        var current = try await facts()
+        current.removeAll { $0.id == id }
+        try await store.save(current)
+        cached = current
+    }
+
+    func clear() async throws {
+        await acquire(); defer { release() }
+        try await store.clear()
+        cached = []
+        generation &+= 1
+    }
+
+    func renderedBlock() async -> String {
+        LongTermMemoryPolicy.render((try? await facts()) ?? [])
+    }
+
+    func makeWriter() -> any LongTermMemoryWriting {
+        GenerationScopedWriter(manager: self, generation: generation)
+    }
+
+    fileprivate func remember(_ text: String, category: LongTermFactCategory, generation expected: UInt64) async throws -> LongTermMemoryWriteResult {
         let normalized = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(LongTermMemoryPolicy.maximumFactLength))
         guard !normalized.isEmpty else { return .duplicate }
+        await acquire(); defer { release() }
+        guard generation == expected else { return .rejected }
         var current = try await facts()
         if current.contains(where: { $0.text == normalized }) { return .duplicate }
         current.append(LongTermFact(id: UUID(), category: category, text: normalized, createdAt: Date()))
@@ -1195,20 +1270,22 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
         return .saved
     }
 
-    func forget(id: UUID) async throws {
-        var current = try await facts()
-        current.removeAll { $0.id == id }
-        try await store.save(current)
-        cached = current
+    private func acquire() async {
+        if !busy { busy = true; return }
+        await withCheckedContinuation { waiters.append($0) }
     }
 
-    func clear() async throws {
-        try await store.clear()
-        cached = []
+    private func release() {
+        if waiters.isEmpty { busy = false } else { waiters.removeFirst().resume() }
     }
+}
 
-    func renderedBlock() async -> String {
-        LongTermMemoryPolicy.render((try? await facts()) ?? [])
+/// 作成時点の世代に固定された書き込み口。セッションごとに 1 つ作ってツールに渡す。
+private struct GenerationScopedWriter: LongTermMemoryWriting {
+    let manager: LongTermMemoryManager
+    let generation: UInt64
+    func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult {
+        try await manager.remember(text, category: category, generation: generation)
     }
 }
 ```
@@ -1217,15 +1294,21 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
 // ConversationToolProvider.swift
 import FoundationModels
 
-/// セッションに渡すツールの集合。計画 3（move_head）と計画 4（express / look）がここに追加する。
+/// セッションに渡すツールの集合。セッションを作るたびに呼ばれ、memory はそのセッションの世代に固定された書き込み口。
+/// 計画 3（move_head）と計画 4（express / look）はここにツールを足す。
 protocol ConversationToolProvider: Sendable {
-    func tools() -> [any Tool]
+    func tools(memory: any LongTermMemoryWriting) -> [any Tool]
 }
 
+struct RememberToolProvider: ConversationToolProvider {
+    func tools(memory: any LongTermMemoryWriting) -> [any Tool] { [RememberTool(memory: memory)] }
+}
+
+/// テスト用。memory に関係なく固定の配列を返す。
 struct StaticToolProvider: ConversationToolProvider {
     private let items: [any Tool]
     init(_ items: [any Tool]) { self.items = items }
-    func tools() -> [any Tool] { items }
+    func tools(memory: any LongTermMemoryWriting) -> [any Tool] { items }
 }
 ```
 
@@ -1251,6 +1334,7 @@ struct RememberTool: Tool {
         switch try await memory.remember(arguments.fact, category: category) {
         case .saved: return "覚えました: \(arguments.fact)"
         case .duplicate: return "すでに覚えています: \(arguments.fact)"
+        case .rejected: return "この記憶は保存できませんでした（会話がリセットされました）: \(arguments.fact)"
         }
     }
 }
@@ -1495,8 +1579,10 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
 
     private func languageModel(_ choice: ConversationModelChoice, effort: ConversationEffort) throws -> ClaudeLanguageModel {
         guard let mode = auth.authMode else { throw ClaudeError.missingCredential }
+        // fallbacks は使わない（Global Constraints）。既定値に頼らず空を明示する。
         return ClaudeLanguageModel(name: Self.claudeModel(for: choice), auth: mode,
-                                   fixedEffort: Self.claudeEffort(for: effort), timeout: Self.replyTimeout)
+                                   fixedEffort: Self.claudeEffort(for: effort), fallbacks: [],
+                                   timeout: Self.replyTimeout)
     }
 
     func authenticateIfNeeded() async throws {
@@ -1594,7 +1680,10 @@ import FoundationModels
 @testable import CatRobot
 
 actor StubSessionFactory: ConversationSessionFactory {
-    struct SessionRecord: Sendable { let configuration: ConversationSessionConfiguration; let toolNames: [String] }
+    struct SessionRecord: Sendable {
+        let configuration: ConversationSessionConfiguration; let tools: [any Tool]
+        var toolNames: [String] { tools.map(\.name) }
+    }
     private(set) var sessions: [SessionRecord] = []
     private(set) var summaryRequests: [ConversationSummaryRequest] = []
     private(set) var consolidations = 0
@@ -1611,7 +1700,7 @@ actor StubSessionFactory: ConversationSessionFactory {
     }
     func authenticateIfNeeded() async throws { if let authenticationError { throw authenticationError } }
     func makeReplySession(_ configuration: ConversationSessionConfiguration, tools: [any Tool]) async -> any ConversationSessionClient {
-        sessions.append(.init(configuration: configuration, toolNames: tools.map(\.name)))
+        sessions.append(.init(configuration: configuration, tools: tools))
         return scripts[min(sessions.count - 1, scripts.count - 1)]
     }
     func summarize(_ request: ConversationSummaryRequest) async throws -> String {
@@ -1736,7 +1825,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
                      settings: Settings = Settings(), usage: UsageSpy = UsageSpy(),
                      budget: ConversationBudget = .default) -> ClaudeConversationService {
         ClaudeConversationService(factory: factory, memoryStore: store, longTermMemory: longTerm,
-                                  tools: StaticToolProvider([RememberTool(memory: longTerm)]),
+                                  tools: RememberToolProvider(),
                                   configuration: { settings.current }, usage: usage, budget: budget)
     }
     func collect(_ stream: AsyncThrowingStream<String, Error>) async throws -> [String] {
@@ -1809,7 +1898,8 @@ final class ClaudeConversationServiceTests: XCTestCase {
     func testModelSettingChangeAppliesOnlyWhenSessionIsRebuilt() async throws {
         let settings = Settings(.init(model: .opus5_5))
         let factory = StubSessionFactory()
-        let service = makeService(factory: factory, settings: settings)
+        let usage = UsageSpy()
+        let service = makeService(factory: factory, settings: settings, usage: usage)
         _ = try await collect(service.streamReply(to: "一回目"))
         settings.set(.init(model: .sonnet5_5, effort: .medium))
         _ = try await collect(service.streamReply(to: "二回目"))
@@ -1820,6 +1910,8 @@ final class ClaudeConversationServiceTests: XCTestCase {
         sessions = await factory.sessions
         XCTAssertEqual(sessions.map(\.configuration.model), [.opus5_5, .sonnet5_5])
         XCTAssertEqual(sessions.last?.configuration.effort, .medium)
+        let billed = await usage.turns.map { $0.0 }
+        XCTAssertEqual(billed, [.opus5_5, .opus5_5, .sonnet5_5], "集計はそのターンを生成したセッションのモデルで行う")
     }
 
     func testResetDropsShortTermMemoryButKeepsLongTermFacts() async throws {
@@ -1844,18 +1936,31 @@ final class ClaudeConversationServiceTests: XCTestCase {
         let longStore = InMemoryLongTermMemoryStore()
         let longTerm = LongTermMemoryManager(store: longStore)
         let store = InMemoryConversationMemoryStore()
-        let service = makeService(store: store, longTerm: longTerm)
+        let factory = StubSessionFactory()
+        let service = makeService(factory: factory, store: store, longTerm: longTerm)
         _ = try await longTerm.remember("A", category: .other)
         _ = try await collect(service.streamReply(to: "x"))
+        // 忘れる前のセッションに渡された remember ツールを取り出しておく（遅れて届くツール呼び出しの再現）
+        let firstSession = await factory.sessions.first
+        let staleTool = try XCTUnwrap(firstSession?.tools.first { $0.name == "remember" } as? RememberTool)
         try await service.forgetConversation()
         let facts = try await longTerm.facts()
         XCTAssertTrue(facts.isEmpty)
         let saved = await store.load()
         XCTAssertNil(saved)
-        // 削除後に遅れて届いたツール呼び出しは、削除後の空の状態に対する新規追加として扱われ、消した事実は復活しない。
-        _ = try await longTerm.remember("B", category: .other)
-        let after = try await longTerm.facts().map(\.text)
-        XCTAssertEqual(after, ["B"])
+        // 削除前のセッションからの呼び出しは保存されない
+        let late = try await staleTool.call(arguments: .init(fact: "B", category: "other"))
+        XCTAssertEqual(late, "この記憶は保存できませんでした（会話がリセットされました）: B")
+        let after = try await longTerm.facts()
+        XCTAssertTrue(after.isEmpty)
+        // 新しいセッションの remember は通る
+        _ = try await collect(service.streamReply(to: "y"))
+        let lastSession = await factory.sessions.last
+        let freshTool = try XCTUnwrap(lastSession?.tools.first { $0.name == "remember" } as? RememberTool)
+        let fresh = try await freshTool.call(arguments: .init(fact: "C", category: "other"))
+        XCTAssertEqual(fresh, "覚えました: C")
+        let texts = try await longTerm.facts().map(\.text)
+        XCTAssertEqual(texts, ["C"])
     }
 
     func testOversizedPromptReportsInputTooLongWithoutCreatingSession() async throws {
@@ -2202,6 +2307,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
 
     private var memory = ShortTermMemory()
     private var session: (any ConversationSessionClient)?
+    /// 生きているセッションを作ったときのモデル。利用量の集計はこれで行う（設定変更は次のセッションから）。
+    private var activeModel: ConversationModelChoice?
     private var isGenerating = false
     private var generation: Task<Void, Never>?
 
@@ -2319,8 +2426,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         if failure == nil {
             memory = candidate
             revision &+= 1
-            let settings = await configuration()
-            await usage.recordTurn(model: settings.model, promptCharacters: prompt.count, responseCharacters: response.count)
+            let billedModel = activeModel ?? (await configuration()).model
+            await usage.recordTurn(model: billedModel, promptCharacters: prompt.count, responseCharacters: response.count)
             try? await saveMemory(epoch: epoch)
         } else {
             session = nil
@@ -2342,8 +2449,9 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         let instructions = ConversationInstructions(longTermFacts: facts, summary: memory.summary, recentTurns: memory.turns).text
         let created = await factory.makeReplySession(
             ConversationSessionConfiguration(model: settings.model, effort: settings.effort, instructions: instructions),
-            tools: toolProvider.tools())
+            tools: toolProvider.tools(memory: await longTermMemory.makeWriter()))
         session = created
+        activeModel = settings.model
         trace?.mark(.sessionFinished, outcome: .success)
         return created
     }
@@ -2891,7 +2999,7 @@ struct ClaudeAddressModelClient: AddressModelClient {
     func classify(_ utterance: String) async throws -> GeneratedAddressTarget {
         guard let mode = auth.authMode else { throw ConversationServiceError.modelUnavailable(.claudeCredentialMissing) }
         do {
-            let model = ClaudeLanguageModel(name: .haiku5_5, auth: mode, fixedEffort: .low, timeout: 15)
+            let model = ClaudeLanguageModel(name: .haiku5_5, auth: mode, fixedEffort: .low, fallbacks: [], timeout: 15)
             let session = LanguageModelSession(model: model) { Self.instructions }
             let response = try await session.respond(to: utterance, generating: AddressDecision.self)
             return response.content.target
@@ -3168,8 +3276,8 @@ struct ConversationSettingsView: View {
                     Stepper("1日の上限 \(modelSettings.dailyTurnLimit) 回", value: $modelSettings.dailyTurnLimit, in: 10...2_000, step: 10)
                         .accessibilityIdentifier(ConversationSettingsIdentifier.dailyTurnLimitStepper.rawValue)
                     if let usageSummary {
-                        LabeledContent("今日", value: "\(usageSummary.turnsToday) 回")
-                        LabeledContent("今月", value: "\(usageSummary.turnsThisMonth) 回")
+                        LabeledContent("今日", value: "\(usageSummary.turnsToday) 回・約 \(usageSummary.estimatedTokensToday.formatted()) トークン")
+                        LabeledContent("今月", value: "\(usageSummary.turnsThisMonth) 回・約 \(usageSummary.estimatedTokensThisMonth.formatted()) トークン")
                         LabeledContent("今月の概算", value: String(format: "約 $%.2f", usageSummary.estimatedCostUSDThisMonth))
                     }
                 } header: { Text("利用量") } footer: {
@@ -3206,7 +3314,7 @@ ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSetti
 `OnboardingView.swift` のラベルを次に差し替える:
 
 ```swift
-Label("返事は Anthropic の Claude で作ります。送るのは話しかけた文字と会話の要約だけで、音声は送りません", systemImage: "cloud")
+Label("返事は Anthropic の Claude で作ります。送るのは話しかけた文字、会話の要約、覚えさせたメモだけで、音声は送りません", systemImage: "cloud")
 Label("聞き取りと読み上げはこのiPhoneで処理し、会話の記憶もこのiPhoneだけに保存します。いつでも削除できます", systemImage: "iphone")
 Label("マイクは会話画面を開いている間だけ使います。バックグラウンドでは動きません", systemImage: "mic")
 Label("AIの返事には間違いが含まれることがあります。利用料は作者の負担です", systemImage: "exclamationmark.triangle")
@@ -3246,7 +3354,7 @@ struct ConversationComposition {
                      modelSettings: ConversationModelSettings = ConversationModelSettings(),
                      auth: ClaudeAuthConfiguration = .live()) -> Self
 }
-// ConversationDependencies.live(memoryStore:voiceSettings:) は残し、ConversationComposition.live(...).dependencies を返す薄い入口にする
+// ConversationDependencies.live(voiceSettings:) は残し（memoryStore 引数は削除）、ConversationComposition.live(...).dependencies を返す薄い入口にする
 ```
 
 - [ ] **Step 1: 失敗テストを書く**
@@ -3307,7 +3415,7 @@ struct ConversationComposition {
         let usage = UserDefaultsUsageMeter()
         let configuration: @Sendable () async -> ConversationModelConfiguration = { await MainActor.run { modelSettings.configuration } }
         let claude = ClaudeConversationService(factory: factory, memoryStore: memoryStore, longTermMemory: longTermMemory,
-                                               tools: StaticToolProvider([RememberTool(memory: longTermMemory)]),
+                                               tools: RememberToolProvider(),
                                                configuration: configuration, usage: usage)
         let onDeviceAvailability = FoundationModelAvailabilityService()
         let reply = OnDeviceFallbackReplyGenerator(primary: claude, secondary: FoundationModelReplyService(),
@@ -3402,7 +3510,7 @@ xcrun simctl launch 80F1BF36-5242-4067-A1D9-99399B852120 com.kamby.CatRobot
 - [ ] **Step 6: Commit**
 
 ```bash
-rm -f CatRobot/LocalAssets/claude-api-key.txt   # 共有マシンなら削除。個人機では残してよいが Git には入らないことを git status で確認
+: > CatRobot/LocalAssets/claude-api-key.txt   # 共有マシンなら中身を空にする（ファイル自体はプロジェクトが参照するので消さない）。Git には入らないことを git status で確認
 git add -A && git commit -m "feat: wire Claude conversation engine into the app and document it"
 ```
 
@@ -3422,9 +3530,11 @@ git add -A && git commit -m "feat: wire Claude conversation engine into the app 
 git add CatRobot/Resources/claude-integration.json CatRobot.xcodeproj && git commit -m "chore: register the Cat Robot App Attest client id"
 ```
 
-- [ ] **Step 2: 実機（iPhone 16 Pro）に Debug を入れ、API キーなしで App Attest 認証を確認する（T-AUTH-1）**
+- [ ] **Step 2: 実機（iPhone 16 Pro）で App Attest 認証を確認する（Debug で予備確認 → TestFlight で T-AUTH-1）**
 
-`CatRobot/LocalAssets/claude-api-key.txt` を一時的に退避してから、README の実機手順でビルド・インストール・起動する。Xcode の **Signing & Capabilities** に App Attest が入っていること（entitlements が反映されていること）を確認する。初回起動で認証が走り（数秒）、会話が成立すること。Console の利用量に記録されること。失敗した場合は `ConversationErrorPresentation` の文言が原因（ネットワーク／登録）を示していることを確認して記録する。
+Debug の予備確認: `: > CatRobot/LocalAssets/claude-api-key.txt` で鍵を空にし、`ANTHROPIC_API_KEY` を設定せずに README の実機手順でビルド・インストール・起動する。Xcode の **Signing & Capabilities** に App Attest が入っていること（entitlements が反映されていること）を確認する。初回起動で認証が走り（数秒）、会話が成立し、Console の利用量に記録されること。失敗が `attestationFailed` のときは、Debug の App Attest 環境 `development` を Anthropic 側が受け付けない可能性（推定、未確認）があるので、`CATROBOT_APP_ATTEST_ENVIRONMENT` を Debug でも `production` にして再試行し、どちらで通ったかを記録する。ネットワークや登録の失敗は `ConversationErrorPresentation` の文言が原因を示していることを確認する。
+
+T-AUTH-1（受入）: Release 構成でアーカイブし、TestFlight で同じ iPhone に配布する。鍵の経路が無い状態で会話が成立し、Console に利用量が記録されること。要件 T-AUTH-1 の判定はこの結果で行い、Debug の結果は予備とする。
 
 - [ ] **Step 3: Apple Intelligence 非対応の iPhone での確認（T-DEV-1、T-DEV-2）**
 
@@ -3463,7 +3573,11 @@ PY
 
 `sudo log collect` が使えない環境では Instruments の「os_signpost」テンプレートで同じ区間を記録し、end メッセージの `elapsedFromBoundary` を読む。目標は NFR-PERF-1（`FastPathFirstCaption` の中央値 1.5 秒以下）と NFR-PERF-2（`FastPathSpeechStart` の中央値 2.5 秒以下）。未達でも値を記録し、計画 3 以降の調整項目にする。
 
-- [ ] **Step 5: 記録を書き、README の動作要件を確定して Commit**
+- [ ] **Step 5: アクセシビリティの確認（Task 8 の設定画面）**
+
+実機で VoiceOver をオンにし、設定シートの各コントロール（モデル、考える深さ、声、1 日の上限、覚えていることの一覧と削除、新しい会話を始める）が日本語の名前と現在値を読み上げること、Dynamic Type を最大のアクセシビリティサイズにしても文字が欠けないこと、Reduce Motion オンで表示が崩れないことを確認して記録する。
+
+- [ ] **Step 6: 記録を書き、README の動作要件を確定して Commit**
 
 ```bash
 git add -A && git commit -m "docs: record Claude conversation engine device verification"
@@ -3478,3 +3592,5 @@ git add -A && git commit -m "docs: record Claude conversation engine device veri
 - FR-ONB-2 の「初回認証をオンボーディング中に行う」は、本計画では会話開始時の事前確認（`availability()` が `authenticateIfNeeded()` を呼ぶ）と原因別の文言（Task 2）で満たす。オンボーディング画面に認証ステップを置くのは、権限フローを組み直す計画 4 で行う。
 - 本計画で意図的に扱わないもの: FR-CONV-9（首との同期、計画 3）、FR-MOV / FR-FACE / FR-VIS / FR-LINK / FR-RUN / FR-ONB-1・3（計画 3・4）、NFR-PERF-3〜5・NFR-REL-1〜2・NFR-SEC-3〜4・NFR-THERM（ハードウェア、計画 2〜4）、T-AUTH-2（取り消しは恒久なので検証用の別統合を作る判断は運用に委ねる）、NFR-PRIV-4 / T-PRIV-1 のファイル列挙テスト（計画 4 でカメラを足したときに追加）。
 - 要件定義書からの変更点: `fallbacks` を使わない（Global Constraints に理由）。要件定義書 §5.3 の該当行を本計画と同じコミットで更新する。
+- 明示的に後送りするもの: §6.11 の「Claude の失敗が連続 3 回で『少し待って』と告げる」は Task 7 着手時の brief で追加する（`OnDeviceFallbackReplyGenerator` に連続失敗の回数と通知文を足し、テスト `testThirdConsecutiveClaudeFailureAsksToWait` で固定する）。
+- 2026-10-11 の対レビュー（codex）で反映した点: 開発用キーは資源同梱＋Release 除外（スクリプト段階なし）、長期メモの変更直列化と世代付き writer、ツールはセッションごとに生成、利用量はセッションのモデルで集計、概算トークン表示、`fallbacks: []` の明示、T-AUTH-1 は TestFlight、VoiceOver 手順、文言の修正。
