@@ -1836,24 +1836,73 @@ import XCTest
 final class ConversationInstructionsTests: XCTestCase {
     func testFixedPrefixDoesNotChangeWithMemory() {
         let empty = ConversationInstructions(longTermFacts: "", summary: "", recentTurns: [])
-        let full = ConversationInstructions(longTermFacts: "覚えていること:\n- [好み] ほうじ茶", summary: "旅行の相談をした",
-                                            recentTurns: [.init(prompt: "こんにちは", response: "やあ")])
-        XCTAssertTrue(empty.text.hasPrefix(ConversationInstructions.fixedPrefix))
-        XCTAssertTrue(full.text.hasPrefix(ConversationInstructions.fixedPrefix))
-        XCTAssertEqual(empty.text, ConversationInstructions.fixedPrefix)
+        let full = ConversationInstructions(
+            longTermFacts: "覚えていること:\n- [好み] ほうじ茶", summary: "旅行の相談をした",
+            recentTurns: [.init(prompt: "こんにちは", response: "やあ")])
+        let prefix = Array(ConversationInstructions.fixedPrefix.utf8)
+        XCTAssertEqual(Array(empty.text.utf8), prefix)
+        XCTAssertEqual(Array(full.text.utf8.prefix(prefix.count)), prefix)
+        XCTAssertEqual(ConversationInstructions.fixedPrefix,
+                       ConversationInstructions.persona + "\n\n" + ConversationInstructions.toolGuidance)
     }
-    func testSectionsAppearInOrderAndEmptyOnesAreOmitted() {
-        let text = ConversationInstructions(longTermFacts: "覚えていること:\n- [人] さくら", summary: "", recentTurns: [.init(prompt: "p", response: "r")]).text
-        let facts = text.range(of: "覚えていること")!, recent = text.range(of: "直近の会話")!
+
+    func testSectionsAppearInOrderAndEmptyOnesAreOmitted() throws {
+        let text = ConversationInstructions(
+            longTermFacts: "覚えていること:\n- [人] さくら", summary: "",
+            recentTurns: [.init(prompt: "p", response: "r")]).text
+        let facts = try XCTUnwrap(text.range(of: "覚えていること"))
+        let recent = try XCTUnwrap(text.range(of: "直近の会話"))
         XCTAssertLessThan(facts.lowerBound, recent.lowerBound)
         XCTAssertFalse(text.contains("これまでの会話の要約"))
-        XCTAssertTrue(text.contains("利用者: p\n猫: r"))
+        XCTAssertTrue(text.hasSuffix("利用者: p\n猫: r"))
+
+        let full = ConversationInstructions(
+            longTermFacts: "覚えていること:\n- [人] さくら", summary: "旅行の相談",
+            recentTurns: [.init(prompt: "p1", response: "r1"), .init(prompt: "p2", response: "r2")]).text
+        XCTAssertTrue(full.hasSuffix("""
+        覚えていること:
+        - [人] さくら
+
+        これまでの会話の要約（最近の利用者の訂正を優先）:
+        旅行の相談
+
+        直近の会話:
+        利用者: p1
+        猫: r1
+        利用者: p2
+        猫: r2
+        """))
+        let summaryOnly = ConversationInstructions(longTermFacts: "", summary: "旅行の相談", recentTurns: []).text
+        XCTAssertFalse(summaryOnly.contains("覚えていること"))
+        XCTAssertFalse(summaryOnly.contains("直近の会話"))
+        XCTAssertTrue(summaryOnly.hasSuffix("これまでの会話の要約（最近の利用者の訂正を優先）:\n旅行の相談"))
     }
+
     func testSummaryRequestPromptListsEvictedTurnsOnly() {
-        let request = ConversationSummaryRequest(previousSummary: "前の記憶", evictedTurns: [.init(prompt: "A", response: "B")], characterLimit: 600)
-        XCTAssertTrue(request.prompt.contains("前の記憶"))
-        XCTAssertTrue(request.prompt.contains("利用者: A\nAI: B"))
-        XCTAssertTrue(request.prompt.contains("600"))
+        let request = ConversationSummaryRequest(
+            previousSummary: "前の記憶",
+            evictedTurns: [.init(prompt: "A", response: "B"), .init(prompt: "C", response: "D")],
+            characterLimit: 600)
+        XCTAssertEqual(request.prompt, """
+        これまでの記憶:
+        前の記憶
+        追加の会話:
+        利用者: A
+        AI: B
+        利用者: C
+        AI: D
+        更新後の記憶だけを600文字以内で出力してください。
+        """)
+        let withoutPreviousSummary = ConversationSummaryRequest(
+            previousSummary: "", evictedTurns: [.init(prompt: "E", response: "F")], characterLimit: 120)
+        XCTAssertEqual(withoutPreviousSummary.prompt, """
+        これまでの記憶:
+        なし
+        追加の会話:
+        利用者: E
+        AI: F
+        更新後の記憶だけを120文字以内で出力してください。
+        """)
     }
 }
 ```
@@ -1872,20 +1921,34 @@ final class ClaudeSessionFactoryTests: XCTestCase {
         XCTAssertEqual(ClaudeSessionFactory.claudeEffort(for: .low), .low)
         XCTAssertEqual(ClaudeSessionFactory.claudeEffort(for: .medium), .medium)
         for choice in ConversationModelChoice.allCases {
-            XCTAssertTrue(ClaudeSessionFactory.claudeModel(for: choice).capabilities.effortLevels.isSuperset(of: [.low, .medium]))
-            XCTAssertTrue(ClaudeSessionFactory.claudeModel(for: choice).capabilities.imageInput)
+            let capabilities = ClaudeSessionFactory.claudeModel(for: choice).capabilities
+            XCTAssertTrue(capabilities.effortLevels.isSuperset(of: [.low, .medium]))
+            XCTAssertTrue(capabilities.imageInput)
         }
     }
+
     func testMissingCredentialFailsBeforeAnyNetworkCall() async {
         let factory = ClaudeSessionFactory(auth: .missing)
-        do { try await factory.authenticateIfNeeded(); XCTFail("expected missingCredential") }
-        catch { XCTAssertEqual(ClaudeErrorMapper.map(error), .modelUnavailable(.claudeCredentialMissing)) }
-        let client = await factory.makeReplySession(.init(model: .opus5_5, effort: .low, instructions: "x"), tools: [])
-        do { for try await _ in await client.snapshots(for: "hi") {}; XCTFail("expected failure") }
-        catch { XCTAssertEqual(error as? ConversationServiceError, .modelUnavailable(.claudeCredentialMissing)) }
+        do {
+            try await factory.authenticateIfNeeded()
+            XCTFail("expected missingCredential")
+        } catch {
+            XCTAssertEqual(ClaudeErrorMapper.map(error), .modelUnavailable(.claudeCredentialMissing))
+        }
+        let client = await factory.makeReplySession(
+            .init(model: .opus5_5, effort: .low, instructions: "x"), tools: [])
+        do {
+            for try await _ in await client.snapshots(for: "hi") {
+                XCTFail("missing credentials must not yield a reply")
+            }
+            XCTFail("expected failure")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .modelUnavailable(.claudeCredentialMissing))
+        }
     }
+
     func testAPIKeyModeDoesNotAttest() async throws {
-        // authenticateIfNeeded は App Attest 以外では何もしない（パッケージ契約）。ネットワークに出ない。
+        // パッケージ 0.2.3 は App Attest 以外の authenticateIfNeeded で即座に戻り、ネットワークに出ない。
         try await ClaudeSessionFactory(auth: .apiKey("sk-test")).authenticateIfNeeded()
     }
 }
@@ -2020,7 +2083,8 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
     func makeReplySession(_ configuration: ConversationSessionConfiguration, tools: [any Tool]) async -> any ConversationSessionClient {
         do {
             let model = try languageModel(configuration.model, effort: configuration.effort)
-            let session = LanguageModelSession(model: model, tools: tools) { configuration.instructions }
+            let session = LanguageModelSession(model: model, tools: tools,
+                                               instructions: Instructions(configuration.instructions))
             return LiveClaudeSessionClient(session: session)
         } catch {
             return FailingSessionClient(error: error)
@@ -2028,7 +2092,8 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
     }
 
     func summarize(_ request: ConversationSummaryRequest) async throws -> String {
-        let session = LanguageModelSession(model: try languageModel(.haiku5_5, effort: .low)) { ConversationSummaryRequest.instructions }
+        let session = LanguageModelSession(model: try languageModel(.haiku5_5, effort: .low),
+                                           instructions: Instructions(ConversationSummaryRequest.instructions))
         let response = try await session.respond(to: request.prompt,
                                                  options: GenerationOptions(maximumResponseTokens: request.characterLimit * 2))
         let summary = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2037,7 +2102,8 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
     }
 
     func consolidateFacts(_ facts: [LongTermFact]) async throws -> [LongTermFact] {
-        let session = LanguageModelSession(model: try languageModel(.haiku5_5, effort: .low)) { ConsolidatedFacts.instructions }
+        let session = LanguageModelSession(model: try languageModel(.haiku5_5, effort: .low),
+                                           instructions: Instructions(ConsolidatedFacts.instructions))
         let response = try await session.respond(to: LongTermMemoryPolicy.render(facts), generating: ConsolidatedFacts.self)
         let now = Date()
         return response.content.facts.prefix(LongTermMemoryPolicy.maximumFacts).map {
@@ -2062,7 +2128,8 @@ struct ConsolidatedFact: Sendable {
     @Guide(description: "60文字以内の事実") var text: String
 }
 
-private final class LiveClaudeSessionClient: ConversationSessionClient, @unchecked Sendable {
+/// LanguageModelSession は Sendable。変更可能な共有状態を増やさず、不変の参照だけを保持する。
+private final class LiveClaudeSessionClient: ConversationSessionClient {
     private let session: LanguageModelSession
     init(session: LanguageModelSession) { self.session = session }
 
@@ -2097,7 +2164,7 @@ private struct FailingSessionClient: ConversationSessionClient {
 }
 ```
 
-`LanguageModelSession(model:tools:instructions:)` の `model:` は iOS 27 で `some LanguageModel` を受け付ける（Anthropic の文書例 `LanguageModelSession(model: model)` と同じ経路）。コンパイルエラーになる場合は `LanguageModelSession(model: model, tools: tools, instructions: Instructions(configuration.instructions))` の形に切り替え、どちらを使ったかをコミットメッセージに書く。
+`LanguageModelSession(model:tools:instructions:)` の `model:` は iOS 27 で `some LanguageModel` を受け付ける。Task 1 では `SystemLanguageModel` を渡す `@InstructionsBuilder` 閉包形式が、従来の `SystemLanguageModel` 用と iOS 27 の汎用 `some LanguageModel` 用の初期化子の間で曖昧になった。この SDK で使う形を明示するため、Claude セッションの 3 箇所は `instructions: Instructions(...)` に統一する。`LanguageModelSession` は `@unchecked Sendable` 適合済みであり、`let session` だけを保持する `LiveClaudeSessionClient` は `ConversationSessionClient` 経由の通常の `Sendable` でコンパイルできるため、ラッパーに `@unchecked` は付けない。
 
 テストダブル:
 
@@ -2109,7 +2176,8 @@ import FoundationModels
 
 actor StubSessionFactory: ConversationSessionFactory {
     struct SessionRecord: Sendable {
-        let configuration: ConversationSessionConfiguration; let tools: [any Tool]
+        let configuration: ConversationSessionConfiguration
+        let tools: [any Tool]
         var toolNames: [String] { tools.map(\.name) }
     }
     private(set) var sessions: [SessionRecord] = []
@@ -2123,19 +2191,27 @@ actor StubSessionFactory: ConversationSessionFactory {
     init(scripts: [ScriptedSessionClient] = [ScriptedSessionClient(chunks: ["にゃ", "ん。"])],
          summaries: [String] = ["要約1", "要約2"],
          authenticationError: (any Error)? = nil, summaryError: (any Error)? = nil) {
-        self.scripts = scripts; self.summaries = summaries
-        self.authenticationError = authenticationError; self.summaryError = summaryError
+        self.scripts = scripts
+        self.summaries = summaries
+        self.authenticationError = authenticationError
+        self.summaryError = summaryError
     }
-    func authenticateIfNeeded() async throws { if let authenticationError { throw authenticationError } }
+
+    func authenticateIfNeeded() async throws {
+        if let authenticationError { throw authenticationError }
+    }
+
     func makeReplySession(_ configuration: ConversationSessionConfiguration, tools: [any Tool]) async -> any ConversationSessionClient {
         sessions.append(.init(configuration: configuration, tools: tools))
         return scripts[min(sessions.count - 1, scripts.count - 1)]
     }
+
     func summarize(_ request: ConversationSummaryRequest) async throws -> String {
         summaryRequests.append(request)
         if let summaryError { throw summaryError }
         return summaries[min(summaryRequests.count - 1, summaries.count - 1)]
     }
+
     func consolidateFacts(_ facts: [LongTermFact]) async throws -> [LongTermFact] {
         consolidations += 1
         return Array(LongTermMemoryPolicy.ordered(facts).suffix(LongTermMemoryPolicy.maximumFacts / 2))
@@ -2143,6 +2219,7 @@ actor StubSessionFactory: ConversationSessionFactory {
 }
 
 /// chunks は差分。累積して snapshots を流す。nil なら yield/finish/fail まで開いたまま。
+/// 変更可能な状態はすべて lock で保護する。
 final class ScriptedSessionClient: ConversationSessionClient, @unchecked Sendable {
     private let lock = NSLock()
     private let chunks: [String]?
@@ -2155,24 +2232,40 @@ final class ScriptedSessionClient: ConversationSessionClient, @unchecked Sendabl
     var prompts: [String] { lock.withLock { storedPrompts } }
     var prewarms: Int { lock.withLock { prewarmCount } }
 
-    init(chunks: [String]?, failure: (any Error)? = nil) { self.chunks = chunks; self.failure = failure }
+    init(chunks: [String]?, failure: (any Error)? = nil) {
+        self.chunks = chunks
+        self.failure = failure
+    }
 
     func prewarm() async { lock.withLock { prewarmCount += 1 } }
 
     func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            lock.withLock { self.continuation = continuation; storedPrompts.append(prompt); accumulated = ""; started = true }
+            lock.withLock {
+                self.continuation = continuation
+                storedPrompts.append(prompt)
+                accumulated = ""
+                started = true
+            }
             if let chunks {
                 var text = ""
-                for chunk in chunks { text += chunk; continuation.yield(text) }
+                for chunk in chunks {
+                    text += chunk
+                    continuation.yield(text)
+                }
                 continuation.finish(throwing: failure)
             }
         }
     }
+
     func yield(_ delta: String) {
-        let (continuation, text) = lock.withLock { accumulated += delta; return (self.continuation, accumulated) }
+        let (continuation, text) = lock.withLock {
+            accumulated += delta
+            return (self.continuation, accumulated)
+        }
         continuation?.yield(text)
     }
+
     func finish() { lock.withLock { continuation }?.finish() }
     func fail(_ error: any Error) { lock.withLock { continuation }?.finish(throwing: error) }
     func waitUntilStarted() async { while !lock.withLock({ started }) { await Task.yield() } }
