@@ -54,4 +54,21 @@ final class ReplyTraceTests: XCTestCase {
             XCTAssertEqual(Set(json.keys), ["id", "point", "at"])
         }
     }
+    func testClaudeOwnedTaskKeepsTraceThroughGenerationAndSave() async throws {
+        let sink = RecordingReplyTraceSink()
+        let trace = ReplyTrace(sink: sink, now: { 0 })
+        let service = ClaudeConversationService(factory: StubSessionFactory(), memoryStore: InMemoryConversationMemoryStore(),
+                                                longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
+                                                tools: StaticToolProvider([]), configuration: { .init() },
+                                                usage: ClaudeConversationServiceTests.UsageSpy())
+        try await ReplyTraceContext.$current.withValue(trace) {
+            let stream = try await service.streamReply(to: "private prompt")
+            for try await _ in stream {}
+        }
+        let events = sink.events
+        XCTAssertEqual(Set(events.map(\.id)), [trace.id])
+        XCTAssertEqual(events.map(\.point), [.sessionStarted, .sessionFinished, .generationFinished,
+                                             .saveStarted, .saveFinished, .streamFinished])
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(events), as: UTF8.self).contains("private prompt"))
+    }
 }

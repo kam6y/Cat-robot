@@ -6,6 +6,8 @@ actor MemoryStoreFake: ConversationMemoryStore {
     private(set) var loadCount = 0
     private(set) var clearCount = 0
     private(set) var saveCount = 0
+    /// save / clear の完了順。成功は "save" / "clear"、失敗は "saveFailed" / "clearFailed"。順序の検証は状態通知ではなくこれで行う。
+    private(set) var events: [String] = []
     private let loadGate: ConversationTestGate?
     private var saveGate: ConversationTestGate?
     private var saveFailure = false
@@ -25,12 +27,14 @@ actor MemoryStoreFake: ConversationMemoryStore {
     func save(_ snapshot: ConversationMemorySnapshot) async throws {
         saveCount += 1
         await saveGate?.wait()
-        if saveFailure { throw ConversationMemoryError.writeFailed }
+        if saveFailure { events.append("saveFailed"); throw ConversationMemoryError.writeFailed }
         self.snapshot = snapshot
+        events.append("save")
     }
     func clear() throws {
         clearCount += 1
-        if clearFailure { throw ConversationMemoryError.deleteFailed }
+        if clearFailure { events.append("clearFailed"); throw ConversationMemoryError.deleteFailed }
         snapshot = nil
+        events.append("clear")
     }
 }

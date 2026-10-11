@@ -11,12 +11,13 @@ actor StubSessionFactory: ConversationSessionFactory {
     private(set) var sessions: [SessionRecord] = []
     private(set) var summaryRequests: [ConversationSummaryRequest] = []
     private(set) var consolidations = 0
-    private let scripts: [ScriptedSessionClient]
+    /// セッション生成ごとに順に返す。足りなければ最後を使い回す。ScriptedSessionClient 以外（ゲート付きなど）も渡せる。
+    private let scripts: [any ConversationSessionClient]
     private let summaries: [String]
     private let authenticationError: (any Error)?
     private let summaryError: (any Error)?
 
-    init(scripts: [ScriptedSessionClient] = [ScriptedSessionClient(chunks: ["にゃ", "ん。"])],
+    init(scripts: [any ConversationSessionClient] = [ScriptedSessionClient(chunks: ["にゃ", "ん。"])],
          summaries: [String] = ["要約1", "要約2"],
          authenticationError: (any Error)? = nil, summaryError: (any Error)? = nil) {
         self.scripts = scripts
