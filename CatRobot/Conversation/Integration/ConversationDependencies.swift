@@ -68,13 +68,8 @@ struct ConversationDependencies: Sendable {
 
 extension ConversationDependencies {
     @MainActor
-    static func live(memoryStore: (any ConversationMemoryStore)? = nil, voiceSettings: SpeechVoiceSettings? = nil) -> Self {
-        let store: any ConversationMemoryStore
-        if let memoryStore { store = memoryStore }
-        else if let directory = try? FileConversationMemoryStore.defaultDirectory() {
-            store = FileConversationMemoryStore(directory: directory, compatibilityID: GemmaMemoryCompatibility.current)
-        } else { store = UnavailableConversationMemoryStore() }
-        let gemma = GemmaConversationService(memoryStore: store)
+    static func live(memoryStore _: (any ConversationMemoryStore)? = nil, voiceSettings: SpeechVoiceSettings? = nil) -> Self {
+        let availability = FoundationModelAvailabilityService()
         let concreteRecognizer = AppleSpeechRecognizer()
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let voices = voiceSettings ?? SpeechVoiceSettings()
@@ -89,16 +84,15 @@ extension ConversationDependencies {
 
         return Self(
             microphonePermission: MicrophonePermissionService(),
-            modelAvailability: gemma,
+            modelAvailability: availability,
             recognizer: recognizer,
-            classifier: gemma,
-            reply: gemma,
+            classifier: FoundationModelAddressClassifier(),
+            reply: FoundationModelReplyService(),
             speaker: speaker,
             audioSession: audioSession,
             latency: ConversationLatencyTracker.live(),
             replyTraceSink: OSReplyTraceSink(),
             replyPlaybackMode: .sentencePrefetch,
-            memory: gemma,
             serviceTeardown: serviceTeardown
         )
     }

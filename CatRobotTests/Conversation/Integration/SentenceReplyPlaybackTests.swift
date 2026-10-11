@@ -77,17 +77,6 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let result = try await run.value
         XCTAssertEqual(result, "確定。最後。")
 
-        let store = InMemoryConversationMemoryStore()
-        let gemma = GemmaConversationService(runtime: StubGemmaRuntime(reply: StubGemmaSession(chunks: ["iPhoneです。Bluetoothです。"])), memoryStore: store)
-        let immediate = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 }, synthesize: { text, _ in
-            XCTAssertFalse(text.contains("iPhone")); XCTAssertFalse(text.contains("Bluetooth"))
-            return SpeechPCM(samples: [1], sampleRate: 24_000)
-        })
-        let actual = ReplyPlaybackCoordinator(reply: gemma, speaker: immediate, mode: .sentencePrefetch)
-        let original = try await actual.run(prompt: "説明して", trace: nil, onUpdate: { _ in })
-        let saved = await store.load()
-        XCTAssertEqual(original, "iPhoneです。Bluetoothです。")
-        XCTAssertEqual(saved?.turns.last?.response, original)
     }
     func testNewestSnapshotsRetainAllSentencesWhilePlaybackIsBlocked() async throws {
         let reply = ControlledReply()

@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 if [[ $# != 2 ]]; then
-  echo 'Usage: run_supertonic_integration_device_test.sh <UDID> <voices|fixed|gemma|lifecycle|offline>'
+  echo 'Usage: run_supertonic_integration_device_test.sh <UDID> <voices|fixed|lifecycle>'
   exit 2
 fi
 SUPER_DEVICE="$1"
 export SUPER_STAGE="$2"
-case "$SUPER_STAGE" in voices|fixed|gemma|lifecycle|offline) ;; *) exit 2 ;; esac
+case "$SUPER_STAGE" in voices|fixed|lifecycle) ;; *) exit 2 ;; esac
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export SUPER_BUILD_DIR="${SUPER_BUILD_DIR:-/private/tmp/cat-supertonic-integration/device}"
 SUPER_PACKAGE_DIR="${SUPER_PACKAGE_DIR:-/private/tmp/cat-speech-comparison/packages}"

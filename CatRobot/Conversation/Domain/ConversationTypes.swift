@@ -39,9 +39,6 @@ enum SpeechEvent: Equatable, Sendable {
 }
 
 enum ModelAvailability: Equatable, Sendable {
-    case gemmaModelMissing
-    case gemmaModelInvalid
-    case gemmaUnavailable
     case available
     case deviceNotEligible
     case appleIntelligenceNotEnabled

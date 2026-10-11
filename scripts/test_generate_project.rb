@@ -95,7 +95,7 @@ assert(
 common_settings = {
   "CODE_SIGN_STYLE" => "Automatic",
   "DEVELOPMENT_TEAM" => "VUB4VP6453",
-  "IPHONEOS_DEPLOYMENT_TARGET" => "26.0",
+  "IPHONEOS_DEPLOYMENT_TARGET" => "27.0",
   "SUPPORTED_PLATFORMS" => "iphoneos iphonesimulator",
   "SUPPORTS_MACCATALYST" => "NO",
   "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" => "NO",
@@ -129,17 +129,27 @@ end
 
 package_objects = project.objects.select { |object| object.isa == "XCRemoteSwiftPackageReference" }
 assert(package_objects.length == 2, "expected exactly two runtime dependencies")
-assert(tests.package_product_dependencies.map(&:product_name) == ["LiteRTLM"], "device tests must link LiteRTLM")
-assert(app.package_product_dependencies.map(&:product_name) == ["LiteRTLM", "onnxruntime"], "app must link the Gemma runtime")
-device_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/GemmaDeviceTests.xcscheme").read)
-opt_in = REXML::XPath.first(device_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='GEMMA_DEVICE_TESTS']")
-assert(opt_in && opt_in.attributes["value"] == "1", "device scheme must opt in to real inference")
-assert(REXML::XPath.match(device_scheme, "//SelectedTests/Test").map { |node| node.attributes["Identifier"] } == ["GemmaDeviceTests"], "device scheme must select only the device experiment")
-
-latency_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/ReplyLatencyDeviceTests.xcscheme").read)
-latency_opt_in = REXML::XPath.first(latency_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='CATROBOT_REPLY_LATENCY_TESTS']")
-assert(latency_opt_in && latency_opt_in.attributes["value"] == "1", "latency scheme must opt in explicitly")
-assert(REXML::XPath.match(latency_scheme, "//SelectedTests/Test").map { |node| node.attributes["Identifier"] } == ["ReplyLatencyDeviceTests"], "latency scheme must select only its comparison")
+assert(app.package_product_dependencies.map(&:product_name).sort == ["ClaudeForFoundationModels", "onnxruntime"], "app must link Claude and ONNX Runtime")
+assert(tests.package_product_dependencies.map(&:product_name) == ["ClaudeForFoundationModels"], "tests must link Claude for error-type tests")
+claude = project.root_object.package_references.find { |p| p.repositoryURL.end_with?("ClaudeForFoundationModels.git") }
+assert(claude && claude.requirement == { "kind" => "exactVersion", "version" => "0.2.3" }, "pinned ClaudeForFoundationModels missing")
+app.build_configurations.each do |configuration|
+  settings = configuration.build_settings
+  assert(settings["CODE_SIGN_ENTITLEMENTS"] == "CatRobot/Resources/CatRobot.entitlements", "entitlements missing")
+  expected_env = configuration.name == "Release" ? "production" : "development"
+  assert(settings["CATROBOT_APP_ATTEST_ENVIRONMENT"] == expected_env, "App Attest environment for #{configuration.name}")
+  assert(settings.key?("CATROBOT_CLAUDE_CLIENT_ID"), "client id build setting missing")
+end
+dev_key = app.resources_build_phase.files.find { |f| f.file_ref&.path == "LocalAssets/claude-api-key.txt" }
+assert(dev_key, "development key must be a bundled resource reference")
+release = app.build_configurations.find { |c| c.name == "Release" }
+debug = app.build_configurations.find { |c| c.name == "Debug" }
+assert(Array(release.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Release must exclude the development key")
+assert(!Array(debug.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Debug must bundle the development key")
+assert(project.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "YES" }, "script sandboxing must stay on")
+%w[GemmaDeviceTests GemmaAppDeviceTests ReplyLatencyDeviceTests].each do |name|
+  assert(!PROJECT_PATH.join("xcshareddata/xcschemes/#{name}.xcscheme").file?, "#{name} scheme must be gone")
+end
 
 scheme = REXML::Document.new(SCHEME_PATH.read)
 testable_names = REXML::XPath.match(scheme, "//TestableReference/BuildableReference").map do |node|

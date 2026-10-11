@@ -100,13 +100,11 @@ private final class LiveReplyModelClient: ReplyModelClient, @unchecked Sendable 
 
     init() {
         let model = SystemLanguageModel(useCase: .general, guardrails: .default)
-        session = LanguageModelSession(model: model) {
-            """
+        session = LanguageModelSession(model: model, instructions: """
             あなたは親しみやすいAIの猫「Cat Robot」です。日本語で自然に話します。
             通常は音声で聞きやすい一文か二文で簡潔に答え、詳しく求められた時だけ広げます。
             訂正されたら短く認めて会話を続けます。自分を人間だと偽りません。
-            """
-        }
+            """)
     }
 
     func prewarm() async {

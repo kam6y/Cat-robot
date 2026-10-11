@@ -42,5 +42,7 @@
 	</array>
 	<key>CatRobotSourceRevision</key>
 	<string>$(CATROBOT_SOURCE_REVISION)</string>
+	<key>CatRobotClaudeClientID</key>
+	<string>$(CATROBOT_CLAUDE_CLIENT_ID)</string>
 </dict>
 </plist>

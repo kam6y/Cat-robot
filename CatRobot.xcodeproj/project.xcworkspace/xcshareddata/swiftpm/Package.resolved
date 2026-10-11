@@ -1,13 +1,13 @@
 {
-  "originHash" : "2f7ef2e32be592c37d55726ce1756fcdda4939c128a0ee106ea0d75be6cab1e7",
+  "originHash" : "e201f0eeca755c1b901e0d454923b3c00b8dd4b9fdb3d824e0e425804fea40a0",
   "pins" : [
     {
-      "identity" : "litert-lm",
+      "identity" : "claudeforfoundationmodels",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/google-ai-edge/LiteRT-LM",
+      "location" : "https://github.com/anthropics/ClaudeForFoundationModels.git",
       "state" : {
-        "revision" : "5e58e9a0aef7abf7091207a8b1d1063a1c800f08",
-        "version" : "0.17.1"
+        "revision" : "0262e1a766c461a4268dcec656eca95dd74cebf8",
+        "version" : "0.2.3"
       }
     },
     {
