@@ -81,7 +81,7 @@ xcodebuild test \
 | T-AUTH-1: TestFlight の認証 | 未実施。Release 構成・キーなしでの認証と会話成立を確認する |
 | T-AUTH-2: 統合の取り消し | 未実施。取り消しは恒久なので、検証用の別統合で失効時の案内を確認する |
 | T-DEV-1 / T-DEV-2 | 未実施（2026-10-11、利用者判断）。Apple Intelligence 非対応の iPhone が手元に無い。README の動作要件を「Apple Intelligence 対応機で検証済み。非対応機は未検証」とした |
-| T-LAT-1 | 簡易計測を 2026-10-11 に試行したが、取得した signpost が 2 ターン分だけで判定していない（下記）。20 ターン分を取り直してから集計する。要件の 50 ターン受入は別に記録する |
+| T-LAT-1 | 簡易計測を 2026-10-11 と 2026-10-12 に試行したが、signpost は端末に永続化されず 2 ターン分しか取れないため判定していない（下記）。2026-10-12 に区間ごとの数値を永続ログとして残すよう変更し、その後に 20 ターン分を取り直して集計する。要件の 50 ターン受入は別に記録する |
 | VoiceOver / Dynamic Type | OK（2026-10-11、利用者報告）。VoiceOver で設定シートの各コントロールと長期メモの一覧、新しい会話の操作が日本語の名前と現在値で読まれ、最大のアクセシビリティサイズで文字欠けなし、視差効果を減らす設定で崩れなし |
 
 ### 2026-10-11: 実機の初回ビルドと App Attest の Debug 予備確認
@@ -108,7 +108,11 @@ iPhone 16 Pro、Wi-Fi、キーなし Debug ビルドで、利用者が呼び名�
 | FastPathFirstCaption（発話境界 → 最初の字幕、目標 1.5 秒） | 2 | 2.50 秒 | 3.09 秒 |
 | FastPathSpeechStart（発話境界 → 読み上げ開始、目標 2.5 秒） | 2 | 3.84 秒 | 4.23 秒 |
 
-`--last 3h` で取り直してから集計し直す。
+2026-10-12 に `--last 3h` で取り直したが、やはり直近 2 ターン分（00:27:55〜00:28:26）しか入っていなかった（参考値: FastPathFirstCaption 中央値 1.37 秒・最大 1.66 秒、FastPathSpeechStart 中央値 2.50 秒・最大 2.55 秒、いずれも n=2）。signpost は端末のメモリ上のリングバッファ（約 30 秒）にしか残らず、ログの保存領域には書かれないため、`log collect` の範囲を広げても回収できない。Instruments（`xcrun xctrace record --template 'Logging' --device <UDID> --attach CatRobot`）も試したが、Xcode 27.0 では `xctrace list devices` で iPhone が「Devices Offline」に分類され、`devicectl` では有線・ペアリング済み・DDI 利用可と見えていても接続できなかった。
+
+対処として、区間の終了ごとに同じ数値（区間名・turnID・`elapsedFromBoundary`・`elapsedFromASR`・結果コード、すべて `privacy: .public`、会話本文は含めない）を `Logger.notice`（default レベル。端末のログ保存領域に永続化される）で 1 行出すようにした（`ConversationLatency.swift` の `OSConversationLatencySignposter.end`）。全テスト 432 件通過。以後の手順は、利用者が 20 ターン話した後に `sudo log collect --device-udid <UDID> --last 1h --output <archive>` で取得し、`/usr/bin/log show --archive <archive> --style json --signpost --info --predicate 'subsystem == "com.kamby.CatRobot" AND category == "ConversationLatency"'` の出力から `eventMessage` が `latency metric=` で始まる `logEvent` を集計する（signpost の終了イベントも同じ集計で読めるので、両方ある turnID は logEvent を優先）。百分位は最近傍順位法。
+
+取り直しの集計結果はここに追記する。
 
 ### 2026-10-11: 実機確認で受けた UI と動作の変更
 
