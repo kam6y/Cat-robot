@@ -94,6 +94,9 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .modelUnreachable:
             message = "通信が不安定で返事を受け取れませんでした。もう一度話しかけてください。"
             recoveries = [.retry, .typedInput]
+        case .dailyLimitReached:
+            message = "今日のClaudeとの会話が上限に達しました。設定で上限を変えるか、明日また話しかけてください。"
+            recoveries = [.settings]
         case .cancelled:
             message = "会話を一時停止しました。"
             recoveries = [.retry]

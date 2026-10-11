@@ -33,6 +33,10 @@ final class ConversationErrorPresentationTests: XCTestCase {
     }
 
     func testEveryServiceErrorOffersRecoveryWithoutDebugDescriptions() {
+        let dailyLimit = ConversationErrorPresentation(.dailyLimitReached)
+        XCTAssertEqual(dailyLimit.recoveries.map(\.action), [.openSettings])
+        XCTAssertTrue(dailyLimit.message.contains("上限"))
+        XCTAssertFalse(ConversationServiceError.dailyLimitReached.allowsOnDeviceFallback)
         let errors: [ConversationServiceError] = [
             .microphoneDenied,
             .speechAssetsUnavailable,
@@ -62,6 +66,7 @@ final class ConversationErrorPresentationTests: XCTestCase {
             .modelGenerationFailed,
             .cancelled,
             .modelUnreachable,
+            .dailyLimitReached,
         ]
 
         for error in errors {

@@ -72,6 +72,7 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case modelGenerationFailed
     /// 通信断・タイムアウト・レート制限（通信到達不能）。
     case modelUnreachable
+    case dailyLimitReached
     case cancelled
 }
 
@@ -86,7 +87,7 @@ extension ConversationServiceError {
         case .microphoneDenied, .speechAssetsUnavailable, .speechLocaleUnsupported, .speechUnrecognized, .speechCaptureFailed,
              .speechCaptureAlreadyRunning, .speechVoiceUnavailable, .speechSynthesisFailed, .audioSessionFailed,
              .modelUnavailable, .modelLocaleUnsupported, .modelAssetsUnavailable, .guardrailViolation, .refusal,
-             .contextExceeded, .inputTooLong, .modelBusy, .cancelled:
+             .contextExceeded, .inputTooLong, .modelBusy, .dailyLimitReached, .cancelled:
             return false
         }
     }
