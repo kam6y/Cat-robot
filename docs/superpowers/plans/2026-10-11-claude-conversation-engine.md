@@ -2183,12 +2183,13 @@ actor StubSessionFactory: ConversationSessionFactory {
     private(set) var sessions: [SessionRecord] = []
     private(set) var summaryRequests: [ConversationSummaryRequest] = []
     private(set) var consolidations = 0
-    private let scripts: [ScriptedSessionClient]
+    /// セッション生成ごとに順に返す。足りなければ最後を使い回す。ScriptedSessionClient 以外（ゲート付きなど）も渡せる。
+    private let scripts: [any ConversationSessionClient]
     private let summaries: [String]
     private let authenticationError: (any Error)?
     private let summaryError: (any Error)?
 
-    init(scripts: [ScriptedSessionClient] = [ScriptedSessionClient(chunks: ["にゃ", "ん。"])],
+    init(scripts: [any ConversationSessionClient] = [ScriptedSessionClient(chunks: ["にゃ", "ん。"])],
          summaries: [String] = ["要約1", "要約2"],
          authenticationError: (any Error)? = nil, summaryError: (any Error)? = nil) {
         self.scripts = scripts
@@ -2286,6 +2287,8 @@ git add -A && git commit -m "feat: build Claude sessions from settings and stabl
 
 **Files:**
 - Create: `CatRobot/Conversation/Services/Claude/ClaudeConversationService.swift`
+- Modify: `CatRobotTests/Conversation/Services/ClaudeTestDoubles.swift`（`StubSessionFactory.scripts` を `[any ConversationSessionClient]` に広げ、ゲート付きクライアントを渡せるようにする。既定値・順番・最後の使い回しは変えない）
+- Modify: `CatRobotTests/Conversation/Services/MemoryStoreFake.swift`（`events: [String]` を追加し、save / clear の完了順を `"save"` / `"saveFailed"` / `"clear"` / `"clearFailed"` で記録する。既存の count・gate・failure の振る舞いは変えない）
 - Test: `CatRobotTests/Conversation/Services/Claude/ClaudeConversationServiceTests.swift`、`CatRobotTests/Conversation/Services/Claude/ClaudeMemoryPersistenceTests.swift`、`CatRobotTests/Conversation/Integration/ClaudePlaybackMemoryTests.swift`、`CatRobotTests/Conversation/Integration/ReplyTraceTests.swift`（1 件追加）、`CatRobotTests/Conversation/Integration/SentenceReplyPlaybackTests.swift`（Task 1 で外したブロックを Claude 版で復活）
 
 **Interfaces:**
@@ -2314,6 +2317,12 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     func recordExternalTurn(prompt: String, response: String) async   // 端末内モデルで答えた往復を引き継ぐ（Task 7）
 }
 ```
+
+**取り消し直後の次のターン:** 利用側（`ReplyPlaybackCoordinator.cancelAndWait` など）は購読の終了しか待たないため、取り消した worker の後始末（`isGenerating = false`）より先に次の `streamReply` / `recordExternalTurn` が届きうる。サービスは `awaitCancelledGeneration()` で **取り消し済み** の generation の完了だけを待ってから判定に進む（未取り消しの同時実行は従来どおり `modelBusy`）。待機のあとは `forgetting == nil`、`operationEpoch` の一致、`Task.checkCancellation()` を再確認し、`recordExternalTurn` は待機前に捕捉した epoch と一致しないとき（待機中に forget が始まった／終わったとき）、または呼び出し元の Task が取り消されているときは記録せずに戻る（Task 7 の端末内応答は source ループ終了後にここへ来る。`testCancelledExternalTurnIsNotSaved` / `testCancelledCallerDoesNotRecordExternalTurn`）。テスト `testNextTurnWaitsForCancelledTurnToUnwindInsteadOfReportingBusy` / `testExternalTurnRightAfterCancellationWaitsForCleanupAndIsSaved` / `testExternalTurnWaitingOnCancelledTurnIsDroppedWhenForgetStarts` が `GatedSessionClient`（`snapshots(for:)` の呼び出しを取り消しに反応しないゲートで止める）でこの順序を固定する。
+
+**セッション世代と遅れた生成:** `currentSession(for:)` は memory を値で捕捉したあと設定・長期メモ・工場を await するので、その間に forget / reset / 外部往復 / 圧縮 / 失敗でセッションが無効化されうる（prewarm は generation に含まれず、forget も reset も待たない）。無効化は必ず `invalidateSession()`（`session = nil`、`activeModel = nil`、`sessionEpoch &+= 1`。session と activeModel は有効な組として扱う）で行い、`currentSession(for:)` は生成前に捕捉した `sessionEpoch` / `operationEpoch` と `forgetting == nil` を登録直前に再確認して、変わっていれば作ったセッションを登録せず `nil` を返す（prewarm は温めずに戻る。generate は `.cancelled`）。無効化は無いが他の生成が先に登録していた場合はそちらに揃える（prewarm と返答が同時に作ったとき、次のターンが直前の往復を知らないセッションで続かないため）。返答生成中（`isGenerating`）の prewarm は新しいセッションを作らずに戻る。generate は圧縮後の記憶をローカルに持ち `self.memory` はまだ圧縮前なので、ここで作ると圧縮前のセッションが先に登録され、返答がそれに揃ってしまう（`testPrewarmDuringCompactedReplyDoesNotReinjectEvictedTurns`）。回帰: `testPrewarmFinishingAfterForgetDoesNotResurrectTheOldSession` / `testPrewarmFinishingAfterResetOrExternalTurnBuildsTheNextSessionFromCurrentMemory` / `testConcurrentPrewarmAndReplyShareOneSession`（`configuration` 閉包を `ConversationTestGate` で止めて生成途中に割り込む）。
+
+**ストア書き込みの直列化:** `recordExternalTurn` / `reset` から始まる保存は generation に属さないので、forget がそれを待たないと、clear の後に古い snapshot の保存が完了して記憶が戻る（`ConversationMemoryStore` は async 契約）。サービスが始めるストア書き込み（save / clear）は `serializedStoreOperation` で開始順に完了させる（`storeTail`。クロージャはストア I/O だけで、サービスへ呼び戻さない）。待つのは直前のストア操作だけなので、generation / retry / forget のような所有者を待つ循環は生じない。直前の操作が失敗しても次の操作は実行され、各呼び出し元には自分の操作のエラーだけが返る。snapshot の採取・保存番号の更新・enqueue の間に await を挟まない。新しい保存は forget 開始後・forget 中・削除失敗中に始めない（`saveMemory(epoch:)` の入口で `operationEpoch == epoch`、`forgetting == nil`、`persistenceState` が `.forgetFailed` でないことを確認し、違えば `.unavailable`）。保存の完了時は `operationEpoch` の一致に加えて保存番号（`saveSerial`）が最新と一致するときだけ `.ready` / `.unsaved` を公開する（古い保存の完了が、後から積まれた保存の `.saving` を隠さない）。`reset` は削除失敗中は何もせず、generation を待つ前に epoch を捕捉し、待ったあとに forget が始まっていないことと epoch を再確認してから保存する。回帰: `testForgetWaitsForInFlightExternalSave` / `testForgetWaitsForInFlightResetSave`（`MemoryStoreFake.events` の完了順 `["save", "clear"]` と最終 snapshot nil で判定。200 ms の遅延開放は観測窓で、順序の保証ではない）、`testForgetProceedsAfterAFailedSave`（失敗した保存がキューを止めない）、`testStaleSaveCompletionDoesNotMaskThePendingSave`（古い保存の完了後も `.saving`、最新の保存が失敗したら `.unsaved`）、`testForgetFailureBlocksRepliesUntilRetrySucceeds`（削除失敗中の reset が保存で `.ready` に戻さない）。
 
 **診断ログの制約（FR-LLM-8）:** Claude の失敗を記録するときは、`ConversationServiceError` のケース名（正規化した種別）、切り替えの事象、連続回数だけを残す。`error.localizedDescription` やパッケージの `APIError` の message・応答本文の抜粋は、`privacy: .private` でも記録しない（API の message は本文の抜粋を含みうる）。Task 2 の `ClaudeErrorMapper` にはログを足さない。
 
@@ -2404,7 +2413,6 @@ final class ClaudeConversationServiceTests: XCTestCase {
     }
 
     func testSummaryFailureFailsTheTurnWithoutCommittingOrResetting() async throws {
-        struct Boom: Error {}
         let factory = StubSessionFactory(summaryError: URLError(.notConnectedToInternet))
         let store = InMemoryConversationMemoryStore()
         let service = makeService(factory: factory, store: store, budget: .init(compactionTriggerCharacters: 100, retainedCharacters: 20))
@@ -2568,6 +2576,349 @@ final class ClaudeConversationServiceTests: XCTestCase {
         XCTAssertEqual(client.prewarms, 2)
         XCTAssertTrue(client.prompts.isEmpty)
     }
+
+    // --- 追加テスト（重点 5）: 取り消したターンの後始末が終わる前に次のターンを頼んだとき ---
+    //
+    // 事実: streamReply の worker は取り消し後も actor 上で後始末（isGenerating=false 等）を行う。
+    // 後始末の前に次の streamReply が来ると plan 実装は modelBusy を返す。
+    // 下の GatedSessionClient は snapshots(for:) の呼び出し自体をゲートで止め、取り消しに反応しないので、
+    // 「取り消し済みだが後始末が終わっていない」状態を任意の長さで固定できる。
+
+    /// snapshots(for:) をゲートで止める。ゲートは取り消しに反応しない（取り消し後の後始末が遅れる状況の再現）。
+    final class GatedSessionClient: ConversationSessionClient {
+        private let gate: ConversationTestGate
+        private let inner: ScriptedSessionClient
+        init(gate: ConversationTestGate, inner: ScriptedSessionClient) { self.gate = gate; self.inner = inner }
+        func prewarm() async { await inner.prewarm() }
+        func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
+            await gate.wait()
+            return await inner.snapshots(for: prompt)
+        }
+    }
+
+    func waitForMemoryState(_ service: ClaudeConversationService, _ target: ConversationMemoryState) async {
+        for await state in await service.memoryUpdates() { if state == target { return } }
+    }
+
+    func testNextTurnWaitsForCancelledTurnToUnwindInsteadOfReportingBusy() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }   // 失敗時もゲートを解放して worker を回収する
+        let stuck = GatedSessionClient(gate: gate, inner: ScriptedSessionClient(chunks: nil))
+        let store = InMemoryConversationMemoryStore()
+        let factory = StubSessionFactory(scripts: [stuck, ScriptedSessionClient(chunks: ["にゃ", "ん。"])])
+        let service = makeService(factory: factory, store: store)
+        let stream = try await service.streamReply(to: "キャンセル")
+        let reader = Task { try await self.collect(stream) }
+        await gate.waitUntilEntered()          // worker は snapshots(for:) の中で止まっている
+        reader.cancel()
+        _ = try? await reader.value            // 利用側の購読は終わった。worker はまだ後始末に入れない
+        // ゲートは少し遅れて開く。旧実装はこの間に次のターンが modelBusy になった（task6-red-cancel-unwind.log）。
+        // 合否は待機後の返答・保存内容・セッション数で判定する。200 ms は観測窓であって完了保証ではない。
+        let opener = Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            await gate.open()
+        }
+        defer { opener.cancel() }
+        let next = try await collect(service.streamReply(to: "次"))
+        _ = await opener.value
+        XCTAssertEqual(next, ["にゃ", "にゃん。"])
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns.map(\.prompt), ["次"], "取り消した往復は保存しない")
+        let sessions = await factory.sessions
+        XCTAssertEqual(sessions.count, 2, "取り消し後は確定済みの記憶からセッションを作り直す")
+    }
+
+    func testExternalTurnRightAfterCancellationWaitsForCleanupAndIsSaved() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let stuck = GatedSessionClient(gate: gate, inner: ScriptedSessionClient(chunks: nil))
+        let store = InMemoryConversationMemoryStore()
+        let factory = StubSessionFactory(scripts: [stuck, ScriptedSessionClient(chunks: ["にゃ", "ん。"])])
+        let service = makeService(factory: factory, store: store)
+        let stream = try await service.streamReply(to: "キャンセル")
+        let reader = Task { try await self.collect(stream) }
+        await gate.waitUntilEntered()
+        reader.cancel()
+        _ = try? await reader.value
+        let opener = Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            await gate.open()
+        }
+        defer { opener.cancel() }
+        // 旧実装は後始末前の !isGenerating 判定で黙って捨てた。修正後は後始末を待ってから記録する。
+        await service.recordExternalTurn(prompt: "電波が弱いとき", response: "簡単に答えたよ。")
+        _ = await opener.value
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns, [.init(prompt: "電波が弱いとき", response: "簡単に答えたよ。")])
+        _ = try await collect(service.streamReply(to: "次"))
+        let sessions = await factory.sessions
+        XCTAssertEqual(sessions.count, 2)
+        XCTAssertTrue(sessions.last!.configuration.instructions.contains("利用者: 電波が弱いとき\n猫: 簡単に答えたよ。"))
+    }
+
+    func testExternalTurnWaitingOnCancelledTurnIsDroppedWhenForgetStarts() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let stuck = GatedSessionClient(gate: gate, inner: ScriptedSessionClient(chunks: nil))
+        let store = InMemoryConversationMemoryStore()
+        let factory = StubSessionFactory(scripts: [stuck, ScriptedSessionClient(chunks: ["にゃ", "ん。"])])
+        let service = makeService(factory: factory, store: store)
+        let stream = try await service.streamReply(to: "キャンセル")
+        let reader = Task { try await self.collect(stream) }
+        await gate.waitUntilEntered()
+        reader.cancel()
+        _ = try? await reader.value
+        // 外部往復は取り消し済み worker の後始末を待つ。その間に「忘れて」が始まる。
+        let external = Task { await service.recordExternalTurn(prompt: "削除前の往復", response: "残ってはいけない") }
+        let forget = Task { try await service.forgetConversation() }
+        await waitForMemoryState(service, .forgetting)   // 忘れる処理の開始を観測してからゲートを開く
+        await gate.open()
+        await external.value
+        try await forget.value
+        let saved = await store.load()
+        XCTAssertNil(saved, "削除前に頼まれた外部往復を新しい記憶へ書き戻さない")
+        let state = await service.memoryState()
+        XCTAssertEqual(state, .ready)
+        _ = try await collect(service.streamReply(to: "次"))
+        let instructions = await factory.sessions.last!.configuration.instructions
+        XCTAssertFalse(instructions.contains("削除前の往復"))
+        let after = await store.load()
+        XCTAssertEqual(after?.turns.map(\.prompt), ["次"])
+    }
+
+    func testCancelledExternalTurnIsNotSaved() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let stuck = GatedSessionClient(gate: gate, inner: ScriptedSessionClient(chunks: nil))
+        let store = InMemoryConversationMemoryStore()
+        let factory = StubSessionFactory(scripts: [stuck, ScriptedSessionClient(chunks: ["にゃ", "ん。"])])
+        let service = makeService(factory: factory, store: store)
+        let stream = try await service.streamReply(to: "キャンセル")
+        let reader = Task { try await self.collect(stream) }
+        await gate.waitUntilEntered()
+        reader.cancel()
+        _ = try? await reader.value
+        // 外部往復の記録は取り消し済み worker の後始末を待つ。その呼び出し自体が取り消されたら保存しない。
+        let external = Task { await service.recordExternalTurn(prompt: "取り消された外部往復", response: "保存してはいけない") }
+        external.cancel()
+        await gate.open()
+        await external.value
+        let saved = await store.load()
+        XCTAssertNil(saved, "取り消された呼び出しの往復は保存しない")
+        _ = try await collect(service.streamReply(to: "次"))
+        let instructions = await factory.sessions.last!.configuration.instructions
+        XCTAssertFalse(instructions.contains("取り消された外部往復"))
+        let after = await store.load()
+        XCTAssertEqual(after?.turns.map(\.prompt), ["次"])
+    }
+
+    // --- review 指摘 1: 生成途中に無効化が入った古いセッションを登録しない ---
+
+    actor CallCounter {
+        private var count = 0
+        func next() -> Int { count += 1; return count }
+    }
+
+    /// configuration の呼び出しを gate で止める。currentSession の生成途中に forget / reset / 外部往復を割り込ませる。
+    func makeServiceGatedAtConfiguration(gate: ConversationTestGate, factory: StubSessionFactory,
+                                         store: any ConversationMemoryStore, budget: ConversationBudget = .default,
+                                         onlyCall: Int? = nil) -> ClaudeConversationService {
+        let counter = CallCounter()
+        return ClaudeConversationService(factory: factory, memoryStore: store,
+                                         longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
+                                         tools: RememberToolProvider(),
+                                         configuration: {
+                                             let call = await counter.next()
+                                             if onlyCall == nil || onlyCall == call { await gate.wait() }
+                                             return .init()
+                                         },
+                                         usage: UsageSpy(), budget: budget)
+    }
+
+    func testPrewarmFinishingAfterForgetDoesNotResurrectTheOldSession() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let seed = ConversationMemorySnapshot(schemaVersion: 1, memoryCompatibilityID: ClaudeMemoryCompatibility.current,
+            revision: 1, savedAt: Date(), summary: "削除前の秘密の要約",
+            turns: [.init(prompt: "削除前の秘密の質問", response: "削除前の秘密の返事")])
+        let store = InMemoryConversationMemoryStore(snapshot: seed)
+        let stale = ScriptedSessionClient(chunks: ["古い"])
+        let fresh = ScriptedSessionClient(chunks: ["新しい"])
+        let factory = StubSessionFactory(scripts: [stale, fresh])
+        let service = makeServiceGatedAtConfiguration(gate: gate, factory: factory, store: store)
+        let warming = Task { await service.prewarm() }
+        await gate.waitUntilEntered()            // currentSession は削除前の memory を捕捉し、configuration で止まっている
+        try await service.forgetConversation()
+        let erased = await store.load()
+        XCTAssertNil(erased)
+        await gate.open()
+        await warming.value
+        let next = try await collect(service.streamReply(to: "削除後の新しい質問"))
+        XCTAssertEqual(next, ["新しい"], "次のターンは削除後の記憶から作った新しいセッションが答える")
+        XCTAssertTrue(stale.prompts.isEmpty)
+        XCTAssertEqual(stale.prewarms, 0, "古いセッションには prewarm も送らない")
+        XCTAssertEqual(fresh.prompts, ["削除後の新しい質問"])
+        let sessions = await factory.sessions
+        let used = try XCTUnwrap(sessions.last)
+        XCTAssertFalse(used.configuration.instructions.contains("削除前の秘密"))
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns.map(\.prompt), ["削除後の新しい質問"])
+    }
+
+    func testPrewarmFinishingAfterResetOrExternalTurnBuildsTheNextSessionFromCurrentMemory() async throws {
+        for variant in ["reset", "external"] {
+            let gate = ConversationTestGate()
+            addTeardownBlock { await gate.open() }
+            let seed = ConversationMemorySnapshot(schemaVersion: 1, memoryCompatibilityID: ClaudeMemoryCompatibility.current,
+                revision: 1, savedAt: Date(), summary: "", turns: [.init(prompt: "前の質問", response: "前の返事")])
+            let store = InMemoryConversationMemoryStore(snapshot: seed)
+            let stale = ScriptedSessionClient(chunks: ["古い"])
+            let fresh = ScriptedSessionClient(chunks: ["新しい"])
+            let factory = StubSessionFactory(scripts: [stale, fresh])
+            let service = makeServiceGatedAtConfiguration(gate: gate, factory: factory, store: store)
+            let warming = Task { await service.prewarm() }
+            await gate.waitUntilEntered()
+            if variant == "reset" {
+                await service.reset()
+            } else {
+                await service.recordExternalTurn(prompt: "外の質問", response: "外の返事")
+            }
+            await gate.open()
+            await warming.value
+            let next = try await collect(service.streamReply(to: "次"))
+            XCTAssertEqual(next, ["新しい"], variant)
+            XCTAssertTrue(stale.prompts.isEmpty, variant)
+            XCTAssertEqual(fresh.prompts, ["次"], variant)
+            let sessions = await factory.sessions
+            let instructions = try XCTUnwrap(sessions.last).configuration.instructions
+            if variant == "reset" {
+                XCTAssertFalse(instructions.contains("前の質問"), "reset 後は空の記憶から作る")
+            } else {
+                XCTAssertTrue(instructions.contains("利用者: 外の質問\n猫: 外の返事"), "外部往復を含む記憶から作る")
+            }
+        }
+    }
+
+    func testConcurrentPrewarmAndReplyShareOneSession() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let a = ScriptedSessionClient(chunks: ["A"])
+        let b = ScriptedSessionClient(chunks: ["B"])
+        let factory = StubSessionFactory(scripts: [a, b])
+        let store = InMemoryConversationMemoryStore()
+        let service = makeServiceGatedAtConfiguration(gate: gate, factory: factory, store: store)
+        let warming = Task { await service.prewarm() }
+        await gate.waitUntilEntered(1)           // prewarm が先に生成に入ったことを観測してから返答を始める
+        let stream = try await service.streamReply(to: "一回目")
+        let reader = Task { try await self.collect(stream) }
+        await gate.waitUntilEntered(2)           // prewarm と返答の両方が configuration で止まった
+        await gate.open()
+        await warming.value
+        let first = try await reader.value
+        let second = try await collect(service.streamReply(to: "二回目"))
+        XCTAssertEqual(first.count, 1)
+        XCTAssertEqual(second.count, 1)
+        let used = [a, b].filter { !$0.prompts.isEmpty }
+        XCTAssertEqual(used.count, 1, "先に登録された 1 つのセッションに揃える")
+        XCTAssertEqual(used.first?.prompts, ["一回目", "二回目"])
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns.map(\.prompt), ["一回目", "二回目"])
+    }
+
+    func testPrewarmDuringCompactedReplyDoesNotReinjectEvictedTurns() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let clients = (0..<3).map { _ in ScriptedSessionClient(chunks: ["にゃ", "ん。"]) }
+        let factory = StubSessionFactory(scripts: clients)
+        let store = InMemoryConversationMemoryStore()
+        // 2 往復（各 64 文字）で 128 文字になり、3 回目の返答の前に圧縮が走る。圧縮後のセッション生成（2 回目の configuration）だけを止める。
+        let service = makeServiceGatedAtConfiguration(gate: gate, factory: factory, store: store,
+                                                      budget: .init(compactionTriggerCharacters: 100, retainedCharacters: 20), onlyCall: 2)
+        let evicted = String(repeating: "a", count: 60)
+        let retained = String(repeating: "b", count: 60)
+        _ = try await collect(service.streamReply(to: evicted))
+        _ = try await collect(service.streamReply(to: retained))
+        let stream = try await service.streamReply(to: "次")
+        let reader = Task { try await self.collect(stream) }
+        await gate.waitUntilEntered()            // 圧縮は終わり、返答側は圧縮後の記憶からセッションを作っている途中
+        await service.prewarm()                  // 返答生成中の prewarm は圧縮前の記憶からセッションを作ってはいけない
+        await gate.open()
+        let reply = try await reader.value
+        XCTAssertEqual(reply.last, "にゃん。")
+        let index = try XCTUnwrap(clients.firstIndex { $0.prompts.contains("次") })
+        let sessions = await factory.sessions
+        let instructions = sessions[index].configuration.instructions
+        XCTAssertTrue(instructions.contains("これまでの会話の要約"), "実際に答えたセッションは新しい要約を持つ")
+        XCTAssertTrue(instructions.contains("利用者: \(retained)"), "残した往復は注入される")
+        XCTAssertFalse(instructions.contains(evicted), "退避した往復は再注入しない")
+        let saved = await store.load()
+        XCTAssertEqual(saved?.summary.isEmpty, false)
+        XCTAssertEqual(saved?.turns.map(\.prompt), [retained, "次"])
+    }
+
+    func testCancelledCallerDoesNotRecordExternalTurn() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let store = InMemoryConversationMemoryStore()
+        let service = makeService(store: store)
+        try await service.prepareMemory()
+        let recorder = Task {
+            await gate.wait()
+            await service.recordExternalTurn(prompt: "取り消された外部質問", response: "取り消された外部返答")
+        }
+        await gate.waitUntilEntered()
+        recorder.cancel()
+        await gate.open()
+        await recorder.value
+        let saved = await store.load()
+        XCTAssertNil(saved, "取り消された呼び出し元の往復は保存しない")
+    }
+}
+```
+
+ストアの fake には完了順の記録を足す（順序の検証は状態通知ではなくこれで行う）。
+
+```swift
+// CatRobotTests/Conversation/Services/MemoryStoreFake.swift
+import Foundation
+@testable import CatRobot
+
+actor MemoryStoreFake: ConversationMemoryStore {
+    private(set) var snapshot: ConversationMemorySnapshot?
+    private(set) var loadCount = 0
+    private(set) var clearCount = 0
+    private(set) var saveCount = 0
+    /// save / clear の完了順。成功は "save" / "clear"、失敗は "saveFailed" / "clearFailed"。順序の検証は状態通知ではなくこれで行う。
+    private(set) var events: [String] = []
+    private let loadGate: ConversationTestGate?
+    private var saveGate: ConversationTestGate?
+    private var saveFailure = false
+    private var clearFailure = false
+    init(snapshot: ConversationMemorySnapshot? = nil, loadGate: ConversationTestGate? = nil,
+         saveGate: ConversationTestGate? = nil) {
+        self.snapshot = snapshot; self.loadGate = loadGate; self.saveGate = saveGate
+    }
+    func setSaveGate(_ gate: ConversationTestGate) { saveGate = gate }
+    func setSaveFailure(_ enabled: Bool) { saveFailure = enabled }
+    func setClearFailure(_ enabled: Bool) { clearFailure = enabled }
+    func load() async throws -> ConversationMemorySnapshot? {
+        loadCount += 1
+        await loadGate?.wait()
+        return snapshot
+    }
+    func save(_ snapshot: ConversationMemorySnapshot) async throws {
+        saveCount += 1
+        await saveGate?.wait()
+        if saveFailure { events.append("saveFailed"); throw ConversationMemoryError.writeFailed }
+        self.snapshot = snapshot
+        events.append("save")
+    }
+    func clear() throws {
+        clearCount += 1
+        if clearFailure { events.append("clearFailed"); throw ConversationMemoryError.deleteFailed }
+        snapshot = nil
+        events.append("clear")
+    }
 }
 ```
 
@@ -2680,11 +3031,117 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         do { try await sut.forgetConversation(); XCTFail("expected deleteFailed") } catch {}
         do { try await drain(sut.streamReply(to: "B")); XCTFail("blocked") }
         catch { XCTAssertEqual(error as? ConversationMemoryError, .unavailable) }
+        // 削除失敗中の reset は新しい保存で .ready に戻さない（再試行で削除が成功するまでブロックを保つ）
+        await sut.reset()
+        let stillBlocked = await sut.memoryState()
+        XCTAssertEqual(stillBlocked, .forgetFailed(.deleteFailed))
+        do { try await drain(sut.streamReply(to: "B2")); XCTFail("still blocked") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .unavailable) }
+        let savesBeforeRetry = await store.saveCount
+        XCTAssertEqual(savesBeforeRetry, 1, "reset は削除失敗中に保存しない")
         await store.setClearFailure(false)
         try await sut.retryMemoryOperation()
         let state = await sut.memoryState()
         XCTAssertEqual(state, .ready)
         try await drain(sut.streamReply(to: "C"))
+    }
+
+    // --- ストア書き込みの直列化と最新保存の照合 ---
+
+    func testForgetWaitsForInFlightExternalSave() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let store = MemoryStoreFake(saveGate: gate)
+        let sut = service(StubSessionFactory(), store: store)
+        try await sut.prepareMemory()
+        let external = Task { await sut.recordExternalTurn(prompt: "削除前の外部質問", response: "削除前の外部返答") }
+        await gate.waitUntilEntered()            // 外部往復の保存はストアに渡り、完了待ち
+        let forget = Task { try await sut.forgetConversation() }
+        // 旧実装は forget がこの保存を待たず、gate が閉じている間に clear を終えた。修正後は clear が保存の後ろに並ぶので、
+        // 遅れて開く gate の長さに結果は依存しない。合否は完了順の記録と最終 snapshot で判定する。
+        let opener = Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            await gate.open()
+        }
+        defer { opener.cancel() }
+        await external.value
+        try await forget.value
+        _ = await opener.value
+        let events = await store.events
+        XCTAssertEqual(events, ["save", "clear"], "削除は先に始まった保存の完了後")
+        let saved = await store.snapshot
+        XCTAssertNil(saved, "削除前の外部往復が書き戻されない")
+        let state = await sut.memoryState()
+        XCTAssertEqual(state, .ready)
+    }
+
+    func testForgetWaitsForInFlightResetSave() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let store = MemoryStoreFake(snapshot: seed(), saveGate: gate)
+        let sut = service(StubSessionFactory(), store: store)
+        try await sut.prepareMemory()
+        let reset = Task { await sut.reset() }   // 空の記憶の保存が gate で止まる
+        await gate.waitUntilEntered()
+        let forget = Task { try await sut.forgetConversation() }
+        let opener = Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            await gate.open()
+        }
+        defer { opener.cancel() }
+        await reset.value
+        try await forget.value
+        _ = await opener.value
+        let events = await store.events
+        XCTAssertEqual(events, ["save", "clear"], "reset の保存が clear を追い越さない")
+        let saved = await store.snapshot
+        XCTAssertNil(saved)
+        let state = await sut.memoryState()
+        XCTAssertEqual(state, .ready)
+    }
+
+    func testForgetProceedsAfterAFailedSave() async throws {
+        let store = MemoryStoreFake()
+        await store.setSaveFailure(true)
+        let sut = service(StubSessionFactory(), store: store)
+        try await drain(sut.streamReply(to: "A"))
+        let unsaved = await sut.memoryState()
+        XCTAssertEqual(unsaved, .unsaved)
+        try await sut.forgetConversation()
+        let events = await store.events
+        XCTAssertEqual(events, ["saveFailed", "clear"], "失敗した保存がキューを止めない")
+        let saved = await store.snapshot
+        XCTAssertNil(saved)
+        let state = await sut.memoryState()
+        XCTAssertEqual(state, .ready)
+    }
+
+    func testStaleSaveCompletionDoesNotMaskThePendingSave() async throws {
+        let first = ConversationTestGate()
+        let second = ConversationTestGate()
+        addTeardownBlock { await first.open(); await second.open() }
+        let store = MemoryStoreFake(saveGate: first)
+        let sut = service(StubSessionFactory(), store: store)
+        try await sut.prepareMemory()
+        let a = Task { await sut.recordExternalTurn(prompt: "A", response: "a") }
+        await first.waitUntilEntered()           // A の保存はストアで停止中
+        await store.setSaveGate(second)          // 次の保存（B）は第 2 gate で止める
+        let b = Task { await sut.recordExternalTurn(prompt: "B", response: "b") }
+        // B の保存は A の後ろに並ぶ。A を完了させても B はまだ保存中なので、状態は .saving のまま。
+        await first.open()
+        await a.value
+        await second.waitUntilEntered()
+        let whileBPending = await sut.memoryState()
+        XCTAssertEqual(whileBPending, .saving, "古い保存の完了で最新の保存状態を上書きしない")
+        await store.setSaveFailure(true)
+        await second.open()
+        await b.value
+        let afterB = await sut.memoryState()
+        XCTAssertEqual(afterB, .unsaved, "最新の保存が失敗したら .unsaved")
+        let events = await store.events
+        XCTAssertEqual(events, ["save", "saveFailed"])
+        let saved = await store.snapshot
+        XCTAssertEqual(saved?.turns.map(\.prompt), ["A"], "B は保存されていない")
     }
 }
 ```
@@ -2832,6 +3289,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private var session: (any ConversationSessionClient)?
     /// 生きているセッションを作ったときのモデル。利用量の集計はこれで行う（設定変更は次のセッションから）。
     private var activeModel: ConversationModelChoice?
+    /// セッションを無効化するたびに進む世代。生成途中に無効化が入った古いセッションは登録しない。
+    private var sessionEpoch: UInt64 = 0
     private var isGenerating = false
     private var generation: Task<Void, Never>?
 
@@ -2877,13 +3336,19 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
 
     func prewarm() async {
         guard (try? await prepareMemory()) != nil, forgetting == nil else { return }
-        await currentSession().prewarm()
+        // 返答生成中は新しいセッションを作らない。generate は圧縮後の記憶をローカルに持ち self.memory はまだ圧縮前なので、
+        // ここで作ると圧縮前のセッションが先に登録され、返答がそれに揃ってしまう。
+        guard !isGenerating else { return }
+        guard let client = await currentSession() else { return }   // 生成中に無効化されたセッションは温めない
+        await client.prewarm()
     }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
         guard forgetting == nil else { throw ConversationMemoryError.unavailable }
         let epoch = operationEpoch
         try await prepareMemory()
+        await awaitCancelledGeneration()
+        guard forgetting == nil else { throw ConversationMemoryError.unavailable }
         guard operationEpoch == epoch else { throw ConversationServiceError.cancelled }
         try Task.checkCancellation()
         guard !isGenerating, saveRetry == nil else { throw ConversationServiceError.modelBusy }
@@ -2904,20 +3369,36 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     /// 短期記憶だけを捨てる。長期メモは残す（「新しい会話を始める」と文脈超過の復旧）。
     func reset() async {
         guard forgetting == nil else { return }
+        if case .forgetFailed = persistenceState { return }   // 削除失敗中は再試行で削除が成功するまで何も書かない
+        let epoch = operationEpoch
         await generation?.value
+        // 待機中に forget が始まった場合は、削除の後に空の記憶を書き戻さない。
+        guard forgetting == nil, operationEpoch == epoch else { return }
         memory = ShortTermMemory()
-        session = nil
+        invalidateSession()
         revision &+= 1
-        if prepared { try? await saveMemory(epoch: operationEpoch) }
+        if prepared { try? await saveMemory(epoch: epoch) }
     }
 
     /// 端末内モデルで答えた往復を記憶に加える。Claude の生きたセッションには無い内容なので、次回は作り直す。
     func recordExternalTurn(prompt: String, response: String) async {
-        guard prepared, forgetting == nil, !isGenerating else { return }
+        guard prepared, forgetting == nil else { return }
+        let epoch = operationEpoch
+        await awaitCancelledGeneration()
+        // 待機中に呼び出しが取り消された場合、forget が始まった（または終わった）場合は、往復を書き戻さない。
+        guard !Task.isCancelled, prepared, forgetting == nil, operationEpoch == epoch, !isGenerating else { return }
+        if case .forgetFailed = persistenceState { return }
         memory.turns.append(ConversationMemoryTurn(prompt: prompt, response: response))
         revision &+= 1
-        session = nil
-        try? await saveMemory(epoch: operationEpoch)
+        invalidateSession()
+        try? await saveMemory(epoch: epoch)
+    }
+
+    /// 取り消し済みのターンが後始末（isGenerating=false）を終えるまで待つ。
+    /// 利用側は購読の終了しか待たないので、取り消し直後の次のターンがここで後始末を追い越さないようにする。
+    /// 進行中（取り消されていない）のターンは待たず、呼び出し側の modelBusy 判定に任せる。
+    private func awaitCancelledGeneration() async {
+        if isGenerating, let generation, generation.isCancelled { await generation.value }
     }
 
     private func generate(_ prompt: String, epoch: UInt64, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
@@ -2927,9 +3408,9 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         do {
             if candidate.characters >= budget.compactionTriggerCharacters {
                 candidate = try await compact(candidate)
-                session = nil
+                invalidateSession()
             }
-            let client = await currentSession(for: candidate)
+            guard let client = await currentSession(for: candidate) else { throw ConversationServiceError.cancelled }
             let source = await client.snapshots(for: prompt)
             for try await snapshot in source {
                 try Task.checkCancellation()
@@ -2949,11 +3430,17 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         if failure == nil {
             memory = candidate
             revision &+= 1
-            let billedModel = activeModel ?? (await configuration()).model
+            // 集計はこのターンを生成したセッションのモデルで行う（設定変更は次のセッションから）。
+            let billedModel: ConversationModelChoice
+            if let activeModel {
+                billedModel = activeModel
+            } else {
+                billedModel = await configuration().model
+            }
             await usage.recordTurn(model: billedModel, promptCharacters: prompt.count, responseCharacters: response.count)
             try? await saveMemory(epoch: epoch)
         } else {
-            session = nil
+            invalidateSession()
         }
         isGenerating = false
         generation = nil
@@ -2961,18 +3448,40 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         continuation.finish(throwing: failure)
     }
 
-    private func currentSession() async -> any ConversationSessionClient { await currentSession(for: memory) }
+    /// session と activeModel は有効な組として扱う。無効化したら両方を落とし、世代を進める。
+    private func invalidateSession() {
+        session = nil
+        activeModel = nil
+        sessionEpoch &+= 1
+    }
 
-    private func currentSession(for memory: ShortTermMemory) async -> any ConversationSessionClient {
+    private func currentSession() async -> (any ConversationSessionClient)? { await currentSession(for: memory) }
+
+    /// 生きているセッションを返す。無ければ memory から作って登録する。
+    /// memory・sessionEpoch・operationEpoch は呼び出し側の判定と同じ actor 区間（最初の await の前）で採取する。
+    /// 生成の await 中に無効化（圧縮・失敗・reset・forget・外部往復）が入ったら、作ったものは登録も activeModel 更新もせず nil を返す。
+    /// 無効化は無いが他の生成が先に登録していた場合（prewarm と返答が同時に作ったとき）は、先に登録された方に揃える。
+    private func currentSession(for memory: ShortTermMemory) async -> (any ConversationSessionClient)? {
         if let session { return session }
+        let expectedSession = sessionEpoch
+        let epoch = operationEpoch
         let trace = ReplyTraceContext.current
         trace?.mark(.sessionStarted)
         let settings = await configuration()
         let facts = await longTermMemory.renderedBlock()
+        let writer = await longTermMemory.makeWriter()
         let instructions = ConversationInstructions(longTermFacts: facts, summary: memory.summary, recentTurns: memory.turns).text
         let created = await factory.makeReplySession(
             ConversationSessionConfiguration(model: settings.model, effort: settings.effort, instructions: instructions),
-            tools: toolProvider.tools(memory: await longTermMemory.makeWriter()))
+            tools: toolProvider.tools(memory: writer))
+        guard sessionEpoch == expectedSession, operationEpoch == epoch, forgetting == nil else {
+            trace?.mark(.sessionFinished, outcome: .cancelled)
+            return nil
+        }
+        if let session {
+            trace?.mark(.sessionFinished, outcome: .success)
+            return session
+        }
         session = created
         activeModel = settings.model
         trace?.mark(.sessionFinished, outcome: .success)
@@ -3059,19 +3568,45 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                                    savedAt: Date(), summary: memory.summary, turns: memory.turns)
     }
 
+    /// ストア書き込み（save / clear）は開始順に完了させる。古い保存が clear を追い越して記憶を復活させないため。
+    /// 待つのは直前のストア操作だけなので、generation / retry / forget のような所有者を待つ循環は生じない。
+    /// 直前の操作が失敗しても次の操作は実行され、各呼び出し元には自分の操作のエラーだけが返る。
+    /// 積んだ操作は呼び出し元の取消では追跡から外さない（storeTail を無条件に nil へ戻さない）。
+    private var storeTail: Task<Void, Never>?
+    /// 最新の保存要求の番号。古い保存の完了が最新の保存状態（.saving / .unsaved）を .ready に上書きしないための照合に使う。
+    private var saveSerial: UInt64 = 0
+
+    private func serializedStoreOperation(_ operation: @escaping @Sendable () async throws -> Void) async throws {
+        let previous = storeTail
+        let task = Task<Void, Error> {
+            await previous?.value
+            try await operation()
+        }
+        storeTail = Task { _ = try? await task.value }
+        try await task.value
+    }
+
     private func saveMemory(epoch: UInt64) async throws {
+        // forget 開始後（operationEpoch が進んだ後）、forget 中、削除失敗中は新しい保存を始めない。
+        guard operationEpoch == epoch, forgetting == nil else { throw ConversationMemoryError.unavailable }
+        if case .forgetFailed = persistenceState { throw ConversationMemoryError.unavailable }
         let trace = ReplyTraceContext.current
         trace?.mark(.saveStarted)
         var outcome = ReplyTraceOutcome.saveWarning
         defer { trace?.mark(.saveFinished, outcome: outcome) }
+        // snapshot の採取・保存番号の更新・enqueue の間に await を挟まない。
         let value = snapshot()
+        saveSerial &+= 1
+        let serial = saveSerial
         publishMemory(.saving)
+        let store = memoryStore
         do {
-            try await memoryStore.save(value)
+            // クロージャはストア I/O だけ。同じキューやサービスへ呼び戻さない。
+            try await serializedStoreOperation { try await store.save(value) }
             outcome = .success
-            if operationEpoch == epoch { publishMemory(.ready) }
+            if operationEpoch == epoch, serial == saveSerial { publishMemory(.ready) }
         } catch {
-            if operationEpoch == epoch { publishMemory(.unsaved) }
+            if operationEpoch == epoch, serial == saveSerial { publishMemory(.unsaved) }
             throw error
         }
     }
@@ -3111,9 +3646,11 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             self.preparation = nil
             self.saveRetry = nil
             do {
-                try await self.memoryStore.clear()
+                let store = self.memoryStore
+                // 先に始まった保存の完了を待ってから消す（クロージャはストア I/O だけ）。
+                try await self.serializedStoreOperation { try await store.clear() }
                 try await self.longTermMemory.clear()
-                self.session = nil
+                self.invalidateSession()
                 self.memory = ShortTermMemory()
                 self.revision = 0
                 self.prepared = true
