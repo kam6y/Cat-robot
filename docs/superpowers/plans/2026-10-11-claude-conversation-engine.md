@@ -4886,7 +4886,7 @@ git add -A && git commit -m "feat: add conversation settings, memory list, and n
 ### Task 9: ライブ配線、README、全体試験
 
 **Files:**
-- Create: `CatRobot/App/ConversationComposition.swift`
+- Create: `CatRobot/App/ConversationComposition.swift`、`docs/validation/2026-10-11-claude-conversation-engine.md`（自動検証の実測と、利用者が行う手動検証の未実施状態）
 - Modify: `CatRobot/Conversation/Integration/ConversationDependencies.swift`、`CatRobot/App/CatRobotApp.swift`、`README.md`
 - Test: `CatRobotTests/Conversation/Integration/AppCompositionTests.swift`（1 件追加）、`CatRobotTests/Conversation/Integration/VoiceSettingsIntegrationTests.swift`（既存のまま通ること）
 
@@ -4941,7 +4941,10 @@ Expected: コンパイルエラー（`ConversationComposition` 未定義）。
 // ConversationComposition.swift
 import Foundation
 
-/// 本番の依存関係を 1 か所で組み立てる。構築時にネットワーク・マイク・モデルへは触れない。
+/// 本番の依存関係を 1 か所で組み立てる。
+/// 構築時はネットワーク、マイク・音声の稼働、モデル生成・availability 照会、記憶データの読み書きを行わない。
+/// 既存の保存先ヘルパーが Application Support ルートだけを作る場合がある（冪等・データなし）。
+/// 会話ディレクトリや current.json / facts.json は保存時まで作らない。
 @MainActor
 struct ConversationComposition {
     let dependencies: ConversationDependencies
