@@ -1,6 +1,6 @@
 # Claude 会話エンジンの検証記録
 
-2026-10-11、Task 9 の自動検証を実施した。実 API の Simulator スモークは利用者の指定により実行していない。App Attest、Apple Intelligence 非対応機、実機遅延、VoiceOver / Dynamic Type の受入も未実施で、Task 10 で結果を追記する。
+2026-10-11、Task 9 の自動検証を実施した。実 API の Simulator スモークは利用者の指定により実行していない。App Attest の Debug 予備確認は同日に実機で実施し、結果を Task 10 の節に記した。Apple Intelligence 非対応機、実機遅延、VoiceOver / Dynamic Type の受入は未実施で、Task 10 で結果を追記する。
 
 鍵、認証トークン、client ID の実値、会話本文はこの記録に含めない。
 
@@ -76,12 +76,25 @@ xcodebuild test \
 
 | 項目 | 状態・追記する内容 |
 |---|---|
-| App integration 登録・ワークスペース支出上限 | 未実施。利用者が登録して client ID を設定する |
-| App Attest の Debug 予備確認 | 未実施。キーを使わず実機で確認し、使用した App Attest 環境と結果を記録する |
+| App integration 登録・ワークスペース支出上限 | 登録済み（2026-10-11）。利用者が Console で App integration を作り、client ID を `CatRobot/Resources/claude-integration.json` に設定してプロジェクトを再生成した。ワークスペースの月間支出上限の設定は未確認 |
+| App Attest の Debug 予備確認 | 成功（2026-10-11、App Attest 環境 `development`、iPhone 16 Pro）。詳細は下記 |
 | T-AUTH-1: TestFlight の認証 | 未実施。Release 構成・キーなしでの認証と会話成立を確認する |
 | T-AUTH-2: 統合の取り消し | 未実施。取り消しは恒久なので、検証用の別統合で失効時の案内を確認する |
 | T-DEV-1 / T-DEV-2 | 未実施。Apple Intelligence 非対応の iPhone で Claude 会話、宛先判定、通信断を確認し、README の端末要件へ反映する |
 | T-LAT-1 | 未実施。高速経路と分類経路を分けて字幕・音声開始の signpost を集計する。Task 10 の 20 ターン簡易測定と、要件の 50 ターン受入は区別して記録する |
 | VoiceOver / Dynamic Type | 未実施。設定画面の操作、長期メモの個別削除、新しい会話の操作と表示を実機で確認する |
+
+### 2026-10-11: 実機の初回ビルドと App Attest の Debug 予備確認
+
+環境: iPhone 16 Pro（Apple Intelligence 対応機、USB-C 接続、Developer Mode 有効）、Xcode 27.0（27A266a）、構成 Debug、Automatic Signing、team `VUB4VP6453`、bundle ID `com.kamby.CatRobot`。ビルドは README の実機手順（`-allowProvisioningUpdates -allowProvisioningDeviceRegistration`）、インストールと起動は `xcrun devicectl` で行った。
+
+1. client ID を `claude-integration.json` に設定し、`ruby scripts/generate_project.rb && ruby scripts/test_generate_project.rb` を実行した（契約テスト PASS）。生成後の Info.plist は `CatRobotClaudeClientID` に `clid_` 接頭辞の値を持つ。
+2. 初回のビルドは署名で停止した。エラーは「PLA Update available」と「Provisioning profile doesn't include the App Attest capability / `com.apple.developer.devicecheck.appattest-environment` entitlement」の 3 件。原因は Apple Developer アカウントで最新の Program License Agreement が未同意だったことで、プロジェクト側（entitlements、`CODE_SIGN_ENTITLEMENTS`、環境値）の不足ではない。
+3. 利用者が PLA に同意した後、同じコマンドで再ビルドしたところ、Xcode が App Attest を含む「iOS Team Provisioning Profile: com.kamby.CatRobot」を自動生成し、ビルドが成功した。Developer ポータルでの手動の capability 追加は不要だった。
+4. 開発用キーを同梱した Debug ビルドをインストール・起動した。この回は認証経路がキーなので App Attest の確認には数えない。
+5. `CatRobot/LocalAssets/claude-api-key.txt` を 0 バイトにして再ビルドし、バンドル内のキーのファイルが 0 バイトであること、`CatRobotClaudeClientID` が設定されていることを確認してからインストール・起動した。環境変数 `ANTHROPIC_API_KEY` は設定していない。App Attest 環境は Debug 既定の `development`。
+6. 利用者が「会話を始める」から自己紹介を依頼し、Claude の返答が返った。Claude Console の Usage に利用量が記録されたことを利用者が確認した。
+
+判定: App Attest の Debug 予備確認は成功（`development` 環境で認証と会話が成立）。要件 T-AUTH-1 の判定は計画どおり TestFlight（Release 構成、`production` 環境、キーなし）で別途行う。字幕、口の動き、読み上げ、聞き取り再開の詳細と、Task 9 Step 5 の表の項目は未確認のままとする。
 
 App Attest と取り消しの仕様は [Anthropic の公式手順](https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/apple-foundation-models#app-attest)を参照する。
