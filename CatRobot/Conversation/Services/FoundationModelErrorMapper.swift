@@ -34,6 +34,9 @@ enum FoundationModelErrorMapper {
     }
 
     static func map(_ error: any Error) -> ConversationServiceError {
+        if let service = error as? ConversationServiceError {
+            return service
+        }
         if error is CancellationError {
             return .cancelled
         }

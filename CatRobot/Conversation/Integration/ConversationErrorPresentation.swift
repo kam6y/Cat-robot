@@ -54,6 +54,18 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             case .unsupportedLocale:
                 message = "Apple Intelligenceの言語設定が日本語に対応していません。"
                 recoveries = [.settings]
+            case .claudeCredentialMissing:
+                message = "Claudeの接続設定がありません。開発ビルドではAPIキー、配布ビルドではApp Attestの登録が必要です。"
+                recoveries = [.checkAgain]
+            case .claudeAttestationUnsupported:
+                message = "この端末ではApp Attestを使えないため、Claudeに接続できません。実機で実行してください。"
+                recoveries = [.checkAgain]
+            case .claudeAttestationFailed:
+                message = "Claudeの認証に失敗しました。ネットワークを確認して、もう一度お試しください。続く場合はアプリの登録が無効になっている可能性があります。"
+                recoveries = [.checkAgain]
+            case .claudeUnreachable:
+                message = "Claudeに接続できません。ネットワークを確認してください。"
+                recoveries = [.checkAgain]
             }
         case .modelLocaleUnsupported:
             message = "この言語では会話モデルを利用できません。設定を確認してください。"
@@ -79,6 +91,9 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .modelGenerationFailed:
             message = "返事を作れませんでした。もう一度話しかけてください。"
             recoveries = [.retry]
+        case .modelUnreachable:
+            message = "通信が不安定で返事を受け取れませんでした。もう一度話しかけてください。"
+            recoveries = [.retry, .typedInput]
         case .cancelled:
             message = "会話を一時停止しました。"
             recoveries = [.retry]
