@@ -823,18 +823,19 @@ final class ConversationModelSettingsTests: XCTestCase {
 
 ```swift
 // ConversationUsageMeterTests.swift
+// UserDefaults は非 Sendable、teardown は @Sendable closure のため、suite 名だけを共有し各 actor には別インスタンスを渡す。
 import XCTest
 @testable import CatRobot
 
 final class ConversationUsageMeterTests: XCTestCase {
-    private func suite() -> UserDefaults {
+    private func suiteName() -> String {
         let name = "ConversationUsageMeterTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
-        return defaults
+        addTeardownBlock { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
+        return name
     }
     func testTurnsResetAtDayBoundaryAndMonthBoundary() async {
-        let defaults = suite()
+        let name = suiteName()
+        let defaults = UserDefaults(suiteName: name)!
         let clock = TestClock(start: Date(timeIntervalSince1970: 1_767_225_600)) // 2026-01-01 00:00 UTC
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "UTC")!
         let meter = UserDefaultsUsageMeter(defaults: defaults, calendar: calendar, now: { clock.now })
@@ -852,13 +853,14 @@ final class ConversationUsageMeterTests: XCTestCase {
         XCTAssertEqual(summary.turnsThisMonth, 1)
     }
     func testDailyLimitAndPersistenceAcrossInstances() async {
-        let defaults = suite()
+        let name = suiteName()
+        let defaults = UserDefaults(suiteName: name)!
         let now = Date(timeIntervalSince1970: 1_767_225_600)
         let meter = UserDefaultsUsageMeter(defaults: defaults, now: { now })
         for _ in 0..<3 { await meter.recordTurn(model: .opus5_5, promptCharacters: 1, responseCharacters: 1) }
         let reached = await meter.isDailyLimitReached(limit: 3)
         XCTAssertTrue(reached)
-        let reloaded = UserDefaultsUsageMeter(defaults: defaults, now: { now })
+        let reloaded = UserDefaultsUsageMeter(defaults: UserDefaults(suiteName: name)!, now: { now })
         let count = await reloaded.summary().turnsToday
         XCTAssertEqual(count, 3)
     }
