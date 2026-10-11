@@ -187,5 +187,58 @@ ort = project.root_object.package_references.find { |p| p.repositoryURL.end_with
 assert(ort && ort.requirement == { "kind" => "exactVersion", "version" => "1.24.2" }, "pinned ONNX runtime missing")
 assert(app.resources_build_phase.files_references.any? { |r| r.path == "LocalAssets/Supertonic" }, "Supertonic bundle missing")
 assert(app.shell_script_build_phases.any? { |p| p.name == "Validate Supertonic assets" }, "asset validation missing")
+cleanup = app.shell_script_build_phases.find { |p| p.name == "Remove codeless onnxruntime framework" }
+assert(cleanup && cleanup.shell_script.include?("onnxruntime.framework"), "codeless framework cleanup missing")
+assert(app.build_phases.last.equal?(cleanup), "codeless framework cleanup must be the last build phase")
+assert(cleanup.output_paths.empty? && cleanup.input_paths.empty?,
+       "codeless framework cleanup must not declare the framework or Frameworks directory as an output: both collide with the embed and MkDir steps (Multiple commands produce)")
+assert(app.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "NO" },
+       "the app target must run its script phases unsandboxed so the cleanup can inspect and delete the stub under SYMROOT / DSTROOT")
+assert(targets.fetch("CatRobotTests").build_configurations.none? { |c| c.build_settings.key?("ENABLE_USER_SCRIPT_SANDBOXING") },
+       "the test target must keep the project-level script sandboxing")
+
+# スタブ除去スクリプトの振る舞い: 記号を公開しないスタブだけを消し、検査や削除の失敗は非 0 で止める。
+require "tmpdir"
+require "open3"
+def run_cleanup(script, products, framework: true, with_binary: nil, mode: nil)
+  app_dir = File.join(products, "CatRobot.app")
+  fw = File.join(app_dir, "Frameworks", "onnxruntime.framework")
+  FileUtils.mkdir_p(framework ? fw : File.join(app_dir, "Frameworks"))
+  FileUtils.cp(with_binary, File.join(fw, "onnxruntime")) if with_binary
+  File.chmod(mode, File.join(app_dir, "Frameworks")) if mode
+  out, status = Open3.capture2e({ "TARGET_BUILD_DIR" => products, "FRAMEWORKS_FOLDER_PATH" => "CatRobot.app/Frameworks" }, "/bin/sh", "-c", script)
+  [out, status.exitstatus, File.exist?(fw)]
+ensure
+  File.chmod(0o755, File.join(app_dir, "Frameworks")) if mode && File.directory?(File.join(app_dir, "Frameworks"))
+end
+
+Dir.mktmpdir("cat-onnx-cleanup") do |dir|
+  stub = File.join(dir, "stub.dylib")
+  real = File.join(dir, "real.dylib")
+  src = File.join(dir, "real.c")
+  File.write(src, "int OrtGetApiBase(void) { return 0; }\n")
+  system("xcrun", "clang", "-dynamiclib", "-x", "c", "/dev/null", "-o", stub, exception: true)
+  system("xcrun", "clang", "-dynamiclib", src, "-o", real, exception: true)
+  script = cleanup.shell_script
+
+  out, code, remains = run_cleanup(script, File.join(dir, "stub"), with_binary: stub)
+  assert(code == 0 && !remains && out.include?("Removed codeless"), "stub must be removed: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "real"), with_binary: real)
+  assert(code == 0 && remains && out.include?("not a codeless stub"), "a real dylib must be kept: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "absent"), framework: false)
+  assert(code == 0 && !remains && out.include?("nothing to remove"), "missing framework must be a no-op: #{out}")
+
+  unreadable = File.join(dir, "unreadable")
+  FileUtils.mkdir_p(File.join(unreadable, "CatRobot.app", "Frameworks", "onnxruntime.framework"))
+  FileUtils.cp(stub, File.join(unreadable, "CatRobot.app", "Frameworks", "onnxruntime.framework", "onnxruntime"))
+  File.chmod(0o000, File.join(unreadable, "CatRobot.app", "Frameworks", "onnxruntime.framework", "onnxruntime"))
+  out, code, remains = run_cleanup(script, unreadable)
+  assert(code == 1 && remains && out.include?("could not inspect"), "unreadable binary must fail loudly: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "locked"), with_binary: stub, mode: 0o555)
+  assert(code == 1 && remains && out.include?("could not remove"), "removal failure must fail loudly: #{out}")
+end
 
 assert(PROJECT_PATH.join("xcshareddata/xcschemes/SupertonicIntegrationDeviceTests.xcscheme").file?, "integration device scheme missing")

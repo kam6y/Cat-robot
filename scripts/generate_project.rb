@@ -130,6 +130,43 @@ validation.always_out_of_date = "1"
 app_target.build_phases.delete(validation)
 app_target.build_phases.insert(0, validation)
 
+# Xcode 15.3 以降は、静的リンクする onnxruntime.framework の「中身のないスタブ」を Frameworks に埋め込む
+# （ビルドログの "Injecting stub binary into codeless framework"）。スタブはアプリの deployment target で
+# 作られる一方、Info.plist の MinimumOSVersion は 15.1 のままなので、App Store Connect が ITMS-90208 で
+# 却下する。コードはアプリ本体に静的リンク済みなので、最後の段階でスタブを取り除く。
+# ENABLE_USER_SCRIPT_SANDBOXING の sandbox は SYMROOT / DSTROOT 以下を deny し、宣言した出力しか読み書きを許さない。
+# framework や Frameworks ディレクトリを出力に宣言すると、埋め込み段階や MkDir と "Multiple commands produce" で
+# 衝突するため、アプリターゲットだけ sandbox を切る（下の build settings）。スタブ以外（記号を公開する本物の dylib）は
+# 残し、検査や削除の失敗は非 0 で止める。
+cleanup = app_target.new_shell_script_build_phase("Remove codeless onnxruntime framework")
+cleanup.shell_script = <<~'SH'
+  set -u
+  fw="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework"
+  bin="${fw}/onnxruntime"
+  if [ ! -d "$fw" ]; then
+    echo "note: onnxruntime.framework is not embedded; nothing to remove"
+    exit 0
+  fi
+  if [ -f "$bin" ]; then
+    if ! exported="$(xcrun nm -gUj "$bin" 2>&1)"; then
+      echo "error: could not inspect ${bin}: ${exported}"
+      exit 1
+    fi
+    # nm prints "<file>: no symbols" instead of an empty list for a stub
+    exported="$(printf '%s\n' "$exported" | grep -v -e ': no symbols$' -e '^$' || true)"
+    if [ -n "$exported" ]; then
+      echo "warning: onnxruntime.framework exports symbols, so it is not a codeless stub; leaving it in place"
+      exit 0
+    fi
+  fi
+  if ! rm -rf "$fw" || [ -e "$fw" ]; then
+    echo "error: could not remove ${fw}"
+    exit 1
+  fi
+  echo "Removed codeless onnxruntime.framework stub"
+SH
+cleanup.always_out_of_date = "1"
+
 apply_common_settings(app_target)
 apply_common_settings(test_target)
 
@@ -144,6 +181,9 @@ app_target.build_configurations.each do |configuration|
     "CATROBOT_APP_ATTEST_ENVIRONMENT" => (configuration.name == "Release" ? "production" : "development"),
     "DEVELOPMENT_ASSET_PATHS" => '"CatRobot/Preview Content"',
     "ENABLE_PREVIEWS" => "YES",
+    # 「Remove codeless onnxruntime framework」が成果物を検査・削除できるよう、アプリターゲットだけ切る。
+    # プロジェクト既定とテストターゲットは YES のまま。
+    "ENABLE_USER_SCRIPT_SANDBOXING" => "NO",
     "GENERATE_INFOPLIST_FILE" => "NO",
     "INFOPLIST_FILE" => "CatRobot/Resources/Info.plist",
     "LD_RUNPATH_SEARCH_PATHS" => "$(inherited) @executable_path/Frameworks",

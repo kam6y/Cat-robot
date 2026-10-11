@@ -1,6 +1,6 @@
 # Claude 会話エンジンの検証記録
 
-2026-10-11、Task 9 の自動検証を実施した。実 API の Simulator スモークは利用者の指定により実行していない。App Attest の Debug 予備確認は同日に実機で実施し、結果を Task 10 の節に記した。Task 10 の結果は同じ記録の後半に追記した: 実機遅延の簡易版（2026-10-12、目標未達）、VoiceOver / Dynamic Type、実機確認で受けた UI 変更。Apple Intelligence 非対応機（T-DEV-1/2）は利用者判断で未実施、TestFlight（T-AUTH-1）と統合の取り消し（T-AUTH-2）は未実施。
+2026-10-11、Task 9 の自動検証を実施した。実 API の Simulator スモークは利用者の指定により実行していない。App Attest の Debug 予備確認は同日に実機で実施し、結果を Task 10 の節に記した。Task 10 の結果は同じ記録の後半に追記した: 実機遅延の簡易版（2026-10-12、目標未達）、VoiceOver / Dynamic Type、実機確認で受けた UI 変更。Apple Intelligence 非対応機（T-DEV-1/2）は利用者判断で未実施。TestFlight の認証（T-AUTH-1）は 2026-10-12 に合格、統合の取り消し（T-AUTH-2）は未実施。
 
 鍵、認証トークン、client ID の実値、会話本文はこの記録に含めない。
 
@@ -78,7 +78,7 @@ xcodebuild test \
 |---|---|
 | App integration 登録・ワークスペース支出上限 | 登録済み（2026-10-11）。利用者が Console で App integration を作り、client ID を `CatRobot/Resources/claude-integration.json` に設定してプロジェクトを再生成した。ワークスペースの月間支出上限も利用者が設定した（同日）。Step 1 完了 |
 | App Attest の Debug 予備確認 | 成功（2026-10-11、App Attest 環境 `development`、iPhone 16 Pro）。詳細は下記 |
-| T-AUTH-1: TestFlight の認証 | 未実施。Release 構成・キーなしでの認証と会話成立を確認する |
+| T-AUTH-1: TestFlight の認証 | 合格（2026-10-12）。Release 構成・`production` の App Attest・鍵の経路なしの TestFlight 版（1.0 (2)）で会話が成立した。経過（アプリ記録、アイコン、ITMS-90208）は下記 |
 | T-AUTH-2: 統合の取り消し | 未実施。取り消しは恒久なので、検証用の別統合で失効時の案内を確認する |
 | T-DEV-1 / T-DEV-2 | 未実施（2026-10-11、利用者判断）。Apple Intelligence 非対応の iPhone が手元に無い。README の動作要件を「Apple Intelligence 対応機で検証済み。非対応機は未検証」とした |
 | T-LAT-1 | 簡易版（20 ターン）を 2026-10-12 に実施。高速経路の最初の字幕 中央値 2.21 秒（目標 1.5 秒）、読み上げ開始 中央値 3.19 秒（目標 2.5 秒）で **未達**（下記）。条件は NFR の前提どおり（既定の Opus 5.5・effort low、Wi-Fi）。要件の 50 ターン受入は別に記録する |
@@ -97,7 +97,9 @@ xcodebuild test \
 
 判定: App Attest の Debug 予備確認は成功（`development` 環境で認証と会話が成立）。要件 T-AUTH-1 の判定は計画どおり TestFlight（Release 構成、`production` 環境、キーなし）で別途行う。字幕、口の動き、読み上げ、聞き取り再開の詳細と、Task 9 Step 5 の表の項目は未確認のままとする。
 
-T-AUTH-1 の経過（2026-10-12）: Release 構成でアーカイブし（開発用の鍵ファイルは同梱されず、App Attest 環境は `production`、client ID は Info.plist に入ることをアーカイブで確認）、`xcodebuild -exportArchive`（method `app-store-connect`、destination `upload`）でアップロードを試みた。1 回目は App Store Connect にアプリ記録が無く失敗し、利用者がアプリ記録を作成。2 回目は App Store Connect の検証で「120x120 のアイコンが無い」「`CFBundleIconName` が無い」で失敗したため、1024x1024 の不透明なアイコンを `AppIcon.appiconset` に追加し（最初は手描きの仮絵、利用者の要望で codex の画像生成による黒猫の横顔シルエット 3 案から案 3 を選び、背景を純白にして採用）、`ITSAppUsesNonExemptEncryption` = false（通信は HTTPS のみ）を Info.plist に加えて再アーカイブした。3 回目（2026-10-12）は `Uploaded CatRobot` / `EXPORT SUCCEEDED` でアップロードに成功した（ビルド 1.0 (1)）。`onnxruntime.framework` の dSYM が無い旨の警告は配布に影響しない。TestFlight 版での判定結果は下に追記する。
+T-AUTH-1 の経過（2026-10-12）: Release 構成でアーカイブし（開発用の鍵ファイルは同梱されず、App Attest 環境は `production`、client ID は Info.plist に入ることをアーカイブで確認）、`xcodebuild -exportArchive`（method `app-store-connect`、destination `upload`）でアップロードを試みた。1 回目は App Store Connect にアプリ記録が無く失敗し、利用者がアプリ記録を作成。2 回目は App Store Connect の検証で「120x120 のアイコンが無い」「`CFBundleIconName` が無い」で失敗したため、1024x1024 の不透明なアイコンを `AppIcon.appiconset` に追加し（最初は手描きの仮絵、利用者の要望で codex の画像生成による黒猫の横顔シルエット 3 案から案 3 を選び、背景を純白にして採用）、`ITSAppUsesNonExemptEncryption` = false（通信は HTTPS のみ）を Info.plist に加えて再アーカイブした。3 回目（2026-10-12）は `Uploaded CatRobot` / `EXPORT SUCCEEDED` でアップロードに成功した（ビルド 1.0 (1)）。`onnxruntime.framework` の dSYM が無い旨の警告は配布に影響しない。ただし処理後に App Store Connect から ITMS-90208（`CatRobot.app/Frameworks/onnxruntime.framework` が Info.plist の最小 OS を満たさない）のメールが届いた。一次調査: xcframework の `onnxruntime.framework` は静的ライブラリで、Xcode は埋め込み時に `builtin-copy -remove-static-executable` で中身を外し、「Injecting stub binary into codeless framework」で arm64-apple-ios27.0 のスタブを注入する（`otool -l` で minos 27.0）。一方 Info.plist の `MinimumOSVersion` は 15.1 のままなので検証で不一致になる。アプリ本体は `otool -L` で同フレームワークを動的リンクしておらず、`strings` に onnxruntime の記号が 6,000 件以上あるので静的リンク済み。対処として、生成するアプリターゲットの最後に「Remove codeless onnxruntime framework」スクリプト段階を追加し、埋め込まれた framework の実行ファイルが記号を 1 つも公開しない（= Xcode が注入したスタブ）場合だけ取り除くようにした（`scripts/generate_project.rb`）。codex の審査で、`ENABLE_USER_SCRIPT_SANDBOXING` の sandbox が SYMROOT / DSTROOT 以下を deny し宣言した入出力だけを許すため、最初の版は DerivedData が `/tmp` のシンボリックリンク経由だったから通っただけで、正規のパスでは otool と rm が拒否されても「Removed」を出して exit 0 になる、との指摘を受けた。削除対象（framework）や親の Frameworks ディレクトリを phase の出力に宣言する案は、埋め込みの Copy や MkDir と「Multiple commands produce」で衝突してビルドが失敗した（正規パスの DerivedData で確認）。そのため、アプリターゲットだけ `ENABLE_USER_SCRIPT_SANDBOXING` を NO にし（プロジェクト既定とテストターゲットは YES のまま）、検査（`nm -gUj`）や削除の失敗は非 0 で止めるよう直した。契約テストでは存在・順序・sandbox 設定に加えて、生成した script を `/bin/sh` で実行し、スタブ削除・本物の dylib 温存・framework なし・読めない実行ファイル（exit 1）・削除不能（exit 1）の 5 経路を確認する。正規のパス（`/private/tmp` 直下）の DerivedData でも Debug 実機ビルドで除去されることを確認した。スタブを除いたアーカイブを再アップロードし（ビルド 1.0 (2)）、処理後の ITMS メールは来なかった。利用者が TestFlight から起動して会話し、正常に返答が来ることを確認した（2026-10-12）。
+
+**判定: T-AUTH-1 合格。** Release 構成・`production` の App Attest・鍵の経路なしで会話が成立した。
 
 ### 2026-10-11: 遅延の簡易計測（途中）
 

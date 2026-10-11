@@ -123,6 +123,8 @@ ruby scripts/test_generate_project.rb
 
 ソース変更と再生成した`CatRobot.xcodeproj`は一緒に管理します。生成をもう一度実行してもプロジェクト差分が増えないことが決定性の基準です。
 
+生成するアプリターゲットには 2 つのスクリプト段階があります。最初の「Validate Supertonic assets」は同梱する音声資産を検証します。最後の「Remove codeless onnxruntime framework」は、静的リンク済みの `onnxruntime.framework` に Xcode が埋め込む中身のないスタブを取り除きます。スタブは App Store Connect の検証で ITMS-90208（Info.plist の最小 OS と不一致）になるためです。取り除くのは記号を公開しないスタブだけで、本物の dylib なら残します。検査や削除に失敗したらビルドを止めます。スクリプトの sandbox（`ENABLE_USER_SCRIPT_SANDBOXING`）は成果物の削除を許さず、削除対象を出力に宣言すると埋め込み段階と衝突するため、アプリターゲットだけ sandbox を切っています（プロジェクト既定とテストターゲットは有効のまま）。
+
 ## Simulatorでビルド・テスト
 
 固定のSimulator IDには依存しません。利用可能なiOS 27 Simulatorを確認し、そのUDIDを設定します。
