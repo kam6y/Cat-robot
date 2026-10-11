@@ -383,12 +383,17 @@ enum ModelAvailability: Equatable, Sendable {
     case deviceNotEligible, appleIntelligenceNotEnabled, modelNotReady, unsupportedLocale   // 端末内モデル
     case claudeCredentialMissing, claudeAttestationUnsupported, claudeAttestationFailed, claudeUnreachable
 }
-// ConversationServiceError に追加: case modelUnreachable（通信断・タイムアウト・レート制限。端末内モデルへ切り替える判断に使う）
+// ConversationServiceError に追加:
+//   case modelUnreachable（通信断・タイムアウト・レート制限）
+//   var allowsOnDeviceFallback: Bool（端末内モデルへ切り替えてよい失敗。.modelUnreachable と .modelGenerationFailed だけ true。
+//     パッケージが型を公開しない API エラー（HTTP 5xx の api_error、0.2.3 では 400/403/404 も）は .modelGenerationFailed に写るので、ここで拾う）
 enum ClaudeErrorMapper {
     static func map(_ error: any Error) -> ConversationServiceError
     static func availability(_ error: any Error) -> ModelAvailability
 }
 ```
+
+**境界の制約（0.2.3 の一次ソースと実測で確定）:** HTTP 5xx はパッケージ内部の `package struct APIError`（`Sources/ClaudeAPI/APIError.swift`）のままアプリへ届く。`ClaudeClient.check()` は封筒 JSON の `type` か、無ければ status で 401/403/404/413/429/529 だけを型付けし、それ以外（500/502/503 を含む）は `.api` にする。パッケージの `ErrorMapper` は `.rateLimit`/`.overloaded` → `LanguageModelError.rateLimited`、`.requestTooLarge` と「context」を含む `.invalidRequest` → `contextSizeExceeded`、`.authentication` → `ClaudeError` に写し、`.permission`/`.api`/`.invalidRequest`/`.notFound`/`.other` はそのまま投げる。iOS 27 の `LanguageModelExecutor.respond(to:model:streamingInto:)` は `throws` のみで変換フックがなく、アプリから 5xx を見分けられる公開の型・プロパティ・`NSError` code は無い。そこで **分類は変えず**（未知のエラーは `.modelGenerationFailed` のまま）、**切り替えてよいか** を `ConversationServiceError.allowsOnDeviceFallback` で判定する（FR-LLM-4）。代償として 400/403/404 も切り替え対象になることをテストで明記する。文字列照合（`localizedDescription`）や、`package` 型の `Codable` 形状を `any Encodable` 経由で読む方法は採らない。回帰テストは `URLProtocol` ではなく 127.0.0.1 の固定応答サーバで実経路を通す（パッケージは独自の `URLSession(configuration:)` を作るため `URLProtocol.registerClass` が効かない）。
 
 - [ ] **Step 1: 失敗テストを書く**
 
@@ -397,6 +402,7 @@ enum ClaudeErrorMapper {
 import ClaudeForFoundationModels
 import Foundation
 import FoundationModels
+import Network
 import XCTest
 @testable import CatRobot
 
@@ -408,22 +414,210 @@ final class ClaudeErrorMapperTests: XCTestCase {
         XCTAssertEqual(ClaudeErrorMapper.availability(ClaudeError.attestationFailed), .claudeAttestationFailed)
         XCTAssertEqual(ClaudeErrorMapper.availability(URLError(.notConnectedToInternet)), .claudeUnreachable)
     }
+
     func testTransientNetworkFailuresAreUnreachable() {
         XCTAssertEqual(ClaudeErrorMapper.map(URLError(.notConnectedToInternet)), .modelUnreachable)
         XCTAssertEqual(ClaudeErrorMapper.map(LanguageModelError.timeout(.init(debugDescription: "t"))), .modelUnreachable)
         XCTAssertEqual(ClaudeErrorMapper.map(LanguageModelError.rateLimited(.init(resetDate: nil, debugDescription: "r"))), .modelUnreachable)
     }
+
     func testContextRefusalAndCancellationKeepExistingSemantics() {
         XCTAssertEqual(ClaudeErrorMapper.map(LanguageModelError.contextSizeExceeded(.init(contextSize: 0, tokenCount: 0, debugDescription: "c"))), .contextExceeded)
+        XCTAssertEqual(ClaudeErrorMapper.map(LanguageModelError.refusal(.init(explanation: "e", debugDescription: "r"))), .refusal)
+        XCTAssertEqual(ClaudeErrorMapper.map(LanguageModelError.guardrailViolation(.init(debugDescription: "g"))), .guardrailViolation)
         XCTAssertEqual(ClaudeErrorMapper.map(CancellationError()), .cancelled)
         XCTAssertEqual(ClaudeErrorMapper.map(ConversationServiceError.inputTooLong), .inputTooLong)
     }
+
     func testUnknownErrorsFallBackToGenerationFailure() {
         struct Odd: Error {}
         XCTAssertEqual(ClaudeErrorMapper.map(Odd()), .modelGenerationFailed)
     }
+
     func testFoundationMapperPassesServiceErrorsThrough() {
         XCTAssertEqual(FoundationModelErrorMapper.map(ConversationServiceError.modelUnreachable), .modelUnreachable)
+    }
+
+    // MARK: 端末内モデルへ切り替えてよい失敗（FR-LLM-4）
+
+    func testOnlyUnreachableAndGenericGenerationFailuresAllowOnDeviceFallback() {
+        let expectations: [(ConversationServiceError, Bool)] = [
+            (.modelUnreachable, true),
+            (.modelGenerationFailed, true),
+            (.modelUnavailable(.claudeCredentialMissing), false),
+            (.modelUnavailable(.claudeAttestationUnsupported), false),
+            (.modelUnavailable(.claudeAttestationFailed), false),
+            (.modelUnavailable(.claudeUnreachable), false),
+            (.modelUnavailable(.deviceNotEligible), false),
+            (.modelLocaleUnsupported, false),
+            (.modelAssetsUnavailable, false),
+            (.guardrailViolation, false),
+            (.refusal, false),
+            (.contextExceeded, false),
+            (.inputTooLong, false),
+            (.modelBusy, false),
+            (.cancelled, false),
+            (.microphoneDenied, false),
+            (.speechAssetsUnavailable, false),
+            (.speechLocaleUnsupported, false),
+            (.speechUnrecognized, false),
+            (.speechCaptureFailed, false),
+            (.speechCaptureAlreadyRunning, false),
+            (.speechVoiceUnavailable, false),
+            (.speechSynthesisFailed, false),
+            (.audioSessionFailed, false),
+        ]
+        for (error, allowed) in expectations {
+            XCTAssertEqual(error.allowsOnDeviceFallback, allowed, "\(error)")
+        }
+    }
+
+    // MARK: 実際のクライアント経路（127.0.0.1 の固定応答サーバ。外部ネットワークには出ない）
+
+    /// 529/429 はパッケージが `LanguageModelError.rateLimited` に型付けする。500/502/503 はパッケージ内部の `APIError` のまま届き、
+    /// 公開 API では種別を見分けられないので `.modelGenerationFailed` に写る。どちらも端末内モデルへの切り替え対象（FR-LLM-4）。
+    func testServerSideFailuresFromTheRealClientAllowOnDeviceFallback() async throws {
+        for status in [529, 429] {
+            let error = try await failureFromStubbedClaude(status: status, body: Data())
+            XCTAssertEqual(ClaudeErrorMapper.map(error), .modelUnreachable, "HTTP \(status)")
+            XCTAssertTrue(ClaudeErrorMapper.map(error).allowsOnDeviceFallback, "HTTP \(status)")
+        }
+        let apiError = #"{"type":"error","error":{"type":"api_error","message":"internal"}}"#
+        for (status, body) in [(500, ""), (500, apiError), (502, "<html>bad gateway</html>"), (503, "")] {
+            let error = try await failureFromStubbedClaude(status: status, body: Data(body.utf8))
+            let failure = ClaudeErrorMapper.map(error)
+            XCTAssertEqual(failure, .modelGenerationFailed, "HTTP \(status) \(body)")
+            XCTAssertTrue(failure.allowsOnDeviceFallback, "HTTP \(status) \(body)")
+            XCTAssertEqual(ClaudeErrorMapper.availability(error), .claudeUnreachable, "HTTP \(status) \(body)")
+        }
+    }
+
+    /// 認証・文脈超過はパッケージが型付けするので、意味を保ったまま切り替え対象外。400/403/404 は設定・権限・不正要求の失敗だが、
+    /// 0.2.3 の公開 API では 5xx と区別できず、同じ `.modelGenerationFailed`（切り替え対象）になる（FR-LLM-4 に制約として明記）。
+    func testClientSideFailuresFromTheRealClientKeepTheirSemantics() async throws {
+        let unauthorized = try await failureFromStubbedClaude(status: 401, body: Data())
+        XCTAssertEqual(ClaudeErrorMapper.map(unauthorized), .modelUnavailable(.claudeCredentialMissing))
+        XCTAssertFalse(ClaudeErrorMapper.map(unauthorized).allowsOnDeviceFallback)
+        XCTAssertEqual(ClaudeErrorMapper.availability(unauthorized), .claudeCredentialMissing)
+
+        let tooLarge = try await failureFromStubbedClaude(status: 413, body: Data())
+        XCTAssertEqual(ClaudeErrorMapper.map(tooLarge), .contextExceeded)
+        XCTAssertFalse(ClaudeErrorMapper.map(tooLarge).allowsOnDeviceFallback)
+        let contextMessage = #"{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long for the context window"}}"#
+        let context = try await failureFromStubbedClaude(status: 400, body: Data(contextMessage.utf8))
+        XCTAssertEqual(ClaudeErrorMapper.map(context), .contextExceeded)
+
+        let permission = #"{"type":"error","error":{"type":"permission_error","message":"no"}}"#
+        let invalid = #"{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}"#
+        for (status, body) in [(403, permission), (404, ""), (400, invalid)] {
+            let error = try await failureFromStubbedClaude(status: status, body: Data(body.utf8))
+            let failure = ClaudeErrorMapper.map(error)
+            XCTAssertEqual(failure, .modelGenerationFailed, "HTTP \(status)")
+            XCTAssertTrue(failure.allowsOnDeviceFallback, "HTTP \(status): 0.2.3 では 5xx と区別できない（既知の代償）")
+        }
+    }
+
+    private func failureFromStubbedClaude(status: Int, body: Data) async throws -> any Error {
+        let responder = try LoopbackHTTPResponder(status: status, body: body)
+        let baseURL = try await responder.start()
+        defer { responder.stop() }
+        let model = ClaudeLanguageModel(name: .haiku5_5, auth: .apiKey("sk-test"), fallbacks: [], baseURL: baseURL, timeout: 5)
+        let session = LanguageModelSession(model: model, instructions: "テスト")
+        do {
+            _ = try await session.respond(to: "hi")
+            XCTFail("expected the stubbed HTTP \(status) to fail")
+            return ConversationServiceError.modelGenerationFailed
+        } catch {
+            return error
+        }
+    }
+}
+
+/// 127.0.0.1 の空きポートで固定の HTTP 応答を返す最小サーバ。パッケージは独自の `URLSession` を作るため
+/// `URLProtocol.registerClass` では差し替えられず、実経路を通すにはこれが要る。
+final class LoopbackHTTPResponder: @unchecked Sendable {
+    private let listener: NWListener
+    private let queue = DispatchQueue(label: "LoopbackHTTPResponder")
+    private let status: Int
+    private let body: Data
+
+    init(status: Int, body: Data) throws {
+        self.status = status
+        self.body = body
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        listener = try NWListener(using: parameters)
+    }
+
+    func start() async throws -> URL {
+        let once = ResumeOnce()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready: once.run { continuation.resume() }
+                case .failed(let error): once.run { continuation.resume(throwing: error) }
+                default: break
+                }
+            }
+            listener.newConnectionHandler = { [weak self] connection in self?.serve(connection) }
+            listener.start(queue: queue)
+        }
+        guard let port = listener.port?.rawValue else { throw URLError(.cannotConnectToHost) }
+        return URL(string: "http://127.0.0.1:\(port)")!
+    }
+
+    func stop() { listener.cancel() }
+
+    private func serve(_ connection: NWConnection) {
+        connection.start(queue: queue)
+        receiveRequest(connection, buffered: Data())
+    }
+
+    private func receiveRequest(_ connection: NWConnection, buffered: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] chunk, _, isComplete, error in
+            guard let self else { return }
+            var data = buffered
+            if let chunk { data.append(chunk) }
+            if Self.requestIsComplete(data) || isComplete || error != nil {
+                self.respond(on: connection)
+            } else {
+                self.receiveRequest(connection, buffered: data)
+            }
+        }
+    }
+
+    private static func requestIsComplete(_ data: Data) -> Bool {
+        guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let header = String(decoding: data[..<headerEnd.lowerBound], as: UTF8.self)
+        let length = header.components(separatedBy: "\r\n")
+            .first { $0.lowercased().hasPrefix("content-length:") }
+            .flatMap { line -> Int? in
+                let value = line.drop { $0 != ":" }.dropFirst().trimmingCharacters(in: .whitespaces)
+                return Int(value)
+            } ?? 0
+        return data.count - headerEnd.upperBound >= length
+    }
+
+    private func respond(on connection: NWConnection) {
+        let head = "HTTP/1.1 \(status) Stub\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nrequest-id: stub\r\nConnection: close\r\n\r\n"
+        var payload = Data(head.utf8)
+        payload.append(body)
+        connection.send(content: payload, completion: .contentProcessed { _ in
+            // 相手が読み終えて閉じるまで待ってから閉じる（送信直後の cancel で切れないように）。
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) { _, _, _, _ in connection.cancel() }
+        })
+    }
+}
+
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func run(_ body: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !done else { return }
+        done = true
+        body()
     }
 }
 ```
@@ -445,11 +639,30 @@ func testClaudeAvailabilityMessagesNameTheCause() {
 - [ ] **Step 2: テストを実行し、未定義の型・ケースで失敗することを確認する**
 
 Run: 共通形 `-only-testing:CatRobotTests/ClaudeErrorMapperTests -only-testing:CatRobotTests/ConversationErrorPresentationTests`
-Expected: コンパイルエラー（`ClaudeErrorMapper`、`.claudeCredentialMissing`、`.modelUnreachable` が未定義）。
+Expected: コンパイルエラー（`ClaudeErrorMapper`、`.claudeCredentialMissing`、`.modelUnreachable`、`allowsOnDeviceFallback` が未定義）。
 
 - [ ] **Step 3: 実装する**
 
-`ConversationTypes.swift`: `ModelAvailability` に 4 ケース、`ConversationServiceError` に `case modelUnreachable` を追加。
+`ConversationTypes.swift`: `ModelAvailability` に 4 ケース、`ConversationServiceError` に `case modelUnreachable` を追加し、切り替え判定を足す（`switch` は網羅的に書き、ケース追加時に判断を強制する）:
+
+```swift
+extension ConversationServiceError {
+    /// 端末内モデルへ切り替えてよい失敗（FR-LLM-4）。通信到達不能（.modelUnreachable）と汎用の生成失敗（.modelGenerationFailed）だけ。
+    /// パッケージが型を公開しない API エラー（HTTP 5xx の api_error。0.2.3 では 400/403/404 も）は .modelGenerationFailed に写るので、ここで拾う。
+    /// 公開 API で識別できる認証・権限（.modelUnavailable）、拒否、guardrail、文脈超過、入力過長、取り消しは切り替えない。
+    var allowsOnDeviceFallback: Bool {
+        switch self {
+        case .modelUnreachable, .modelGenerationFailed:
+            return true
+        case .microphoneDenied, .speechAssetsUnavailable, .speechLocaleUnsupported, .speechUnrecognized, .speechCaptureFailed,
+             .speechCaptureAlreadyRunning, .speechVoiceUnavailable, .speechSynthesisFailed, .audioSessionFailed,
+             .modelUnavailable, .modelLocaleUnsupported, .modelAssetsUnavailable, .guardrailViolation, .refusal,
+             .contextExceeded, .inputTooLong, .modelBusy, .cancelled:
+            return false
+        }
+    }
+}
+```
 
 `FoundationModelErrorMapper.map(_ error: any Error)` の先頭に追加:
 
@@ -1794,6 +2007,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
 }
 ```
 
+**診断ログの制約（FR-LLM-8）:** Claude の失敗を記録するときは、`ConversationServiceError` のケース名（正規化した種別）、切り替えの事象、連続回数だけを残す。`error.localizedDescription` やパッケージの `APIError` の message・応答本文の抜粋は、`privacy: .private` でも記録しない（API の message は本文の抜粋を含みうる）。Task 2 の `ClaudeErrorMapper` にはログを足さない。
+
 - [ ] **Step 1: サービスの失敗テストを書く**
 
 ```swift
@@ -2632,11 +2847,12 @@ git add -A && git commit -m "feat: add ClaudeConversationService with bounded sh
 - Produces:
 
 ```swift
-/// Claude が「最初の文字が出る前に」通信系の失敗（.modelUnreachable）をしたとき、または 1 日の上限に達しているときだけ
-/// 端末内モデルで答える。途中失敗は置き換えない。端末内モデルの往復は Claude の記憶へ引き継ぐ。
+/// Claude が「最初の文字が出る前に」切り替え対象の失敗（failure.allowsOnDeviceFallback: 通信到達不能と汎用の生成失敗。5xx を含む）
+/// をしたとき、または 1 日の上限に達しているときだけ端末内モデルで答える。公開 API で識別できる認証・拒否・文脈超過・入力過長・取り消しでは
+/// 切り替えない。途中失敗は置き換えない。端末内モデルの往復は Claude の記憶へ引き継ぐ。
 actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking {
     nonisolated let supportsStableReplyPrefix = true
-    static let weakSignalNotice = "今は電波が弱いから、簡単にしか話せないよ。"
+    static let claudeFailureNotice = "今はいつものように話せないから、簡単に答えるね。"
     static let dailyLimitNotice = "今日はたくさん話したから、簡単にしか話せないよ。"
     init(primary: ClaudeConversationService, secondary: any ReplyGenerating, secondaryAvailability: any ModelAvailabilityChecking,
          usage: any ConversationUsageMetering, configuration: @escaping @Sendable () async -> ConversationModelConfiguration)
@@ -2646,6 +2862,8 @@ struct RoutedAddressClassifier: AddressClassifying {
     init(onDevice: any AddressClassifying, onDeviceAvailability: any ModelAvailabilityChecking, claude: any AddressClassifying)
 }
 ```
+
+**診断ログの制約（FR-LLM-8）:** 切り替えの事象と連続回数は正規化した種別（`ConversationServiceError` のケース名）とともに記録してよいが、元のエラーの `localizedDescription` は記録しない（Task 6 と同じ）。
 
 - [ ] **Step 1: 失敗テストを書く**
 
@@ -2703,12 +2921,12 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         let primary = claude(factory, store: store)
         let generator = sut(primary, secondary: secondary)
         let snapshots = try await collect(generator.streamReply(to: "電波が弱いとき"))
-        XCTAssertEqual(snapshots, [OnDeviceFallbackReplyGenerator.weakSignalNotice + "短い",
-                                   OnDeviceFallbackReplyGenerator.weakSignalNotice + "短い返事。"])
+        XCTAssertEqual(snapshots, [OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い",
+                                   OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。"])
         let prompts = await secondary.prompts
         XCTAssertEqual(prompts, ["電波が弱いとき"])
         let saved = await store.load()
-        XCTAssertEqual(saved?.turns, [.init(prompt: "電波が弱いとき", response: OnDeviceFallbackReplyGenerator.weakSignalNotice + "短い返事。")])
+        XCTAssertEqual(saved?.turns, [.init(prompt: "電波が弱いとき", response: OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。")])
         let back = try await collect(generator.streamReply(to: "戻った？"))
         XCTAssertEqual(back.last, "戻った。")
         let sessions = await factory.sessions
@@ -2741,6 +2959,59 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         XCTAssertTrue(prompts.isEmpty)
     }
 
+    func testGenericGenerationFailureBeforeFirstSnapshotAlsoSwitchesToOnDevice() async throws {
+        // HTTP 5xx はパッケージの公開 API では種別を見分けられず .modelGenerationFailed に写る（Task 2）。それでも切り替える。
+        struct OpaqueAPIFailure: Error {}
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: OpaqueAPIFailure())])
+        let secondary = SecondaryReply()
+        let generator = sut(claude(factory), secondary: secondary)
+        let snapshots = try await collect(generator.streamReply(to: "サーバが落ちているとき"))
+        XCTAssertEqual(snapshots.last, OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。")
+        let prompts = await secondary.prompts
+        XCTAssertEqual(prompts, ["サーバが落ちているとき"])
+    }
+
+    func testGenericGenerationFailureAfterFirstSnapshotIsNotReplaced() async throws {
+        struct OpaqueAPIFailure: Error {}
+        let held = ScriptedSessionClient(chunks: nil)
+        let secondary = SecondaryReply()
+        let generator = sut(claude(StubSessionFactory(scripts: [held])), secondary: secondary)
+        let stream = try await generator.streamReply(to: "途中で壊れる")
+        let reader = Task { try await self.collect(stream) }
+        await held.waitUntilStarted()
+        held.yield("一文目。")
+        held.fail(OpaqueAPIFailure())
+        do { _ = try await reader.value; XCTFail("expected modelGenerationFailed") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
+        let prompts = await secondary.prompts
+        XCTAssertTrue(prompts.isEmpty)
+    }
+
+    func testGenericGenerationFailureWithoutOnDeviceModelPropagatesTheError() async throws {
+        struct OpaqueAPIFailure: Error {}
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: OpaqueAPIFailure())])
+        let secondary = SecondaryReply()
+        let generator = sut(claude(factory), secondary: secondary, onDevice: .deviceNotEligible)
+        do { _ = try await collect(generator.streamReply(to: "x")); XCTFail("expected modelGenerationFailed") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
+        let prompts = await secondary.prompts
+        XCTAssertTrue(prompts.isEmpty)
+    }
+
+    func testKnownAuthFailuresNeverSwitchToOnDevice() async throws {
+        for (failure, expected) in [(ClaudeError.missingCredential, ModelAvailability.claudeCredentialMissing),
+                                    (.attestationUnsupported, .claudeAttestationUnsupported),
+                                    (.attestationFailed, .claudeAttestationFailed)] {
+            let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: failure)])
+            let secondary = SecondaryReply()
+            let generator = sut(claude(factory), secondary: secondary)
+            do { _ = try await collect(generator.streamReply(to: "x")); XCTFail("expected modelUnavailable") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, .modelUnavailable(expected)) }
+            let prompts = await secondary.prompts
+            XCTAssertTrue(prompts.isEmpty, "\(failure)")
+        }
+    }
+
     func testDailyLimitRoutesToOnDeviceModelWithNotice() async throws {
         let usage = ClaudeConversationServiceTests.UsageSpy()
         await usage.setLimitReached(true)
@@ -2770,6 +3041,10 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         XCTAssertEqual(offlineNoDevice, .claudeUnreachable)
         let misconfigured = await sut(claude(StubSessionFactory(authenticationError: ClaudeError.missingCredential))).availability()
         XCTAssertEqual(misconfigured, .claudeCredentialMissing, "設定ミスは端末内モデルで隠さない")
+        let unsupported = await sut(claude(StubSessionFactory(authenticationError: ClaudeError.attestationUnsupported))).availability()
+        XCTAssertEqual(unsupported, .claudeAttestationUnsupported)
+        let attestationFailed = await sut(claude(StubSessionFactory(authenticationError: ClaudeError.attestationFailed))).availability()
+        XCTAssertEqual(attestationFailed, .claudeAttestationFailed, "既知の認証エラーはそのまま案内し、端末内モデルで隠さない")
     }
 
     func testResetAndPrewarmReachBothGenerators() async {
@@ -2827,7 +3102,7 @@ Expected: コンパイルエラー（型と `.dailyLimitReached` が未定義）
 
 - [ ] **Step 3: 実装する**
 
-`ConversationTypes.swift` の `ConversationServiceError` に `case dailyLimitReached` を追加し、`ConversationErrorPresentation.swift` に文言を足す:
+`ConversationTypes.swift` の `ConversationServiceError` に `case dailyLimitReached` を追加し（`allowsOnDeviceFallback` の `switch` にも `.dailyLimitReached` を `false` 側へ足す）、`ConversationErrorPresentation.swift` に文言を足す:
 
 ```swift
 case .dailyLimitReached:
@@ -2841,7 +3116,7 @@ import Foundation
 
 actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking {
     nonisolated let supportsStableReplyPrefix = true
-    static let weakSignalNotice = "今は電波が弱いから、簡単にしか話せないよ。"
+    static let claudeFailureNotice = "今はいつものように話せないから、簡単に答えるね。"
     static let dailyLimitNotice = "今日はたくさん話したから、簡単にしか話せないよ。"
 
     private let primary: ClaudeConversationService
@@ -2864,8 +3139,8 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
         switch claude {
         case .available:
             return .available
-        case .claudeUnreachable, .claudeAttestationFailed:
-            // 圏外・一時障害は端末内モデルで会話を続けられる。設定ミス（鍵なし・非対応端末）は隠さない。
+        case .claudeUnreachable:
+            // 圏外・一時障害は端末内モデルで会話を続けられる。既知の認証エラー（鍵なし・非対応端末・attestation 失敗）は隠さない。
             return await secondaryAvailability.availability() == .available ? .available : claude
         default:
             return claude
@@ -2906,13 +3181,13 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
             continuation.finish()
         } catch {
             let failure = ClaudeErrorMapper.map(error)
-            guard failure == .modelUnreachable, !yieldedVisibleText, !Task.isCancelled,
+            guard failure.allowsOnDeviceFallback, !yieldedVisibleText, !Task.isCancelled,
                   await secondaryAvailability.availability() == .available else {
                 continuation.finish(throwing: failure)
                 return
             }
             do {
-                let fallback = try await onDevice(utterance, notice: Self.weakSignalNotice)
+                let fallback = try await onDevice(utterance, notice: Self.claudeFailureNotice)
                 for try await snapshot in fallback {
                     try Task.checkCancellation()
                     continuation.yield(snapshot)
@@ -3505,7 +3780,7 @@ xcrun simctl install 80F1BF36-5242-4067-A1D9-99399B852120 /private/tmp/cat-claud
 xcrun simctl launch 80F1BF36-5242-4067-A1D9-99399B852120 com.kamby.CatRobot
 ```
 
-確認: ① 文字入力「猫ちゃん、短く自己紹介して」に Claude が答え字幕が流れる ② 「ほうじ茶が好きって覚えて」で `remember` が呼ばれ、設定の「覚えていること」に出る ③ 機内モード相当（Simulator のネットワーク断は `Network Link Conditioner` か Mac の Wi-Fi オフ）で「今は電波が弱いから」の前置きが出る（Simulator に端末内モデルが無い場合は会話不可の表示を確認） ④ 設定でモデルを Sonnet に変えても現在の会話は Opus のまま、「新しい会話を始める」後に Console の利用量が Sonnet で記録される ⑤ 設定で 1 日の上限を最小の 10 にし、その日の累計が 10 回に達した次の発話で「今日はたくさん話したから」の前置きが付いた短い返事になる（T-COST-1。確認後は上限を戻す）。結果を `docs/validation/2026-10-11-claude-conversation-engine.md` に箇条書きで残す（鍵・会話本文は書かない）。
+確認: ① 文字入力「猫ちゃん、短く自己紹介して」に Claude が答え字幕が流れる ② 「ほうじ茶が好きって覚えて」で `remember` が呼ばれ、設定の「覚えていること」に出る ③ 機内モード相当（Simulator のネットワーク断は `Network Link Conditioner` か Mac の Wi-Fi オフ）で「今はいつものように話せないから」の前置きが出る（Simulator に端末内モデルが無い場合は会話不可の表示を確認） ④ 設定でモデルを Sonnet に変えても現在の会話は Opus のまま、「新しい会話を始める」後に Console の利用量が Sonnet で記録される ⑤ 設定で 1 日の上限を最小の 10 にし、その日の累計が 10 回に達した次の発話で「今日はたくさん話したから」の前置きが付いた短い返事になる（T-COST-1。確認後は上限を戻す）。結果を `docs/validation/2026-10-11-claude-conversation-engine.md` に箇条書きで残す（鍵・会話本文は書かない）。
 
 - [ ] **Step 6: Commit**
 
@@ -3592,5 +3867,5 @@ git add -A && git commit -m "docs: record Claude conversation engine device veri
 - FR-ONB-2 の「初回認証をオンボーディング中に行う」は、本計画では会話開始時の事前確認（`availability()` が `authenticateIfNeeded()` を呼ぶ）と原因別の文言（Task 2）で満たす。オンボーディング画面に認証ステップを置くのは、権限フローを組み直す計画 4 で行う。
 - 本計画で意図的に扱わないもの: FR-CONV-9（首との同期、計画 3）、FR-MOV / FR-FACE / FR-VIS / FR-LINK / FR-RUN / FR-ONB-1・3（計画 3・4）、NFR-PERF-3〜5・NFR-REL-1〜2・NFR-SEC-3〜4・NFR-THERM（ハードウェア、計画 2〜4）、T-AUTH-2（取り消しは恒久なので検証用の別統合を作る判断は運用に委ねる）、NFR-PRIV-4 / T-PRIV-1 のファイル列挙テスト（計画 4 でカメラを足したときに追加）。
 - 要件定義書からの変更点: `fallbacks` を使わない（Global Constraints に理由）。要件定義書 §5.3 の該当行を本計画と同じコミットで更新する。
-- 明示的に後送りするもの: §6.11 の「Claude の失敗が連続 3 回で『少し待って』と告げる」は Task 7 着手時の brief で追加する（`OnDeviceFallbackReplyGenerator` に連続失敗の回数と通知文を足し、テスト `testThirdConsecutiveClaudeFailureAsksToWait` で固定する）。
+- 明示的に後送りするもの: §6.11 の「Claude の失敗が連続 3 回で『少し待って』と告げる」は Task 7 着手時の brief で追加する（`OnDeviceFallbackReplyGenerator` に連続失敗の回数と通知文を足す。数えるのは `allowsOnDeviceFallback` が true の失敗だけで、Claude が返答に成功したら 0 に戻す。テスト `testThirdConsecutiveClaudeFailureAsksToWait` と `testSuccessfulClaudeReplyResetsTheFailureCount` で固定する）。
 - 2026-10-11 の対レビュー（codex）で反映した点: 開発用キーは資源同梱＋Release 除外（スクリプト段階なし）、長期メモの変更直列化と世代付き writer、ツールはセッションごとに生成、利用量はセッションのモデルで集計、概算トークン表示、`fallbacks: []` の明示、T-AUTH-1 は TestFlight、VoiceOver 手順、文言の修正。
