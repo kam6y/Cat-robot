@@ -62,8 +62,10 @@ struct ConversationView: View {
 
             Spacer(minLength: 0)
             Menu {
-                Button("声を選ぶ", systemImage: "speaker.wave.2", action: actions.openVoiceSettings)
+                Button("設定", systemImage: "gearshape", action: actions.openVoiceSettings)
                     .accessibilityIdentifier("openVoiceSettings")
+                Button("新しい会話を始める", systemImage: "arrow.counterclockwise", action: actions.startNewConversation)
+                    .accessibilityIdentifier("startNewConversation")
                 if ConversationMemoryPresentation(state: state.memoryState).supportsForget {
                     Button("会話を忘れる", role: .destructive, action: actions.requestForget)
                 }

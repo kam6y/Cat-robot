@@ -193,4 +193,9 @@ final class ConversationAccessibilityTests: XCTestCase {
             .standard
         )
     }
+
+    func testSettingsSheetDeclaresItsControls() {
+        XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
+                       ["modelPicker", "effortPicker", "voicePresetPicker", "dailyTurnLimitStepper", "memoryFactsList"])
+    }
 }

@@ -13,10 +13,10 @@ struct OnboardingView: View {
                     .accessibilityAddTraits(.isHeader)
 
                 VStack(alignment: .leading, spacing: 16) {
-                    Label("音声と会話はこのiPhone上で処理されます", systemImage: "iphone")
-                    Label("会話の記憶はこのiPhoneに保存され、いつでも削除できます", systemImage: "internaldrive")
-                    Label("マイクは会話画面を開いている間だけ使います", systemImage: "mic")
-                    Label("AIの返事には間違いが含まれることがあります", systemImage: "exclamationmark.triangle")
+                    Label("返事は Anthropic の Claude で作ります。送るのは話しかけた文字、会話の要約、覚えさせたメモだけで、音声は送りません", systemImage: "cloud")
+                    Label("聞き取りと読み上げはこのiPhoneで処理し、会話の記憶もこのiPhoneだけに保存します。いつでも削除できます", systemImage: "iphone")
+                    Label("マイクは会話画面を開いている間だけ使います。バックグラウンドでは動きません", systemImage: "mic")
+                    Label("AIの返事には間違いが含まれることがあります。利用料は作者の負担です", systemImage: "exclamationmark.triangle")
                 }
                 .font(.body)
 

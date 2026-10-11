@@ -164,6 +164,9 @@ final class ConversationAppCoordinator {
                 }
             },
             openVoiceSettings: { [weak self] in self?.openVoiceSettings() },
+            startNewConversation: { [weak self] in
+                self?.launchAction { [weak self] in await self?.viewModel.startNewConversation() }
+            },
             requestForget: { [weak self] in self?.viewModel.requestForgetConversation() },
             cancelForget: { [weak self] in self?.viewModel.cancelForgetConversation() },
             confirmForget: { [weak self] in

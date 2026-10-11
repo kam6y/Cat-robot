@@ -391,6 +391,21 @@ final class ConversationViewModel {
         transition(to: .paused)
     }
 
+    /// 短期の会話内容だけを捨てる。長期メモは残る。モデル設定の変更はこのあとの会話から効く。
+    func startNewConversation() async {
+        guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
+        memoryActionInProgress = true
+        defer { memoryActionInProgress = false }
+        viewState.memoryNotice = nil
+        await pauseConversation(force: true)
+        await dependencies.reply.reset()
+        viewState.caption = ""
+        viewState.provisionalTranscript = ""
+        viewState.memoryNotice = "新しい会話を始めました"
+        viewState.memoryState = await dependencies.memory.memoryState()
+        transition(to: .paused)
+    }
+
     func retryMemoryOperation() async {
         guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
         if case .forgetFailed = viewState.memoryState {
