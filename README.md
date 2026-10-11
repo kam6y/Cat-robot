@@ -21,7 +21,7 @@ Cat Robot は、Claude Opus 5.5（ClaudeForFoundationModels）で日本語の会
 
 一文が確定したら生成途中から読み上げ、再生中に次の一文だけを先に合成します。安全な区切りがない場合は全文を待ちます。ネイティブ合成は同時に 1 件、保持する音声は再生中と次の最大 2 文分です。利用者向けの方式切り替え設定はありません。
 
-Claude 構成の実機遅延はまだ測定していません。Task 10 で高速経路と宛先分類経路を分けて計測し、[Claude 会話エンジンの検証記録](docs/validation/2026-10-11-claude-conversation-engine.md)に結果を追記します。過去の[Supertonic 一文先読みの測定](docs/validation/2026-09-26-supertonic-voice-integration.md)は音声側の参考で、Claude 構成の実測値ではありません。
+Claude 構成の実機遅延は 2026-10-12 に簡易版（20 ターン、iPhone 16 Pro・Wi-Fi）を測定し、高速経路の最初の字幕が中央値 2.21 秒（目標 1.5 秒）、読み上げ開始が中央値 3.19 秒（目標 2.5 秒）で目標未達でした。詳細と手順は [Claude 会話エンジンの検証記録](docs/validation/2026-10-11-claude-conversation-engine.md) にあり、要件の 50 ターン受入は前提条件を固定して別に記録します。過去の[Supertonic 一文先読みの測定](docs/validation/2026-09-26-supertonic-voice-integration.md)は音声側の参考で、Claude 構成の実測値ではありません。
 
 生成・保存・読み上げが終わってから聞き取りを再開します。全文確定前に中断した返答は保存せず、確定後は音声が失敗・停止しても全文を保存します。通信、認証、要約による待ち時間は残ります。
 
