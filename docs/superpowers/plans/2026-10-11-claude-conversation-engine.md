@@ -42,7 +42,7 @@
 ## Review Focus
 
 1. 返答の途中で通信が切れたとき、端末内モデルへ切り替えて二重に話し始めない。最初の文字が出る前の失敗だけ切り替え、途中失敗は再試行の案内にする（Task 7 のテスト `testFailureAfterFirstSnapshotIsNotSilentlyReplacedByOnDeviceReply`）。
-2. 利用者が「忘れて」で記憶を削除したあと、削除前のセッションから遅れて届いた `remember` は世代不一致として保存されず、削除後の状態に事実が復活しない（Task 6 の `testForgetClearsLongTermFactsAndRejectsLateRemember`、Task 4 の `testMutationsAreSerializedAndStaleWritersAreRejected`）。
+2. 利用者が「忘れて」で記憶を削除したあと、削除前のセッションから遅れて届いた `remember` は世代不一致として保存されず、削除後の状態に事実が復活しない（Task 6 の `testForgetClearsLongTermFactsAndRejectsLateRemember`、Task 4 の `testMutationsAreSerializedAndStaleWritersAreRejected` と `testLoadInFlightDoesNotResurrectClearedFacts`）。
 3. 設定でモデルを変えた直後の返答は旧モデルのセッションで続き、「新しい会話を始める」か次回起動で新モデルになる。キャッシュを壊す無断の再生成をしない（Task 6 の `testModelSettingChangeAppliesOnlyWhenSessionIsRebuilt`）。
 4. 1 日の上限に達したあとの発話は Claude に送らず、端末内モデルで短く答え、理由を一言告げる。端末内モデルがない端末では会話不可を表示する（Task 7 の `testDailyLimitRoutesToOnDeviceModelWithNotice` と `testDailyLimitWithoutOnDeviceModelReportsUnavailable`）。
 5. 長期メモの注入文は、同じ事実集合なら保存順・再起動に関係なくバイト単位で同一になり、キャッシュ前方を壊さない（Task 4 の `testRenderedBlockIsByteStableAcrossInsertionOrder`、Task 5 の `testFixedPrefixDoesNotChangeWithMemory`）。
@@ -1080,6 +1080,8 @@ struct StaticToolProvider: ConversationToolProvider { init(_ items: [any Tool]) 
 struct RememberTool: Tool { init(memory: any LongTermMemoryWriting) }  // name "remember"
 ```
 
+**ロックと境界の契約（Task 4 のペアレビューで確定）:** `LongTermMemoryManager` は cache の読み書きをすべて同じロック（`busy`/`waiters`）の中で行う。公開の `facts()` もロックを取り、読み込み本体は `private func loadIfNeeded()` だけが担う（ロック保持中の remember/forget はこの helper を使い、公開 `facts()` を呼んで再ロックしない）。これにより、戻りの遅れた `store.load()` が、その間に完了した `clear()`/`forget()` の結果を上書きして削除済みの事実を次の保存で復活させる経路を閉じる（`testLoadInFlightDoesNotResurrectClearedFacts`）。代償として統合（`consolidate`、上限超過時のみ）の間は読み取りも待つ。`consolidate` と store のコールバックは同じマネージャへ再入してはいけない（ロック保持中に呼ばれる。Task 9 の `factory.consolidateFacts($0)` は再入しない）。`FileLongTermMemoryStore.clear()` は既存の `FileConversationMemoryStore.clear()` と同じく、ディレクトリを列挙して `facts.json` と書きかけの `facts-*.tmp` だけを消し、`current.json`・`memory-*.tmp`・その他には触れない。ディレクトリ不在だけを成功とし、その他の列挙・削除の失敗は `deleteFailed`。`load()` は通常ファイル以外を `readFailed` にする。
+
 - [ ] **Step 1: 失敗テストを書く**
 
 ```swift
@@ -1088,16 +1090,22 @@ import XCTest
 @testable import CatRobot
 
 final class LongTermMemoryTests: XCTestCase {
-    private func fact(_ text: String, _ category: LongTermFactCategory = .preference, at seconds: TimeInterval) -> LongTermFact {
-        LongTermFact(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012.0f", seconds))!,
+    private func fact(_ text: String, _ category: LongTermFactCategory = .preference, at seconds: TimeInterval,
+                      id: TimeInterval? = nil) -> LongTermFact {
+        LongTermFact(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012.0f", id ?? seconds))!,
                      category: category, text: text, createdAt: Date(timeIntervalSince1970: seconds))
     }
+
     func testRenderedBlockIsByteStableAcrossInsertionOrder() {
         let a = fact("ほうじ茶が好き", at: 1), b = fact("名前はさくら", .person, at: 2)
         XCTAssertEqual(LongTermMemoryPolicy.render([a, b]), LongTermMemoryPolicy.render([b, a]))
         XCTAssertEqual(LongTermMemoryPolicy.render([a, b]), "覚えていること:\n- [好み] ほうじ茶が好き\n- [人] 名前はさくら")
         XCTAssertEqual(LongTermMemoryPolicy.render([]), "")
+        // 同時刻は id 順で安定。日時は本文に含めない（キャッシュ前方を壊さない）。
+        let first = fact("先", .event, at: 3, id: 31), second = fact("後", .promise, at: 3, id: 32)
+        XCTAssertEqual(LongTermMemoryPolicy.render([second, first]), "覚えていること:\n- [出来事] 先\n- [約束] 後")
     }
+
     func testManagerDeduplicatesTrimsAndCapsLength() async throws {
         let store = SpyLongTermMemoryStore()
         let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
@@ -1110,6 +1118,7 @@ final class LongTermMemoryTests: XCTestCase {
         let saved = await store.saved
         XCTAssertEqual(saved.last?.count, 2)
     }
+
     func testOverCapTriggersConsolidationAndFallsBackToDeterministicTrim() async throws {
         let store = SpyLongTermMemoryStore()
         var seeded = (0..<LongTermMemoryPolicy.maximumFacts).map { fact("事実\($0)", at: TimeInterval($0)) }
@@ -1127,7 +1136,36 @@ final class LongTermMemoryTests: XCTestCase {
         XCTAssertEqual(trimmed.count, LongTermMemoryPolicy.maximumFacts)
         XCTAssertFalse(trimmed.contains { $0.text == "古いその他" }, "最古の other から落とす")
         XCTAssertTrue(trimmed.contains { $0.text == "新しい事実" })
+        // 統合結果が空、または統合してもなお超過するときも、決定的な切り詰めに落とす。
+        await store.seed(seeded)
+        let emptying = LongTermMemoryManager(store: store, consolidate: { _ in [] })
+        _ = try await emptying.remember("新しい事実", category: .promise)
+        let afterEmpty = try await emptying.facts()
+        XCTAssertEqual(afterEmpty.count, LongTermMemoryPolicy.maximumFacts, "空の統合結果は採用しない")
+        XCTAssertTrue(afterEmpty.contains { $0.text == "新しい事実" })
+        await store.seed(seeded)
+        let stillOver = LongTermMemoryManager(store: store, consolidate: { $0 })
+        _ = try await stillOver.remember("新しい事実", category: .promise)
+        let afterStillOver = try await stillOver.facts()
+        XCTAssertEqual(afterStillOver.count, LongTermMemoryPolicy.maximumFacts)
+        XCTAssertFalse(afterStillOver.contains { $0.text == "古いその他" })
     }
+
+    func testCharacterLimitAlsoTriggersDeterministicTrim() async throws {
+        let store = SpyLongTermMemoryStore()
+        let body = String(repeating: "い", count: LongTermMemoryPolicy.maximumFactLength - 2)
+        // 66 件 × 60 文字 = 3,960 文字。次の 59 文字で 4,019 文字になり、件数は上限内でも文字数で超過する。
+        await store.seed((0..<66).map { fact(body + String(format: "%02d", $0), at: TimeInterval($0)) })
+        let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
+        let result = try await manager.remember(body + "新", category: .promise)
+        XCTAssertEqual(result, .saved)
+        let facts = try await manager.facts()
+        XCTAssertEqual(facts.count, 66)
+        XCTAssertLessThanOrEqual(facts.reduce(0) { $0 + $1.text.count }, LongTermMemoryPolicy.maximumCharacters)
+        XCTAssertFalse(facts.contains { $0.text == body + "00" }, "other が無ければ最古から落とす")
+        XCTAssertTrue(facts.contains { $0.text == body + "新" })
+    }
+
     func testForgetAndClearWriteThrough() async throws {
         let store = SpyLongTermMemoryStore()
         let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
@@ -1144,6 +1182,36 @@ final class LongTermMemoryTests: XCTestCase {
         let block = await manager.renderedBlock()
         XCTAssertEqual(block, "")
     }
+
+    func testLoadFailureYieldsEmptyBlockAndIsNotCached() async throws {
+        let store = SpyLongTermMemoryStore()
+        await store.setFailsLoad(true)
+        let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
+        let block = await manager.renderedBlock()
+        XCTAssertEqual(block, "")
+        do { _ = try await manager.facts(); XCTFail("expected readFailed") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .readFailed) }
+        await store.setFailsLoad(false)
+        await store.seed([fact("A", .other, at: 1)])
+        let recovered = try await manager.facts().map(\.text)
+        XCTAssertEqual(recovered, ["A"], "失敗した読み込みは cache せず、復旧後に読める")
+    }
+
+    func testSaveFailurePropagatesAndKeepsPreviousFacts() async throws {
+        let store = SpyLongTermMemoryStore()
+        let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
+        _ = try await manager.remember("A", category: .other)
+        await store.setFailsSave(true)
+        do { _ = try await manager.remember("B", category: .other); XCTFail("expected writeFailed") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .writeFailed) }
+        let kept = try await manager.facts().map(\.text)
+        XCTAssertEqual(kept, ["A"], "保存できなかった事実を一覧に残さない")
+        await store.setFailsSave(false)
+        _ = try await manager.remember("B", category: .other)
+        let after = try await manager.facts().map(\.text)
+        XCTAssertEqual(after, ["A", "B"], "失敗後もロックが解放されていて続けて書ける")
+    }
+
     func testMutationsAreSerializedAndStaleWritersAreRejected() async throws {
         let store = SpyLongTermMemoryStore()
         let gate = ConversationTestGate()
@@ -1171,6 +1239,41 @@ final class LongTermMemoryTests: XCTestCase {
         let clears = await store.clears
         XCTAssertEqual(clears, 1)
     }
+
+    /// store の clear が完了するまで、上限時間つきで待つ（10 ms 刻み）。完了しなければ false。
+    private func waitForClear(on store: SpyLongTermMemoryStore, upTo milliseconds: Int) async -> Bool {
+        for _ in 0..<(milliseconds / 10) {
+            if await store.clears >= 1 { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return await store.clears >= 1
+    }
+
+    func testLoadInFlightDoesNotResurrectClearedFacts() async throws {
+        let store = SpyLongTermMemoryStore()
+        await store.seed([fact("A", .other, at: 1)])
+        let loadGate = ConversationTestGate()
+        await store.setLoadGate(loadGate)
+        addTeardownBlock { await loadGate.open() }   // 途中で失敗しても読み込みを解放し、タスクを残さない
+        let manager = LongTermMemoryManager(store: store, consolidate: { $0 })
+        // 1. 初回の読み込みが store から戻る前で止まる（読み取り自体は済んでいる）。
+        let reading = Task { await manager.renderedBlock() }
+        await loadGate.waitUntilEntered()
+        // 2. その間に clear を要求する。読み込みを待たずに clear が完了するか、読み込みの完了まで待つかを store の完了イベントで観測する。
+        let clearing = Task { try await manager.clear() }
+        let clearedWhileLoadPending = await waitForClear(on: store, upTo: 300)
+        // 3. 止めていた読み込みを戻す。どちらの順序でも、削除後の一覧が古い読み込み結果で上書きされてはいけない。
+        await loadGate.open()
+        _ = await reading.value
+        try await clearing.value
+        let afterClear = try await manager.facts()
+        XCTAssertTrue(afterClear.isEmpty, "読み込み保留中に clear 完了=\(clearedWhileLoadPending)。古い読み込み結果で削除後の cache を上書きしない")
+        _ = try await manager.remember("B", category: .other)
+        let saved = await store.saved
+        XCTAssertEqual(saved.last?.map(\.text), ["B"], "読み込み保留中に clear 完了=\(clearedWhileLoadPending)。削除した事実が次の保存で復活しない")
+        let clears = await store.clears
+        XCTAssertEqual(clears, 1)
+    }
 }
 
 /// テスト用の記録付きストア。製品側の InMemoryLongTermMemoryStore とは別物。
@@ -1178,13 +1281,28 @@ actor SpyLongTermMemoryStore: LongTermMemoryStore {
     private var facts: [LongTermFact] = []
     private(set) var saved: [[LongTermFact]] = []
     private(set) var clears = 0
-    var failsLoad = false
+    private var failsLoad = false
+    private var failsSave = false
+    private var loadGate: ConversationTestGate?
+    private var saveGate: ConversationTestGate?
     func seed(_ value: [LongTermFact]) { facts = value }
     func setFailsLoad(_ value: Bool) { failsLoad = value }
-    func load() throws -> [LongTermFact] { if failsLoad { throw ConversationMemoryError.readFailed }; return facts }
-    var saveGate: ConversationTestGate?
+    func setFailsSave(_ value: Bool) { failsSave = value }
+    func setLoadGate(_ gate: ConversationTestGate) { loadGate = gate }
     func setSaveGate(_ gate: ConversationTestGate) { saveGate = gate }
-    func save(_ value: [LongTermFact]) async { if let saveGate { await saveGate.wait() }; facts = value; saved.append(value) }
+    /// 読み取りは先に済み、戻りだけが遅れる非同期ストアを模す（戻りが遅れた読み込みが、その間の削除を追い越さないことを試す）。
+    func load() async throws -> [LongTermFact] {
+        let value = facts
+        if let loadGate { await loadGate.wait() }
+        if failsLoad { throw ConversationMemoryError.readFailed }
+        return value
+    }
+    func save(_ value: [LongTermFact]) async throws {
+        if let saveGate { await saveGate.wait() }
+        if failsSave { throw ConversationMemoryError.writeFailed }
+        facts = value
+        saved.append(value)
+    }
     func clear() { facts = []; clears += 1 }
 }
 ```
@@ -1200,27 +1318,95 @@ final class FileLongTermMemoryStoreTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return url
     }
+
     func testRoundTripUsesFactsJSONNextToCurrentJSON() async throws {
         let dir = directory()
+        // 短期記憶の current.json と同居しても、そちらには触れない。
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let current = dir.appendingPathComponent("current.json")
+        let shortTerm = Data(#"{"short":true}"#.utf8)
+        try shortTerm.write(to: current)
         let store = FileLongTermMemoryStore(directory: dir)
         let fact = LongTermFact(id: UUID(), category: .person, text: "名前はさくら", createdAt: Date(timeIntervalSince1970: 1))
         try await store.save([fact])
-        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("facts.json").path))
+        let factsFile = dir.appendingPathComponent("facts.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: factsFile.path))
+        XCTAssertEqual(try factsFile.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+#if !targetEnvironment(simulator)
+        let attributes = try FileManager.default.attributesOfItem(atPath: factsFile.path)
+        XCTAssertEqual(attributes[.protectionKey] as? FileProtectionType, .complete)
+#endif
         let loaded = try await store.load()
         XCTAssertEqual(loaded, [fact])
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".tmp") }
+        XCTAssertTrue(leftovers.isEmpty, "一時ファイルは置換後に残さない")
         try await store.clear()
         let empty = try await store.load()
         XCTAssertTrue(empty.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: current), shortTerm)
     }
+
     func testMissingFileIsEmptyAndCorruptFileIsInvalidData() async throws {
         let dir = directory()
         let store = FileLongTermMemoryStore(directory: dir)
         let missing = try await store.load()
         XCTAssertTrue(missing.isEmpty)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try Data("{broken".utf8).write(to: dir.appendingPathComponent("facts.json"))
+        let file = dir.appendingPathComponent("facts.json")
+        try Data("{broken".utf8).write(to: file)
         do { _ = try await store.load(); XCTFail("expected invalidData") }
         catch { XCTAssertEqual(error as? ConversationMemoryError, .invalidData) }
+        try Data(#"{"schemaVersion":2,"facts":[]}"#.utf8).write(to: file)
+        do { _ = try await store.load(); XCTFail("expected invalidData for an unknown schema") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .invalidData) }
+        try Data(count: 262_145).write(to: file)
+        do { _ = try await store.load(); XCTFail("expected tooLarge") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .tooLarge) }
+    }
+
+    func testClearRemovesFactsAndLeftoverTemporariesButKeepsCurrentJSON() async throws {
+        let dir = directory()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let current = dir.appendingPathComponent("current.json")
+        let shortTerm = Data(#"{"short":true}"#.utf8)
+        try shortTerm.write(to: current)
+        try Data("{}".utf8).write(to: dir.appendingPathComponent("facts.json"))
+        try Data("{}".utf8).write(to: dir.appendingPathComponent("facts-leftover.tmp"))
+        // 短期記憶側の書きかけと無関係なファイルには触れない。
+        let shortTermLeftover = dir.appendingPathComponent("memory-leftover.tmp")
+        try Data("{}".utf8).write(to: shortTermLeftover)
+        let unrelated = dir.appendingPathComponent("unrelated.txt")
+        try Data("x".utf8).write(to: unrelated)
+        let store = FileLongTermMemoryStore(directory: dir)
+        try await store.clear()
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+        XCTAssertEqual(remaining, ["current.json", "memory-leftover.tmp", "unrelated.txt"],
+                       "facts.json と書きかけの facts-*.tmp だけを消し、短期記憶とその他は残す")
+        XCTAssertEqual(try Data(contentsOf: current), shortTerm)
+        XCTAssertEqual(try Data(contentsOf: shortTermLeftover), Data("{}".utf8))
+        XCTAssertEqual(try Data(contentsOf: unrelated), Data("x".utf8))
+        // ディレクトリが無ければ消すものが無いので成功。
+        let absent = FileLongTermMemoryStore(directory: directory())
+        try await absent.clear()
+    }
+
+    func testDirectoryAtFactsPathIsAReadError() async throws {
+        let dir = directory()
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("facts.json"), withIntermediateDirectories: true)
+        let store = FileLongTermMemoryStore(directory: dir)
+        do { _ = try await store.load(); XCTFail("expected readFailed") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .readFailed) }
+    }
+
+    func testClearFailureOtherThanMissingDirectoryIsReported() async throws {
+        // ディレクトリの位置に通常ファイルがあると列挙できない。不在ではないので成功扱いにしない。
+        let parent = directory()
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        let notADirectory = parent.appendingPathComponent("memory")
+        try Data("x".utf8).write(to: notADirectory)
+        let store = FileLongTermMemoryStore(directory: notADirectory)
+        do { try await store.clear(); XCTFail("expected deleteFailed") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .deleteFailed) }
     }
 }
 ```
@@ -1239,6 +1425,7 @@ final class RememberToolTests: XCTestCase {
             calls.append((text, category)); return result
         }
     }
+
     func testToolParsesCategoryAndReportsOutcome() async throws {
         let writer = Writer()
         let tool = RememberTool(memory: writer)
@@ -1254,6 +1441,7 @@ final class RememberToolTests: XCTestCase {
         let calls = await writer.calls
         XCTAssertEqual(calls.map(\.1), [.preference, .other, .event])
     }
+
     func testProvidersExposeToolNames() {
         XCTAssertEqual(RememberToolProvider().tools(memory: Writer()).map(\.name), ["remember"])
         XCTAssertEqual(StaticToolProvider([]).tools(memory: Writer()).map(\.name), [])
@@ -1344,6 +1532,7 @@ import Darwin
 import Foundation
 
 /// current.json と同じディレクトリに facts.json を置く。完全ファイル保護、バックアップ除外、rename による原子的な置換。
+/// 短期記憶の current.json と memory-*.tmp には触れない（FileConversationMemoryStore と同じ扱い）。
 actor FileLongTermMemoryStore: LongTermMemoryStore {
     private let directory: URL
     private let maximumBytes = 262_144
@@ -1354,14 +1543,13 @@ actor FileLongTermMemoryStore: LongTermMemoryStore {
     func load() throws -> [LongTermFact] {
         let data: Data
         do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+            guard attributes[.type] as? FileAttributeType == .typeRegular else { throw ConversationMemoryError.readFailed }
             let handle = try FileHandle(forReadingFrom: file)
             defer { try? handle.close() }
             data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
         } catch {
-            let value = error as NSError
-            let missing = (value.domain == NSCocoaErrorDomain && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(value.code))
-                || (value.domain == NSPOSIXErrorDomain && value.code == Int(ENOENT))
-            if missing { return [] }
+            if Self.isMissing(error) { return [] }
             throw ConversationMemoryError.readFailed
         }
         guard data.count <= maximumBytes else { throw ConversationMemoryError.tooLarge }
@@ -1382,6 +1570,7 @@ actor FileLongTermMemoryStore: LongTermMemoryStore {
             try protectAndExclude(directory)
             try data.write(to: temporary, options: .completeFileProtection)
             try protectAndExclude(temporary)
+            // POSIX rename は保護属性とバックアップ除外を保ったまま、ディレクトリ項目を原子的に置き換える。
             let result = temporary.withUnsafeFileSystemRepresentation { source in
                 file.withUnsafeFileSystemRepresentation { destination in Darwin.rename(source!, destination!) }
             }
@@ -1389,9 +1578,19 @@ actor FileLongTermMemoryStore: LongTermMemoryStore {
         } catch { throw ConversationMemoryError.writeFailed }
     }
 
+    /// facts.json と書きかけの facts-*.tmp を消す。ディレクトリが無ければ消すものが無いので成功。
     func clear() throws {
+        let contents: [URL]
+        do { contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) }
+        catch {
+            if Self.isMissing(error) { return }
+            throw ConversationMemoryError.deleteFailed
+        }
         do {
-            if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+            for entry in contents where entry.lastPathComponent == "facts.json"
+                || (entry.lastPathComponent.hasPrefix("facts-") && entry.pathExtension == "tmp") {
+                try FileManager.default.removeItem(at: entry)
+            }
         } catch { throw ConversationMemoryError.deleteFailed }
     }
 
@@ -1401,6 +1600,12 @@ actor FileLongTermMemoryStore: LongTermMemoryStore {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try resource.setResourceValues(values)
+    }
+
+    private static func isMissing(_ error: any Error) -> Bool {
+        let value = error as NSError
+        return (value.domain == NSCocoaErrorDomain && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(value.code))
+            || (value.domain == NSPOSIXErrorDomain && value.code == Int(ENOENT))
     }
 }
 ```
@@ -1415,13 +1620,15 @@ protocol LongTermMemoryWriting: Sendable {
     func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult
 }
 
+/// 長期メモの一覧と世代を管理する。cache の読み書きはすべてロックの中で行い、戻りの遅れた読み込みが
+/// その間の削除を上書きしない。`consolidate` はロック保持中に呼ばれるので、マネージャへ呼び戻してはいけない。
 actor LongTermMemoryManager: LongTermMemoryWriting {
     private let store: any LongTermMemoryStore
     private let consolidate: @Sendable ([LongTermFact]) async throws -> [LongTermFact]
     private var cached: [LongTermFact]?
     /// clear() のたびに進む。古い世代の writer からの書き込みは拒否する。
     private var generation: UInt64 = 0
-    /// 変更操作を到着順に直列化する簡単なロック。await 中に別の変更が割り込み、古い一覧を保存し直すのを防ぐ。
+    /// 読み書きを到着順に直列化する簡単なロック。await 中に別の変更が割り込み、古い一覧を保存し直すのを防ぐ。
     private var busy = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -1432,10 +1639,8 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
     }
 
     func facts() async throws -> [LongTermFact] {
-        if let cached { return cached }
-        let loaded = try await store.load()
-        cached = loaded
-        return loaded
+        await acquire(); defer { release() }
+        return try await loadIfNeeded()
     }
 
     func remember(_ text: String, category: LongTermFactCategory) async throws -> LongTermMemoryWriteResult {
@@ -1444,7 +1649,7 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
 
     func forget(id: UUID) async throws {
         await acquire(); defer { release() }
-        var current = try await facts()
+        var current = try await loadIfNeeded()
         current.removeAll { $0.id == id }
         try await store.save(current)
         cached = current
@@ -1470,7 +1675,7 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
         guard !normalized.isEmpty else { return .duplicate }
         await acquire(); defer { release() }
         guard generation == expected else { return .rejected }
-        var current = try await facts()
+        var current = try await loadIfNeeded()
         if current.contains(where: { $0.text == normalized }) { return .duplicate }
         current.append(LongTermFact(id: UUID(), category: category, text: normalized, createdAt: Date()))
         if LongTermMemoryPolicy.exceedsLimits(current) {
@@ -1483,6 +1688,14 @@ actor LongTermMemoryManager: LongTermMemoryWriting {
         try await store.save(current)
         cached = current
         return .saved
+    }
+
+    /// ロック保持中にだけ呼ぶ。読み込みに失敗したときは cache せず、次回に読み直す。
+    private func loadIfNeeded() async throws -> [LongTermFact] {
+        if let cached { return cached }
+        let loaded = try await store.load()
+        cached = loaded
+        return loaded
     }
 
     private func acquire() async {
