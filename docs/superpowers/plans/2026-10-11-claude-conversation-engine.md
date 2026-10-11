@@ -3685,7 +3685,9 @@ git add -A && git commit -m "feat: add ClaudeConversationService with bounded sh
 
 **Files:**
 - Create: `CatRobot/Conversation/Services/Claude/OnDeviceFallbackReplyGenerator.swift`、`CatRobot/Conversation/Services/Claude/ClaudeAddressClassifier.swift`
+- Modify: `CatRobot/Conversation/Domain/ConversationTypes.swift`、`CatRobot/Conversation/Integration/ConversationErrorPresentation.swift`、`CatRobotTests/Conversation/Integration/ConversationErrorPresentationTests.swift`
 - Test: `CatRobotTests/Conversation/Services/Claude/OnDeviceFallbackReplyGeneratorTests.swift`、`CatRobotTests/Conversation/Services/Claude/RoutedAddressClassifierTests.swift`
+- Generate: `CatRobot.xcodeproj`（既存 generator と契約テストを使う）
 
 **Interfaces:**
 - Consumes: `ClaudeConversationService`（Task 6）、`ReplyGenerating` / `ModelAvailabilityChecking` / `AddressClassifying` / `AddressModelClient`（既存）、`ConversationUsageMetering` と `ConversationModelConfiguration`（Task 3）、`ClaudeAuthConfiguration`（Task 1）、`ClaudeErrorMapper`（Task 2）。
@@ -3699,6 +3701,8 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
     nonisolated let supportsStableReplyPrefix = true
     static let claudeFailureNotice = "今はいつものように話せないから、簡単に答えるね。"
     static let dailyLimitNotice = "今日はたくさん話したから、簡単にしか話せないよ。"
+    static let consecutiveFailureNotice = "何度もうまく話せないみたい。少し待ってから、また話しかけてね。"
+    static let consecutiveFailureThreshold = 3
     init(primary: ClaudeConversationService, secondary: any ReplyGenerating, secondaryAvailability: any ModelAvailabilityChecking,
          usage: any ConversationUsageMetering, configuration: @escaping @Sendable () async -> ConversationModelConfiguration)
 }
@@ -3708,12 +3712,19 @@ struct RoutedAddressClassifier: AddressClassifying {
 }
 ```
 
-**診断ログの制約（FR-LLM-8）:** 切り替えの事象と連続回数は正規化した種別（`ConversationServiceError` のケース名）とともに記録してよいが、元のエラーの `localizedDescription` は記録しない（Task 6 と同じ）。
+**連続失敗の通知:** `allowsOnDeviceFallback` が true の Claude の失敗だけを数え、端末内モデルが使えなかった場合や可視本文の後の失敗も数える。3 回目以降に切り替える場合の通知は `consecutiveFailureNotice`。Claude の返答が正常に完了したときだけ 0 に戻し、認証・拒否・取り消しなど対象外の失敗は数えもリセットもしない。失敗ごとの回数と通知文を availability の await 前に値で捕捉し、待機中の別ターンの失敗や成功で変えない（`testConcurrentFailedTurnsKeepTheirOwnFailureNotice`）。日次上限による切り替えでは連続回数を変えない。
+
+**端末内経路の境界:** `onDevice` は `primary.prepareMemory()` を先に呼ぶ（日次上限時にも必要。Claude のセッション生成・ネットワーク送信はしない）。復元・削除のエラーは伝播し、端末内生成を開始しない。availability の待機、記憶の準備、secondary の取得、反復の完了をまたいで取消を再確認し、取り消された往復は記録しない。最終本文は通知文と別に保持し、本文が空白のみ、または snapshot が 1 件もなければ `.modelGenerationFailed` で終了して保存しない。本文のある完了した往復だけを `recordExternalTurn` へ渡す。
+
+**安定した接頭辞の保証:** wrapper の `supportsStableReplyPrefix = true` は、端末内経路では secondary の契約に従って保証する。secondary が true なら通知文を前置した累積 snapshot を流す。false なら通知文だけを先に 1 件流し、本文は最後まで待ち、取消と空本文の検査後に `notice + 最終本文` を 1 件だけ出す。これにより `FoundationModelReplyService` の改訂途中の文を早期に読み上げず、Claude の通常経路の文単位の読み上げは維持する。保存するのは両経路とも `notice + 最終本文`。false の本文待ち中の取消で secondary の反復が終了し、保存されないこともテストする。
+
+**診断ログ（FR-LLM-8）:** この wrapper で必須の拒否・切り替えログを実装する。private な `Logger(subsystem: "com.kamby.CatRobot", category: "ConversationFallback")` の `.notice` で、拒否を伝播する直前に `refusalReceived`、記憶の準備と取消確認を通って端末内生成を開始する直前に `fallbackStarted` を記録する。引数は事象、private な列挙から得た正規化済みの種別・理由、当該ターンで捕捉した連続回数だけ（これらは `.public`）。発話・本文・通知文・元 error・`localizedDescription`・APIError message は引数にも渡さない。Task 2 の mapper と Task 6 のサービスにはログを足さず、ログ注入のための公開 API も作らない。
 
 - [ ] **Step 1: 失敗テストを書く**
 
 ```swift
 // OnDeviceFallbackReplyGeneratorTests.swift
+import ClaudeForFoundationModels
 import Foundation
 import XCTest
 @testable import CatRobot
@@ -3721,31 +3732,65 @@ import XCTest
 @MainActor
 final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
     actor SecondaryReply: ReplyGenerating {
+        nonisolated let supportsStableReplyPrefix: Bool
         private(set) var prompts: [String] = []
         private(set) var resets = 0
-        var snapshots: [String] = ["短い", "短い返事。"]
-        func prewarm() async {}
+        private(set) var prewarms = 0
+        let snapshots: [String]
+        private let onStart: (@Sendable () -> Void)?
+        init(snapshots: [String] = ["短い", "短い返事。"], stablePrefix: Bool = true, onStart: (@Sendable () -> Void)? = nil) {
+            self.snapshots = snapshots
+            self.supportsStableReplyPrefix = stablePrefix
+            self.onStart = onStart
+        }
+        func prewarm() async { prewarms += 1 }
         func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
             prompts.append(utterance)
+            onStart?()
             let values = snapshots
             return AsyncThrowingStream { c in values.forEach { c.yield($0) }; c.finish() }
         }
         func reset() async { resets += 1 }
     }
-    struct Availability: ModelAvailabilityChecking {
-        let value: ModelAvailability
-        func availability() async -> ModelAvailability { value }
+    actor Availability: ModelAvailabilityChecking {
+        private var value: ModelAvailability
+        private let gate: ConversationTestGate?
+        init(value: ModelAvailability, gate: ConversationTestGate? = nil) {
+            self.value = value
+            self.gate = gate
+        }
+        func set(_ value: ModelAvailability) { self.value = value }
+        func availability() async -> ModelAvailability { await gate?.wait(); return value }
+    }
+    struct HeldSecondary: ReplyGenerating {
+        let supportsStableReplyPrefix = false
+        let stream: AsyncThrowingStream<String, Error>
+        let continuation: AsyncThrowingStream<String, Error>.Continuation
+        init(cancelled: XCTestExpectation) {
+            let pair = AsyncThrowingStream<String, Error>.makeStream()
+            stream = pair.stream
+            continuation = pair.continuation
+            continuation.onTermination = { termination in
+                if case .cancelled = termination { cancelled.fulfill() }
+            }
+        }
+        func prewarm() async {}
+        func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> { stream }
+        func reset() async {}
     }
     private func collect(_ stream: AsyncThrowingStream<String, Error>) async throws -> [String] {
-        var out: [String] = []; for try await s in stream { out.append(s) }; return out
+        var out: [String] = []
+        for try await snapshot in stream { out.append(snapshot) }
+        try Task.checkCancellation()
+        return out
     }
-    private func claude(_ factory: StubSessionFactory, store: InMemoryConversationMemoryStore = InMemoryConversationMemoryStore(),
+    private func claude(_ factory: StubSessionFactory, store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
                         usage: ClaudeConversationServiceTests.UsageSpy = .init()) -> ClaudeConversationService {
         ClaudeConversationService(factory: factory, memoryStore: store,
                                   longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
                                   tools: StaticToolProvider([]), configuration: { .init() }, usage: usage)
     }
-    private func sut(_ primary: ClaudeConversationService, secondary: SecondaryReply = SecondaryReply(),
+    private func sut(_ primary: ClaudeConversationService, secondary: any ReplyGenerating = SecondaryReply(),
                      onDevice: ModelAvailability = .available, usage: ClaudeConversationServiceTests.UsageSpy = .init(),
                      limit: Int = 300) -> OnDeviceFallbackReplyGenerator {
         OnDeviceFallbackReplyGenerator(primary: primary, secondary: secondary, secondaryAvailability: Availability(value: onDevice),
@@ -3758,15 +3803,15 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         XCTAssertEqual(snapshots, ["にゃ", "にゃん。"])
     }
 
-    func testUnreachableBeforeFirstSnapshotSwitchesToOnDeviceWithNoticeAndCarriesTheTurnOver() async throws {
-        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.notConnectedToInternet)),
+    func testUnreachableBeforeVisibleTextSwitchesToOnDeviceWithNoticeAndCarriesTheTurnOver() async throws {
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [" \n"], failure: URLError(.notConnectedToInternet)),
                                                    ScriptedSessionClient(chunks: ["戻った。"])])
         let store = InMemoryConversationMemoryStore()
         let secondary = SecondaryReply()
         let primary = claude(factory, store: store)
         let generator = sut(primary, secondary: secondary)
         let snapshots = try await collect(generator.streamReply(to: "電波が弱いとき"))
-        XCTAssertEqual(snapshots, [OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い",
+        XCTAssertEqual(snapshots, [" \n", OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い",
                                    OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。"])
         let prompts = await secondary.prompts
         XCTAssertEqual(prompts, ["電波が弱いとき"])
@@ -3785,6 +3830,7 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         let generator = sut(claude(StubSessionFactory(scripts: [held])), secondary: secondary)
         let stream = try await generator.streamReply(to: "途中で切れる")
         let reader = Task { try await self.collect(stream) }
+        defer { reader.cancel(); held.finish() }
         await held.waitUntilStarted()
         held.yield("一文目。")
         held.fail(URLError(.networkConnectionLost))
@@ -3823,6 +3869,7 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         let generator = sut(claude(StubSessionFactory(scripts: [held])), secondary: secondary)
         let stream = try await generator.streamReply(to: "途中で壊れる")
         let reader = Task { try await self.collect(stream) }
+        defer { reader.cancel(); held.finish() }
         await held.waitUntilStarted()
         held.yield("一文目。")
         held.fail(OpaqueAPIFailure())
@@ -3843,7 +3890,7 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         XCTAssertTrue(prompts.isEmpty)
     }
 
-    func testKnownAuthFailuresNeverSwitchToOnDevice() async throws {
+    func testKnownAuthAndNonFallbackFailuresNeverSwitchToOnDevice() async throws {
         for (failure, expected) in [(ClaudeError.missingCredential, ModelAvailability.claudeCredentialMissing),
                                     (.attestationUnsupported, .claudeAttestationUnsupported),
                                     (.attestationFailed, .claudeAttestationFailed)] {
@@ -3855,18 +3902,35 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
             let prompts = await secondary.prompts
             XCTAssertTrue(prompts.isEmpty, "\(failure)")
         }
+        for failure: ConversationServiceError in [.refusal, .guardrailViolation, .contextExceeded, .inputTooLong, .cancelled] {
+            let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: failure)])
+            let secondary = SecondaryReply()
+            let generator = sut(claude(factory), secondary: secondary)
+            do { _ = try await collect(generator.streamReply(to: "切り替えない")); XCTFail("expected failure") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, failure) }
+            let prompts = await secondary.prompts
+            XCTAssertTrue(prompts.isEmpty, "\(failure)")
+        }
     }
 
     func testDailyLimitRoutesToOnDeviceModelWithNotice() async throws {
         let usage = ClaudeConversationServiceTests.UsageSpy()
         await usage.setLimitReached(true)
         let factory = StubSessionFactory()
+        let store = InMemoryConversationMemoryStore()
         let secondary = SecondaryReply()
-        let generator = sut(claude(factory, usage: usage), secondary: secondary, usage: usage, limit: 3)
+        let generator = sut(claude(factory, store: store, usage: usage), secondary: secondary, usage: usage, limit: 3)
         let snapshots = try await collect(generator.streamReply(to: "上限後"))
         XCTAssertEqual(snapshots.last, OnDeviceFallbackReplyGenerator.dailyLimitNotice + "短い返事。")
         let sessions = await factory.sessions
         XCTAssertTrue(sessions.isEmpty, "Claude には送らない")
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns, [.init(prompt: "上限後", response: OnDeviceFallbackReplyGenerator.dailyLimitNotice + "短い返事。")])
+        await usage.setLimitReached(false)
+        _ = try await collect(generator.streamReply(to: "上限解除後"))
+        let resumed = await factory.sessions
+        XCTAssertTrue(resumed.last!.configuration.instructions.contains("利用者: 上限後"))
+        XCTAssertTrue(resumed.last!.configuration.instructions.contains(OnDeviceFallbackReplyGenerator.dailyLimitNotice + "短い返事。"))
     }
 
     func testDailyLimitWithoutOnDeviceModelReportsUnavailable() async throws {
@@ -3892,18 +3956,260 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
         XCTAssertEqual(attestationFailed, .claudeAttestationFailed, "既知の認証エラーはそのまま案内し、端末内モデルで隠さない")
     }
 
-    func testResetAndPrewarmReachBothGenerators() async {
+    func testResetReachesBothGeneratorsAndPrewarmOnlyReachesPrimary() async throws {
+        let script = ScriptedSessionClient(chunks: ["Claudeの返事。"])
+        let factory = StubSessionFactory(scripts: [script])
         let secondary = SecondaryReply()
-        let generator = sut(claude(StubSessionFactory()), secondary: secondary)
+        let generator = sut(claude(factory), secondary: secondary)
         await generator.prewarm()
+        _ = try await collect(generator.streamReply(to: "リセット前の質問"))
         await generator.reset()
+        _ = try await collect(generator.streamReply(to: "リセット後の質問"))
         let resets = await secondary.resets
         XCTAssertEqual(resets, 1)
+        let secondaryPrewarms = await secondary.prewarms
+        XCTAssertEqual(secondaryPrewarms, 0)
+        XCTAssertEqual(script.prewarms, 1)
+        let sessions = await factory.sessions
+        XCTAssertEqual(sessions.count, 2)
+        XCTAssertFalse(sessions.last!.configuration.instructions.contains("リセット前の質問"))
+    }
+
+    func testThirdConsecutiveClaudeFailureAsksToWait() async throws {
+        let failures: [any ConversationSessionClient] = [
+            ScriptedSessionClient(chunks: [], failure: URLError(.notConnectedToInternet)),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.modelGenerationFailed),
+            ScriptedSessionClient(chunks: [], failure: URLError(.timedOut)),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.modelGenerationFailed),
+        ]
+        let generator = sut(claude(StubSessionFactory(scripts: failures)))
+        for (prompt, notice) in [
+            ("1回目", OnDeviceFallbackReplyGenerator.claudeFailureNotice),
+            ("2回目", OnDeviceFallbackReplyGenerator.claudeFailureNotice),
+            ("3回目", OnDeviceFallbackReplyGenerator.consecutiveFailureNotice),
+            ("4回目", OnDeviceFallbackReplyGenerator.consecutiveFailureNotice),
+        ] {
+            let snapshots = try await collect(generator.streamReply(to: prompt))
+            XCTAssertEqual(snapshots.last, notice + "短い返事。", prompt)
+        }
+        // 端末内モデルが使えなかった失敗も同じ連続回数に含める。
+        let availability = Availability(value: .deviceNotEligible)
+        let withoutDevice = OnDeviceFallbackReplyGenerator(
+            primary: claude(StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))])),
+            secondary: SecondaryReply(), secondaryAvailability: availability, usage: ClaudeConversationServiceTests.UsageSpy(),
+            configuration: { .init() })
+        for prompt in ["端末内なし1", "端末内なし2"] {
+            do { _ = try await collect(withoutDevice.streamReply(to: prompt)); XCTFail("expected failure") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, .modelUnreachable) }
+        }
+        await availability.set(.available)
+        let third = try await collect(withoutDevice.streamReply(to: "端末内あり3"))
+        XCTAssertEqual(third.last, OnDeviceFallbackReplyGenerator.consecutiveFailureNotice + "短い返事。")
+    }
+
+    func testSuccessfulClaudeReplyResetsTheFailureCount() async throws {
+        let factory = StubSessionFactory(scripts: [
+            ScriptedSessionClient(chunks: [], failure: URLError(.notConnectedToInternet)),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.modelGenerationFailed),
+            ScriptedSessionClient(chunks: ["Claudeの返事。"]),
+            ScriptedSessionClient(chunks: [], failure: URLError(.timedOut)),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.modelGenerationFailed),
+            ScriptedSessionClient(chunks: [], failure: URLError(.notConnectedToInternet)),
+        ])
+        let primary = claude(factory)
+        let generator = sut(primary)
+        for prompt in ["失敗1", "失敗2"] {
+            let snapshots = try await collect(generator.streamReply(to: prompt))
+            XCTAssertEqual(snapshots.last, OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。")
+        }
+        let success = try await collect(generator.streamReply(to: "成功"))
+        XCTAssertEqual(success, ["Claudeの返事。"])
+        // 成功したセッションを作り直して次の障害を注入する。wrapper の reset で回数を変更しない。
+        await primary.reset()
+        for (prompt, notice) in [
+            ("成功後の失敗1", OnDeviceFallbackReplyGenerator.claudeFailureNotice),
+            ("成功後の失敗2", OnDeviceFallbackReplyGenerator.claudeFailureNotice),
+            ("成功後の失敗3", OnDeviceFallbackReplyGenerator.consecutiveFailureNotice),
+        ] {
+            let snapshots = try await collect(generator.streamReply(to: prompt))
+            XCTAssertEqual(snapshots.last, notice + "短い返事。", prompt)
+        }
+    }
+
+    func testNonFallbackErrorsNeitherIncrementNorResetTheFailureCount() async throws {
+        let factory = StubSessionFactory(scripts: [
+            ScriptedSessionClient(chunks: [], failure: URLError(.timedOut)),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.refusal),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.cancelled),
+            ScriptedSessionClient(chunks: [], failure: ConversationServiceError.modelGenerationFailed),
+            ScriptedSessionClient(chunks: [], failure: URLError(.timedOut)),
+        ])
+        let generator = sut(claude(factory))
+        let first = try await collect(generator.streamReply(to: "対象の失敗1"))
+        XCTAssertEqual(first.last, OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。")
+        for failure: ConversationServiceError in [.refusal, .cancelled] {
+            do { _ = try await collect(generator.streamReply(to: "対象外の失敗")); XCTFail("expected failure") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, failure) }
+        }
+        let second = try await collect(generator.streamReply(to: "対象の失敗2"))
+        XCTAssertEqual(second.last, OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。")
+        let third = try await collect(generator.streamReply(to: "対象の失敗3"))
+        XCTAssertEqual(third.last, OnDeviceFallbackReplyGenerator.consecutiveFailureNotice + "短い返事。")
+    }
+
+    func testConcurrentFailedTurnsKeepTheirOwnFailureNotice() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))])
+        let generator = OnDeviceFallbackReplyGenerator(
+            primary: claude(factory), secondary: SecondaryReply(),
+            secondaryAvailability: Availability(value: .available, gate: gate),
+            usage: ClaudeConversationServiceTests.UsageSpy(), configuration: { .init() })
+        var readers: [Task<[String], Error>] = []
+        defer { readers.forEach { $0.cancel() } }
+        for index in 1...3 {
+            readers.append(Task { try await self.collect(generator.streamReply(to: "失敗\(index)")) })
+            await gate.waitUntilEntered(index)
+        }
+        await gate.open()
+        for (index, reader) in readers.enumerated() {
+            let snapshots = try await reader.value
+            let notice = index < 2 ? OnDeviceFallbackReplyGenerator.claudeFailureNotice
+                : OnDeviceFallbackReplyGenerator.consecutiveFailureNotice
+            XCTAssertEqual(snapshots.last, notice + "短い返事。")
+        }
+    }
+
+    func testEmptyOnDeviceReplyFailsWithoutSavingTheNotice() async throws {
+        let cases: [([String], Bool)] = [
+            ([], true), ([""], true), ([" ", " \n"], true),
+            ([], false), ([""], false), ([" ", " \n"], false),
+        ]
+        for (values, stablePrefix) in cases {
+            let store = InMemoryConversationMemoryStore()
+            let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))])
+            let generator = sut(claude(factory, store: store), secondary: SecondaryReply(snapshots: values, stablePrefix: stablePrefix))
+            do { _ = try await collect(generator.streamReply(to: "空の返事")); XCTFail("expected failure") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
+            let saved = await store.load()
+            XCTAssertNil(saved, "通知文だけの往復は保存しない")
+        }
+    }
+
+    func testUnstableOnDeviceReplyEmitsOnlyTheFinalRevision() async throws {
+        let store = InMemoryConversationMemoryStore()
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))])
+        let secondary = SecondaryReply(snapshots: ["古い返事。", "新しい返事。"], stablePrefix: false)
+        let generator = sut(claude(factory, store: store), secondary: secondary)
+        XCTAssertTrue(generator.supportsStableReplyPrefix)
+        let snapshots = try await collect(generator.streamReply(to: "書き換わる返事"))
+        XCTAssertEqual(snapshots, [OnDeviceFallbackReplyGenerator.claudeFailureNotice,
+                                  OnDeviceFallbackReplyGenerator.claudeFailureNotice + "新しい返事。"])
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns, [.init(prompt: "書き換わる返事", response: OnDeviceFallbackReplyGenerator.claudeFailureNotice + "新しい返事。")])
+    }
+
+    func testCancellingUnstableOnDeviceReplyEndsItsSourceWithoutSaving() async throws {
+        let cancelled = expectation(description: "secondary iterator observes cancellation")
+        let noticeSeen = expectation(description: "notice arrives before the final on-device text")
+        let secondary = HeldSecondary(cancelled: cancelled)
+        let store = InMemoryConversationMemoryStore()
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))])
+        let generator = sut(claude(factory, store: store), secondary: secondary)
+        let stream = try await generator.streamReply(to: "端末内の生成中に取り消す")
+        let reader = Task {
+            for try await snapshot in stream {
+                if snapshot == OnDeviceFallbackReplyGenerator.claudeFailureNotice { noticeSeen.fulfill() }
+            }
+            try Task.checkCancellation()
+        }
+        defer { reader.cancel(); secondary.continuation.finish() }
+        secondary.continuation.yield("書き換わる途中の返事。")
+        await fulfillment(of: [noticeSeen], timeout: 1)
+        reader.cancel()
+        do { try await reader.value; XCTFail("expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError || error as? ConversationServiceError == .cancelled) }
+        await fulfillment(of: [cancelled], timeout: 1)
+        let saved = await store.load()
+        XCTAssertNil(saved)
+    }
+
+    func testCancellationWhileCheckingAvailabilityNeverStartsOnDevice() async throws {
+        for dailyLimit in [false, true] {
+            let gate = ConversationTestGate()
+            addTeardownBlock { await gate.open() }
+            let forbiddenStart = expectation(description: "cancelled request must not start secondary: \(dailyLimit)")
+            forbiddenStart.isInverted = true
+            let secondary = SecondaryReply(onStart: { forbiddenStart.fulfill() })
+            let usage = ClaudeConversationServiceTests.UsageSpy()
+            await usage.setLimitReached(dailyLimit)
+            let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))])
+            let generator = OnDeviceFallbackReplyGenerator(
+                primary: claude(factory, usage: usage), secondary: secondary,
+                secondaryAvailability: Availability(value: .available, gate: gate), usage: usage, configuration: { .init() })
+            let reader = Task { try await self.collect(generator.streamReply(to: "取消")) }
+            defer { reader.cancel() }
+            await gate.waitUntilEntered()
+            reader.cancel()
+            await gate.open()
+            do { _ = try await reader.value; XCTFail("expected cancellation") }
+            catch { XCTAssertTrue(error is CancellationError || error as? ConversationServiceError == .cancelled) }
+            // 取消済みの reader の終了は relay の終了を保証しないため、禁止した副作用を観測する。
+            await fulfillment(of: [forbiddenStart], timeout: 0.25)
+            let prompts = await secondary.prompts
+            XCTAssertTrue(prompts.isEmpty)
+        }
+    }
+
+    func testDailyLimitDoesNotBypassMemoryRestoreOrForgetFailure() async throws {
+        let invalid = ConversationMemorySnapshot(schemaVersion: 99, memoryCompatibilityID: ClaudeMemoryCompatibility.current,
+            revision: 1, savedAt: Date(), summary: "", turns: [])
+        for forgetFailed in [false, true] {
+            let store = MemoryStoreFake(snapshot: forgetFailed ? nil : invalid)
+            let factory = StubSessionFactory()
+            let primary = claude(factory, store: store)
+            if forgetFailed {
+                try await primary.prepareMemory()
+                await store.setClearFailure(true)
+                do { try await primary.forgetConversation(); XCTFail("expected delete failure") }
+                catch { XCTAssertEqual(error as? ConversationMemoryError, .deleteFailed) }
+            }
+            let usage = ClaudeConversationServiceTests.UsageSpy()
+            await usage.setLimitReached(true)
+            let secondary = SecondaryReply()
+            let generator = sut(primary, secondary: secondary, usage: usage)
+            do { _ = try await collect(generator.streamReply(to: "上限時にも記憶の復旧を優先")); XCTFail("expected memory failure") }
+            catch { XCTAssertEqual(error as? ConversationMemoryError, forgetFailed ? .unavailable : .unsupportedSchema) }
+            let prompts = await secondary.prompts
+            let sessions = await factory.sessions
+            XCTAssertTrue(prompts.isEmpty)
+            XCTAssertTrue(sessions.isEmpty)
+        }
+    }
+
+    func testCancellingPrimaryReplyDoesNotStartOnDevice() async throws {
+        let held = ScriptedSessionClient(chunks: nil)
+        let forbiddenStart = expectation(description: "cancelled primary must not start secondary")
+        forbiddenStart.isInverted = true
+        let secondary = SecondaryReply(onStart: { forbiddenStart.fulfill() })
+        let primary = claude(StubSessionFactory(scripts: [held]))
+        let generator = sut(primary, secondary: secondary)
+        let stream = try await generator.streamReply(to: "途中で取り消す")
+        let reader = Task { try await self.collect(stream) }
+        defer { reader.cancel(); held.finish() }
+        await held.waitUntilStarted()
+        reader.cancel()
+        held.fail(URLError(.networkConnectionLost))
+        do { _ = try await reader.value; XCTFail("expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError || error as? ConversationServiceError == .cancelled) }
+        await fulfillment(of: [forbiddenStart], timeout: 0.25)
+        let prompts = await secondary.prompts
+        XCTAssertTrue(prompts.isEmpty)
     }
 }
 ```
 
-（`ClaudeError` を使うため、ファイル先頭に `import ClaudeForFoundationModels` を追加する。）
+既存の `ConversationErrorPresentationTests.testEveryServiceErrorOffersRecoveryWithoutDebugDescriptions` の errors 配列にも `.dailyLimitReached` を追加し、復旧が `.openSettings` であること、上限を案内すること、`allowsOnDeviceFallback` が false であることを確認する。
 
 ```swift
 // RoutedAddressClassifierTests.swift
@@ -3942,7 +4248,7 @@ final class RoutedAddressClassifierTests: XCTestCase {
 
 - [ ] **Step 2: テストを実行して失敗を確認する**
 
-Run: 共通形 `-only-testing:CatRobotTests/OnDeviceFallbackReplyGeneratorTests -only-testing:CatRobotTests/RoutedAddressClassifierTests`
+Run: 共通形 `-only-testing:CatRobotTests/OnDeviceFallbackReplyGeneratorTests -only-testing:CatRobotTests/RoutedAddressClassifierTests -only-testing:CatRobotTests/ConversationErrorPresentationTests`
 Expected: コンパイルエラー（型と `.dailyLimitReached` が未定義）。
 
 - [ ] **Step 3: 実装する**
@@ -3958,17 +4264,30 @@ case .dailyLimitReached:
 ```swift
 // OnDeviceFallbackReplyGenerator.swift
 import Foundation
+import OSLog
 
+/// Claude の返答前の失敗や日次上限で端末内モデルへ切り替え、完了した往復を記憶へ引き継ぐ。
 actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking {
     nonisolated let supportsStableReplyPrefix = true
     static let claudeFailureNotice = "今はいつものように話せないから、簡単に答えるね。"
     static let dailyLimitNotice = "今日はたくさん話したから、簡単にしか話せないよ。"
+    static let consecutiveFailureNotice = "何度もうまく話せないみたい。少し待ってから、また話しかけてね。"
+    static let consecutiveFailureThreshold = 3
+    private static let logger = Logger(subsystem: "com.kamby.CatRobot", category: "ConversationFallback")
+
+    /// ログへ渡せる値を限定する。本文・通知文・元エラーは診断情報に含めない。
+    private enum FallbackCause: String {
+        case modelUnreachable, modelGenerationFailed, dailyLimitReached
+        var reason: String { self == .dailyLimitReached ? "dailyLimit" : "claudeFailure" }
+    }
 
     private let primary: ClaudeConversationService
     private let secondary: any ReplyGenerating
     private let secondaryAvailability: any ModelAvailabilityChecking
     private let usage: any ConversationUsageMetering
     private let configuration: @Sendable () async -> ConversationModelConfiguration
+    /// 代替対象の失敗だけを数え、Claude の返答が正常に完了したときだけ 0 に戻す。
+    private var consecutiveClaudeFailures = 0
 
     init(primary: ClaudeConversationService, secondary: any ReplyGenerating, secondaryAvailability: any ModelAvailabilityChecking,
          usage: any ConversationUsageMetering, configuration: @escaping @Sendable () async -> ConversationModelConfiguration) {
@@ -3985,7 +4304,7 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
         case .available:
             return .available
         case .claudeUnreachable:
-            // 圏外・一時障害は端末内モデルで会話を続けられる。既知の認証エラー（鍵なし・非対応端末・attestation 失敗）は隠さない。
+            // 通信障害時は端末内モデルを使えるが、既知の認証エラーは隠さない。
             return await secondaryAvailability.availability() == .available ? .available : claude
         default:
             return claude
@@ -4000,10 +4319,14 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
     }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
+        try Task.checkCancellation()
         let limit = await configuration().dailyTurnLimit
         if await usage.isDailyLimitReached(limit: limit) {
-            guard await secondaryAvailability.availability() == .available else { throw ConversationServiceError.dailyLimitReached }
-            return try await onDevice(utterance, notice: Self.dailyLimitNotice)
+            let failureCount = consecutiveClaudeFailures
+            let available = await secondaryAvailability.availability()
+            try Task.checkCancellation()
+            guard available == .available else { throw ConversationServiceError.dailyLimitReached }
+            return try await onDevice(utterance, notice: Self.dailyLimitNotice, cause: .dailyLimitReached, failureCount: failureCount)
         }
         let source = try await primary.streamReply(to: utterance)
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
@@ -4023,47 +4346,82 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
                 if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { yieldedVisibleText = true }
                 continuation.yield(snapshot)
             }
+            try Task.checkCancellation()
+            consecutiveClaudeFailures = 0
             continuation.finish()
         } catch {
-            let failure = ClaudeErrorMapper.map(error)
+            let failure = Task.isCancelled ? ConversationServiceError.cancelled : ClaudeErrorMapper.map(error)
+            if failure.allowsOnDeviceFallback { consecutiveClaudeFailures += 1 }
+            // この失敗の通知文と回数を await 前に固定し、後続ターンの増減の影響を受けないようにする。
+            let failureCount = consecutiveClaudeFailures
+            let notice = failureCount >= Self.consecutiveFailureThreshold
+                ? Self.consecutiveFailureNotice : Self.claudeFailureNotice
             guard failure.allowsOnDeviceFallback, !yieldedVisibleText, !Task.isCancelled,
                   await secondaryAvailability.availability() == .available else {
+                if failure == .refusal {
+                    Self.logger.notice("event=refusalReceived kind=refusal reason=claudeFailure consecutiveFailures=\(failureCount, privacy: .public)")
+                }
                 continuation.finish(throwing: failure)
                 return
             }
+            // allowsOnDeviceFallback が許すのはこの 2 種類だけ。
+            let cause: FallbackCause = failure == .modelUnreachable ? .modelUnreachable : .modelGenerationFailed
             do {
-                let fallback = try await onDevice(utterance, notice: Self.claudeFailureNotice)
+                let fallback = try await onDevice(utterance, notice: notice, cause: cause, failureCount: failureCount)
                 for try await snapshot in fallback {
                     try Task.checkCancellation()
                     continuation.yield(snapshot)
                 }
+                try Task.checkCancellation()
                 continuation.finish()
             } catch {
-                continuation.finish(throwing: ClaudeErrorMapper.map(error))
+                if let memoryFailure = error as? ConversationMemoryError {
+                    continuation.finish(throwing: memoryFailure)
+                } else {
+                    continuation.finish(throwing: ClaudeErrorMapper.map(error))
+                }
             }
         }
     }
 
-    /// 端末内モデルの累積スナップショットに注意書きを前置し、完了した往復を Claude の記憶へ引き継ぐ。
-    private func onDevice(_ utterance: String, notice: String) async throws -> AsyncThrowingStream<String, Error> {
+    /// 端末内モデルの累積スナップショットに注意書きを前置し、本文のある完了した往復だけを保存する。
+    private func onDevice(_ utterance: String, notice: String, cause: FallbackCause,
+                          failureCount: Int) async throws -> AsyncThrowingStream<String, Error> {
+        try Task.checkCancellation()
+        // 日次上限の経路でも記憶を準備する。Claude のセッション生成やネットワーク送信は行わない。
+        try await primary.prepareMemory()
+        try Task.checkCancellation()
+        Self.logger.notice("event=fallbackStarted kind=\(cause.rawValue, privacy: .public) reason=\(cause.reason, privacy: .public) consecutiveFailures=\(failureCount, privacy: .public)")
+        let streamsStablePrefix = secondary.supportsStableReplyPrefix
         let source = try await secondary.streamReply(to: utterance)
+        try Task.checkCancellation()
         let primary = self.primary
         return AsyncThrowingStream { continuation in
             let task = Task {
-                var final = ""
+                var finalBody = ""
                 do {
+                    try Task.checkCancellation()
+                    // 安定した通知文は先に出し、改訂されうる本文は確定まで外へ出さない。
+                    if !streamsStablePrefix { continuation.yield(notice) }
                     for try await snapshot in source {
                         try Task.checkCancellation()
-                        final = notice + snapshot
-                        continuation.yield(final)
+                        finalBody = snapshot
+                        if streamsStablePrefix { continuation.yield(notice + snapshot) }
                     }
-                    if !final.isEmpty { await primary.recordExternalTurn(prompt: utterance, response: final) }
+                    try Task.checkCancellation()
+                    guard !finalBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        throw ConversationServiceError.modelGenerationFailed
+                    }
+                    if !streamsStablePrefix { continuation.yield(notice + finalBody) }
+                    await primary.recordExternalTurn(prompt: utterance, response: notice + finalBody)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: ClaudeErrorMapper.map(error))
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { termination in
+                if case .cancelled = termination { task.cancel() }
+            }
         }
     }
 }
@@ -4120,7 +4478,7 @@ struct ClaudeAddressModelClient: AddressModelClient {
         guard let mode = auth.authMode else { throw ConversationServiceError.modelUnavailable(.claudeCredentialMissing) }
         do {
             let model = ClaudeLanguageModel(name: .haiku5_5, auth: mode, fixedEffort: .low, fallbacks: [], timeout: 15)
-            let session = LanguageModelSession(model: model) { Self.instructions }
+            let session = LanguageModelSession(model: model, instructions: Instructions(Self.instructions))
             let response = try await session.respond(to: utterance, generating: AddressDecision.self)
             return response.content.target
         } catch {
@@ -4130,15 +4488,20 @@ struct ClaudeAddressModelClient: AddressModelClient {
 }
 ```
 
+Task 5 と同じく `LanguageModelSession(model:instructions: Instructions(...))` を明示し、iOS 27 SDK の builder initializer の曖昧さを避ける。
+
 `FoundationModelAddressClassifier` は `FoundationModelErrorMapper.map` を通すが、Task 2 で `ConversationServiceError` を素通しにしたので、ここで写像した結果がそのまま届く。
 
 - [ ] **Step 4: テストを実行して PASS を確認する**
 
-Run: Step 2 と同じ。Expected: 全件 PASS。
+Run: Step 2 と同じ対象テストを実行し、その後 `-only-testing` なしで全回帰を実行する。Expected: 対象 29 件（新規 24 + 既存表示 5）、全体 408 件 / 既存の実機専用 skip 1 / failures 0。generator / contract と再生成バイト一致、diff check、新規 warning も確認する。
 
 - [ ] **Step 5: Commit**
 
+`[T7] ready` で navigator にレビューを依頼し、review approve を受けてから docs → feat の順でコミットする。全ファイルが staged の場合も docs は `--only` で plan 1 file に限定する。
+
 ```bash
+git commit --only -m "docs: clarify fallback streaming and diagnostics" -- docs/superpowers/plans/2026-10-11-claude-conversation-engine.md
 git add -A && git commit -m "feat: fall back to the on-device model and route address classification"
 ```
 
@@ -4712,5 +5075,5 @@ git add -A && git commit -m "docs: record Claude conversation engine device veri
 - FR-ONB-2 の「初回認証をオンボーディング中に行う」は、本計画では会話開始時の事前確認（`availability()` が `authenticateIfNeeded()` を呼ぶ）と原因別の文言（Task 2）で満たす。オンボーディング画面に認証ステップを置くのは、権限フローを組み直す計画 4 で行う。
 - 本計画で意図的に扱わないもの: FR-CONV-9（首との同期、計画 3）、FR-MOV / FR-FACE / FR-VIS / FR-LINK / FR-RUN / FR-ONB-1・3（計画 3・4）、NFR-PERF-3〜5・NFR-REL-1〜2・NFR-SEC-3〜4・NFR-THERM（ハードウェア、計画 2〜4）、T-AUTH-2（取り消しは恒久なので検証用の別統合を作る判断は運用に委ねる）、NFR-PRIV-4 / T-PRIV-1 のファイル列挙テスト（計画 4 でカメラを足したときに追加）。
 - 要件定義書からの変更点: `fallbacks` を使わない（Global Constraints に理由）。要件定義書 §5.3 の該当行を本計画と同じコミットで更新する。
-- 明示的に後送りするもの: §6.11 の「Claude の失敗が連続 3 回で『少し待って』と告げる」は Task 7 着手時の brief で追加する（`OnDeviceFallbackReplyGenerator` に連続失敗の回数と通知文を足す。数えるのは `allowsOnDeviceFallback` が true の失敗だけで、Claude が返答に成功したら 0 に戻す。テスト `testThirdConsecutiveClaudeFailureAsksToWait` と `testSuccessfulClaudeReplyResetsTheFailureCount` で固定する）。
+- Task 7 着手時の brief で後送り分を反映済み: §6.11 の連続 3 回の失敗通知は `OnDeviceFallbackReplyGenerator` の Interfaces / Step 1 / Step 3 に含めた。対象外の失敗は回数を変えず、正常完了時のみ数え直す。並行した待機中にもターンごとの通知文が変わらないことを gate で確認する。
 - 2026-10-11 の対レビュー（codex）で反映した点: 開発用キーは資源同梱＋Release 除外（スクリプト段階なし）、長期メモの変更直列化と世代付き writer、ツールはセッションごとに生成、利用量はセッションのモデルで集計、概算トークン表示、`fallbacks: []` の明示、T-AUTH-1 は TestFlight、VoiceOver 手順、文言の修正。
