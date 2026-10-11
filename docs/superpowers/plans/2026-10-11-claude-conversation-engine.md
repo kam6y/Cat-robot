@@ -5095,7 +5095,7 @@ T-AUTH-1（受入）: Release 構成でアーカイブし、TestFlight で同じ
 
 iOS 27 を入れた Apple Intelligence 非対応機（例: iPhone 15 以前）が手元にあれば、同じ Debug ビルドで ① Claude 経由の会話が成立する ② 呼び名なしの曖昧な発話で「今の、ぼくに言った？」が出る（Haiku 経路） ③ 機内モードで「会話不可」の表示になる、を確認する。手元に無い場合は「未実施」と書き、README の動作要件を「Apple Intelligence 対応機で検証済み。非対応機は未検証」とする。
 
-- [ ] **Step 4: 遅延の計測（T-LAT-1 の簡易版、20 ターン）**
+- [x] **Step 4: 遅延の計測（T-LAT-1 の簡易版、20 ターン）**
 
 実機を Wi-Fi に接続したまま、呼び名付きの短い質問（「猫ちゃん、今日は何曜日？」のような一文）を 20 ターン話す。計測は既存の signpost（subsystem `com.kamby.CatRobot`、category `ConversationLatency`）を使う。区間名は `FastPathFirstCaption`（発話境界 → 最初の字幕、NFR-PERF-1）と `FastPathSpeechStart`（発話境界 → 読み上げ開始、NFR-PERF-2）。宛先判定を経た `ClassifiedFirstCaption` / `ClassifiedSpeechStart` は別集計にする。end 側のメッセージに `elapsedFromBoundary=<秒>` と `outcome=<コード>`（0 が成功、1 以上は中断）が入っているので、時刻の差を取らずにこの値を使う。
 

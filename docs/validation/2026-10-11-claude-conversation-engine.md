@@ -1,6 +1,6 @@
 # Claude 会話エンジンの検証記録
 
-2026-10-11、Task 9 の自動検証を実施した。実 API の Simulator スモークは利用者の指定により実行していない。App Attest の Debug 予備確認は同日に実機で実施し、結果を Task 10 の節に記した。Apple Intelligence 非対応機、実機遅延、VoiceOver / Dynamic Type の受入は未実施で、Task 10 で結果を追記する。
+2026-10-11、Task 9 の自動検証を実施した。実 API の Simulator スモークは利用者の指定により実行していない。App Attest の Debug 予備確認は同日に実機で実施し、結果を Task 10 の節に記した。Task 10 の結果は同じ記録の後半に追記した: 実機遅延の簡易版（2026-10-12、目標未達）、VoiceOver / Dynamic Type、実機確認で受けた UI 変更。Apple Intelligence 非対応機（T-DEV-1/2）は利用者判断で未実施、TestFlight（T-AUTH-1）と統合の取り消し（T-AUTH-2）は未実施。
 
 鍵、認証トークン、client ID の実値、会話本文はこの記録に含めない。
 
