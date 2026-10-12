@@ -9,17 +9,11 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         .init(schemaVersion: 1, memoryCompatibilityID: id, revision: 1, savedAt: Date(), summary: summary,
               turns: [.init(prompt: "こんにちは", response: "やあ")])
     }
-    private func service(_ factory: StubSessionFactory, store: any ConversationMemoryStore) -> ClaudeConversationService {
-        ClaudeConversationService(factory: factory, memoryStore: store,
-                                  longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                                  tools: StaticToolProvider([]), configuration: { .init() },
-                                  usage: ClaudeConversationServiceTests.UsageSpy())
-    }
     func testNewServiceRestoresSummaryAndTurns() async throws {
         let store = InMemoryConversationMemoryStore(snapshot: seed())
-        try await drain(service(StubSessionFactory(), store: store).streamReply(to: "金沢へ行く"))
+        try await drain(makeClaudeService(StubSessionFactory(), store: store).streamReply(to: "金沢へ行く"))
         let factory = StubSessionFactory()
-        try await drain(service(factory, store: store).streamReply(to: "どこへ行く？"))
+        try await drain(makeClaudeService(factory, store: store).streamReply(to: "どこへ行く？"))
         let instructions = await factory.sessions.first!.configuration.instructions
         XCTAssertTrue(instructions.contains("好きな飲み物はほうじ茶"))
         XCTAssertTrue(instructions.contains("利用者: こんにちは\n猫: やあ"))
@@ -28,7 +22,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
     func testSaveFailurePreservesReplyAndRetryUsesLatestMemory() async throws {
         let store = MemoryStoreFake()
         await store.setSaveFailure(true)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         try await drain(sut.streamReply(to: "A"))
         try await drain(sut.streamReply(to: "B"))
         let state = await sut.memoryState()
@@ -43,7 +37,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
     func testConcurrentPreparationLoadsOnce() async throws {
         let gate = ConversationTestGate()
         let store = MemoryStoreFake(snapshot: seed(), loadGate: gate)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         let first = Task { try await sut.prepareMemory() }
         await gate.waitUntilEntered()
         let second = Task { try await sut.prepareMemory() }
@@ -57,7 +51,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         for snapshot in [seed(id: "foreign"), seed(summary: String(repeating: "x", count: 1_201))] {
             let store = InMemoryConversationMemoryStore(snapshot: snapshot)
             let factory = StubSessionFactory()
-            do { try await drain(service(factory, store: store).streamReply(to: "hello")); XCTFail("Must block") } catch {}
+            do { try await drain(makeClaudeService(factory, store: store).streamReply(to: "hello")); XCTFail("Must block") } catch {}
             let sessions = await factory.sessions
             XCTAssertTrue(sessions.isEmpty)
             let saved = await store.load()
@@ -70,7 +64,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
             turns: (0..<4).map { .init(prompt: "\($0)" + String(repeating: "x", count: 4_100), response: "R") })
         let store = InMemoryConversationMemoryStore(snapshot: initial)
         let factory = StubSessionFactory(summaries: ["memory-1"])
-        try await drain(service(factory, store: store).streamReply(to: "続き"))
+        try await drain(makeClaudeService(factory, store: store).streamReply(to: "続き"))
         let requests = await factory.summaryRequests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests.first?.previousSummary, "前の記憶")
@@ -84,7 +78,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
     func testForgetWaitsForSaveThenRemovesIt() async throws {
         let gate = ConversationTestGate()
         let store = MemoryStoreFake(saveGate: gate)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         let turn = Task { try await self.drain(sut.streamReply(to: "覚えて")) }
         await gate.waitUntilEntered()
         let forget = Task { try await sut.forgetConversation() }
@@ -100,7 +94,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
     func testForgetFailureBlocksRepliesUntilRetrySucceeds() async throws {
         let store = MemoryStoreFake()
         await store.setClearFailure(true)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         try await drain(sut.streamReply(to: "A"))
         do { try await sut.forgetConversation(); XCTFail("expected deleteFailed") } catch {}
         do { try await drain(sut.streamReply(to: "B")); XCTFail("blocked") }
@@ -126,7 +120,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         let gate = ConversationTestGate()
         addTeardownBlock { await gate.open() }
         let store = MemoryStoreFake(saveGate: gate)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         try await sut.prepareMemory()
         let external = Task { await sut.recordExternalTurn(prompt: "削除前の外部質問", response: "削除前の外部返答") }
         await gate.waitUntilEntered()            // 外部往復の保存はストアに渡り、完了待ち
@@ -153,7 +147,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         let gate = ConversationTestGate()
         addTeardownBlock { await gate.open() }
         let store = MemoryStoreFake(snapshot: seed(), saveGate: gate)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         try await sut.prepareMemory()
         let reset = Task { await sut.reset() }   // 空の記憶の保存が gate で止まる
         await gate.waitUntilEntered()
@@ -177,7 +171,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
     func testForgetProceedsAfterAFailedSave() async throws {
         let store = MemoryStoreFake()
         await store.setSaveFailure(true)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         try await drain(sut.streamReply(to: "A"))
         let unsaved = await sut.memoryState()
         XCTAssertEqual(unsaved, .unsaved)
@@ -195,7 +189,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         let second = ConversationTestGate()
         addTeardownBlock { await first.open(); await second.open() }
         let store = MemoryStoreFake(saveGate: first)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(StubSessionFactory(), store: store)
         try await sut.prepareMemory()
         let a = Task { await sut.recordExternalTurn(prompt: "A", response: "a") }
         await first.waitUntilEntered()           // A の保存はストアで停止中

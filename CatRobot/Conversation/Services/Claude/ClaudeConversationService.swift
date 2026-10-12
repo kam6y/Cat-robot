@@ -40,16 +40,20 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private let compatibilityID: String
     private let budget: ConversationBudget
 
-    private var memory = ShortTermMemory()
-    private var session: (any ConversationSessionClient)?
     /// 生きているセッションを作ったときのモデル。利用量の集計はこれで行う（設定変更は次のセッションから）。
-    private var activeModel: ConversationModelChoice?
+    private struct CachedSession: Sendable {
+        let client: any ConversationSessionClient
+        let model: ConversationModelChoice
+    }
+
+    private var memory = ShortTermMemory()
+    private var session: CachedSession?
     /// セッションを無効化するたびに進む世代。生成途中に無効化が入った古いセッションは登録しない。
     private var sessionEpoch: UInt64 = 0
     /// 生きているセッションを作ったときの長期メモの削除世代。設定で事実を消したら次の返答の前に作り直す。
     private var sessionFactsRevision: UInt64 = 0
-    private var isGenerating = false
     private var generation: Task<Void, Never>?
+    private var isGenerating: Bool { generation != nil }
 
     private var persistenceState: ConversationMemoryState = .unprepared
     private var subscribers: [UUID: AsyncStream<ConversationMemoryState>.Continuation] = [:]
@@ -96,8 +100,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         // 返答生成中は新しいセッションを作らない。generate は圧縮後の記憶をローカルに持ち self.memory はまだ圧縮前なので、
         // ここで作ると圧縮前のセッションが先に登録され、返答がそれに揃ってしまう。
         guard !isGenerating else { return }
-        guard let client = await currentSession() else { return }   // 生成中に無効化されたセッションは温めない
-        await client.prewarm()
+        guard let session = await currentSession() else { return }   // 生成中に無効化されたセッションは温めない
+        await session.client.prewarm()
     }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
@@ -113,7 +117,6 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         let prompt = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
         guard prompt.count <= budget.maximumPromptCharacters else { throw ConversationServiceError.inputTooLong }
 
-        isGenerating = true
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
         let worker = Task { await self.generate(prompt, epoch: epoch, into: continuation) }
         generation = worker
@@ -151,7 +154,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         try? await saveMemory(epoch: epoch)
     }
 
-    /// 取り消し済みのターンが後始末（isGenerating=false）を終えるまで待つ。
+    /// 取り消し済みのターンが後始末（generation = nil）を終えるまで待つ。
     /// 利用側は購読の終了しか待たないので、取り消し直後の次のターンがここで後始末を追い越さないようにする。
     /// 進行中（取り消されていない）のターンは待たず、呼び出し側の modelBusy 判定に任せる。
     private func awaitCancelledGeneration() async {
@@ -169,8 +172,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                 candidate = try await compact(candidate)
                 invalidateSession()
             }
-            guard let client = await currentSession(for: candidate) else { throw ConversationServiceError.cancelled }
-            let source = await client.snapshots(for: prompt)
+            guard let session = await currentSession(for: candidate) else { throw ConversationServiceError.cancelled }
+            let source = await session.client.snapshots(for: prompt)
             for try await snapshot in source {
                 try Task.checkCancellation()
                 response = snapshot
@@ -182,45 +185,34 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             }
             ReplyTraceContext.current?.mark(.generationFinished, outcome: .success)
             candidate.turns.append(ConversationMemoryTurn(prompt: prompt, response: response))
-        } catch {
-            failure = ClaudeErrorMapper.map(error)
-        }
-        if Task.isCancelled || epoch != operationEpoch { failure = .cancelled }
-        if failure == nil {
+            guard !Task.isCancelled, epoch == operationEpoch else { throw ConversationServiceError.cancelled }
             memory = candidate
             revision &+= 1
             // 集計はこのターンを生成したセッションのモデルで行う（設定変更は次のセッションから）。
-            let billedModel: ConversationModelChoice
-            if let activeModel {
-                billedModel = activeModel
-            } else {
-                billedModel = await configuration().model
-            }
-            await usage.recordTurn(model: billedModel, promptCharacters: prompt.count, responseCharacters: response.count)
+            await usage.recordTurn(model: session.model, promptCharacters: prompt.count, responseCharacters: response.count)
             try? await saveMemory(epoch: epoch)
-        } else {
+        } catch {
+            failure = Task.isCancelled || epoch != operationEpoch ? .cancelled : ClaudeErrorMapper.map(error)
             invalidateSession()
         }
-        isGenerating = false
         generation = nil
         ReplyTraceContext.current?.mark(.streamFinished, outcome: failure == nil ? .success : .generationFailure)
         continuation.finish(throwing: failure)
     }
 
-    /// session と activeModel は有効な組として扱う。無効化したら両方を落とし、世代を進める。
+    /// セッションとそのモデルをまとめて無効化し、世代を進める。
     private func invalidateSession() {
         session = nil
-        activeModel = nil
         sessionEpoch &+= 1
     }
 
-    private func currentSession() async -> (any ConversationSessionClient)? { await currentSession(for: memory) }
+    private func currentSession() async -> CachedSession? { await currentSession(for: memory) }
 
     /// 生きているセッションを返す。無ければ memory から作って登録する。
     /// memory・sessionEpoch・operationEpoch は呼び出し側の判定と同じ actor 区間（最初の await の前）で採取する。
-    /// 生成の await 中に無効化（圧縮・失敗・reset・forget・外部往復）が入ったら、作ったものは登録も activeModel 更新もせず nil を返す。
+    /// 生成の await 中に無効化（圧縮・失敗・reset・forget・外部往復）が入ったら、作ったものは登録せず nil を返す。
     /// 無効化は無いが他の生成が先に登録していた場合（prewarm と返答が同時に作ったとき）は、先に登録された方に揃える。
-    private func currentSession(for memory: ShortTermMemory) async -> (any ConversationSessionClient)? {
+    private func currentSession(for memory: ShortTermMemory) async -> CachedSession? {
         if let session { return session }
         let expectedSession = sessionEpoch
         let epoch = operationEpoch
@@ -232,7 +224,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         let facts = await longTermMemory.renderedBlock()
         let writer = await longTermMemory.makeWriter()
         let instructions = ConversationInstructions(longTermFacts: facts, summary: memory.summary, recentTurns: memory.turns).text
-        let created = await factory.makeReplySession(
+        let client = await factory.makeReplySession(
             ConversationSessionConfiguration(model: settings.model, effort: settings.effort, instructions: instructions),
             tools: toolProvider.tools(memory: writer))
         guard sessionEpoch == expectedSession, operationEpoch == epoch, forgetting == nil else {
@@ -243,8 +235,8 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             trace?.mark(.sessionFinished, outcome: .success)
             return session
         }
+        let created = CachedSession(client: client, model: settings.model)
         session = created
-        activeModel = settings.model
         sessionFactsRevision = factsRevision
         trace?.mark(.sessionFinished, outcome: .success)
         return created
@@ -334,17 +326,17 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     /// 待つのは直前のストア操作だけなので、generation / retry / forget のような所有者を待つ循環は生じない。
     /// 直前の操作が失敗しても次の操作は実行され、各呼び出し元には自分の操作のエラーだけが返る。
     /// 積んだ操作は呼び出し元の取消では追跡から外さない（storeTail を無条件に nil へ戻さない）。
-    private var storeTail: Task<Void, Never>?
+    private var storeTail: Task<Void, Error>?
     /// 最新の保存要求の番号。古い保存の完了が最新の保存状態（.saving / .unsaved）を .ready に上書きしないための照合に使う。
     private var saveSerial: UInt64 = 0
 
     private func serializedStoreOperation(_ operation: @escaping @Sendable () async throws -> Void) async throws {
         let previous = storeTail
         let task = Task<Void, Error> {
-            await previous?.value
+            _ = try? await previous?.value
             try await operation()
         }
-        storeTail = Task { _ = try? await task.value }
+        storeTail = task
         try await task.value
     }
 

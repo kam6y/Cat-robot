@@ -57,10 +57,7 @@ final class ReplyTraceTests: XCTestCase {
     func testClaudeOwnedTaskKeepsTraceThroughGenerationAndSave() async throws {
         let sink = RecordingReplyTraceSink()
         let trace = ReplyTrace(sink: sink, now: { 0 })
-        let service = ClaudeConversationService(factory: StubSessionFactory(), memoryStore: InMemoryConversationMemoryStore(),
-                                                longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                                                tools: StaticToolProvider([]), configuration: { .init() },
-                                                usage: ClaudeConversationServiceTests.UsageSpy())
+        let service = makeClaudeService()
         try await ReplyTraceContext.$current.withValue(trace) {
             let stream = try await service.streamReply(to: "private prompt")
             for try await _ in stream {}

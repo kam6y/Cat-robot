@@ -406,10 +406,10 @@ final class ConversationViewModel {
     private func showNotice(_ text: String) {
         noticeExpiryTask?.cancel()
         viewState.memoryNotice = text
+        let delay = dependencies.noticeDelay
         noticeExpiryTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.dependencies.noticeDelay(Self.noticeLifetime)
-            guard !Task.isCancelled, self.viewState.memoryNotice == text else { return }
+            await delay(Self.noticeLifetime)
+            guard !Task.isCancelled, let self, self.viewState.memoryNotice == text else { return }
             self.viewState.memoryNotice = nil
             self.noticeExpiryTask = nil
         }

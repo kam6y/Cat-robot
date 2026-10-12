@@ -41,7 +41,10 @@ enum LongTermMemoryPolicy {
     static let maximumFactLength = 60
 
     static func ordered(_ facts: [LongTermFact]) -> [LongTermFact] {
-        facts.sorted { ($0.createdAt, $0.id.uuidString) < ($1.createdAt, $1.id.uuidString) }
+        facts.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     /// 同じ事実集合なら常に同じバイト列を返す。日時は含めない（キャッシュ保護）。

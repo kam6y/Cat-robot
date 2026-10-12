@@ -78,10 +78,8 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         XCTAssertEqual(result, "確定。最後。")
 
         let store = InMemoryConversationMemoryStore()
-        let claude = ClaudeConversationService(
-            factory: StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["iPhoneです。", "Bluetoothです。"])]),
-            memoryStore: store, longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-            tools: StaticToolProvider([]), configuration: { .init() }, usage: ClaudeConversationServiceTests.UsageSpy())
+        let claude = makeClaudeService(
+            StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["iPhoneです。", "Bluetoothです。"])]), store: store)
         let immediate = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 }, synthesize: { text, _ in
             XCTAssertFalse(text.contains("iPhone")); XCTAssertFalse(text.contains("Bluetooth"))
             return SpeechPCM(samples: [1], sampleRate: 24_000)

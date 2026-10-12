@@ -4,16 +4,10 @@ import XCTest
 
 @MainActor
 final class ClaudePlaybackMemoryTests: XCTestCase {
-    private func service(_ factory: StubSessionFactory, store: any ConversationMemoryStore) -> ClaudeConversationService {
-        ClaudeConversationService(factory: factory, memoryStore: store,
-                                  longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                                  tools: StaticToolProvider([]), configuration: { .init() },
-                                  usage: ClaudeConversationServiceTests.UsageSpy())
-    }
     func testCancellingPlaybackMidStreamDoesNotCommitAndNextTurnWorks() async throws {
         let held = ScriptedSessionClient(chunks: nil)
         let store = InMemoryConversationMemoryStore()
-        let sut = service(StubSessionFactory(scripts: [held, ScriptedSessionClient(chunks: ["次の返事。"])]), store: store)
+        let sut = makeClaudeService(StubSessionFactory(scripts: [held, ScriptedSessionClient(chunks: ["次の返事。"])]), store: store)
         let speaker = FakeSpeechSpeaker(automaticallyFinishes: true, prepareError: nil, speakError: nil, log: ConversationTestCallLog())
         let coordinator = ReplyPlaybackCoordinator(reply: sut, speaker: speaker, mode: .sentencePrefetch)
         let run = Task { try await coordinator.run(prompt: "長い話", trace: nil, onUpdate: { _ in }) }
@@ -30,7 +24,7 @@ final class ClaudePlaybackMemoryTests: XCTestCase {
     func testSaveWarningDoesNotFailTheSpokenReply() async throws {
         let store = MemoryStoreFake()
         await store.setSaveFailure(true)
-        let sut = service(StubSessionFactory(), store: store)
+        let sut = makeClaudeService(store: store)
         let speaker = FakeSpeechSpeaker(automaticallyFinishes: true, prepareError: nil, speakError: nil, log: ConversationTestCallLog())
         let coordinator = ReplyPlaybackCoordinator(reply: sut, speaker: speaker, mode: .completeResponse)
         let text = try await coordinator.run(prompt: "保存できない", trace: nil, onUpdate: { _ in })

@@ -2,6 +2,34 @@ import Foundation
 import FoundationModels
 @testable import CatRobot
 
+func makeClaudeService(_ factory: StubSessionFactory = StubSessionFactory(),
+                       store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
+                       usage: ConversationUsageSpy = ConversationUsageSpy()) -> ClaudeConversationService {
+    ClaudeConversationService(factory: factory, memoryStore: store,
+                              longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
+                              tools: StaticToolProvider([]), configuration: { .init() }, usage: usage)
+}
+
+actor ConversationUsageSpy: ConversationUsageMetering {
+    private(set) var turns: [(ConversationModelChoice, Int, Int)] = []
+    var limitReached = false
+    func setLimitReached(_ value: Bool) { limitReached = value }
+    func recordTurn(model: ConversationModelChoice, promptCharacters: Int, responseCharacters: Int) {
+        turns.append((model, promptCharacters, responseCharacters))
+    }
+    func isDailyLimitReached(limit: Int) -> Bool { limitReached }
+    func summary() -> ConversationUsageSummary {
+        .init(turnsToday: turns.count, turnsThisMonth: turns.count, estimatedCostUSDThisMonth: 0)
+    }
+}
+
+/// memory に関係なく固定の配列を返すテスト用のプロバイダー。
+struct StaticToolProvider: ConversationToolProvider {
+    private let items: [any Tool]
+    init(_ items: [any Tool]) { self.items = items }
+    func tools(memory: any LongTermMemoryWriting) -> [any Tool] { items }
+}
+
 actor StubSessionFactory: ConversationSessionFactory {
     struct SessionRecord: Sendable {
         let configuration: ConversationSessionConfiguration

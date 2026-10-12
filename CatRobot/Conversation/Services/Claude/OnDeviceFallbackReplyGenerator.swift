@@ -78,7 +78,9 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
         do {
             for try await snapshot in source {
                 try Task.checkCancellation()
-                if !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { yieldedVisibleText = true }
+                if !yieldedVisibleText, !snapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    yieldedVisibleText = true
+                }
                 continuation.yield(snapshot)
             }
             try Task.checkCancellation()

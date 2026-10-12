@@ -11,18 +11,10 @@ final class ClaudeConversationServiceTests: XCTestCase {
         var current: ConversationModelConfiguration { lock.withLock { value } }
         func set(_ new: ConversationModelConfiguration) { lock.withLock { value = new } }
     }
-    actor UsageSpy: ConversationUsageMetering {
-        private(set) var turns: [(ConversationModelChoice, Int, Int)] = []
-        var limitReached = false
-        func setLimitReached(_ value: Bool) { limitReached = value }
-        func recordTurn(model: ConversationModelChoice, promptCharacters: Int, responseCharacters: Int) { turns.append((model, promptCharacters, responseCharacters)) }
-        func isDailyLimitReached(limit: Int) -> Bool { limitReached }
-        func summary() -> ConversationUsageSummary { .init(turnsToday: turns.count, turnsThisMonth: turns.count, estimatedCostUSDThisMonth: 0) }
-    }
     func makeService(factory: StubSessionFactory = StubSessionFactory(),
                      store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
                      longTerm: LongTermMemoryManager = LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                     settings: Settings = Settings(), usage: UsageSpy = UsageSpy(),
+                     settings: Settings = Settings(), usage: ConversationUsageSpy = ConversationUsageSpy(),
                      budget: ConversationBudget = .default) -> ClaudeConversationService {
         ClaudeConversationService(factory: factory, memoryStore: store, longTermMemory: longTerm,
                                   tools: RememberToolProvider(),
@@ -33,7 +25,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
     }
 
     func testStreamsCumulativeSnapshotsCommitsTurnAndRecordsUsage() async throws {
-        let factory = StubSessionFactory(); let store = InMemoryConversationMemoryStore(); let usage = UsageSpy()
+        let factory = StubSessionFactory(); let store = InMemoryConversationMemoryStore(); let usage = ConversationUsageSpy()
         let service = makeService(factory: factory, store: store, usage: usage)
         let snapshots = try await collect(service.streamReply(to: "こんにちは"))
         XCTAssertEqual(snapshots, ["にゃ", "にゃん。"])
@@ -130,7 +122,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
     func testModelSettingChangeAppliesOnlyWhenSessionIsRebuilt() async throws {
         let settings = Settings(.init(model: .opus5_5))
         let factory = StubSessionFactory()
-        let usage = UsageSpy()
+        let usage = ConversationUsageSpy()
         let service = makeService(factory: factory, settings: settings, usage: usage)
         _ = try await collect(service.streamReply(to: "一回目"))
         settings.set(.init(model: .sonnet5_5, effort: .medium))
@@ -433,7 +425,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
                                              if onlyCall == nil || onlyCall == call { await gate.wait() }
                                              return .init()
                                          },
-                                         usage: UsageSpy(), budget: budget)
+                                         usage: ConversationUsageSpy(), budget: budget)
     }
 
     func testPrewarmFinishingAfterForgetDoesNotResurrectTheOldSession() async throws {
