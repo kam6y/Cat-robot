@@ -253,6 +253,29 @@ void test_rescale_keeps_output_pulse() {
     TEST_ASSERT_EQUAL_FLOAT(0.0f, planner.state().acc);
 }
 
+// 静止からの短い移動は閉形式の三角形加速（A^2/J = V なので上限未満では加速度が A に届かない）:
+// V=100, D=4° → v = cbrt(J D^2/4) ≈ 34.2°/s、所要 4 sqrt(v/J) ≈ 0.234 s
+void test_short_move_from_rest_follows_triangular_profile() {
+    Planner planner(kDt);
+    planner.setMaxVel(100.0f);
+    planner.reset(0.0f);
+    planner.setTarget(4.0f);
+    const double jerk = planner.maxJerk();
+    const double cruise = std::cbrt(jerk * 4.0 * 4.0 / 4.0);
+    const double seconds = 4.0 * std::sqrt(cruise / jerk);
+    float peak = 0.0f;
+    int ticks = 0;
+    while (!planner.atTarget() && ticks < 100) {
+        peak = std::max(peak, planner.step().vel);
+        ++ticks;
+    }
+    TEST_ASSERT_TRUE(planner.atTarget());
+    TEST_ASSERT_FLOAT_WITHIN(1.0f, static_cast<float>(cruise), peak);
+    TEST_ASSERT_TRUE(ticks * kDt >= seconds - kDt);
+    TEST_ASSERT_TRUE(ticks * kDt <= seconds + 2 * kDt);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 4.0f, planner.state().pos);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_rest_to_max_vel_takes_0_2_to_0_3_s);
@@ -269,5 +292,6 @@ int main(int, char**) {
     RUN_TEST(test_velocity_invariant_both_signs_every_tick);
     RUN_TEST(test_random_retargets_respect_absolute_limit_not_configured);
     RUN_TEST(test_rescale_keeps_output_pulse);
+    RUN_TEST(test_short_move_from_rest_follows_triangular_profile);
     return UNITY_END();
 }

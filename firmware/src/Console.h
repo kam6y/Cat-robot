@@ -16,6 +16,7 @@ struct TickStats {
     uint32_t maxUs = 0;
     uint64_t sumUs = 0;
     uint32_t count = 0;
+    uint32_t dropped = 0;  // 停滞で捨てた tick の数（main.cpp）
     void add(uint32_t us) {
         if (us > maxUs) maxUs = us;
         sumUs += us;

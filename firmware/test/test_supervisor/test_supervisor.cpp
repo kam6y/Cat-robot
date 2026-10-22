@@ -338,6 +338,28 @@ void test_return_deadline_2s() {
     assertState(sim, SupervisorState::RelaxWait);
 }
 
+// main.cpp の loop() は入力を millis() で、tick を直前の tick 時刻（≤ millis()）で処理する。
+// 入力の時刻が tick より進んでいても「経過」と誤判定しない（uint32 の折り返し）
+void test_command_timestamp_ahead_of_tick_keeps_active() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.sup.onCommand(moveCmd(20, 0), Source::Ble, sim.now + 21);
+    sim.advance(config::kTickMs);  // tick は now+20 < 指令の now+21
+    assertState(sim, SupervisorState::Active);
+    sim.advance(config::kSilenceMs - 40);
+    assertState(sim, SupervisorState::Active);  // 3 s 未満は ACTIVE のまま
+}
+
+void test_link_down_timestamp_ahead_of_tick_keeps_returning() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(moveCmd(50, 0));
+    sim.advance(100);
+    sim.sup.onLink(false, sim.now + 21);
+    sim.advance(config::kTickMs);  // tick は now+20 < 切断の now+21
+    assertState(sim, SupervisorState::Returning);  // 期限 2 s の誤発火で RELAX_WAIT にならない
+}
+
 void test_stop_is_highest_priority() {
     Sim sim;
     sim.bootToIdle();
@@ -864,6 +886,8 @@ int main(int, char**) {
     RUN_TEST(test_disconnect_during_gesture_returns_immediately);
     RUN_TEST(test_ping_after_reconnect_does_not_resume);
     RUN_TEST(test_return_deadline_2s);
+    RUN_TEST(test_command_timestamp_ahead_of_tick_keeps_active);
+    RUN_TEST(test_link_down_timestamp_ahead_of_tick_keeps_returning);
     RUN_TEST(test_stop_is_highest_priority);
     RUN_TEST(test_rejected_input_does_not_feed_watchdog);
     RUN_TEST(test_gesture_queue_rules);

@@ -143,13 +143,14 @@ void Console::printInfo() {
     char out[256];
     std::snprintf(out, sizeof out,
                   "INFO fw=%u.%u.%u proto=%u hw=E17 %s reset=%s brownout=%d pwm=%s "
-                  "cal=%.1f,%.1f inv=%d,%d gain=%.2f,%.2f saved=%d tick_max_us=%lu tick_avg_us=%lu",
+                  "cal=%.1f,%.1f inv=%d,%d gain=%.2f,%.2f saved=%d tick_max_us=%lu tick_avg_us=%lu tick_dropped=%lu",
                   config::kFwMajor, config::kFwMinor, config::kFwPatch, config::kProtocolVersion, ble, resetReason_,
                   brownout_ ? 1 : 0, pwmOff_ ? "off" : "on", static_cast<double>(cal.yawOffset),
                   static_cast<double>(cal.pitchOffset), cal.yawInvert ? 1 : 0, cal.pitchInvert ? 1 : 0,
                   static_cast<double>(cal.yawGain), static_cast<double>(cal.pitchGain), cal.saved ? 1 : 0,
                   static_cast<unsigned long>(tick_ ? tick_->maxUs : 0),
-                  static_cast<unsigned long>(tick_ ? tick_->avgUs() : 0));
+                  static_cast<unsigned long>(tick_ ? tick_->avgUs() : 0),
+                  static_cast<unsigned long>(tick_ ? tick_->dropped : 0));
     serial_.println(out);
 }
 

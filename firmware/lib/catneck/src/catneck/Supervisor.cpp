@@ -232,25 +232,35 @@ bool Supervisor::saveCalibration(uint8_t req, uint32_t nowMillis) {
 
 // ---- tick --------------------------------------------------------------------
 
+namespace {
+// since から ms 以上経ったか。入力（コマンド・切断）の時刻は loop() の millis()、tick の時刻はそれ以下に
+// なり得るので、差が「負」（上位ビットが立つ）のときは未経過として扱う。uint32 の折り返しで即経過と
+// 誤判定すると ACTIVE→RETURNING や RETURNING の期限が即座に発火する
+bool elapsedAtLeast(uint32_t nowMillis, uint32_t sinceMillis, uint32_t ms) {
+    const uint32_t diff = nowMillis - sinceMillis;
+    return diff < 0x80000000u && diff >= ms;
+}
+}  // namespace
+
 Outputs Supervisor::tick(uint32_t nowMillis) {
     switch (state_) {
         case SupervisorState::Boot:
-            if (nowMillis - bootMillis_ >= config::kBootMuteMs) {
+            if (elapsedAtLeast(nowMillis, bootMillis_, config::kBootMuteMs)) {
                 enterState(stopDuringBoot_ ? SupervisorState::Idle : SupervisorState::BootCenter, nowMillis);
             }
             break;
         case SupervisorState::BootCenter:
-            if (nowMillis - bootMillis_ >= config::kBootIdleMs) enterState(SupervisorState::Idle, nowMillis);
+            if (elapsedAtLeast(nowMillis, bootMillis_, config::kBootIdleMs)) enterState(SupervisorState::Idle, nowMillis);
             break;
         case SupervisorState::Idle:
             break;
         case SupervisorState::Active:
-            if (nowMillis - lastCommMillis_ >= config::kSilenceMs) enterState(SupervisorState::Returning, nowMillis);
+            if (elapsedAtLeast(nowMillis, lastCommMillis_, config::kSilenceMs)) enterState(SupervisorState::Returning, nowMillis);
             break;
         case SupervisorState::Returning:
             if (plannersAtRest()) {
                 enterState(SupervisorState::RelaxWait, nowMillis);
-            } else if (nowMillis - returnStartMillis_ >= config::kReturnDeadlineMs) {
+            } else if (elapsedAtLeast(nowMillis, returnStartMillis_, config::kReturnDeadlineMs)) {
                 // 期限: 上限内で止まれる位置で止めてそこを保持する
                 yaw_.planner.setTarget(yaw_.planner.brakingPoint());
                 pitch_.planner.setTarget(pitch_.planner.brakingPoint());
@@ -259,7 +269,7 @@ Outputs Supervisor::tick(uint32_t nowMillis) {
             }
             break;
         case SupervisorState::RelaxWait:
-            if (nowMillis - relaxStartMillis_ >= config::kRelaxMs) enterState(SupervisorState::Idle, nowMillis);
+            if (elapsedAtLeast(nowMillis, relaxStartMillis_, config::kRelaxMs)) enterState(SupervisorState::Idle, nowMillis);
             break;
     }
 

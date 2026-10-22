@@ -9,6 +9,7 @@ namespace catneck {
 namespace {
 constexpr double kTimeEpsilon = 1e-12;
 constexpr double kRestEpsilon = 1e-10;
+constexpr int kCruiseSearchIterations = 24;
 
 double direction(double value) { return value < 0.0 ? -1.0 : 1.0; }
 }  // namespace
@@ -116,6 +117,34 @@ Planner::Path Planner::throughVelocity(Motion start, double velocity, double coa
     return path;
 }
 
+// Cruise velocity v < limit_ for a move that cannot reach the cap.
+double Planner::cruiseVelocity(const Motion& start, double sign, double distance) const {
+    const double jerk = maxJerk();
+    if (std::fabs(start.vel) <= kRestEpsilon && std::fabs(start.acc) <= kRestEpsilon) {
+        // From rest the profile is closed-form: with A = 2V/T and J = 4V/T^2 the
+        // acceleration never reaches A below the cap (A^2/J = V), so each half is a
+        // triangular acceleration pulse covering v*sqrt(v/J); 2 v sqrt(v/J) = distance.
+        const double v = std::cbrt(jerk * distance * distance / 4.0);
+        if (std::sqrt(jerk * v) <= maxAcc()) return v;
+    }
+    // General initial state: the endpoint is monotonic in the cruise velocity. The
+    // low endpoint is the minimum stop; the high endpoint uses the velocity cap.
+    // 24 halvings leave V/2^24 (< 1e-5 deg/s): the landing is snapped to the target
+    // anyway, and each probe costs ~0.2 ms of soft-float on the ESP32-C3.
+    const double positiveAcc = std::max(0.0, sign * start.acc);
+    double low = positiveAcc > 0.0
+        ? std::max(0.0, sign * start.vel + positiveAcc * positiveAcc / (2.0 * jerk))
+        : 0.0;
+    double high = limit_;
+    for (int i = 0; i < kCruiseSearchIterations; ++i) {
+        const double middle = (low + high) / 2.0;
+        const Path candidate = throughVelocity(start, sign * middle);
+        if (sign * (candidate.end.pos - start.pos) < distance) low = middle;
+        else high = middle;
+    }
+    return (low + high) / 2.0;
+}
+
 Planner::Path Planner::movePath(Motion start, double target) const {
     Path stop;
     stop.end = start;
@@ -135,25 +164,19 @@ Planner::Path Planner::movePath(Motion start, double target) const {
     }
 
     const double distance = sign * (target - start.pos);
+    const bool atRest = std::fabs(start.vel) <= kRestEpsilon && std::fabs(start.acc) <= kRestEpsilon;
+    if (atRest && distance <= kRestEpsilon) {
+        // Already there: reset()/rescale() replan from rest at the target. No search.
+        Path path;
+        path.end = {target, 0.0, 0.0};
+        return path;
+    }
     Path path = throughVelocity(start, sign * limit_);
     const double fullDistance = sign * (path.end.pos - start.pos);
     if (fullDistance <= distance) {
         path = throughVelocity(start, sign * limit_, (distance - fullDistance) / limit_);
     } else {
-        // The endpoint is monotonic in the cruise velocity. The low endpoint
-        // is the minimum stop; the high endpoint uses the velocity cap.
-        const double positiveAcc = std::max(0.0, sign * start.acc);
-        double low = positiveAcc > 0.0
-            ? std::max(0.0, sign * start.vel + positiveAcc * positiveAcc / (2.0 * maxJerk()))
-            : 0.0;
-        double high = limit_;
-        for (int i = 0; i < 48; ++i) {
-            const double middle = (low + high) / 2.0;
-            const Path candidate = throughVelocity(start, sign * middle);
-            if (sign * (candidate.end.pos - start.pos) < distance) low = middle;
-            else high = middle;
-        }
-        path = throughVelocity(start, sign * ((low + high) / 2.0));
+        path = throughVelocity(start, sign * cruiseVelocity(start, sign, distance));
     }
     // The analytic trajectory ends at rest; only floating point roundoff is
     // corrected here, never a near-target velocity/acceleration truncation.

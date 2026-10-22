@@ -1,4 +1,5 @@
 // 入口。アダプタを組み立てて Supervisor に接続する（設計書 §4.2）。単一の loop() で 20 ms の tick を回す。
+// 20 ms に 1 tick（停滞時は捨てる）。時刻は入力も tick も同じ millis()。loop タスクは task watchdog に登録する。
 #include <Arduino.h>
 #include <esp_system.h>
 
@@ -63,7 +64,11 @@ void setup() {
     console = new Console(*supervisor, serialTransport, ble);
     console->setBootInfo(resetReasonName(reason), brownout, kPwmOff);
     console->setTickStats(&tickStats);
-    lastTickMillis = bootMillis;
+    // loop タスクを task watchdog に登録する（sdkconfig: 5 s、満了で panic → リセット）。NimBLE や NVS の
+    // 待ちで loop が止まると最後の PWM が出続けるので、リセットして BOOT（500 ms 無出力）からやり直す。
+    // Arduino core が loop() の呼び出しごとに esp_task_wdt_reset() を呼ぶ
+    enableLoopWDT();
+    lastTickMillis = millis();  // setup の所要時間（BLE 初期化など）を tick の溜まりとして数えない
     Serial.printf("CATNECK fw=%u.%u.%u proto=%u hw=E17 reset=%s brownout=%d%s\n", config::kFwMajor, config::kFwMinor,
                   config::kFwPatch, config::kProtocolVersion, resetReasonName(reason), brownout ? 1 : 0,
                   kPwmOff ? " pwm=off" : "");
@@ -73,19 +78,27 @@ void loop() {
     const uint32_t now = millis();
     console->poll(now);
     ble.poll(now);
-    while (now - lastTickMillis >= config::kTickMs) {
+    if (now - lastTickMillis >= config::kTickMs) {
         lastTickMillis += config::kTickMs;
+        if (now - lastTickMillis >= config::kTickMs) {
+            // 停滞（NVS 書き込みなど）で溜まった tick は捨てて位相だけ合わせる。まとめて実行すると複数
+            // tick 分の移動が 1 つの PWM 周期（20 ms）に押し込まれて段差になる。軌道は停滞ぶん遅れるだけ
+            tickStats.dropped += (now - lastTickMillis) / config::kTickMs;
+            lastTickMillis = now - (now - lastTickMillis) % config::kTickMs;
+        }
         const uint32_t started = micros();
-        const Outputs outputs = supervisor->tick(lastTickMillis);
+        // Supervisor には入力（poll）と同じ millis() を渡す。tick の名目時刻（≤ now）を渡すと、同じ
+        // iteration で受けた入力の時刻より遅れて経過時間が負になる
+        const Outputs outputs = supervisor->tick(now);
         servoDriver->apply(outputs);
         const Status status = supervisor->status();
-        console->onTick(status, lastTickMillis);
+        console->onTick(status, now);
         ble.setCharacteristicValues(status, supervisor->calibration(), supervisor->limits());
         // seq・フラグ・状態・save_seq が変わったら次の tick で即時通知、それ以外は 200 ms ごと
         const bool changed = status.pingSeq != lastStatus.pingSeq || status.flags != lastStatus.flags ||
                              status.state != lastStatus.state || status.saveSeq != lastStatus.saveSeq;
         lastStatus = status;
-        ble.publishStatus(status, changed, lastTickMillis);
+        ble.publishStatus(status, changed, now);
         tickStats.add(micros() - started);
     }
     delay(1);

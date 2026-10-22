@@ -53,6 +53,7 @@ private:
     void changeVelocity(Path& path, double velocity) const;
     Path stopPath() const;
     Path throughVelocity(Motion start, double velocity, double coast = 0.0) const;
+    double cruiseVelocity(const Motion& start, double sign, double distance) const;
     Path movePath(Motion start, double target) const;
     void replan();
     void publish();

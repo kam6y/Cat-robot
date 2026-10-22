@@ -53,12 +53,12 @@
 | `FOO` | `ERR UNKNOWN` |
 | `WATCH ON` / `WATCH OFF` | 200 ms ごとに STATUS 行（3 秒で 16 行）/ `OK` で停止 |
 | 動作要求（MOVE/GESTURE/CENTER/TORQUE/CAL） | **送っていない**（無人の約束。bring-up は出力なしだが HEX 経由でも送らない） |
-| tick 所要時間 | 静止時 平均 48〜107 µs、最大 17,087 µs（起動直後の 1 回と推定。Planner が動く状態での実測は Task 12 で `INFO` を読む） |
+| tick 所要時間 | 静止時 平均 48〜107 µs、最大 17,087 µs（起動直後の 1 回。原因は Planner の巡航速度探索と判明し最終レビュー後の修正で 312 µs。下記） |
 | `pio device monitor` の無リセット | **未実施** |
 
 ### 判断
 
-- `GAIN`（シリアル）は Supervisor の `setGain` を直接呼ぶため、設計書 §4.5 の「保守要求 = 通信扱い」のうちウォッチドッグの更新だけは行わない（`setGain` の署名に時刻がない）。校正手順は CENTER → GAIN の順で ACTIVE 中に送るので実害は小さい。Task 11 で記録
+- `GAIN`（シリアル）は当初 `setGain` を直接呼びウォッチドッグを更新しなかったが、codex の事後審査 [R6] を受けて 78ef551 で `setGain(…, nowMillis)` が保守要求（通信扱い）になった（`test_gain_and_save_follow_maintenance_rules` で固定）
 - 起動 500 ms 中のシリアルコマンドは `ERR BOOT` を返す（停止要求は記憶する）
 
 ## Task 9 BLE GATT サーバ（2026-10-23、利用者不在、`xiao_bringup` ビルド）
@@ -74,6 +74,21 @@
 | Mac からアドバタイズが見えること | **未実施**。`ble_client.py scan` はこのターミナルの Bluetooth 権限で止まり、`system_profiler SPBluetoothDataType` には未接続機器が出ない。利用者在席時に権限を許可して `scan` → `info` → `watch` を行う |
 | ペアリング・暗号化特性の Read/Notify・窓外の切断（R2） | **未実施** |
 
+## 最終レビュー後の修正（2026-10-23、利用者不在、`xiao_bringup` ビルド = サーボ出力なし）
+
+全ブランチの最終レビュー（Critical 1・Important 3）への修正と、その確認。動作要求は引き続き送っていない。
+
+| 修正 | 確認 |
+|---|---|
+| C1 時刻の折り返し: `loop()` は入力を `millis()` で、tick を名目時刻（≤ `millis()`）で処理していたため、同じ周回で届いた指令・切断の時刻が tick より進み、uint32 の引き算が折り返して ACTIVE→RETURNING と RETURNING の 2 秒期限が即座に発火しえた | ホストテスト 2 件を先に書いて失敗を確認（`test_command_timestamp_ahead_of_tick_keeps_active`: Expected 3 Was 4、`test_link_down_timestamp_ahead_of_tick_keeps_returning`: Expected 4 Was 5）→ `Supervisor::tick` の経過判定 5 箇所を「負の差は未経過」に統一して合格。`main.cpp` は入力と tick に同じ `millis()` を渡す |
+| I1 Planner の巡航速度探索のコスト（48 回の二分探索、double、FPU なし） | 旧コードのまま反復を 24 回にした隔離ビルドで起動直後の `tick_max_us` 17,087 → 11,100 µs（約 250 µs/反復・2 軸。起動直後の値は IDLE 入りの `reset` ×2 が距離 0 で探索していたもの）。最終版: 静止からの移動は閉形式 v = ∛(J·D²/4)、距離 0・静止は探索なし、一般の初期状態は 24 回 → 起動直後 **312 µs**。旧実装との軌道比較 150 シナリオ（静止 120・移動中 30）で tick 数が同一、位置差 0（float 精度）、速度差 ≤ 1.2e-14。動作中の値は Task 12 で読む |
+| tick の溜まり | 停滞（NVS 書き込みなど）で溜まった tick はまとめて実行せず捨てて位相だけ合わせる（まとめて実行すると複数 tick 分の移動が 1 つの PWM 周期に押し込まれて段差になる）。`INFO` に `tick_dropped` を追加（最終ビルドで 0） |
+| I2 loop タスクが task watchdog に未登録（NimBLE/NVS の待ちでハングすると最後の PWM が出続ける） | `enableLoopWDT()`（sdkconfig: 5 秒・panic → リセット）。隔離コピーに「起動 15 秒後に `for(;;) delay(1000)`」を仕込んで実機で確認: `PROBE hang` → 5.0 秒後 `task_wdt: … loopTask` → 再起動 → `CATNECK fw=0.1.0 proto=1 hw=E17 reset=TASK_WDT brownout=0 pwm=off`。通常の bring-up ビルドは 120 秒の連続捕捉で再起動なし |
+| `INFO`（最終ビルド） | `… saved=1 tick_max_us=312 tick_avg_us=114 tick_dropped=0`。`STATUS`・`PING`・`HEX 09 09` は従来どおり |
+| ホストテスト | 74 件合格（Supervisor 29、Planner 15 ほか） |
+
+I3（`test_return_deadline_2s` が期限分岐を通らない）は Minor に再格付けして保留: RETURNING は常に 90/60°/s に引き上げるので ±60°/±30° からでも 1 秒以内に中立へ着き、2 秒期限は C1 修正後は到達不能な安全網。
+
 ## 受入基準（設計書 §5）の状態
 
 | ID | 内容 | 状態 |
@@ -88,10 +103,11 @@
 | T-FW-7 | 再接続 ≤ 5 秒 | **未実施** |
 | T-FW-8 | シリアル同等性（HEX = BLE） | 一部実施: `HEX 09 07` が PING と同じ結果（bring-up）。定型動作は未実施 |
 | T-FW-9 | ペアリング・BONDS CLEAR・窓の挙動 | **未実施** |
-| T-FW-10 | ホストテスト `pio test -e native` 全件合格 | **合格**: 71 件（2026-10-23、Protocol 10・Axis 5・Planner 14・Gesture 7・Supervisor 27・SerialParser 7・Smoke 1） |
+| T-FW-10 | ホストテスト `pio test -e native` 全件合格 | **合格**: 74 件（2026-10-23、Protocol 10・Axis 5・Planner 15・Gesture 7・Supervisor 29・SerialParser 7・Smoke 1） |
 
 ## 未実施一覧（利用者在席時に行う）
 
 - `xiao_bringup`（PWM なし）の書き込みと起動行、`pio device monitor` の無リセット確認（Task 8）
 - BLE の scan / info / watch、macOS のペアリング、`CatRobot-XXXX` の実名（Task 9・10）
 - 動作要求を伴う確認すべて（move / gesture / demo / latency / cal save）と受入試験（Task 12）
+- 動作中の tick 所要時間: `latency` と `demo` の直後に `INFO` の `tick_max_us` と `tick_dropped` を読む（目安: 最大 5 ms 以下、dropped 0）
