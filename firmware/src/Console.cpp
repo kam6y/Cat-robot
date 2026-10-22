@@ -42,7 +42,7 @@ void Console::handleLine(const char* line, size_t len, uint32_t nowMillis) {
             handleCommand(parsed.command, nowMillis);
             break;
         case ParsedLine::Kind::Action:
-            handleAction(parsed);
+            handleAction(parsed, nowMillis);
             break;
         case ParsedLine::Kind::Error: {
             char out[48];
@@ -80,7 +80,7 @@ void Console::handleCommand(const Command& command, uint32_t nowMillis) {
     serial_.println("OK");
 }
 
-void Console::handleAction(const ParsedLine& parsed) {
+void Console::handleAction(const ParsedLine& parsed, uint32_t nowMillis) {
     switch (parsed.action) {
         case ConsoleAction::Status:
             printStatus();
@@ -109,7 +109,11 @@ void Console::handleAction(const ParsedLine& parsed) {
             serial_.println("OK");
             break;
         case ConsoleAction::Gain:
-            switch (supervisor_.setGain(parsed.gainYaw, parsed.gainPitch)) {
+            if (supervisor_.state() == SupervisorState::Boot) {
+                serial_.println("ERR BOOT");
+                break;
+            }
+            switch (supervisor_.setGain(parsed.gainYaw, parsed.gainPitch, nowMillis)) {
                 case GainResult::Saved:
                     serial_.println("OK");
                     break;

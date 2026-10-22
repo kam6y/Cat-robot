@@ -669,7 +669,7 @@ void test_gain_change_keeps_pulse() {
     sim.send(torqueCmd(true));
     sim.advance(100);
     assertState(sim, SupervisorState::Active);
-    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Saved), static_cast<int>(sim.sup.setGain(7.41f, 7.41f)));
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Saved), static_cast<int>(sim.sup.setGain(7.41f, 7.41f, sim.now)));
     sim.advance(20);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1500.0f, sim.out.yawPulseUs);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1500.0f, sim.out.pitchPulseUs);
@@ -687,15 +687,15 @@ void test_gain_rejected_while_moving_or_out_of_range() {
     sim.send(moveCmd(30, 0));
     sim.advance(100);
     float before = sim.out.yawPulseUs;
-    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(7.41f, 7.41f)));
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(7.41f, 7.41f, sim.now)));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 11.11f, sim.sup.calibrationSnapshot().yawGain);
     TEST_ASSERT_EQUAL(0, sim.storage.saveCount);
     sim.advance(20);
     TEST_ASSERT_TRUE(std::fabs(sim.out.yawPulseUs - before) <= config::kYawDefaultVel * kDt * kGain * 1.05f);
     TEST_ASSERT_TRUE(sim.settle());
-    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(5.0f, 5.0f)));  // 66.7° > 60°
-    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(4.9f, 11.11f)));
-    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(11.11f, 15.01f)));
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(5.0f, 5.0f, sim.now)));  // 66.7° > 60°
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(4.9f, 11.11f, sim.now)));
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(11.11f, 15.01f, sim.now)));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 11.11f, sim.sup.calibrationSnapshot().yawGain);
     TEST_ASSERT_FLOAT_WITHIN(0.5f, 1500.0f + 30.0f * kGain, sim.out.yawPulseUs);
 }
@@ -708,13 +708,91 @@ void test_gain_save_failure_keeps_ram_value_and_marks_dirty() {
     sim.send(torqueCmd(true));
     sim.advance(100);
     sim.storage.failSave = true;
-    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::SaveFailed), static_cast<int>(sim.sup.setGain(7.41f, 7.41f)));
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::SaveFailed), static_cast<int>(sim.sup.setGain(7.41f, 7.41f, sim.now)));
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 7.41f, sim.sup.calibrationSnapshot().yawGain);
     TEST_ASSERT_TRUE(sim.flag(StatusFlags::CalDirty));
     TEST_ASSERT_FALSE(sim.flag(StatusFlags::SaveError));
     TEST_ASSERT_EQUAL_UINT8(3, sim.st().saveSeq);
     sim.advance(20);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1500.0f, sim.out.yawPulseUs);
+}
+
+void test_gain_change_with_offset_moves_to_original_joint_target() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(setCalCmd(50, 0, 0));  // ヨーのオフセット +5°、ジョイント目標は 0°
+    TEST_ASSERT_TRUE(sim.settle());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 1500.0f + 5.0f * kGain, sim.out.yawPulseUs);
+    TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Saved), static_cast<int>(sim.sup.setGain(7.41f, 7.41f, sim.now)));
+    sim.advance(20);
+    TEST_ASSERT_FLOAT_WITHIN(0.5f, 1500.0f + 5.0f * kGain, sim.out.yawPulseUs);  // 直後の µs は変わらない
+    float prev = sim.out.yawPulseUs;
+    for (int i = 0; i < 60; ++i) {
+        sim.advance(20);
+        TEST_ASSERT_TRUE(std::fabs(sim.out.yawPulseUs - prev) <= config::kYawDefaultVel * kDt * kGain * 1.05f);
+        prev = sim.out.yawPulseUs;
+        if (sim.now % 1000 == 0) sim.send(pingCmd(1));
+    }
+    // 新ゲインのもとで元のジョイント目標 0°（= サーボ角 +5°）へ S 字で移る
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 1500.0f + 5.0f * 7.41f, sim.out.yawPulseUs);
+    TEST_ASSERT_EQUAL_INT16(0, sim.st().yawDeci);
+}
+
+void test_gain_and_save_follow_maintenance_rules() {
+    {
+        Sim sim;
+        sim.advance(100);  // BOOT 中は破棄（REJECTED にも通信にも数えない）
+        TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Rejected), static_cast<int>(sim.sup.setGain(7.41f, 7.41f, sim.now)));
+        TEST_ASSERT_FALSE(sim.sup.saveCalibration(3, sim.now));
+        TEST_ASSERT_EQUAL(0, sim.storage.saveCount);
+        TEST_ASSERT_FLOAT_WITHIN(0.001f, 11.11f, sim.sup.calibrationSnapshot().yawGain);
+        TEST_ASSERT_EQUAL_UINT8(0, sim.st().saveSeq);
+        TEST_ASSERT_EQUAL_UINT8(0, sim.st().rejectedCount);
+    }
+    {
+        Sim sim;
+        sim.bootToIdle();
+        sim.send(torqueCmd(true));  // 1500 ms に通信
+        sim.advance(2980);          // 4480 ms
+        TEST_ASSERT_EQUAL(static_cast<int>(GainResult::Saved), static_cast<int>(sim.sup.setGain(11.11f, 11.11f, sim.now)));
+        sim.advance(20);  // 4500 ms: GAIN が通信扱いなので ACTIVE のまま
+        assertState(sim, SupervisorState::Active);
+        TEST_ASSERT_TRUE(sim.sup.saveCalibration(4, sim.now));
+        TEST_ASSERT_EQUAL_UINT8(4, sim.st().saveSeq);
+        sim.advance(2980);  // 7480 ms
+        assertState(sim, SupervisorState::Active);
+        sim.advance(20);  // 7500 ms: 最後の通信（4500）から 3.0 s
+        assertState(sim, SupervisorState::Returning);
+        TEST_ASSERT_FALSE(sim.sup.saveCalibration(0, sim.now));  // req 0 は拒否
+        TEST_ASSERT_EQUAL_UINT8(1, sim.st().rejectedCount);
+        TEST_ASSERT_EQUAL_UINT8(4, sim.st().saveSeq);
+        assertState(sim, SupervisorState::Returning);  // 保守要求は復帰を解除しない
+    }
+}
+
+void test_gesture_speed_scales_hold_and_time() {
+    auto run = [](GestureId id, float amp, uint8_t speed) -> uint32_t {
+        Sim sim;
+        sim.bootToIdle();
+        sim.send(gestureCmd(id, amp, 1, speed));
+        const uint32_t start = sim.now;
+        while (sim.flag(StatusFlags::Gesture) && sim.now - start < 20000) {
+            sim.advance(20);
+            if (sim.now % 1000 == 0) sim.send(pingCmd(1));
+        }
+        TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+        return sim.now - start;
+    };
+    const uint32_t look100 = run(GestureId::LookUp, 15, 100);
+    const uint32_t look50 = run(GestureId::LookUp, 15, 50);
+    TEST_ASSERT_TRUE(look50 >= look100 + 2000 - 40);  // 保持 2.0 s が 4.0 s になる
+    const uint32_t nod100 = run(GestureId::Nod, 15, 100);
+    const uint32_t nod50 = run(GestureId::Nod, 15, 50);
+    TEST_ASSERT_TRUE(nod50 >= nod100 * 13 / 10);  // 移動は速度上限 50% で遅くなる（静止→静止なので 2 倍にはならない）
+    TEST_ASSERT_TRUE(nod50 <= nod100 * 5 / 2);
+    const uint32_t tilt100 = run(GestureId::TiltL, 15, 100);
+    const uint32_t tilt50 = run(GestureId::TiltL, 15, 50);
+    TEST_ASSERT_TRUE(tilt50 >= tilt100 + 1500 - 40);  // 保持 1.5 s が 3.0 s になる
 }
 
 void test_status_fields() {
@@ -801,6 +879,9 @@ int main(int, char**) {
     RUN_TEST(test_gain_change_keeps_pulse);
     RUN_TEST(test_gain_rejected_while_moving_or_out_of_range);
     RUN_TEST(test_gain_save_failure_keeps_ram_value_and_marks_dirty);
+    RUN_TEST(test_gain_change_with_offset_moves_to_original_joint_target);
+    RUN_TEST(test_gain_and_save_follow_maintenance_rules);
+    RUN_TEST(test_gesture_speed_scales_hold_and_time);
     RUN_TEST(test_status_fields);
     RUN_TEST(test_return_speed_switch_uses_transition_rule);
     return UNITY_END();

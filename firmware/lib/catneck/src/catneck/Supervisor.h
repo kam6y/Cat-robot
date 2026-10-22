@@ -66,8 +66,10 @@ public:
     void onRejected();
     void onLink(bool connected, uint32_t nowMillis);
     void setPairOpen(bool open);
-    GainResult setGain(float yawUsPerDeg, float pitchUsPerDeg);
-    bool saveCalibration(uint8_t req);
+    // シリアルの GAIN。保守要求（通信扱い、状態は変えない）。BOOT 中は破棄して Rejected
+    GainResult setGain(float yawUsPerDeg, float pitchUsPerDeg, uint32_t nowMillis);
+    // SAVE_CAL と同じ処理（シリアル SAVE 用、結果を返す）。req 0 は拒否、BOOT 中は破棄
+    bool saveCalibration(uint8_t req, uint32_t nowMillis);
     Outputs tick(uint32_t nowMillis);
 
     Status status() const;

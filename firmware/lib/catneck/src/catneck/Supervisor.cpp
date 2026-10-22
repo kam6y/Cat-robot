@@ -144,13 +144,7 @@ void Supervisor::onCommand(const Command& command, Source source, uint32_t nowMi
             return;
         }
         case CommandType::SaveCal:
-            if (command.saveCal.req == 0) {
-                onRejected();
-                return;
-            }
-            acceptMaintenanceRequest(nowMillis);
-            saveCalibration(command.saveCal.req);
-            noteAccepted(false);
+            saveCalibration(command.saveCal.req, nowMillis);
             return;
         case CommandType::SetLimits: {
             bool sat1 = false, sat2 = false;
@@ -190,9 +184,12 @@ void Supervisor::onLink(bool connected, uint32_t nowMillis) {
 
 void Supervisor::setPairOpen(bool open) { pairOpen_ = open; }
 
-GainResult Supervisor::setGain(float yawUsPerDeg, float pitchUsPerDeg) {
-    if (!gainInRange(yawUsPerDeg) || !gainInRange(pitchUsPerDeg)) return GainResult::Rejected;
-    if (!plannersAtRest() || phase_ != GesturePhase::None || hasPendingGesture_ || hasPendingMove_) {
+GainResult Supervisor::setGain(float yawUsPerDeg, float pitchUsPerDeg, uint32_t nowMillis) {
+    if (state_ == SupervisorState::Boot) return GainResult::Rejected;  // BOOT 中の要求は破棄
+    const bool inRange = gainInRange(yawUsPerDeg) && gainInRange(pitchUsPerDeg);
+    const bool atRest = plannersAtRest() && phase_ == GesturePhase::None && !hasPendingGesture_ && !hasPendingMove_;
+    if (!inRange || !atRest) {
+        onRejected();
         return GainResult::Rejected;
     }
     AxisUnit* units[2] = {&yaw_, &pitch_};
@@ -201,20 +198,31 @@ GainResult Supervisor::setGain(float yawUsPerDeg, float pitchUsPerDeg) {
     for (int i = 0; i < 2; ++i) {
         const float oldGain = units[i]->axis.calibration().gain;
         factors[i] = oldGain / gains[i];
+        // 再表現後の現在位置をジョイント角に戻した値が設定上限内であること
         const float servo = units[i]->planner.state().pos * factors[i];
         if (std::fabs(units[i]->axis.servoToJoint(servo)) > units[i]->axis.limits().maxAngle + 1e-4f) {
+            onRejected();
             return GainResult::Rejected;
         }
     }
+    acceptMaintenanceRequest(nowMillis);
+    noteAccepted(false);
     for (int i = 0; i < 2; ++i) {
-        units[i]->planner.rescale(factors[i]);
+        units[i]->planner.rescale(factors[i]);  // 出力 µs を保ったまま新ゲインの座標へ
         units[i]->axis.setGain(gains[i]);
-        units[i]->jointTarget = units[i]->axis.servoToJoint(units[i]->planner.state().pos);
     }
+    reapplyJointTargets();  // 元のジョイント目標を新ゲインで言い直し、S 字で移る
     return persist() ? GainResult::Saved : GainResult::SaveFailed;
 }
 
-bool Supervisor::saveCalibration(uint8_t req) {
+bool Supervisor::saveCalibration(uint8_t req, uint32_t nowMillis) {
+    if (state_ == SupervisorState::Boot) return false;  // BOOT 中の要求は破棄
+    if (req == 0) {
+        onRejected();
+        return false;
+    }
+    acceptMaintenanceRequest(nowMillis);
+    noteAccepted(false);
     const bool ok = persist();
     lastSaveOk_ = ok;
     saveError_ = !ok;
@@ -383,8 +391,10 @@ bool Supervisor::plannersAtRest() const {
 void Supervisor::buildGestureSteps(const GestureSpec& spec) {
     const uint8_t repeats = spec.repeats == 0 ? 1 : (spec.repeats > 3 ? 3 : spec.repeats);
     const float amp = spec.ampDeg;
-    constexpr uint32_t kTiltHoldTicks = 1500 / config::kTickMs;
-    constexpr uint32_t kLookHoldTicks = 2000 / config::kTickMs;
+    // speed は保持時間を 100/speed 倍に伸ばす（移動区間は Planner の速度上限を speed% に縮めて遅くする）
+    const uint32_t speed = clampSpeedPercent(spec.speedPercent);
+    const uint32_t kTiltHoldTicks = 1500 / config::kTickMs * 100 / speed;
+    const uint32_t kLookHoldTicks = 2000 / config::kTickMs * 100 / speed;
     stepCount_ = 0;
     auto push = [this](float yaw, float pitch, uint32_t hold) {
         if (stepCount_ < kMaxGestureSteps) steps_[stepCount_++] = {yaw, pitch, hold};

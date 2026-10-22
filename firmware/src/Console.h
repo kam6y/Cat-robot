@@ -35,7 +35,7 @@ public:
 private:
     void handleLine(const char* line, size_t len, uint32_t nowMillis);
     void handleCommand(const Command& command, uint32_t nowMillis);
-    void handleAction(const ParsedLine& parsed);
+    void handleAction(const ParsedLine& parsed, uint32_t nowMillis);
     void printStatus();
     void printInfo();
     void printHelp();
