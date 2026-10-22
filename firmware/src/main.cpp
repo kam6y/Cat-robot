@@ -6,6 +6,7 @@
 #include "Console.h"
 #include "catneck/Config.h"
 #include "catneck/Supervisor.h"
+#include "platform/BleTransport.h"
 #include "platform/NvsStorage.h"
 #include "platform/SerialTransport.h"
 #include "platform/ServoDriver.h"
@@ -13,13 +14,6 @@
 using namespace catneck;
 
 namespace {
-
-// BLE 層（Task 9）が入るまでの空実装
-struct NullBleHooks : BleHooks {
-    void clearBonds() override {}
-    void openPairWindow() override {}
-    void fillInfo(char* out, size_t cap) override { snprintf(out, cap, "ble=none"); }
-};
 
 const char* resetReasonName(esp_reset_reason_t reason) {
     switch (reason) {
@@ -41,12 +35,13 @@ const char* resetReasonName(esp_reset_reason_t reason) {
 
 NvsStorage storage;
 SerialTransport serialTransport;
-NullBleHooks bleHooks;
+BleTransport ble;
 TickStats tickStats;
 Supervisor* supervisor = nullptr;
 ServoDriver* servoDriver = nullptr;
 Console* console = nullptr;
 uint32_t lastTickMillis = 0;
+Status lastStatus{};
 
 #ifdef CATNECK_NO_PWM
 constexpr bool kPwmOff = true;
@@ -64,7 +59,8 @@ void setup() {
     storage.begin();
     supervisor = new Supervisor(storage, bootMillis, brownout);
     servoDriver = new ServoDriver();
-    console = new Console(*supervisor, serialTransport, bleHooks);
+    ble.begin(*supervisor, bootMillis);
+    console = new Console(*supervisor, serialTransport, ble);
     console->setBootInfo(resetReasonName(reason), brownout, kPwmOff);
     console->setTickStats(&tickStats);
     lastTickMillis = bootMillis;
@@ -76,12 +72,20 @@ void setup() {
 void loop() {
     const uint32_t now = millis();
     console->poll(now);
+    ble.poll(now);
     while (now - lastTickMillis >= config::kTickMs) {
         lastTickMillis += config::kTickMs;
         const uint32_t started = micros();
         const Outputs outputs = supervisor->tick(lastTickMillis);
         servoDriver->apply(outputs);
-        console->onTick(supervisor->status(), lastTickMillis);
+        const Status status = supervisor->status();
+        console->onTick(status, lastTickMillis);
+        ble.setCharacteristicValues(status, supervisor->calibration(), supervisor->limits());
+        // seq・フラグ・状態・save_seq が変わったら次の tick で即時通知、それ以外は 200 ms ごと
+        const bool changed = status.pingSeq != lastStatus.pingSeq || status.flags != lastStatus.flags ||
+                             status.state != lastStatus.state || status.saveSeq != lastStatus.saveSeq;
+        lastStatus = status;
+        ble.publishStatus(status, changed, lastTickMillis);
         tickStats.add(micros() - started);
     }
     delay(1);

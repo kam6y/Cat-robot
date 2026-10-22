@@ -61,6 +61,19 @@
 - `GAIN`（シリアル）は Supervisor の `setGain` を直接呼ぶため、設計書 §4.5 の「保守要求 = 通信扱い」のうちウォッチドッグの更新だけは行わない（`setGain` の署名に時刻がない）。校正手順は CENTER → GAIN の順で ACTIVE 中に送るので実害は小さい。Task 11 で記録
 - 起動 500 ms 中のシリアルコマンドは `ERR BOOT` を返す（停止要求は記憶する）
 
+## Task 9 BLE GATT サーバ（2026-10-23、利用者不在、`xiao_bringup` ビルド）
+
+| 確認 | 結果 |
+|---|---|
+| `pio run -e xiao` / `xiao_bringup`（NimBLE 込み） | SUCCESS。xiao: RAM 7.4%、Flash 59.7% |
+| 書き込みと起動行 | SUCCESS。`CATNECK fw=0.1.0 proto=1 hw=E17 reset=USB brownout=0 pwm=off`。NimBLE の起動でクラッシュ・再起動なし |
+| `INFO` | `addr=e0:72:a1:1d:5e:8e name=CatRobot-5E8E bonds=0 pair_open=1 dropped=0`。Bluetooth アドレスは設計書 §3.2 の見込み（ベース MAC +2）と一致、名前も一致（R3 解消） |
+| `STATUS` | flags 0x0200 = PAIR_OPEN（ボンド 0 なので常時受付） |
+| `PAIR OPEN` | `OK` |
+| NVS の保存値 | Task 8 で保存した既定値が再書き込み後も `saved=1`（アプリ領域の書き換えで NVS は消えない） |
+| Mac からアドバタイズが見えること | **未実施**。`ble_client.py scan` はこのターミナルの Bluetooth 権限で止まり、`system_profiler SPBluetoothDataType` には未接続機器が出ない。利用者在席時に権限を許可して `scan` → `info` → `watch` を行う |
+| ペアリング・暗号化特性の Read/Notify・窓外の切断（R2） | **未実施** |
+
 ## 未実施一覧（利用者在席時に行う）
 
 - `xiao_bringup`（PWM なし）の書き込みと起動行、`pio device monitor` の無リセット確認（Task 8）
