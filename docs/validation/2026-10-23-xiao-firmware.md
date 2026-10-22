@@ -74,6 +74,22 @@
 | Mac からアドバタイズが見えること | **未実施**。`ble_client.py scan` はこのターミナルの Bluetooth 権限で止まり、`system_profiler SPBluetoothDataType` には未接続機器が出ない。利用者在席時に権限を許可して `scan` → `info` → `watch` を行う |
 | ペアリング・暗号化特性の Read/Notify・窓外の切断（R2） | **未実施** |
 
+## 受入基準（設計書 §5）の状態
+
+| ID | 内容 | 状態 |
+|---|---|---|
+| T-FW-0 | 脱力の確認 | **未実施**（利用者在席） |
+| T-FW-1 | 起動（跳ねなし、起動行、1.5 秒で IDLE） | **未実施**。起動行は bring-up で確認済み。首の跳ねは通常ビルドで利用者在席時 |
+| T-FW-2 | 定型動作 `demo`（6 種 × 3 段階、nod large 1.0〜1.3 秒、BROWNOUT なし） | **未実施**。ホスト結合テストでは nod 15° が 1.30 秒 |
+| T-FW-3 | 安全復帰（3 秒無通信、切断、PING で解除されない、5 秒以内に脱力） | **未実施**。ホストテスト test_supervisor で規則は固定済み |
+| T-FW-4 | キャリブレーション（cal set → save → 再起動 → cal get） | **未実施**。NVS の保存・再書き込み後の保持は bring-up で確認済み |
+| T-FW-5 | 制限とゲイン（+5/+15/+30° の差分角、`GAIN`、±60°/±30° でリミットに当たらない） | **未実施** |
+| T-FW-6 | 遅延（MOVE → MOVING=1 の中央値 ≤ 300 ms） | **未実施** |
+| T-FW-7 | 再接続 ≤ 5 秒 | **未実施** |
+| T-FW-8 | シリアル同等性（HEX = BLE） | 一部実施: `HEX 09 07` が PING と同じ結果（bring-up）。定型動作は未実施 |
+| T-FW-9 | ペアリング・BONDS CLEAR・窓の挙動 | **未実施** |
+| T-FW-10 | ホストテスト `pio test -e native` 全件合格 | **合格**: 71 件（2026-10-23、Protocol 10・Axis 5・Planner 14・Gesture 7・Supervisor 27・SerialParser 7・Smoke 1） |
+
 ## 未実施一覧（利用者在席時に行う）
 
 - `xiao_bringup`（PWM なし）の書き込みと起動行、`pio device monitor` の無リセット確認（Task 8）

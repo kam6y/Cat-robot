@@ -25,6 +25,10 @@ Claude 構成の実機遅延は 2026-10-12 に簡易版（20 ターン、iPhone 
 
 生成・保存・読み上げが終わってから聞き取りを再開します。全文確定前に中断した返答は保存せず、確定後は音声が失敗・停止しても全文を保存します。通信、認証、要約による待ち時間は残ります。
 
+## ロボット側ファームウェア（`firmware/`）
+
+首（XIAO ESP32C3 + 2 軸サーボ）のファームウェアは `firmware/` にあり、iPhone アプリとは別にビルド・書き込みする（PlatformIO、Arduino-ESP32 3.3.12、NimBLE）。BLE のプロトコル版 1（要件 §7.5.2）、安全状態機械、ホスト単体テスト、Mac 用の試験ツール（`tools/ble_client.py`、`tools/serial_cli.py`）を含む。導入・書き込み・校正の手順は [firmware/README.md](firmware/README.md)、設計は [設計書](docs/superpowers/specs/2026-10-23-xiao-firmware-ble-design.md)、実測は [検証記録](docs/validation/2026-10-23-xiao-firmware.md)。
+
 ## 動作要件
 
 実機:
