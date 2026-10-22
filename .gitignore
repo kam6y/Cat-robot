@@ -7,3 +7,6 @@ xcuserdata/
 
 CatRobot/LocalAssets/
 __pycache__/
+
+# superpowers の計画ワークスペース（台帳・brief）
+.superpowers/
