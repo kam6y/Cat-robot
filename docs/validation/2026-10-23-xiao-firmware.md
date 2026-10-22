@@ -36,6 +36,31 @@
 - 通常の `xiao` ビルドでは再起動のたびに BOOT_CENTER が出るので、この対策は「書き込みやリセットのたびに首が暴れる」（設計書 §2 アンチゴール）の回避に直結する
 - `pio device monitor` も同じ経路なので `platformio.ini` に `monitor_dtr = 1` / `monitor_rts = 1` を入れた。`pio device monitor` でリセットされないことの実測は **未実施**（Task 8 の bring-up で確認する）
 
+## Task 8 実機アダプタとシリアル経路（2026-10-23、利用者不在、`xiao_bringup` ビルド = サーボ出力なし）
+
+| 確認 | 結果 |
+|---|---|
+| `pio run -e xiao` / `pio run -e xiao_bringup` | 両方 SUCCESS（xiao: RAM 4.2%、Flash 26.4%。bringup: Flash 25.4%）。警告は ESP32Servo ライブラリ内の未使用変数のみ |
+| `pio run -e xiao_bringup -t upload --upload-port /dev/cu.usbmodem101` | SUCCESS（184.93 kB、Hash verified）。旧 AC5 試験ファームを上書き |
+| 起動行（USB リセットで取得） | `CATNECK fw=0.1.0 proto=1 hw=E17 reset=USB brownout=0 pwm=off`（ROM の `rst:0x15 (USB_UART_CHIP_RESET)` の後） |
+| `INFO` | `INFO fw=0.1.0 proto=1 hw=E17 ble=none reset=USB brownout=0 pwm=off cal=0.0,0.0 inv=0,0 gain=11.11,11.11 saved=0 tick_max_us=17087 tick_avg_us=107` |
+| `STATUS` | `STATUS yaw=0.0 pitch=0.0 flags=0x0020 seq=0 state=2 err=0 save=0`（CAL_DIRTY = 保存値なし、state 2 = IDLE） |
+| `HELP` | 7 行の一覧 |
+| `PING 5` → `STATUS` | `OK` → `seq=5` |
+| `HEX 09 07` → `STATUS` | `OK` → `seq=7`（BLE と同じ復号器を通る経路の確認） |
+| `LIMITS 0 0 0 0` | `OK`（変更なし） |
+| `SAVE`（req 省略） | `OK seq=1` → `STATUS` の `save=1`、flags 0x0000（CAL_DIRTY が下りた）、`INFO` の `saved=1`。NVS への実書き込みと読み戻しが成立 |
+| `FOO` | `ERR UNKNOWN` |
+| `WATCH ON` / `WATCH OFF` | 200 ms ごとに STATUS 行（3 秒で 16 行）/ `OK` で停止 |
+| 動作要求（MOVE/GESTURE/CENTER/TORQUE/CAL） | **送っていない**（無人の約束。bring-up は出力なしだが HEX 経由でも送らない） |
+| tick 所要時間 | 静止時 平均 48〜107 µs、最大 17,087 µs（起動直後の 1 回と推定。Planner が動く状態での実測は Task 12 で `INFO` を読む） |
+| `pio device monitor` の無リセット | **未実施** |
+
+### 判断
+
+- `GAIN`（シリアル）は Supervisor の `setGain` を直接呼ぶため、設計書 §4.5 の「保守要求 = 通信扱い」のうちウォッチドッグの更新だけは行わない（`setGain` の署名に時刻がない）。校正手順は CENTER → GAIN の順で ACTIVE 中に送るので実害は小さい。Task 11 で記録
+- 起動 500 ms 中のシリアルコマンドは `ERR BOOT` を返す（停止要求は記憶する）
+
 ## 未実施一覧（利用者在席時に行う）
 
 - `xiao_bringup`（PWM なし）の書き込みと起動行、`pio device monitor` の無リセット確認（Task 8）
