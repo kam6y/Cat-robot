@@ -1,0 +1,10 @@
+{
+  "name": "catneck",
+  "version": "0.1.0",
+  "description": "Cat Robot neck firmware core (platform independent)",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "flags": ["-std=c++17"]
+  }
+}
