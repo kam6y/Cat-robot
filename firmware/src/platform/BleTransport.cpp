@@ -24,8 +24,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer*, NimBLEConnInfo& connInfo) override {
         if (g_transport) g_transport->onPeerConnected(connInfo);
     }
-    void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
-        if (g_transport) g_transport->onPeerDisconnected();
+    void onDisconnect(NimBLEServer*, NimBLEConnInfo& connInfo, int) override {
+        if (g_transport) g_transport->onPeerDisconnected(connInfo);
     }
     void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
         if (g_transport) g_transport->onPeerAuthenticated(connInfo);
@@ -54,7 +54,8 @@ WriteCallbacks g_limitsCallbacks(BleTransport::BleEvent::Kind::LimitsWrite);
 void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
     supervisor_ = &supervisor;
     g_transport = this;
-    windowUntilMillis_ = nowMillis + kPairWindowMs;  // 電源投入後 60 秒は新規ペアリングを受け付ける
+    windowOpen_ = true;  // 電源投入後 60 秒は新規ペアリングを受け付ける
+    windowStartMillis_ = nowMillis;
 
     NimBLEDevice::init("CatRobot");
     const NimBLEAddress address = NimBLEDevice::getAddress();
@@ -107,7 +108,8 @@ void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
 }
 
 bool BleTransport::pairOpen(uint32_t nowMillis) const {
-    return NimBLEDevice::getNumBonds() == 0 || static_cast<int32_t>(windowUntilMillis_ - nowMillis) > 0;
+    if (NimBLEDevice::getNumBonds() == 0) return true;
+    return windowOpen_ && (nowMillis - windowStartMillis_) < kPairWindowMs;
 }
 
 void BleTransport::pushEvent(BleEvent::Kind kind, const uint8_t* data, size_t len) {
@@ -139,27 +141,44 @@ bool BleTransport::popEvent(BleEvent& out) {
 }
 
 void BleTransport::onPeerConnected(NimBLEConnInfo& connInfo) {
+    const uint16_t handle = connInfo.getConnHandle();
+    if (acceptedHandle_ != 0xFFFF) {
+        server_->disconnect(handle);  // central は 1 台だけ
+        return;
+    }
     // 窓が閉じているときは、ボンド済みでない central を接続直後に切る（設計書 §4.6、R2）
     const bool known = NimBLEDevice::isBonded(connInfo.getIdAddress()) || NimBLEDevice::isBonded(connInfo.getAddress());
     if (!known && !pairOpen(millis())) {
-        server_->disconnect(connInfo.getConnHandle());
+        server_->disconnect(handle);
         return;
     }
-    server_->updateConnParams(connInfo.getConnHandle(), 12, 24, 0, 400);  // 15〜30 ms、監視 4 s
-    connected_ = true;
+    knownAtConnect_ = known;
+    acceptedHandle_ = handle;
+    server_->updateConnParams(handle, 12, 24, 0, 400);  // 15〜30 ms、監視 4 s
     pushEvent(BleEvent::Kind::LinkUp, nullptr, 0);
 }
 
-void BleTransport::onPeerDisconnected() {
-    if (connected_) {
-        connected_ = false;
+void BleTransport::onPeerDisconnected(NimBLEConnInfo& connInfo) {
+    if (connInfo.getConnHandle() == acceptedHandle_) {
+        acceptedHandle_ = 0xFFFF;
         pushEvent(BleEvent::Kind::LinkDown, nullptr, 0);
+        NimBLEDevice::startAdvertising();
+    } else if (acceptedHandle_ == 0xFFFF) {
+        NimBLEDevice::startAdvertising();  // 拒否した相手の切断。受け入れ中の相手がいなければ再開
     }
-    NimBLEDevice::startAdvertising();
 }
 
 void BleTransport::onPeerAuthenticated(NimBLEConnInfo& connInfo) {
-    if (!connInfo.isEncrypted()) server_->disconnect(connInfo.getConnHandle());  // ペアリング失敗
+    if (connInfo.getConnHandle() != acceptedHandle_) return;
+    if (!connInfo.isEncrypted()) {
+        server_->disconnect(connInfo.getConnHandle());  // ペアリング失敗
+        return;
+    }
+    if (!knownAtConnect_ && !pairOpen(millis())) {
+        // 接続中に窓が閉じた場合: 新しいボンドは残さず切る
+        NimBLEDevice::deleteBond(connInfo.getIdAddress());
+        server_->disconnect(connInfo.getConnHandle());
+    }
 }
 
 void BleTransport::handleEvent(const BleEvent& event, uint32_t nowMillis) {
@@ -205,6 +224,7 @@ void BleTransport::handleEvent(const BleEvent& event, uint32_t nowMillis) {
 void BleTransport::poll(uint32_t nowMillis) {
     BleEvent event;
     while (popEvent(event)) handleEvent(event, nowMillis);
+    if (windowOpen_ && (nowMillis - windowStartMillis_) >= kPairWindowMs) windowOpen_ = false;  // 期限で閉じる
     supervisor_->setPairOpen(pairOpen(nowMillis));
 }
 
@@ -221,7 +241,7 @@ void BleTransport::setCharacteristicValues(const Status& status, const Calibrati
 }
 
 void BleTransport::publishStatus(const Status& status, bool changed, uint32_t nowMillis) {
-    if (!connected_) return;
+    if (acceptedHandle_ == 0xFFFF) return;
     if (!changed && nowMillis - lastNotifyMillis_ < config::kStatusPeriodMs) return;
     lastNotifyMillis_ = nowMillis;
     encodeStatus(status, lastStatus_);
@@ -230,7 +250,10 @@ void BleTransport::publishStatus(const Status& status, bool changed, uint32_t no
 
 void BleTransport::clearBonds() { NimBLEDevice::deleteAllBonds(); }
 
-void BleTransport::openPairWindow() { windowUntilMillis_ = millis() + kPairWindowMs; }
+void BleTransport::openPairWindow() {
+    windowOpen_ = true;
+    windowStartMillis_ = millis();
+}
 
 void BleTransport::fillInfo(char* out, size_t cap) {
     std::snprintf(out, cap, "addr=%s name=%s bonds=%d pair_open=%d dropped=%lu", address_, name_,

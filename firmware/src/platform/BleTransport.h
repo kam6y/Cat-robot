@@ -39,7 +39,7 @@ public:
     // NimBLE のタスクから呼ばれる（コールバック用。外からは使わない）
     void pushEvent(BleEvent::Kind kind, const uint8_t* data, size_t len);
     void onPeerConnected(NimBLEConnInfo& connInfo);
-    void onPeerDisconnected();
+    void onPeerDisconnected(NimBLEConnInfo& connInfo);
     void onPeerAuthenticated(NimBLEConnInfo& connInfo);
 
 private:
@@ -65,8 +65,12 @@ private:
     volatile uint32_t dropped_ = 0;
     portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
 
-    uint32_t windowUntilMillis_ = 0;
-    volatile bool connected_ = false;
+    // ペアリング窓は「開いているか」と開始時刻で持つ（millis の折り返しで勝手に再び開かないように）
+    bool windowOpen_ = false;
+    uint32_t windowStartMillis_ = 0;
+    // 受け入れた central は 1 台だけ。その接続ハンドルと、接続時点でボンド済みだったか
+    volatile uint16_t acceptedHandle_ = 0xFFFF;
+    volatile bool knownAtConnect_ = false;
     uint32_t lastNotifyMillis_ = 0;
     uint8_t lastStatus_[kStatusSize] = {};
 };
