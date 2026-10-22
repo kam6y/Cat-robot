@@ -129,7 +129,7 @@ double Planner::cruiseVelocity(const Motion& start, double sign, double distance
     }
     // General initial state: the endpoint is monotonic in the cruise velocity. The
     // low endpoint is the minimum stop; the high endpoint uses the velocity cap.
-    // 24 halvings leave V/2^24 (< 1e-5 deg/s): the landing is snapped to the target
+    // 24 halvings leave V/2^24 (about 1.1e-5 deg/s at V = 180): the landing is snapped to the target
     // anyway, and each probe costs ~0.2 ms of soft-float on the ESP32-C3.
     const double positiveAcc = std::max(0.0, sign * start.acc);
     double low = positiveAcc > 0.0
