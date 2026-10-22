@@ -22,7 +22,7 @@
 - 時間定数: BOOT 500 ms、電源投入から 1.5 秒で IDLE、無通信 3.0 秒、安全復帰速度 ヨー 90°/s・ピッチ 60°/s、復帰期限 2.0 秒、RELAX_WAIT 2.0 秒、Status 通知 200 ms（§4.5、§4.6）
 - プロトコル版 1、ファームウェア版 0.1.0、ハード ID 1、サービス UUID `C47B0000-6D1F-4B9E-9C9A-2A3B4C5D6E7F`、Status 12 B / Calibration 6 B / Limits 8 B / Info 8 B、コマンド長 MOVE 6 / GESTURE 5 / STOP 1 / CENTER 2 / TORQUE 2 / SET_CAL 6 / SAVE_CAL 2 / SET_LIMITS 9 / PING 2、リトルエンディアン（§4.6）
 - 文書・README・検証記録・コミット本文は日本語、識別子は英語。コミット件名は既存どおり `feat:` / `test:` / `docs:` 形式。鍵・`CatRobot/LocalAssets` には触れない。実測していないことを「確認済み」と書かない（§3.4）
-- 首を動かす実機試験（T-FW-0/2/3/5）は利用者在席時のみ。無人で行うのは書き込み・シリアル・BLE の通信確認まで（19 V 無しでも可）
+- 首を動かす可能性のある実機作業はすべて利用者在席時のみ（通常ファームの書き込み・起動を含む。起動 500 ms 後の BOOT_CENTER で首が動きうる）。利用者不在で行えるのは、サーボ出力を無効にした `xiao_bringup` ビルド（`-DCATNECK_NO_PWM`）による書き込み・シリアル・BLE の通信確認だけ。動作要求（MOVE/GESTURE/CENTER/TORQUE 1/SET_CAL）は無人では送らない（HEX 経路も同じ）
 
 ## Review Focus
 
@@ -160,7 +160,7 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
   - `test_decode_unknown_type`: `{0x0A}` → `UnknownType`
   - `test_decode_torque_and_set_limits`: TORQUE 2 → `BadTorqueValue`。SET_LIMITS の yawAngDeci −1 → `NegativeAngleLimit`。0 欄はそのまま 0 で ok
   - `test_decode_save_cal_req`: `{0x07, 9}` → req 9。`{0x07, 0}` → `BadSaveReq`。`{0x07}` → `BadLength`
-  - `test_encode_status_layout`: Status{yaw −123, pitch 45, flags Link|Torque|SaveError, seq 7, state Active, voltage 0, rejected 3, saveSeq 250} → 12 B が `7B FF 2D 00 03 04 07 03 00 00 03 FA`
+  - `test_encode_status_layout`: Status{yaw −123, pitch 45, flags Link|Torque|SaveError, seq 7, state Active, voltage 0, rejected 3, saveSeq 250} → 12 B が `85 FF 2D 00 03 04 07 03 00 00 03 FA`（−123 = 0xFF85）
   - `test_encode_calibration_limits_info`: 各固定長と LE 配置。Info は `01 00 01 00 01 00 00 00`
   - `test_decode_calibration_and_limits_write`: 6 B / 8 B のみ受理
 
@@ -211,18 +211,21 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
 - Produces:
   - `struct PlannerState { float pos; float vel; float acc; }`
   - `class Planner { public: explicit Planner(float dtSeconds = 0.02f); void reset(float pos); void setTarget(float pos); void setMaxVel(float v); float maxVel() const; float maxAcc() const; float maxJerk() const; void rescale(float factor); const PlannerState& step(); const PlannerState& state() const; float target() const; bool atTarget() const; float brakingPoint() const; }`
-  - 意味: `maxAcc = 2*maxVel/kAccelTime`、`maxJerk = 4*maxVel/kAccelTime²`。`step()` は 1 tick 進める。`atTarget` は |pos−target| ≤ 0.1 かつ |vel| ≤ 0.5°/s。`brakingPoint` は今から加速度・加加速度の上限内で減速して止まれる位置。`rescale(f)` は pos と target を f 倍（GAIN 変更時。静止時のみ呼ばれる）。`setMaxVel` の引き下げは旧 maxAcc/maxJerk を保ったまま減速し、|vel| ≤ 新上限 かつ acc = 0 で新値へ切り替える（設計書 §4.3 の移行規則。T_tr = (V_old − V_new)/a_old + 3·a_old/j_old）。引き上げは即時。Planner は速度 + acc²/(2·maxJerk) ≤ maxVel を常に保つ
+  - 意味: `maxAcc = 2*maxVel/kAccelTime`、`maxJerk = 4*maxVel/kAccelTime²`。`step()` は 1 tick 進める。`atTarget` は着地後にのみ true。着地 = |pos−target| ≤ 0.1 かつ |vel| ≤ 0.5°/s になった tick で pos = target、vel = 0、acc = 0 にそろえる（補正量はこの範囲内）。着地後は目標が変わるまで状態不変。`brakingPoint` は今から加速度・加加速度の上限内で減速して止まれる位置。`rescale(f)` は pos と target を f 倍（GAIN 変更時。静止時のみ呼ばれる）。`setMaxVel` の引き下げは旧 maxAcc/maxJerk を保ったまま減速し、|vel| ≤ 新上限 かつ acc = 0 で新値へ切り替える（設計書 §4.3 の移行規則。T_tr = (V_old − V_new)/a_old + 3·a_old/j_old）。引き上げは即時。Planner は速度 + acc²/(2·maxJerk) ≤ maxVel を常に保つ
 
 - [ ] **Step 1: テストを書く**（各テストは 20 ms 刻みのシミュレーションで、毎 tick の差分から速度・加速度・加加速度を数値微分して検査する。許容誤差は速度 0.5°/s、加速度 5°/s²、加加速度 5%）
   - `test_rest_to_max_vel_takes_0_2_to_0_3_s`: maxVel 100、目標 +1000 → |vel| が 99 に達する時刻が 0.20〜0.30 s
   - `test_bounds_hold_every_tick`: 目標 +25（pitch 相当）で全 tick |vel| ≤ 100、|acc| ≤ 1000、|jerk| ≤ 10000×1.05
   - `test_no_overshoot_and_arrival`: 目標 30 から 0 へ。pos が 0 を下回らず、`atTarget` が 1.0 s 以内に true（maxVel 100）
+  - `test_landing_is_exact_rest`: `atTarget` になった tick で pos == target、vel == 0、acc == 0。その後 50 tick で状態が不変
   - `test_60deg_within_1s_at_default_yaw_vel`: maxVel 120、0 → 60 が 1.0 s 以内に `atTarget`
   - `test_retarget_keeps_continuity`: 移動中に目標を反転させても連続 2 tick の vel 差 ≤ maxAcc·dt·1.05、acc 差 ≤ maxJerk·dt·1.05
   - `test_random_retargets_stay_within_limits`: 乱数（固定シード）で毎 tick 目標を [−30, 30] から選び 20 秒間。全 tick |pos| ≤ 30.0 + 0.05、かつ最後に目標を固定して 2 秒以内に `atTarget`
   - `test_braking_point_never_grows_on_retarget`: 移動中に手前へ差し替えたとき `brakingPoint()` が差し替え前以下（進行方向で）
   - `test_lowering_max_vel_decelerates_within_transition`: vel 100 で巡航中に `setMaxVel(5)`。移行中は |vel| ≤ 100、T_tr = (100−5)/1000 + 3·1000/10000 = 0.395 s 経過後は |vel| ≤ 5.5
   - `test_lowering_max_vel_at_peak_accel_keeps_old_bound`: 静止から目標 +1000 で加速中、acc が最大（≈1000）の tick で `setMaxVel(5)` → 以後の全 tick |vel| ≤ 100.5、T_tr 後 ≤ 5.5（旧 j_max で減速する契約）
+  - `test_lowering_max_vel_at_peak_accel_negative_direction`: 上の鏡映。目標 −1000 で acc ≈ −1000 の tick に `setMaxVel(5)` → 全 tick vel ≥ −100.5、T_tr 後 |vel| ≤ 5.5
+  - `test_velocity_invariant_both_signs_every_tick`: 乱数差し替え中の全 tick で v + max(a,0)²/(2j) ≤ V かつ v − max(−a,0)²/(2j) ≥ −V
   - `test_random_retargets_respect_absolute_limit_not_configured`: 目標を ±30 で振っている最中に `setMaxAngle` 相当（Task 6 で Axis が担う）は Planner の責務外。ここでは |pos| ≤ 30.0 + 0.05 を絶対上限として検査する
   - `test_rescale_keeps_output_pulse`: pos 30、gain 相当 f = 7.41/11.11 で `rescale(f)` 後 pos·(11.11/7.41) が 30（出力 µs 不変を Axis と組み合わせて確認するのは Task 6）
 
@@ -245,12 +248,13 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
   - `struct GestureSpec { GestureId id; float ampDeg; uint8_t repeats; uint8_t speedPercent; }`（repeats は 1〜3 に、speed 0 は 100 に正規化して使う）
   - `struct JointTargets { float yaw; float pitch; }`
   - `class GesturePlayer { public: void start(const GestureSpec&, const AxisLimits& yaw, const AxisLimits& pitch, float dtSeconds = 0.02f); bool active() const; JointTargets step(); float totalSeconds() const; float stretch() const; static float baseCycleSeconds(GestureId); }`
-  - 波形: nod `pitch = −amp·sin(2πt/T)`（T = 1.0 s）、shake `yaw = +amp·sin(2πt/T)`（T = 1.0 s）、tilt は yaw ±amp・pitch −amp/2 を 0.4 s の半コサインで寄せ、1.5 s 保持、0.4 s で戻す、look は pitch ±amp を 1.0 s で移動、2.0 s 保持、1.0 s で戻す。基準時間は speed% で 100/speed 倍。`stretch` = max(1, vpeak/maxVel, sqrt(apeak/maxAcc))（maxAcc = 2·maxVel/0.2）を各軸で求めた最大値
+  - 波形: 設計書 §4.4 の契約（始端・終端で位置 0・速度 0・加速度 0、極値 ±amp、C²。関数形は作り手が選ぶ。例: nod/shake は窓つき正弦 `A·sin(2πt/T)·sin²(πt/T)` を極値が ±amp になるよう正規化、tilt/look の移動区間は 5 次多項式 `6u⁵−15u⁴+10u³`）。nod は pitch で −amp が先（T = 1.0 s）、shake は yaw で +amp が先（T = 1.0 s）、tilt は yaw ±amp・pitch −amp/2 を 0.4 s で寄せ 1.5 s 保持 0.4 s で戻す、look は pitch ±amp を 1.0 s で移動 2.0 s 保持 1.0 s で戻す。基準時間は speed% で 100/speed 倍。`stretch` = max(1, vpeak/maxVel, √(apeak/maxAcc), ∛(jpeak/maxJerk))（maxAcc = 2·maxVel/0.2、maxJerk = 4·maxVel/0.04）を各軸の波形の数値微分から求めた最大値
 
 - [ ] **Step 1: テストを書く**
   - `test_base_cycles`: Nod/Shake 1.0、TiltL 2.3、LookUp 4.0
-  - `test_nod_waveform_shape`: amp 15、limits 十分大 → t=0.25 で pitch −15±0.1、t=0.75 で +15±0.1、t=1.0 で 0±0.1、yaw 常に 0
-  - `test_stretch_when_limits_exceeded`: amp 15、pitch maxVel 50 → `stretch()` ≥ 15·2π/50 = 1.885、`totalSeconds()` = 1.0·stretch、全 tick の数値微分速度 ≤ 50·1.02
+  - `test_nod_waveform_shape`: amp 15、limits 十分大 → 最小値 −15±0.15 が先に、最大値 +15±0.15 が後に現れ、t=1.0 で 0±0.1、yaw 常に 0
+  - `test_waveform_starts_and_ends_at_rest`: 6 種すべてで最初の 2 tick と最後の 2 tick の数値微分速度 ≤ 1°/s、加速度 ≤ 50°/s²（始端・終端で静止）
+  - `test_stretch_when_limits_exceeded`: amp 15、pitch maxVel 50 → `stretch()` > 1、`totalSeconds()` = 1.0·stretch、全 tick の数値微分の速度 ≤ 50·1.02、加速度 ≤ 500·1.05、加加速度 ≤ 5000·1.1
   - `test_repeats_and_speed`: repeats 2、speed 50 → total 4.0 s（stretch 1 のとき）
   - `test_tilt_uses_both_axes`: TiltR amp 12 → 保持中 yaw −12、pitch −6
 
@@ -274,8 +278,10 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
   - `class Storage { public: virtual ~Storage() = default; virtual bool save(const CalBlob&) = 0; virtual bool load(CalBlob&) = 0; }`
   - `enum class Source : uint8_t { Ble, Serial }`
   - `struct Outputs { bool pwmEnabled; float yawPulseUs; float pitchPulseUs; }`
-  - `class Supervisor { public: Supervisor(Storage&, uint32_t bootMillis, bool brownout); void onCommand(const Command&, Source, uint32_t nowMillis); void onRejected(); void onLink(bool connected, uint32_t nowMillis); void setPairOpen(bool); bool setGain(float yawUsPerDeg, float pitchUsPerDeg); bool saveCalibration(uint8_t req); Outputs tick(uint32_t nowMillis); Status status() const; CalibrationData calibration() const; LimitsData limits() const; SupervisorState state() const; bool lastSaveOk() const; }`
-  - 規則は設計書 §4.5 の表と §4.4 の競合規則、§4.6 の各コマンドの動作、§4.3 の 3 tick ずらし（両軸が同時に静止から動き出す tick ではピッチの目標更新を 3 tick 遅らせる）。`setGain` は両軸が静止し、再表現後のジョイント角が設定上限内のときだけ受理（false なら不変）。受理時は Planner を `rescale(oldGain/newGain)` してから新ゲインを使い、保存まで行う。`saveCalibration(req)` は SAVE_CAL と同じ処理（シリアル `SAVE` 用、結果を返す）。`saveSeq` は SAVE_CAL/`saveCalibration` の処理ごとに req へ更新
+  - `class Supervisor { public: Supervisor(Storage&, uint32_t bootMillis, bool brownout); void onCommand(const Command&, Source, uint32_t nowMillis); void onRejected(); void onLink(bool connected, uint32_t nowMillis); void setPairOpen(bool); GainResult setGain(float yawUsPerDeg, float pitchUsPerDeg); bool saveCalibration(uint8_t req); Outputs tick(uint32_t nowMillis); Status status() const; CalibrationData calibration() const; CalibrationSnapshot calibrationSnapshot() const; LimitsData limits() const; SupervisorState state() const; bool lastSaveOk() const; }`
+  - `enum class GainResult : uint8_t { Saved, Rejected, SaveFailed }`（Rejected = 範囲外・非静止・再表現後に設定上限外。不変。SaveFailed = RAM には適用済みだが NVS 保存に失敗。CAL_DIRTY 1。SAVE_ERROR/`save_seq` は変えない）
+  - `struct CalibrationSnapshot { float yawOffset; float pitchOffset; bool yawInvert; bool pitchInvert; float yawGain; float pitchGain; bool saved; }`（テストとシリアル `INFO` 用。BLE の 6 B 契約は `calibration()` のまま）
+  - 規則は設計書 §4.5 の表と §4.4 の競合規則、§4.6 の各コマンドの動作、§4.3 の 3 tick ずらし（両軸が同時に静止から動き出す tick ではピッチの目標更新を 3 tick 遅らせる）。`setGain` は両軸が静止し、再表現後のジョイント角が設定上限内のときだけ受理（Rejected なら不変）。受理時は Planner を `rescale(oldGain/newGain)` してから新ゲインを使い、保存まで行う（失敗は SaveFailed、RAM 側は適用済み）。`saveCalibration(req)` は SAVE_CAL と同じ処理（シリアル `SAVE` 用、結果を返す）。`saveSeq` は SAVE_CAL/`saveCalibration` の処理ごとに req へ更新
 
 - [ ] **Step 1: テストを書く**（`FakeStorage : Storage` に `failSave`／`corrupt` フラグ。仮想時計は `uint32_t now` を手で進め、`tick(now)` を 20 ms ごとに呼ぶヘルパ `advance(ms)`）
   - `test_boot_mute_then_center_then_idle`: 0〜480 ms は `pwmEnabled == false`、500 ms で true かつ両軸 1500 µs、1500 ms で IDLE（false）
@@ -288,13 +294,18 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
   - `test_stop_is_highest_priority`: RETURNING 中の STOP → 即 IDLE、pwmEnabled false
   - `test_rejected_input_does_not_feed_watchdog`: ACTIVE で `onRejected()` だけを 3 s 続けても RETURNING へ
   - `test_gesture_queue_rules`: GESTURE 中の MOVE は完了後に適用、GESTURE 中の GESTURE は保留 1 件（新しい方が残る）
+  - `test_maintenance_requests_do_not_cancel_return`: RETURNING 中と RELAX_WAIT 中のそれぞれで SAVE_CAL(req)・SET_LIMITS・PING を送っても状態が変わらず IDLE まで到達
+  - `test_torque_off_discards_playing_and_pending`: GESTURE 再生中に GESTURE と MOVE を保留させてから TORQUE 0 → IDLE、Gesture フラグ 0、その後 PING だけでは動かない
+  - `test_set_limits_during_gesture_follows_transition_rule`: shake large 再生中に SET_LIMITS で yaw 速度上限を 120 → 20 に下げる → 以後の全 tick |yaw 速度| ≤ 120.5、T_tr 後 ≤ 20.5、上限内で再生が終わる
+  - `test_nod_large_through_planner_meets_timing`: 既定上限で GESTURE nod amp 15 repeats 1 speed 100 → ピッチ出力（ジョイント角換算）の最小値 ≤ −13.5、最大値 ≥ +13.5、開始から静止まで 1.0〜1.3 s、全 tick で速度・加速度・加加速度が上限内、終端で静止
   - `test_set_cal_from_idle_starts_output_smoothly`: IDLE で SET_CAL(50, 0, 0) → ACTIVE、出力 µs が tick ごとに連続（1 tick の差 ≤ maxVel·dt·gain·1.05）、CalDirty 1
   - `test_save_success_clears_dirty`: SAVE_CAL(req 5) → `lastSaveOk`、CalDirty 0、`saveSeq` 5、FakeStorage の blob の CRC が `calBlobCrc` と一致。同じ req 5 の再送で結果が同じ（保存値が同一なら FakeStorage の save 回数が増えない）。req 0 は `onRejected` 経路（`rejectedCount` +1）
-  - `test_save_failure_sets_save_error_and_sets_save_seq`: failSave で SAVE_CAL(req 6) → SaveError 1、CalDirty 1、`saveSeq` 6。failSave を解いて SAVE_CAL(req 7) → SaveError 0、`saveSeq` 7
+  - `test_save_failure_sets_save_error_and_sets_save_seq`: failSave で SAVE_CAL(req 6) → SaveError 1、CalDirty 1、`saveSeq` 6。続けて SET_CAL を送っても SaveError 1・`saveSeq` 6 のまま。failSave を解いて SAVE_CAL(req 7) → SaveError 0、`saveSeq` 7
   - `test_corrupt_blob_falls_back_to_defaults`: corrupt → 起動後 offset 0、gain 11.11、CalDirty 1
   - `test_set_limits_rules_and_mid_motion`: 0 欄は変更なし、下限飽和で Saturated、yaw 50° 静止中に角度上限を 10° に下げると目標が 10° に再飽和され出力は連続（S 字）で 10° 相当へ収束、その間も |位置| ≤ 60°
-  - `test_gain_change_keeps_pulse`: ACTIVE で中立（0°）静止中に `setGain(7.41, 7.41)` → true、直後の tick の出力 µs が変更前と等しく（1500）、その後 yaw 30° を指令すると新ゲインで 1722 µs へ
-  - `test_gain_rejected_while_moving_or_out_of_range`: 移動中の `setGain` → false で出力 µs と `calibration().gain` 不変。yaw 30° 静止中に `setGain(5.0, 5.0)`（再表現後 66.7° > 60°）→ false。`setGain(4.9, 11.11)` → false
+  - `test_gain_change_keeps_pulse`: ACTIVE で中立（0°）静止中に `setGain(7.41, 7.41)` → Saved、直後の tick の出力 µs が変更前と等しく（1500）、その後 yaw 30° を指令すると新ゲインで 1722 µs へ
+  - `test_gain_rejected_while_moving_or_out_of_range`: 移動中の `setGain` → Rejected で出力 µs と `calibrationSnapshot().yawGain` 不変。yaw 30° 静止中に `setGain(5.0, 5.0)`（再表現後 66.7° > 60°）→ Rejected。`setGain(4.9, 11.11)` → Rejected
+  - `test_gain_save_failure_keeps_ram_value_and_marks_dirty`: failSave で中立静止中に `setGain(7.41, 7.41)` → SaveFailed、`calibrationSnapshot().yawGain` 7.41、CalDirty 1、SaveError と `saveSeq` 不変
   - `test_status_fields`: brownout 起動で Brownout 1、PING seq 反映、`rejectedCount` が 255 で止まる、`voltageCenti` 0、state 値、起動直後の `saveSeq` 0
   - `test_return_speed_switch_uses_transition_rule`: yaw 120°/s で移動中に切断 → RETURNING で速度が 90°/s へ旧 j_max で減速し、移行中も 120 を超えない
 
@@ -348,12 +359,14 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
   - `class ServoDriver { public: ServoDriver(int yawPin = 3, int pitchPin = 5); void apply(const Outputs&); bool attached() const; }`（`pwmEnabled` が false → `detach()`、true → 未接続なら `attach(pin, 500, 2500)` と `setPeriodHertz(50)` のうえ `writeMicroseconds`）
   - `class NvsStorage : public Storage`（Preferences 名前空間 `"catneck"`、キー `"cal"`、`putBytes`/`getBytes`、`save` は書き込み後に読み戻して一致で true）
   - `class SerialTransport { public: bool readLine(char* buf, size_t cap, size_t& len); void println(const char*); }`（LF 区切り、cap 超過は捨てて `ERR BAD_ARGS`）
-  - `class Console { public: Console(Supervisor&, SerialTransport&, BleHooks&); void poll(uint32_t now); void onTick(const Status&, uint32_t now); }`（`BleHooks` は Task 9 が実装する `struct BleHooks { virtual void clearBonds() = 0; virtual void openPairWindow() = 0; virtual void fillInfo(char* out, size_t cap) = 0; }`。Task 8 では空実装を main に置く。`SAVE [req]` は req 省略時に前回 +1（0 を飛ばす）を補って `supervisor.saveCalibration(req)` を呼び、結果で `OK seq=<req>` / `ERR SAVE`。`GAIN` は `setGain` の false を `ERR RANGE` にする）
+  - `class Console { public: Console(Supervisor&, SerialTransport&, BleHooks&); void poll(uint32_t now); void onTick(const Status&, uint32_t now); }`（`BleHooks` は Task 9 が実装する `struct BleHooks { virtual void clearBonds() = 0; virtual void openPairWindow() = 0; virtual void fillInfo(char* out, size_t cap) = 0; }`。Task 8 では空実装を main に置く。`SAVE [req]` は req 省略時に前回 +1（0 を飛ばす）を補って `supervisor.saveCalibration(req)` を呼び、結果で `OK seq=<req>` / `ERR SAVE`。`GAIN` は `setGain` の Rejected を `ERR RANGE`、SaveFailed を `ERR SAVE` にする）
   - `main.cpp`: `setup()` で `Serial.begin(115200)`、リセット理由（`esp_reset_reason() == ESP_RST_BROWNOUT`）、`NvsStorage`、`Supervisor`、起動行 `CATNECK fw=0.1.0 proto=1 hw=E17 reset=<理由> brownout=<0|1>`。`loop()` で `Console::poll`、`millis()` が 20 ms 進むごとに `supervisor.tick` → `ServoDriver::apply`、`WATCH ON` 中は 200 ms ごとに STATUS 行
 
-- [ ] **Step 1: `pio run -e xiao` で SUCCESS を確認してから書き込む**（`pio run -e xiao -t upload --upload-port /dev/cu.usbmodem101`）
+- [ ] **Step 0: `platformio.ini` に `[env:xiao_bringup]` を追加**（`extends = env:xiao`、`build_flags = ${env:xiao.build_flags} -DCATNECK_NO_PWM`）。`ServoDriver::apply` は `CATNECK_NO_PWM` 定義時に何もしない（attach もしない）。起動行に `pwm=off` を付ける
 
-- [ ] **Step 2: 無人で可能な実機確認（19 V 不要、サーボは動かさない）**: `pio device monitor` で起動行が出る、`INFO`／`STATUS`／`HELP` が応答する、`PING 5` の後の `STATUS` に `seq=5`、`HEX 01 C8 00 CE FF 64` に `OK`。**MOVE 等の動作要求はここでは送らない**（利用者不在。19 V が入っていれば首が動く）
+- [ ] **Step 1: `pio run -e xiao` と `pio run -e xiao_bringup` の両方で SUCCESS を確認し、無人のときは bring-up だけを書き込む**（`pio run -e xiao_bringup -t upload --upload-port /dev/cu.usbmodem101`。通常 `xiao` の初回書き込みは利用者在席の Task 12）
+
+- [ ] **Step 2: 無人で可能な実機確認（bring-up ビルド、サーボ出力なし）**: `pio device monitor` で起動行が出る、`INFO`／`STATUS`／`HELP` が応答する、`PING 5` の後の `STATUS` に `seq=5`、`HEX 09 07`（PING seq 7）に `OK` と `STATUS` の `seq=7`。**動作要求はここでは送らない**（HEX でも同じ）
 
 - [ ] **Step 3: 結果を検証記録に書く**（`docs/validation/2026-10-23-xiao-firmware.md` に日時・ボード・platform 版・起動行の実物）
 
@@ -368,14 +381,14 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
 **Interfaces:**
 - Consumes: `Supervisor`、`encodeStatus`/`encodeCalibration`/`encodeLimits`/`encodeInfo`、`decodeCalibrationWrite`/`decodeLimitsWrite`、`BleHooks`
 - Produces:
-  - `class BleTransport : public BleHooks { public: void begin(Supervisor&); void poll(uint32_t now); void publishStatus(const Status&, bool changed, uint32_t now); const char* name() const; }`（`poll` は NimBLE コールバックから積んだコマンドバイト列を `decodeCommand` → `supervisor.onCommand(…, Source::Ble, now)` / `onRejected()` に流す。`publishStatus` は 200 ms ごと、または `changed` なら即時に Notify）
+  - `class BleTransport : public BleHooks { public: void begin(Supervisor&); void poll(uint32_t now); void publishStatus(const Status&, bool changed, uint32_t now); const char* name() const; }`（NimBLE のコールバックは `struct BleEvent { enum class Kind : uint8_t { CommandWrite, CalibrationWrite, LimitsWrite, LinkUp, LinkDown } kind; uint8_t len; uint8_t data[20]; }` を固定長リングキュー（16 件、あふれは最古を捨てて数える）に積むだけ。`poll` は loop 側でキューを取り出し、CommandWrite → `decodeCommand`、CalibrationWrite → `decodeCalibrationWrite`、LimitsWrite → `decodeLimitsWrite` で復号して `supervisor.onCommand(…, Source::Ble, now)` / `onRejected()` に流し、LinkUp/LinkDown → `supervisor.onLink(…)`。GATT の Read 値は loop 側で `setCharacteristicValues(const Status&, const CalibrationData&, const LimitsData&)` が特性にコピーしたスナップショットで、コールバックからコアを読まない。`publishStatus` は 200 ms ごと、または `changed` なら即時に Notify）
   - GATT: サービス `C47B0000-6D1F-4B9E-9C9A-2A3B4C5D6E7F`、Command `…0001` WRITE_NR|WRITE_ENC、Status `…0002` NOTIFY|READ|READ_ENC、Calibration `…0003` READ|WRITE|READ_ENC|WRITE_ENC、Limits `…0004` 同、Info `…0005` READ。`NimBLEDevice::setSecurityAuth(true, false, true)`、IO cap NoInputNoOutput。接続間隔 12〜24 単位を接続後に要求。アドバタイズ名 `CatRobot-XXXX`（`NimBLEDevice::getAddress()` の末尾 2 B、大文字）、スキャン応答にサービス UUID。接続で `onLink(true)`、切断で `onLink(false)` とアドバタイズ再開
   - ペアリング窓: ボンド数 0 なら常時可。それ以外は起動後 60 s と `openPairWindow()` 後 60 s のみ。窓外で未ボンドの central が接続したら切断。`setPairOpen` を Supervisor に反映。`clearBonds()` は `NimBLEDevice::deleteAllBonds()`
   - `fillInfo` → `INFO fw=0.1.0 proto=1 hw=E17 addr=<aa:bb:…> name=CatRobot-XXXX bonds=<n> pair_open=<0|1> reset=<理由>`
 
-- [ ] **Step 1: 実装し `pio run -e xiao` SUCCESS、書き込み**
+- [ ] **Step 1: 実装し `pio run -e xiao` と `pio run -e xiao_bringup` が SUCCESS。無人のときは bring-up を書き込む**
 
-- [ ] **Step 2: 無人で可能な確認**: シリアル `INFO` にアドレスと名前が出る（設計書 §3.2 の見込み `…5E:8E` / `CatRobot-5E8E` と照合し、違えば設計書 §3.2 を更新）。Mac の `system_profiler SPBluetoothDataType` または Task 10 の `scan` でアドバタイズが見える
+- [ ] **Step 2: 無人で可能な確認（bring-up ビルド）**: シリアル `INFO` にアドレスと名前が出る（設計書 §3.2 の見込み `…5E:8E` / `CatRobot-5E8E` と照合し、違えば設計書 §3.2 を更新）。Mac の `system_profiler SPBluetoothDataType` または Task 10 の `scan` でアドバタイズが見える
 
 - [ ] **Step 3: 検証記録に追記、コミット** `feat(firmware): add NimBLE GATT server with bonding window`
 
@@ -385,7 +398,7 @@ build_flags = -std=c++17 -Wall -Wextra -Werror -DCATNECK_NATIVE
 - Create: `firmware/tools/ble_client.py`, `firmware/tools/serial_cli.py`
 
 **Interfaces:**
-- `ble_client.py`（PEP 723: `requires-python = ">=3.10"`, `dependencies = ["bleak==3.0.2"]`）: サブコマンド `scan`、`info`、`watch [--seconds N]`、`move YAW PITCH [--speed S]`、`gesture {nod,shake,tilt_l,tilt_r,look_up,look_down} AMP [--repeats R] [--speed S]`、`stop`、`center [--speed S]`、`torque {0,1}`、`cal get|set YOFF POFF INVERT|save`、`limits get|set YV PV YA PA`、`keepalive [--seconds N]`、`demo`（6 種 × small/medium/large を順に。各 1 秒の PING を挟み、設計書 付録 B の振幅: nod 5/10/15、shake 8/15/25、tilt 8/12/15、look 8/14/20）、`latency [--count 10]`（MOVE 書き込み → MOVING=1 の Status までの中央値）、`reconnect`。接続先は `--name CatRobot-XXXX` または `--address <UUID>`。`cal save` は設計書 §4.6 の手順（`save_seq` と異なる req を選び、`save_seq` = req の Status を待ち、1 秒で同じ req を再送、成功後に Calibration を Read して照合）を実装し結果を表示
+- `ble_client.py`（PEP 723: `requires-python = ">=3.10"`, `dependencies = ["bleak==3.0.2"]`）: サブコマンド `scan`、`info`、`watch [--seconds N]`、`move YAW PITCH [--speed S]`、`gesture {nod,shake,tilt_l,tilt_r,look_up,look_down} AMP [--repeats R] [--speed S]`、`stop`、`center [--speed S]`、`torque {0,1}`、`cal get|set YOFF POFF INVERT|save`、`limits get|set YV PV YA PA`、`keepalive [--seconds N]`、`demo`（6 種 × small/medium/large を順に。各 1 秒の PING を挟み、設計書 付録 B の振幅: nod 5/10/15、shake 8/15/25、tilt 8/12/15、look 8/14/20）、`latency [--count 10]`（MOVE 書き込み → MOVING=1 の Status までの中央値）、`reconnect`。接続先は `--name CatRobot-XXXX` または `--address <UUID>`。接続の寿命: 各サブコマンドは接続を保ったまま 1 Hz で PING を送りつつ完了を待つ。`move`/`center` は MOVING=0 を 0.5 s 観測するまで、`gesture` と `demo` は GESTURE=0 を観測するまで（look の 4 秒周期も PING で維持）、`torque`/`cal set`/`limits set` は次の Status を 1 件受けるまで。完了後 `--hold N` 秒（既定 0）だけ保ってから切断する（切断で安全復帰が始まるのは仕様どおり）。`cal save` は設計書 §4.6 の手順を実装する: 送信前に Calibration を Read してスナップショット（意図値）を取り、直前 Status の `save_seq` と異なる req で SAVE_CAL、`save_seq` = req の Status を待ち、1 秒で同じ req を再送（最大 3 回）、成功後に Calibration を再 Read して `saved` = 1 かつスナップショットと一致を照合して結果を表示
 - `serial_cli.py`（`dependencies = ["pyserial==3.5"]`）: `--port /dev/cu.usbmodem101`、引数の行を送って応答を表示、`--watch` で `WATCH ON` の流し読み
 
 - [ ] **Step 1: 実装**（Python 単体テストは書かない。Status 復号関数 `decode_status(bytes) -> dict`（キー: yaw, pitch, flags, seq, state, voltage, rejected, save_seq） を両ツールで共有できる形にし、`uv run tools/ble_client.py --help` が動くことを確認）
