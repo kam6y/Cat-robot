@@ -67,7 +67,7 @@ final class RecordingRobotLink: RobotLinkControlling {
     func disconnect() {
         snapshot.state = .reconnecting(.disconnected)
         snapshot.connectionID = nil
-        snapshot.trackingWrite = nil
+        snapshot.automaticWrite = nil
         snapshot.motionAvailable = false
         publish()
     }
@@ -96,6 +96,11 @@ final class RecordingRobotLink: RobotLinkControlling {
             }
         }
     }
+    func settleAutomaticMotion(replacing owner: UUID, token: UUID, expiresAt: TimeInterval) async throws {
+        guard snapshot.automaticWrite?.token == owner, let status = snapshot.status else { throw RobotLinkFailure.notReady }
+        try await send(.move(yawDeci: status.yawDeci, pitchDeci: status.pitchDeci, speed: 10),
+                       priority: .automaticSettlement, token: token, expiresAt: expiresAt)
+    }
     func invalidate(_ token: UUID) {
         invalid.insert(token)
         for id in pending.keys.filter({ pending[$0]?.token == token }) {
@@ -113,8 +118,8 @@ final class RecordingRobotLink: RobotLinkControlling {
                 sent.append(.init(command: write.command, priority: write.priority, at: clock.now))
                 switch write.command {
                 case .move, .center, .gesture, .stop, .torque, .setCalibration:
-                    snapshot.trackingWrite = write.priority == .tracking
-                        ? .init(token: write.token, command: write.command, at: clock.now) : nil
+                    snapshot.automaticWrite = write.priority == .tracking || write.priority == .idleMotion
+                        ? .init(token: write.token, command: write.command, at: clock.now, priority: write.priority) : nil
                     publish()
                 default: break
                 }

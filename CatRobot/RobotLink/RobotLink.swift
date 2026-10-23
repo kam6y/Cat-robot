@@ -12,6 +12,7 @@ final class RobotLink: RobotLinkControlling {
         let token: UUID
         let expiresAt: TimeInterval
         let continuation: CheckedContinuation<Void, Error>?
+        var replacingAutomaticToken: UUID? = nil
     }
     private struct PendingRead {
         let id: UUID
@@ -58,7 +59,7 @@ final class RobotLink: RobotLinkControlling {
     private var authenticatedDeviceIDs: Set<UUID> = []
     private var encryptedStatusReceived = false
     private var initialRestObserved = false
-    private var trackingBlockedUntilRest = false
+    private var automaticMotionBlockedUntilRest = false
     private var nextPingAt: TimeInterval?
     private var pingSeq: UInt8 = 0
     private var recovery: Recovery?
@@ -152,11 +153,18 @@ final class RobotLink: RobotLinkControlling {
 
     func setApplicationActive(_ active: Bool) {
         accountPairingTime()
+        let wasActive = applicationActive
         applicationActive = active
         if !active {
-            snapshot.trackingWrite = nil
-            trackingBlockedUntilRest = true
-            removeCommands(where: { $0.priority != .heartbeat && $0.priority != .manualStop }, error: .notReady)
+            // Retain only written ownership so an owner-bound settlement can finish this transition.
+            automaticMotionBlockedUntilRest = true
+            removeCommands(where: { $0.priority != .heartbeat && $0.priority != .manualStop
+                && $0.priority != .automaticSettlement }, error: .notReady)
+        } else if !wasActive {
+            // A foreground session must obtain fresh observations; never replay an inactive settlement.
+            snapshot.automaticWrite = nil
+            automaticMotionBlockedUntilRest = true
+            removeCommands(where: { $0.priority == .automaticSettlement }, error: .notReady)
         }
     }
 
@@ -167,18 +175,32 @@ final class RobotLink: RobotLinkControlling {
 
     func send(_ command: RobotCommand, priority: RobotCommandPriority,
               token: UUID, expiresAt: TimeInterval) async throws {
+        try await enqueue(command, priority: priority, token: token, expiresAt: expiresAt)
+    }
+
+    func settleAutomaticMotion(replacing owner: UUID, token: UUID, expiresAt: TimeInterval) async throws {
+        guard let status = snapshot.status else { throw RobotLinkFailure.notReady }
+        try await enqueue(.move(yawDeci: status.yawDeci, pitchDeci: status.pitchDeci, speed: 10),
+                          priority: .automaticSettlement, token: token, expiresAt: expiresAt,
+                          replacingAutomaticToken: owner)
+    }
+
+    private func enqueue(_ command: RobotCommand, priority: RobotCommandPriority, token: UUID,
+                         expiresAt: TimeInterval, replacingAutomaticToken: UUID? = nil) async throws {
         guard !Task.isCancelled, !invalidTokens.contains(token) else { throw RobotLinkFailure.cancelled }
         guard expiresAt > clock.now else { throw RobotLinkFailure.expired }
-        guard canSend(command, priority: priority) else { throw RobotLinkFailure.notReady }
+        guard canSend(command, priority: priority, replacingAutomaticToken: replacingAutomaticToken) else { throw RobotLinkFailure.notReady }
         let data = try RobotProtocol.encode(command)
         let id = UUID()
-        let deadline = priority == .toolMotion || priority == .motion || priority == .tracking || priority == .idlePowerOff
+        let deadline = priority == .toolMotion || priority == .motion || priority == .tracking
+            || priority == .idleMotion || priority == .automaticSettlement || priority == .idlePowerOff
             ? min(expiresAt, clock.now + 0.3) : expiresAt
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 replaceQueued(command)
                 commands.append(QueuedCommand(id: id, command: command, data: data, priority: priority,
-                                               token: token, expiresAt: deadline, continuation: continuation))
+                                               token: token, expiresAt: deadline, continuation: continuation,
+                                               replacingAutomaticToken: replacingAutomaticToken))
                 drainCommands()
             }
         } onCancel: {
@@ -266,8 +288,8 @@ final class RobotLink: RobotLinkControlling {
         pairingRemaining = nil
         encryptedStatusReceived = false
         initialRestObserved = false
-        snapshot.trackingWrite = nil
-        trackingBlockedUntilRest = false
+        snapshot.automaticWrite = nil
+        automaticMotionBlockedUntilRest = false
         recovery = nil
         nextPingAt = nil
         snapshot = RobotLinkSnapshot(state: .connecting, device: device,
@@ -394,7 +416,7 @@ final class RobotLink: RobotLinkControlling {
         if !operational || status.flags.contains(.returning) { initialRestObserved = false }
         if operational, status.flags.intersection([.moving, .gesture, .returning]).isEmpty {
             initialRestObserved = true
-            trackingBlockedUntilRest = false
+            automaticMotionBlockedUntilRest = false
         }
     }
 
@@ -460,9 +482,10 @@ final class RobotLink: RobotLinkControlling {
     private func startRecovery() {
         let seq = nextSequence()
         recovery = Recovery(startedAt: clock.now, seq: seq)
-        snapshot.trackingWrite = nil
-        trackingBlockedUntilRest = true
-        removeCommands(where: { $0.priority == .toolMotion || $0.priority == .motion || $0.priority == .tracking || $0.priority == .idlePowerOff }, error: .notReady)
+        snapshot.automaticWrite = nil
+        automaticMotionBlockedUntilRest = true
+        removeCommands(where: { $0.priority == .toolMotion || $0.priority == .motion || $0.priority == .tracking
+            || $0.priority == .idleMotion || $0.priority == .automaticSettlement || $0.priority == .idlePowerOff }, error: .notReady)
         enqueuePing(seq: seq)
         nextPingAt = clock.now + 1
         let expectedAttempt = attempt
@@ -485,27 +508,41 @@ final class RobotLink: RobotLinkControlling {
                               token: UUID(), expiresAt: clock.now + 1, continuation: nil))
     }
 
-    private func canSend(_ command: RobotCommand, priority: RobotCommandPriority) -> Bool {
+    private func canSend(_ command: RobotCommand, priority: RobotCommandPriority,
+                         replacingAutomaticToken: UUID? = nil) -> Bool {
         guard attempt != nil, !closing, encryptedStatusReceived else { return false }
         if case .stop = command, priority == .manualStop { return true }
         if case .ping = command, priority == .heartbeat { return preparation == .ready }
+        if priority == .automaticSettlement {
+            guard replacingAutomaticToken != nil,
+                  snapshot.automaticWrite?.token == replacingAutomaticToken,
+                  case .move = command,
+                  snapshot.status?.flags.intersection([.gesture, .returning]).isEmpty == true else { return false }
+            guard !commands.contains(where: { queued in
+                guard queued.priority != .automaticSettlement else { return false }
+                switch queued.command { case .move, .center, .gesture, .stop: return true; default: return false }
+            }) else { return false }
+            return motionIsAvailable
+        }
         guard applicationActive else { return false }
         let atRest = snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true
-        let mayReplaceTracking = snapshot.trackingWrite != nil
+        let mayReplaceAutomatic = snapshot.automaticWrite != nil
             && snapshot.status?.flags.intersection([.gesture, .returning]).isEmpty == true
         if priority == .toolMotion {
-            guard mayReplaceTracking || (atRest && !trackingBlockedUntilRest) else { return false }
+            guard mayReplaceAutomatic || (atRest && !automaticMotionBlockedUntilRest) else { return false }
             guard !commands.contains(where: { queued in
                 guard queued.priority == .calibration || queued.priority == .manualStop else { return false }
                 switch queued.command { case .move, .center, .gesture, .stop: return true; default: return false }
             }) else { return false }
         }
-        if priority == .tracking {
+        if priority == .tracking || priority == .idleMotion {
             guard case .move = command else { return false }
-            guard mayReplaceTracking || (atRest && !trackingBlockedUntilRest) else { return false }
+            let mayReplaceOwned = mayReplaceAutomatic
+                && (priority == .tracking || snapshot.automaticWrite?.priority == .idleMotion)
+            guard mayReplaceOwned || (atRest && !automaticMotionBlockedUntilRest) else { return false }
             // Never replace a manual/tool command still waiting for BLE capacity.
             guard !commands.contains(where: { queued in
-                guard queued.priority != .tracking else { return false }
+                guard queued.priority != priority else { return false }
                 switch queued.command { case .move, .center, .gesture, .stop: return true; default: return false }
             }) else { return false }
         }
@@ -516,9 +553,9 @@ final class RobotLink: RobotLinkControlling {
             guard snapshot.status?.flags.intersection([.gesture, .moving, .returning]).isEmpty == true else { return false }
         case .move, .center:
             guard snapshot.status?.flags.contains(.gesture) == false else { return false }
-            if case .center = command, priority == .motion, !atRest && !mayReplaceTracking { return false }
+            if case .center = command, priority == .motion, !atRest && !mayReplaceAutomatic { return false }
         case .gesture:
-            guard atRest || ((priority == .motion || priority == .toolMotion) && mayReplaceTracking) else { return false }
+            guard atRest || ((priority == .motion || priority == .toolMotion) && mayReplaceAutomatic) else { return false }
         case .torque(false) where priority == .idlePowerOff:
             // A preference change can precede the coordinator's next tick while BLE is blocked.
             guard !preferences.idleEnabled, !preferences.trackingEnabled, snapshot.status?.state == .active,
@@ -569,16 +606,17 @@ final class RobotLink: RobotLinkControlling {
                 command.continuation?.resume(throwing: RobotLinkFailure.cancelled)
                 continue
             }
-            guard canSend(command.command, priority: command.priority) else {
+            guard canSend(command.command, priority: command.priority,
+                          replacingAutomaticToken: command.replacingAutomaticToken) else {
                 command.continuation?.resume(throwing: RobotLinkFailure.notReady)
                 continue
             }
             transport.writeCommand(command.data, attempt: attempt)
             switch command.command {
             case .move, .center, .gesture, .stop, .torque, .setCalibration:
-                snapshot.trackingWrite = command.priority == .tracking
-                    ? .init(token: command.token, command: command.command, at: clock.now) : nil
-                trackingBlockedUntilRest = snapshot.trackingWrite == nil
+                snapshot.automaticWrite = command.priority == .tracking || command.priority == .idleMotion
+                    ? .init(token: command.token, command: command.command, at: clock.now, priority: command.priority) : nil
+                automaticMotionBlockedUntilRest = snapshot.automaticWrite == nil
                 publish()
             default: break
             }
@@ -626,8 +664,8 @@ final class RobotLink: RobotLinkControlling {
         pairingRemaining = nil
         encryptedStatusReceived = false
         initialRestObserved = false
-        snapshot.trackingWrite = nil
-        trackingBlockedUntilRest = false
+        snapshot.automaticWrite = nil
+        automaticMotionBlockedUntilRest = false
         recovery = nil
         nextPingAt = nil
         snapshot.motionAvailable = false

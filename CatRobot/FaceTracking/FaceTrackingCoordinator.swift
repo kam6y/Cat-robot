@@ -53,7 +53,7 @@ final class FaceTrackingCoordinator {
     @ObservationIgnored private var pending: FaceObservation?
     @ObservationIgnored private var lastObservationAt: TimeInterval?
     @ObservationIgnored private var lastFaceAt: TimeInterval?
-    @ObservationIgnored private var returnRequested = false
+    private var returnRequested: Bool { motionState == .returnToCenter }
     @ObservationIgnored private var motionState: RobotTrackingState?
     @ObservationIgnored private var captureFailed = false
     @ObservationIgnored private var wasEligible = false
@@ -192,7 +192,6 @@ final class FaceTrackingCoordinator {
         pending = nil
         lastObservationAt = nil
         lastFaceAt = nil
-        returnRequested = false
         poseHistory.reset()
         setMotionState(.disabled)
     }
@@ -234,7 +233,6 @@ final class FaceTrackingCoordinator {
         pending = nil
         guard let target = FaceTrackingGeometry.project(observation, pose: pose) else { return }
         lastFaceAt = observation.capturedAt
-        returnRequested = false
         setMotionState(.following(.init(yaw: target.yaw, pitch: target.pitch,
                                         validUntil: observation.capturedAt + 0.4)))
     }
@@ -243,7 +241,7 @@ final class FaceTrackingCoordinator {
         guard generation != nil else { return }
         guard let lastFaceAt else { status = .searching; return }
         if clock.now - lastFaceAt >= 10 - 0.000_001 {
-            if !returnRequested { returnRequested = true; setMotionState(.returnToCenter) }
+            if !returnRequested { setMotionState(.returnToCenter) }
             status = .searching
         } else if case let .following(target) = motionState, target.validUntil > clock.now + 0.000_001 {
             status = .tracking

@@ -82,12 +82,12 @@ enum FaceCapturePolicy {
                           frameDuration: 0.2, horizontalFieldOfView: format.horizontalFieldOfView),
                     Double(format.width) * Double(format.height))
         }
-        return candidates.sorted {
+        return candidates.min {
             let area0 = $0.0.width * $0.0.height, area1 = $1.0.width * $1.0.height
             if area0 != area1 { return area0 > area1 }
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.0.formatID < $1.0.formatID
-        }.first?.0
+        }?.0
     }
 
     static func acceptsFrame(width: Int, height: Int, at: TimeInterval,

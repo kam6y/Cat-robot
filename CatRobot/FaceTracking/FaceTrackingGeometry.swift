@@ -2,7 +2,7 @@ import Foundation
 
 enum FaceTrackingGeometry {
     static func selectFace(_ faces: [FaceRectangle]) -> FaceRectangle? {
-        faces.filter(\.isValid).min { lhs, rhs in
+        faces.lazy.filter(\.isValid).min { lhs, rhs in
             let leftDistance = pow(lhs.centerX - 0.5, 2) + pow(lhs.centerY - 0.5, 2)
             let rightDistance = pow(rhs.centerX - 0.5, 2) + pow(rhs.centerY - 0.5, 2)
             if leftDistance != rightDistance { return leftDistance < rightDistance }

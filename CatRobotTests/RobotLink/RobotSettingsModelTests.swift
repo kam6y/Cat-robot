@@ -246,6 +246,9 @@ private final class DelayedCalibrationSendLink: RobotLinkControlling {
         if delaysSends { try await withCheckedThrowingContinuation { held = $0 } }
         else { try await base.send(command, priority: priority, token: token, expiresAt: expiresAt) }
     }
+    func settleAutomaticMotion(replacing owner: UUID, token: UUID, expiresAt: TimeInterval) async throws {
+        try await base.settleAutomaticMotion(replacing: owner, token: token, expiresAt: expiresAt)
+    }
     func failHeldSend() {
         let old = held
         held = nil

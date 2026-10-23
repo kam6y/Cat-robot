@@ -72,6 +72,58 @@ final class RobotAppHarness {
 
 @MainActor
 final class RobotLifecycleIntegrationTests: XCTestCase {
+    func testFaceAcquisitionPreemptsIdleThroughRealLinkUnderBackpressure() async {
+        let h = RobotAppHarness()
+        await h.startConnectedConversation()
+        h.ble.preferences.idleEnabled = true
+        h.motion.setConversationPhase(.listening)
+        h.motion.setTrackingState(.searching)
+        await h.freshAdvance(4.2)
+        XCTAssertTrue(h.commands.contains { if case .move = $0 { true } else { false } })
+        h.ble.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: -10))
+        await h.ble.drain()
+        h.ble.transport.canSendWriteWithoutResponse = false
+        await h.freshAdvance(0.1)
+        let before = h.commands.count
+        h.motion.setTrackingState(.following(.init(yaw: 20, pitch: 0, validUntil: h.ble.clock.now + 1)))
+        await h.ble.drain()
+        h.ble.transport.canSendWriteWithoutResponse = true
+        h.ble.transport.emit(.readyToWrite(attempt: h.ble.attempt))
+        await h.ble.drain()
+        await h.freshAdvance(0.2)
+        let newMoves = h.commands.dropFirst(before).filter { if case .move = $0 { true } else { false } }
+        XCTAssertEqual(newMoves, [.move(yawDeci: 200, pitchDeci: 0, speed: 20)])
+        h.coordinator.scenePhaseDidChange(.background)
+        await h.coordinator.waitForOperations()
+        await h.playback.viewModel.shutdown()
+    }
+
+    func testInactiveSettlesWrittenTrackingThroughRealLink() async {
+        for backpressure in [false, true] {
+            let h = RobotAppHarness(faceEnabled: true)
+            await h.startConnectedConversation()
+            h.motion.setConversationPhase(.listening)
+            h.motion.setTrackingState(.following(.init(yaw: 30, pitch: 0, validUntil: h.ble.clock.now + 1)))
+            await h.ble.drain()
+            XCTAssertTrue(h.commands.contains(.move(yawDeci: 300, pitchDeci: 0, speed: 20)))
+            h.ble.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 100, pitch: 20))
+            await h.ble.drain()
+            h.ble.transport.canSendWriteWithoutResponse = !backpressure
+            h.coordinator.scenePhaseDidChange(.inactive)
+            await h.coordinator.waitForOperations()
+            await h.ble.drain()
+            h.ble.transport.canSendWriteWithoutResponse = true
+            h.ble.transport.emit(.readyToWrite(attempt: h.ble.attempt))
+            await h.ble.drain()
+            XCTAssertEqual(h.commands.last, .move(yawDeci: 100, pitchDeci: 20, speed: 10))
+            XCTAssertFalse(h.commands.contains(.stop))
+            XCTAssertTrue(h.ble.transport.disconnects.isEmpty)
+            h.coordinator.scenePhaseDidChange(.background)
+            await h.coordinator.waitForOperations()
+            await h.playback.viewModel.shutdown()
+        }
+    }
+
     func testRealRobotLinkCaptureStopsSynchronouslyForSettingsAndBackground() async throws {
         let h = RobotAppHarness(faceEnabled: true)
         await h.startConnectedConversation()

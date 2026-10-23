@@ -443,6 +443,92 @@ final class RobotLinkTests: XCTestCase {
         }
     }
 
+    func testInactiveSettlementRequiresExactWrittenOwnerAndBuildsOnlyCurrentPose() async throws {
+        let h = RobotLinkHarness()
+        await h.connectReady()
+        let owner = UUID()
+        try await send(.move(yawDeci: 300, pitchDeci: 0, speed: 20), h: h, priority: .tracking, token: owner)
+        h.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 100, pitch: 20))
+        await h.drain()
+        h.link.setApplicationActive(false)
+        await assertFailure(.notReady) {
+            try await self.send(.move(yawDeci: 400, pitchDeci: 0, speed: 20), h: h, priority: .tracking)
+        }
+        await assertFailure(.notReady) {
+            try await self.send(.move(yawDeci: 400, pitchDeci: 0, speed: 20), h: h, priority: .automaticSettlement)
+        }
+        await assertFailure(.notReady) {
+            try await h.link.settleAutomaticMotion(replacing: UUID(), token: UUID(), expiresAt: h.clock.now + 0.3)
+        }
+        try await h.link.settleAutomaticMotion(replacing: owner, token: UUID(), expiresAt: h.clock.now + 0.3)
+        XCTAssertEqual(h.transport.commands.last, .move(yawDeci: 100, pitchDeci: 20, speed: 10))
+        XCTAssertNil(h.link.snapshot.automaticWrite)
+        await assertFailure(.notReady) {
+            try await h.link.settleAutomaticMotion(replacing: owner, token: UUID(), expiresAt: h.clock.now + 0.3)
+        }
+    }
+
+    func testQueuedSettlementCannotOverrideManualCenterOrStop() async throws {
+        for stop in [false, true] {
+            let h = RobotLinkHarness()
+            await h.connectReady()
+            let owner = UUID()
+            try await send(.move(yawDeci: 300, pitchDeci: 0, speed: 20), h: h, priority: .tracking, token: owner)
+            h.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 100))
+            await h.drain()
+            if stop { h.link.setApplicationActive(false) }
+            h.transport.canSendWriteWithoutResponse = false
+            let settling = Task { try await h.link.settleAutomaticMotion(replacing: owner, token: UUID(), expiresAt: h.clock.now + 0.3) }
+            await h.drain()
+            let other = Task { try await self.send(stop ? .stop : .center(speed: 10), h: h,
+                                                   priority: stop ? .manualStop : .calibration) }
+            await h.drain()
+            h.transport.canSendWriteWithoutResponse = true
+            h.transport.emit(.readyToWrite(attempt: h.attempt))
+            try await other.value
+            await assertTaskFailure(settling, .notReady)
+            XCTAssertFalse(h.transport.commands.contains(.move(yawDeci: 100, pitchDeci: 0, speed: 10)))
+        }
+    }
+
+    func testInactiveSettlementIsDiscardedOnForegroundExpiryAndDisconnect() async throws {
+        for transition in 0..<3 {
+            let h = RobotLinkHarness()
+            await h.connectReady()
+            let owner = UUID()
+            try await send(.move(yawDeci: 300, pitchDeci: 0, speed: 20), h: h, priority: .tracking, token: owner)
+            h.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 100))
+            await h.drain()
+            h.link.setApplicationActive(false)
+            h.transport.canSendWriteWithoutResponse = false
+            let settling = Task { try await h.link.settleAutomaticMotion(replacing: owner, token: UUID(), expiresAt: h.clock.now + 0.3) }
+            await h.drain()
+            switch transition {
+            case 0: h.link.setApplicationActive(true)
+            case 1: await h.clock.advance(by: 0.31)
+            default: h.link.suspend()
+            }
+            h.transport.canSendWriteWithoutResponse = true
+            h.transport.emit(.readyToWrite(attempt: h.attempt))
+            do { try await settling.value; XCTFail("Retired settlement must fail") } catch { }
+            await h.drain()
+            XCTAssertFalse(h.transport.commands.contains(.move(yawDeci: 100, pitchDeci: 0, speed: 10)))
+        }
+    }
+
+    func testIdleCannotReplaceWrittenTrackingOrManualMotion() async throws {
+        for ownerPriority: RobotCommandPriority in [.tracking, .calibration] {
+            let h = RobotLinkHarness()
+            await h.connectReady()
+            try await send(.move(yawDeci: 300, pitchDeci: 0, speed: 20), h: h, priority: ownerPriority)
+            h.receiveStatus(robotStatus(flags: [.link, .moving]))
+            await h.drain()
+            await assertFailure(.notReady) {
+                try await self.send(.move(yawDeci: 10, pitchDeci: 0, speed: 10), h: h, priority: .idleMotion)
+            }
+        }
+    }
+
     func testTrackingCannotReplaceManualMotionEvenBeforeBusyStatusArrives() async throws {
         let h = RobotLinkHarness()
         await h.connectReady()

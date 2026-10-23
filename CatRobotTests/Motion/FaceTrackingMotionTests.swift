@@ -3,6 +3,58 @@ import XCTest
 
 @MainActor
 final class FaceTrackingMotionTests: XCTestCase {
+    func testFaceAcquisitionPreemptsIdleIncludingItsQueuedNextSample() async {
+        for backpressure in [false, true] {
+            let h = makeHarness()
+            h.motion.setConversationPhase(.listening)
+            h.motion.setTrackingState(.searching)
+            await h.advanceFresh(by: 4.25, step: 0.05)
+            XCTAssertFalse(h.sentCommands.isEmpty)
+            h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: -10))
+            await h.drain()
+            if backpressure {
+                h.link.writable = false
+                await h.advanceFresh(by: 0.05)
+                XCTAssertFalse(h.link.queuedCommands.isEmpty)
+            }
+            let before = h.sentCommands.count
+            follow(h, yaw: 20)
+            await h.drain()
+            h.link.writable = true
+            h.link.flush()
+            await h.drain()
+            await h.advanceFresh(by: 0.3, step: 0.05)
+            XCTAssertEqual(Array(h.sentCommands.dropFirst(before)), [.move(yawDeci: 200, pitchDeci: 0, speed: 20)])
+        }
+    }
+
+    func testFaceLossSettlesOwnedMoveAtCurrentPoseOnce() async {
+        let h = makeHarness()
+        follow(h, yaw: 45)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 100, pitch: 20))
+        await h.drain()
+        h.motion.setTrackingState(.holding)
+        await h.drain()
+        h.motion.setTrackingState(.holding)
+        await h.advanceFresh(by: 0.3)
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 450, pitchDeci: 0, speed: 20),
+                                        .move(yawDeci: 100, pitchDeci: 20, speed: 10)])
+    }
+
+    func testFaceLossDoesNotInterruptAcknowledgement() async {
+        let h = makeHarness()
+        h.link.emitStatus(robotStatus(yaw: 300, pitch: 20))
+        follow(h, yaw: 30, pitch: 2)
+        await h.drain()
+        h.motion.utteranceConfirmed()
+        await h.advanceFresh(by: 0.2, step: 0.05)
+        h.motion.setTrackingState(.holding)
+        await h.advanceFresh(by: 0.4, step: 0.05)
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: 300, pitchDeci: 20, speed: 20))
+        XCTAssertFalse(h.sentCommands.contains { if case .move(_, _, 10) = $0 { true } else { false } })
+    }
+
     func testTrackingUsesSlowBoundedMovesDuringThinkingAndSpeaking() async {
         for phase in [ConversationPhase.thinking, .speaking, .classifying, .clarifying] {
             let h = makeHarness()

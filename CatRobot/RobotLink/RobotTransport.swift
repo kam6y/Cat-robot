@@ -54,10 +54,11 @@ enum RobotLinkState: Equatable, Sendable {
 }
 
 /// Recorded synchronously at the BLE write boundary, before send's continuation resumes.
-struct RobotTrackingWrite: Equatable, Sendable {
+struct RobotAutomaticWrite: Equatable, Sendable {
     let token: UUID
     let command: RobotCommand
     let at: TimeInterval
+    let priority: RobotCommandPriority
 }
 
 struct RobotLinkSnapshot: Equatable, Sendable {
@@ -72,11 +73,11 @@ struct RobotLinkSnapshot: Equatable, Sendable {
     var motionAvailable = false
     var failure: RobotLinkFailure?
     var connectionID: UUID?
-    var trackingWrite: RobotTrackingWrite?
+    var automaticWrite: RobotAutomaticWrite?
 }
 
 enum RobotCommandPriority: Int, Comparable, Sendable {
-    case manualStop, heartbeat, calibration, toolMotion, motion, tracking, idlePowerOff
+    case manualStop, heartbeat, calibration, toolMotion, automaticSettlement, motion, tracking, idleMotion, idlePowerOff
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
@@ -92,6 +93,8 @@ protocol RobotLinkControlling: AnyObject {
     func disconnectByUser()
     func send(_ command: RobotCommand, priority: RobotCommandPriority,
               token: UUID, expiresAt: TimeInterval) async throws
+    /// A single current-pose MOVE tied to the last written automatic owner, also allowed while inactive.
+    func settleAutomaticMotion(replacing owner: UUID, token: UUID, expiresAt: TimeInterval) async throws
     func invalidate(_ token: UUID)
     func read(_ characteristic: RobotCharacteristic) async throws -> Data
 }
