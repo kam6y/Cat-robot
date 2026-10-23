@@ -95,7 +95,8 @@ final class RobotLink: RobotLinkControlling {
         snapshot.failure = nil
         suspended = false
         wantsDiscovery = true
-        wantsConnection = preferences.selectedDevice != nil && !userDisconnected && !unsupported
+        // Explicit search keeps an existing connection; saved-device reconnection belongs to resume().
+        wantsConnection = attempt != nil && wantsConnection
         startTransport()
         if bluetooth == .unknown { permissionRemaining = 30; lastClockAt = clock.now }
         if bluetooth == .poweredOn { beginRequestedWork() }
@@ -229,8 +230,12 @@ final class RobotLink: RobotLinkControlling {
     }
 
     private func beginRequestedWork() {
-        guard attempt == nil, !suspended, !userDisconnected, !unsupported else { return }
-        if wantsConnection, preferences.selectedDevice != nil {
+        guard !suspended else { return }
+        if attempt != nil {
+            if wantsDiscovery { transport.scan() }
+            return
+        }
+        if wantsConnection, !userDisconnected, !unsupported, preferences.selectedDevice != nil {
             guard retryAt == nil || clock.now + 0.000_001 >= retryAt! else { return }
             beginAttempt(direct: false)
         } else if wantsDiscovery, snapshot.state != .searching {

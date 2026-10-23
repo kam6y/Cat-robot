@@ -11,10 +11,20 @@ struct ConversationComposition {
     let modelSettings: ConversationModelSettings
     let longTermMemory: LongTermMemoryManager
     let usage: any ConversationUsageMetering
+    let robotLink: any RobotLinkControlling
+    let robotSettings: RobotSettingsModel
 
     static func live(voiceSettings: SpeechVoiceSettings = SpeechVoiceSettings(),
                      modelSettings: ConversationModelSettings = ConversationModelSettings(),
-                     auth: ClaudeAuthConfiguration = .live()) -> Self {
+                     auth: ClaudeAuthConfiguration = .live(),
+                     robotTransport: (any RobotTransport)? = nil,
+                     robotClock: (any RobotClock)? = nil,
+                     robotPreferences: RobotPreferences? = nil) -> Self {
+        let clock = robotClock ?? SystemRobotClock()
+        let preferences = robotPreferences ?? RobotPreferences()
+        let robotLink = RobotLink(transport: robotTransport ?? CoreBluetoothRobotTransport(),
+                                  clock: clock, preferences: preferences)
+        let robotSettings = RobotSettingsModel(link: robotLink, preferences: preferences, clock: clock)
         let memoryStore: any ConversationMemoryStore
         let longTermStore: any LongTermMemoryStore
         if let directory = try? FileConversationMemoryStore.defaultDirectory() {
@@ -59,6 +69,6 @@ struct ConversationComposition {
             serviceTeardown: { await concreteRecognizer.shutdown() }
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
-                    longTermMemory: longTermMemory, usage: usage)
+                    longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, robotSettings: robotSettings)
     }
 }

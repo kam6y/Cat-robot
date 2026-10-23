@@ -8,6 +8,7 @@ struct AppRootView: View {
     private let voiceSettings: SpeechVoiceSettings
     private let modelSettings: ConversationModelSettings
     private let usage: any ConversationUsageMetering
+    private let robotSettings: RobotSettingsModel?
     @State private var viewModel: ConversationViewModel
     @State private var coordinator: ConversationAppCoordinator
     /// シートを開くたびに作り直すと一覧が空に戻るので、ルートで 1 つ持つ。
@@ -19,8 +20,10 @@ struct AppRootView: View {
         wakeLock: ConversationScreenWakeLock = .live(),
         modelSettings: ConversationModelSettings? = nil,
         memory: LongTermMemoryManager? = nil,
-        usage: (any ConversationUsageMetering)? = nil
+        usage: (any ConversationUsageMetering)? = nil,
+        robotSettings: RobotSettingsModel? = nil
     ) {
+        self.robotSettings = robotSettings
         self.voiceSettings = voiceSettings ?? SpeechVoiceSettings()
         self.modelSettings = modelSettings ?? ConversationModelSettings()
         self.usage = usage ?? UserDefaultsUsageMeter()
@@ -52,9 +55,11 @@ struct AppRootView: View {
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {
             ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
-                                     memory: memoryViewModel, usage: usage,
+                                     memory: memoryViewModel, usage: usage, robotSettings: robotSettings,
                                      onDeleteAll: { await coordinator.deleteAllMemory() },
                                      onDone: coordinator.closeVoiceSettings)
+                .onAppear { robotSettings?.settingsDidOpen() }
+                .onDisappear { robotSettings?.settingsDidClose() }
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase, initial: true) { _, newPhase in

@@ -10,6 +10,7 @@ struct ConversationSettingsView: View {
     @Bindable var modelSettings: ConversationModelSettings
     let memory: LongTermMemoryViewModel
     let usage: any ConversationUsageMetering
+    let robotSettings: RobotSettingsModel?
     /// 「すべて削除」の実体。覚えていることと会話の要約を消す。確認はこの画面で済ませる。
     let onDeleteAll: @MainActor () async -> Void
     let onDone: () -> Void
@@ -19,7 +20,9 @@ struct ConversationSettingsView: View {
 
     init(voiceSettings: SpeechVoiceSettings, modelSettings: ConversationModelSettings,
          memory: LongTermMemoryViewModel, usage: any ConversationUsageMetering,
+         robotSettings: RobotSettingsModel? = nil,
          onDeleteAll: @escaping @MainActor () async -> Void, onDone: @escaping () -> Void) {
+        self.robotSettings = robotSettings
         self.voiceSettings = voiceSettings; self.modelSettings = modelSettings
         self.memory = memory; self.usage = usage; self.onDeleteAll = onDeleteAll; self.onDone = onDone
     }
@@ -77,13 +80,18 @@ struct ConversationSettingsView: View {
                 } header: { Text("利用量") } footer: {
                     Text("上限に達した日は、端末内のモデルで短く答えます。利用料は作者のワークスペースに課金されます。")
                 }
+                if let robotSettings {
+                    Section("ロボット") {
+                        NavigationLink("首の接続と調整") { RobotConnectionView(model: robotSettings) }
+                    }
+                }
                 Section("情報") {
                     Text("返事は Anthropic の Claude で作ります。送るのは話しかけた文字と会話の要約・覚えていることだけで、音声は送りません。")
                     Text("音声合成: Supertonic 3（MIT / OpenRAIL-M）。推論: ONNX Runtime 1.24.2。Claude 連携: ClaudeForFoundationModels 0.2.3（Apache-2.0）。")
                 }
             }
             .navigationTitle("設定")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了", action: onDone) } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完了", action: onDone).disabled(robotSettings?.calibration != nil) } }
             .confirmationDialog("すべて削除", isPresented: $showsDeleteAllConfirmation, titleVisibility: .visible) {
                 Button("削除する", role: .destructive) {
                     Task { @MainActor in
@@ -102,6 +110,7 @@ struct ConversationSettingsView: View {
                 usageSummary = await usage.summary()
             }
         }
+        .interactiveDismissDisabled(robotSettings?.calibration != nil)
         .preferredColorScheme(.dark)
     }
 }

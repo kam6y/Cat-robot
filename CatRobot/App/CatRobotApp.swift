@@ -9,7 +9,8 @@ struct CatRobotApp: App {
     var body: some Scene {
         WindowGroup {
             AppRootView(dependencies: composition.dependencies, voiceSettings: composition.voiceSettings,
-                        modelSettings: composition.modelSettings, memory: composition.longTermMemory, usage: composition.usage)
+                        modelSettings: composition.modelSettings, memory: composition.longTermMemory, usage: composition.usage,
+                        robotSettings: composition.robotSettings)
         }
     }
 }
