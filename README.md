@@ -47,6 +47,14 @@ BLEプロトコル版1のロボットを使います。首が未接続でも会�
 
 ホスト検証と、iPhone・ロボットの実機確認結果・未実施項目は[首の接続・動作・校正の検証記録](docs/validation/2026-10-23-ios-robot-link.md)に分けています。
 
+7動作×3強度の実機確認は、ロボットを見られる状態で次の専用runnerを使います。iPhoneに保存済みの接続先名を指定し、`small` → `medium` → `large` を1段階ずつ実行して見た目を確認します。全体の「動きの強さ」は保存済み設定を使用します。通常テストとSimulatorではスキップし、実機でも明示の実行条件がなければBLEを起動しません。
+
+```bash
+scripts/run_robot_motion_device_test.sh --attended '<iPhone UDID>' small '<保存済みのロボット名>'
+```
+
+実行中はiPhoneを前面に保ち、「会話を始める」を押さずに待ちます。動作順は `nod` / `shake` / `tilt` / `look_up` / `look_down` / `look_at_user` / `center`。最後の2つは小さく横を向かせてから戻します。結果JSONとxcresultは出力先に保存し、実行成功は動作サイクルの完了を示します。方向・振幅はSTATUS軌跡、滑らかさは観察で確認します。音声入力・実際の読み上げとの同期は別の試験です。`ROBOT_BUILD_ONLY=1` ならビルドだけを行います。
+
 
 ## ロボット側ファームウェア（`firmware/`）
 
