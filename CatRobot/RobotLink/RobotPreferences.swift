@@ -19,6 +19,10 @@ final class RobotPreferences {
     var strength: RobotMotionStrength {
         didSet { defaults.set(strength.rawValue, forKey: "robot.strength") }
     }
+    var trackingEnabled: Bool {
+        didSet { defaults.set(trackingEnabled, forKey: "robot.trackingEnabled") }
+    }
+
     var idleEnabled: Bool {
         didSet { defaults.set(idleEnabled, forKey: "robot.idleEnabled") }
     }
@@ -33,6 +37,8 @@ final class RobotPreferences {
             selectedDevice = nil
         }
         strength = defaults.string(forKey: "robot.strength").flatMap(RobotMotionStrength.init) ?? .standard
+        trackingEnabled = defaults.object(forKey: "robot.trackingEnabled") == nil
+            ? true : defaults.bool(forKey: "robot.trackingEnabled")
         idleEnabled = defaults.object(forKey: "robot.idleEnabled") == nil
             ? true : defaults.bool(forKey: "robot.idleEnabled")
     }
