@@ -52,7 +52,9 @@ final class ReplyPlaybackCoordinator {
                     self.motion.speechFinished(motionTurn)
                     return result
                 } catch {
-                    self.motion.cancelTurn(motionTurn, reason: .playbackCancelled)
+                    let cancelled = Task.isCancelled || error is CancellationError
+                        || error as? ConversationServiceError == .cancelled
+                    self.motion.cancelTurn(motionTurn, reason: cancelled ? .playbackCancelled : .playbackFailed)
                     throw error
                 }
             }

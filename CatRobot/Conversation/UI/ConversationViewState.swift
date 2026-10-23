@@ -37,7 +37,15 @@ struct ConversationRecovery: Equatable, Sendable {
     var action: ConversationRecoveryAction
 }
 
+enum RobotConnectionStatus: Equatable, Sendable {
+    case connected, disconnected, reconnecting
+    var message: String {
+        switch self { case .connected: "首と接続中"; case .disconnected: "首と未接続"; case .reconnecting: "首を再接続中" }
+    }
+}
+
 struct ConversationViewState: Equatable, Sendable {
+    var robotStatus: RobotConnectionStatus? = nil
     var memoryState: ConversationMemoryState = .unsupported
     var memoryNotice: String? = nil
     var phase: ConversationPhase

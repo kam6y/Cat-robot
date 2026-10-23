@@ -28,7 +28,7 @@ enum MotionReservationResult: Equatable, Sendable {
     case reserved(cycles: Int), unavailable, invalidArguments, budgetExceeded, invalidated
 }
 enum MotionGenerationOutcome: Sendable { case success, failed }
-enum MotionCancellationReason: Sendable { case fallback, playbackCancelled, newConversation, userStop, linkLost, background }
+enum MotionCancellationReason: Sendable { case fallback, playbackCancelled, playbackFailed, newConversation, userStop, linkLost, background }
 
 struct RobotTrackingTarget: Equatable, Sendable {
     let yaw: Double

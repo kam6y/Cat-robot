@@ -32,34 +32,35 @@ struct ConversationView: View {
             guard let announcement = ConversationAnnouncementPolicy.announcement(
                 from: oldState,
                 to: newState
-            ) else { return }
+            ) ?? RobotStatusPresentation.announcement(from: oldState.robotStatus, to: newState.robotStatus) else { return }
             AccessibilityNotification.Announcement(announcement).post()
         }
     }
 
     private var statusHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 18) {
-            Label(state.microphoneStatus, systemImage: microphoneSymbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .accessibilityLabel("マイクの状態")
-                .accessibilityValue(accessibility.microphoneValue)
-
-            Text(state.activityStatus)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("AIの猫の状態")
-                .accessibilityValue(accessibility.assistantStatus)
-
-            Spacer(minLength: 0)
-            // 「新しい会話を始めました」などの短い通知は「…」の左に出す（利用者の要望）。
-            if let notice = state.memoryNotice {
-                Text(notice)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("memoryNotice")
+        HStack(alignment: .top, spacing: 18) {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 18))
+            layout {
+                Label(state.microphoneStatus, systemImage: microphoneSymbol)
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityLabel("マイクの状態")
+                    .accessibilityValue(accessibility.microphoneValue)
+                Text(state.activityStatus)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .accessibilityLabel("AIの猫の状態").accessibilityValue(accessibility.assistantStatus)
+                if let robotStatus = state.robotStatus {
+                    Text(robotStatus.message).font(.subheadline).foregroundStyle(.secondary)
+                        .accessibilityLabel("首の接続状態").accessibilityValue(robotStatus.message)
+                        .accessibilityIdentifier("robotConnectionStatus")
+                }
+                if let notice = state.memoryNotice {
+                    Text(notice).font(.subheadline).foregroundStyle(.secondary)
+                        .lineLimit(1).accessibilityIdentifier("memoryNotice")
+                }
             }
+            Spacer(minLength: 0)
             Menu {
                 Button("文字で話しかける", systemImage: "keyboard", action: actions.showTypedInput)
                     .accessibilityIdentifier("showTypedInput")

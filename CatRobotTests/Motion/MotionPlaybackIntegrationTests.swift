@@ -49,7 +49,7 @@ actor MotionProbeSecondary: ReplyGenerating {
 
 @MainActor
 final class MotionPlaybackIntegrationTests: XCTestCase {
-    func testVoiceAndTypedRunWaitForFirstSpeechAndFinishCurrentCycleAfterAudioEnds() async {
+    func testVoiceAndTypedReservedGesturesWaitForFirstSpeechAndFinishCurrentCycleAfterAudioEnds() async {
         for voice in [false, true] {
             let h = MotionHarness()
             let base = ControlledReply()
@@ -61,12 +61,16 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
             else { run = Task { await playback.viewModel.submitTypedText("質問") } }
             await base.waitUntilRequested()
             let scopes = await reserving.scopes
+            await h.drain()
+            if voice { XCTAssertTrue(h.sentCommands.contains { if case .move = $0 { true } else { false } }) }
             XCTAssertEqual(scopes.compactMap { $0 }.count, 1)
-            XCTAssertTrue(h.sentCommands.isEmpty)
+            XCTAssertTrue(h.gestureCommands.isEmpty)
+            if !voice { XCTAssertTrue(h.sentCommands.isEmpty) }
             await base.yield("一文です。")
             await base.finish()
             await playback.speaker.waitUntilCallCount(1)
-            XCTAssertTrue(h.sentCommands.isEmpty)
+            XCTAssertTrue(h.gestureCommands.isEmpty)
+            if !voice { XCTAssertTrue(h.sentCommands.isEmpty) }
             await playback.speaker.emit(.willSpeak(range: 0..<1))
             await playback.speaker.emit(.started)
             await playback.speaker.emit(.started)

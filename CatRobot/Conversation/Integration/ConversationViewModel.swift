@@ -98,6 +98,7 @@ final class ConversationViewModel {
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
         self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode, motion: dependencies.motion)
+        dependencies.motion.setConversationPhase(.idle)
     }
 
     var isAwaitingMicrophonePermission: Bool {
@@ -165,6 +166,7 @@ final class ConversationViewModel {
         case .idle, .paused, .failed:
             await startConversation()
         case .preparing, .listening, .classifying, .clarifying, .thinking, .speaking:
+            dependencies.motion.stopAll(reason: .userStop)
             await pauseConversation()
         }
     }
@@ -284,6 +286,7 @@ final class ConversationViewModel {
     func handleAudioSessionEvent(_ event: AudioSessionEvent) async {
         switch event {
         case .interruptionBegan, .routeChanged:
+            dependencies.motion.stopAll(reason: .playbackFailed)
             await pauseConversation()
         case .interruptionEnded:
             break
@@ -306,6 +309,7 @@ final class ConversationViewModel {
     }
 
     private func performShutdown() async {
+        dependencies.motion.setControlMode(.background)
         noticeExpiryTask?.cancel()
         noticeExpiryTask = nil
         cancelActiveVoiceLatency(reason: .shutdown)
@@ -369,6 +373,7 @@ final class ConversationViewModel {
         guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
         memoryActionInProgress = true
         forgettingMemory = true
+        dependencies.motion.stopAll(reason: .newConversation)
         viewState.memoryState = .forgetting
         clearNotice()
         defer { memoryActionInProgress = false; forgettingMemory = false }
@@ -392,6 +397,7 @@ final class ConversationViewModel {
         guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
         memoryActionInProgress = true
         defer { memoryActionInProgress = false }
+        dependencies.motion.stopAll(reason: .newConversation)
         clearNotice()
         await pauseConversation(force: true)
         await dependencies.reply.reset()
@@ -826,6 +832,7 @@ final class ConversationViewModel {
               activeCaptureID == captureID,
               !captureIsClosing else { return }
 
+        dependencies.motion.utteranceConfirmed()
         captureIsClosing = true
         segmentationTask?.cancel()
         segmentationTask = nil
@@ -1521,6 +1528,7 @@ final class ConversationViewModel {
         to phase: ConversationPhase,
         caption: String? = nil
     ) {
+        dependencies.motion.setConversationPhase(phase)
         switch phase {
         case .classifying, .thinking, .clarifying:
             clearNotice()   // 次に話しかけたら通知は役目を終える
@@ -1589,6 +1597,8 @@ final class ConversationViewModel {
            !presentation.offersTypedInput {
             recoveries.append(.typedInput)
         }
+        dependencies.motion.stopAll(reason: .playbackFailed)
+        dependencies.motion.setConversationPhase(.failed(error))
         viewState.presentFailure(
             error: error,
             message: presentation.message,

@@ -152,6 +152,9 @@ final class RobotLink: RobotLinkControlling {
     func setApplicationActive(_ active: Bool) {
         accountPairingTime()
         applicationActive = active
+        if !active {
+            removeCommands(where: { $0.priority != .heartbeat && $0.priority != .manualStop }, error: .notReady)
+        }
     }
 
     func invalidate(_ token: UUID) {
@@ -478,6 +481,7 @@ final class RobotLink: RobotLinkControlling {
         guard attempt != nil, !closing, encryptedStatusReceived else { return false }
         if case .stop = command, priority == .manualStop { return true }
         if case .ping = command, priority == .heartbeat { return preparation == .ready }
+        guard applicationActive else { return false }
         switch command {
         case .setCalibration:
             guard snapshot.status?.flags.contains(.gesture) == false else { return false }

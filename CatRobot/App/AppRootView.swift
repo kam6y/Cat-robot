@@ -9,6 +9,8 @@ struct AppRootView: View {
     private let modelSettings: ConversationModelSettings
     private let usage: any ConversationUsageMetering
     private let robotSettings: RobotSettingsModel?
+    private let robotLink: (any RobotLinkControlling)?
+    @State private var robotStatus: RobotConnectionStatus?
     @State private var viewModel: ConversationViewModel
     @State private var coordinator: ConversationAppCoordinator
     /// シートを開くたびに作り直すと一覧が空に戻るので、ルートで 1 つ持つ。
@@ -21,9 +23,12 @@ struct AppRootView: View {
         modelSettings: ConversationModelSettings? = nil,
         memory: LongTermMemoryManager? = nil,
         usage: (any ConversationUsageMetering)? = nil,
-        robotSettings: RobotSettingsModel? = nil
+        robotSettings: RobotSettingsModel? = nil,
+        robotLink: (any RobotLinkControlling)? = nil
     ) {
         self.robotSettings = robotSettings
+        self.robotLink = robotLink
+        _robotStatus = State(initialValue: robotLink.map { RobotStatusPresentation(snapshot: $0.snapshot).status })
         self.voiceSettings = voiceSettings ?? SpeechVoiceSettings()
         self.modelSettings = modelSettings ?? ConversationModelSettings()
         self.usage = usage ?? UserDefaultsUsageMeter()
@@ -34,7 +39,7 @@ struct AppRootView: View {
         _coordinator = State(
             initialValue: ConversationAppCoordinator(
                 viewModel: viewModel,
-                wakeLock: wakeLock
+                wakeLock: wakeLock, link: robotLink, motion: dependencies.motion, settingsModel: robotSettings
             )
         )
     }
@@ -46,7 +51,7 @@ struct AppRootView: View {
                 OnboardingView(onStart: coordinator.beginConversation)
             case .conversation:
                 ConversationView(
-                    state: viewModel.viewState,
+                    state: conversationState,
                     actions: coordinator.makeActions(openSettings: openSettings),
                     isOpeningVoiceSettings: coordinator.isOpeningVoiceSettings
                 )
@@ -58,13 +63,26 @@ struct AppRootView: View {
                                      memory: memoryViewModel, usage: usage, robotSettings: robotSettings,
                                      onDeleteAll: { await coordinator.deleteAllMemory() },
                                      onDone: coordinator.closeVoiceSettings)
-                .onAppear { robotSettings?.settingsDidOpen() }
-                .onDisappear { robotSettings?.settingsDidClose() }
+
+        }
+        .task {
+            guard let robotLink else { return }
+            for await snapshot in robotLink.updates() {
+                guard !Task.isCancelled else { return }
+                let status = RobotStatusPresentation(snapshot: snapshot).status
+                if robotStatus != status { robotStatus = status }
+            }
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase, initial: true) { _, newPhase in
             coordinator.scenePhaseDidChange(Self.appScenePhase(newPhase))
         }
+    }
+
+    private var conversationState: ConversationViewState {
+        var state = viewModel.viewState
+        state.robotStatus = robotStatus
+        return state
     }
 
     private func openSettings() {

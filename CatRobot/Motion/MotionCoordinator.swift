@@ -83,6 +83,7 @@ final class MotionCoordinator: RobotMotionControlling {
     private var strengthTask: Task<Void, Never>?
     private var strengthToken: UUID?
     private var strengthReading = false
+    private var strengthWasCancelled = false
     private var failedStrength: StrengthAttempt?
     private var stopTask: Task<Void, Never>?
     private var stopToken: UUID?
@@ -228,7 +229,10 @@ final class MotionCoordinator: RobotMotionControlling {
             turn?.valid = false
             turn?.pending.removeAll()
             if active?.writtenAt == nil { discardActive() }
-            if !strengthReading, let strengthToken { link.invalidate(strengthToken) }
+            if mode != .settings, !strengthReading, let strengthToken {
+                strengthWasCancelled = true
+                link.invalidate(strengthToken)
+            }
         case .conversation: break
         }
         service()
@@ -494,6 +498,7 @@ final class MotionCoordinator: RobotMotionControlling {
         let token = UUID()
         strengthToken = token
         strengthReading = false
+        strengthWasCancelled = false
         let link = link, clock = clock
         strengthTask = Task { [weak self] in
             do {
@@ -509,7 +514,7 @@ final class MotionCoordinator: RobotMotionControlling {
                 self.finishStrength(token)
             } catch {
                 guard let self, self.strengthToken == token else { return }
-                self.failedStrength = attempt
+                if !self.strengthWasCancelled { self.failedStrength = attempt }
                 self.finishStrength(token)
             }
         }
@@ -520,6 +525,7 @@ final class MotionCoordinator: RobotMotionControlling {
         strengthTask = nil
         strengthToken = nil
         strengthReading = false
+        strengthWasCancelled = false
         service()
     }
 

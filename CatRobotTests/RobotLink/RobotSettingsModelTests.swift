@@ -141,6 +141,35 @@ final class RobotSettingsModelTests: XCTestCase {
         XCTAssertTrue(h.transport.attempts.isEmpty)
     }
 
+    func testLateOldSaveFailureCannotHideDisconnectOrTrapCalibrationAfterReconnect() async throws {
+        let h = RobotLinkHarness()
+        await h.connectReady()
+        let delayed = DelayedCalibrationSendLink(base: h.link)
+        let model = RobotSettingsModel(link: delayed, preferences: h.preferences, clock: h.clock)
+        await model.openCalibration()
+        await finishOpening(h)
+        let session = try XCTUnwrap(model.calibration)
+        session.preview(.init(yawOffsetDeci: 5, pitchOffsetDeci: 0, invert: 2))
+        await h.drain()
+        delayed.delaysSends = true
+        let saving = Task { await model.closeCalibration(.save) }
+        await h.drain()
+        XCTAssertTrue(delayed.hasHeldSend)
+        h.transport.emit(.disconnected(attempt: h.attempt, reason: .disconnected))
+        await h.drain()
+        await h.clock.advance(by: 2)
+        h.transport.emit(.gattReady(attempt: h.attempt))
+        await h.drain()
+        await h.finishPreparation()
+        delayed.failHeldSend()
+        await saving.value
+        XCTAssertEqual(session.phase, .failed(.disconnected))
+        delayed.delaysSends = false
+        await model.closeCalibration(.restore)
+        XCTAssertNil(model.calibration)
+        XCTAssertNotNil(model.calibrationExitWarning)
+    }
+
     private func makeModel(_ h: RobotLinkHarness, modes: RecordedRobotModes = RecordedRobotModes()) -> RobotSettingsModel {
         RobotSettingsModel(link: h.link, preferences: h.preferences, clock: h.clock,
                            onControlModeChanged: { modes.values.append($0) })
@@ -157,3 +186,32 @@ final class RobotSettingsModelTests: XCTestCase {
 
 @MainActor
 private final class RecordedRobotModes { var values: [RobotControlMode] = [] }
+
+/// Delivers an old send error after reconnect, independently of the snapshot stream.
+@MainActor
+private final class DelayedCalibrationSendLink: RobotLinkControlling {
+    let base: any RobotLinkControlling
+    var delaysSends = false
+    private var held: CheckedContinuation<Void, Error>?
+    var hasHeldSend: Bool { held != nil }
+    init(base: any RobotLinkControlling) { self.base = base }
+    var snapshot: RobotLinkSnapshot { base.snapshot }
+    func updates() -> AsyncStream<RobotLinkSnapshot> { base.updates() }
+    func start() { base.start() }
+    func select(_ device: RobotDevice) { base.select(device) }
+    func resume() { base.resume() }
+    func suspend() { base.suspend() }
+    func setApplicationActive(_ active: Bool) { base.setApplicationActive(active) }
+    func disconnectByUser() { base.disconnectByUser() }
+    func invalidate(_ token: UUID) { base.invalidate(token) }
+    func read(_ characteristic: RobotCharacteristic) async throws -> Data { try await base.read(characteristic) }
+    func send(_ command: RobotCommand, priority: RobotCommandPriority, token: UUID, expiresAt: TimeInterval) async throws {
+        if delaysSends { try await withCheckedThrowingContinuation { held = $0 } }
+        else { try await base.send(command, priority: priority, token: token, expiresAt: expiresAt) }
+    }
+    func failHeldSend() {
+        let old = held
+        held = nil
+        old?.resume(throwing: RobotLinkFailure.notReady)
+    }
+}

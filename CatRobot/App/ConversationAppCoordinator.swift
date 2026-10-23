@@ -23,6 +23,9 @@ final class ConversationAppCoordinator {
 
     @ObservationIgnored private let viewModel: ConversationViewModel
     @ObservationIgnored private let wakeLock: ConversationScreenWakeLock
+    @ObservationIgnored private let link: (any RobotLinkControlling)?
+    @ObservationIgnored private let motion: any RobotMotionControlling
+    @ObservationIgnored private let settingsModel: RobotSettingsModel?
     @ObservationIgnored private var scenePhase: ConversationAppScenePhase = .active
     @ObservationIgnored private var wakeLockToken: ConversationScreenWakeLock.Token?
     @ObservationIgnored private var startIntentCounter: UInt64 = 0
@@ -40,16 +43,23 @@ final class ConversationAppCoordinator {
     init(
         viewModel: ConversationViewModel,
         wakeLock: ConversationScreenWakeLock,
+        link: (any RobotLinkControlling)? = nil,
+        motion: any RobotMotionControlling = NoopRobotMotionController(),
+        settingsModel: RobotSettingsModel? = nil,
         beforeActionOperation: @escaping @MainActor @Sendable () async -> Void = {}
     ) {
         self.viewModel = viewModel
         self.wakeLock = wakeLock
+        self.link = link
+        self.motion = motion
+        self.settingsModel = settingsModel
         self.beforeActionOperation = beforeActionOperation
     }
 
     func beginConversation() {
         guard destination == .onboarding, isVoiceSettingsClosed else { return }
         destination = .conversation
+        updateRobotScene(scenePhase)
         acquireWakeLockIfNeeded()
         launchStart()
     }
@@ -83,6 +93,7 @@ final class ConversationAppCoordinator {
 
     func scenePhaseDidChange(_ newPhase: ConversationAppScenePhase) {
         scenePhase = newPhase
+        updateRobotScene(newPhase)
 
         switch newPhase {
         case .active:
@@ -111,9 +122,30 @@ final class ConversationAppCoordinator {
         }
     }
 
+    private func updateRobotScene(_ phase: ConversationAppScenePhase) {
+        switch phase {
+        case .active:
+            settingsModel?.setApplicationMode(nil)
+            motion.setControlMode(isVoiceSettingsClosed ? .conversation : settingsModel?.effectiveControlMode ?? .settings)
+            link?.setApplicationActive(true)
+            if destination == .conversation { link?.resume() }
+        case .inactive:
+            settingsModel?.setApplicationMode(.inactive)
+            motion.setControlMode(.inactive)
+            link?.setApplicationActive(false)
+        case .background:
+            settingsModel?.setApplicationMode(.background)
+            motion.setControlMode(.background)
+            link?.setApplicationActive(false)
+            link?.suspend()
+        }
+    }
+
     func openVoiceSettings() {
         guard scenePhase == .active, isVoiceSettingsClosed else { return }
         isOpeningVoiceSettings = true
+        settingsModel?.settingsDidOpen()
+        motion.setControlMode(.settings)
         invalidateActionTasksForSceneInactivity()
         let generation = actionSceneGeneration
         activeStartIntentID = nil
@@ -128,6 +160,8 @@ final class ConversationAppCoordinator {
             guard self.scenePhase == .active, self.actionSceneGeneration == generation else {
                 // 開く途中で場面が変わりシートを出さない。前面に戻っていれば、ここで聞き取りを再開する。
                 self.isOpeningVoiceSettings = false
+                self.settingsModel?.settingsDidClose()
+                self.updateRobotScene(self.scenePhase)
                 self.acquireWakeLockIfNeeded()
                 self.resumeListeningIfNeeded()
                 return
@@ -138,7 +172,10 @@ final class ConversationAppCoordinator {
     }
 
     func closeVoiceSettings() {
+        guard !isOpeningVoiceSettings, settingsModel?.calibration == nil else { return }
         showsVoiceSettings = false
+        settingsModel?.settingsDidClose()
+        updateRobotScene(scenePhase)
         acquireWakeLockIfNeeded()
         resumeListeningIfNeeded()
     }

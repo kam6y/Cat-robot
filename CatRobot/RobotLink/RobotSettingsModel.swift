@@ -20,6 +20,8 @@ final class RobotSettingsModel {
     @ObservationIgnored private var observer: Task<Void, Never>?
     @ObservationIgnored private var opening: Task<Void, Never>?
     private var settingsOpen = false
+    private var calibrationID: UUID?
+    private var applicationMode: RobotControlMode?
 
     init(link: any RobotLinkControlling, preferences: RobotPreferences, clock: any RobotClock,
          onControlModeChanged: @escaping @MainActor @Sendable (RobotControlMode) -> Void = { _ in }) {
@@ -55,29 +57,44 @@ final class RobotSettingsModel {
         snapshot.state == .connected && snapshot.limits.map { !preferences.strength.matches($0) } == true
     }
 
+    var effectiveControlMode: RobotControlMode {
+        if let applicationMode { return applicationMode }
+        if calibration != nil, let calibrationID { return .calibration(calibrationID) }
+        return settingsOpen ? .settings : .conversation
+    }
+    /// nil means active; a late calibration completion must not override scene ownership.
+    func setApplicationMode(_ mode: RobotControlMode?) {
+        guard applicationMode != mode else { return }
+        applicationMode = mode
+        notifyControlMode()
+    }
+    private func notifyControlMode() { onControlModeChanged(effectiveControlMode) }
+
     func settingsDidOpen() {
         guard !settingsOpen else { return }
         settingsOpen = true
-        onControlModeChanged(.settings)
+        notifyControlMode()
     }
 
     func settingsDidClose() {
         guard calibration == nil, settingsOpen else { return }
         settingsOpen = false
-        onControlModeChanged(.conversation)
+        notifyControlMode()
     }
 
-    func startSearch() { link.start() }
-    func select(_ device: RobotDevice) { guard calibration == nil else { return }; link.select(device) }
+    func startSearch() { guard applicationMode == nil else { return }; link.start() }
+    func select(_ device: RobotDevice) { guard calibration == nil, applicationMode == nil else { return }; link.select(device) }
     func disconnect() { link.disconnectByUser() }
 
     func openCalibration() async {
-        guard calibration == nil, link.snapshot.state == .connected else { return }
+        guard calibration == nil, applicationMode == nil, link.snapshot.state == .connected else { return }
         calibrationExitWarning = nil
         let session = RobotCalibrationSession(link: link, clock: clock)
+        settingsOpen = true
+        calibrationID = UUID()
         calibration = session
         // Ownership changes before any suspension or preview work.
-        onControlModeChanged(.calibration(UUID()))
+        notifyControlMode()
         opening = Task { try? await session.begin() }
         await Task.yield()
     }
@@ -108,7 +125,8 @@ final class RobotSettingsModel {
         opening = nil
         guard calibration === session else { return }
         calibration = nil
-        onControlModeChanged(.settings)
+        calibrationID = nil
+        notifyControlMode()
     }
 }
 
@@ -167,5 +185,20 @@ extension RobotCalibrationSession {
         case .editing:
             return !hasNewChanges && entry?.saved == true ? "ロボットに保存済み" : "未保存の変更があります"
         }
+    }
+}
+
+/// A small value projection prevents angle notifications from becoming conversation or accessibility updates.
+struct RobotStatusPresentation: Equatable, Sendable {
+    let status: RobotConnectionStatus
+    init(snapshot: RobotLinkSnapshot) {
+        switch snapshot.state {
+        case .connected: status = .connected
+        case .connecting, .preparing, .reconnecting: status = .reconnecting
+        default: status = .disconnected
+        }
+    }
+    static func announcement(from old: RobotConnectionStatus?, to new: RobotConnectionStatus?) -> String? {
+        old == new ? nil : new?.message
     }
 }

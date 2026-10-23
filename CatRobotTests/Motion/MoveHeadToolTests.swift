@@ -12,6 +12,8 @@ final class MotionControllerSpy: RobotMotionControlling {
     var cancellations: [(turn: MotionTurnID, reason: MotionCancellationReason)] = []
     var onGeneration: (() -> Void)?
     var controlModes: [RobotControlMode] = []
+    var phases: [ConversationPhase] = []
+    var confirmations = 0
     func beginTurn(_ id: MotionTurnID) { begins.append(id) }
     func reserve(_ request: RobotMotionRequest, for id: MotionTurnID) -> MotionReservationResult {
         reservations.append((request, id)); return reservationResult
@@ -24,8 +26,8 @@ final class MotionControllerSpy: RobotMotionControlling {
     }
     func cancelTurn(_ id: MotionTurnID, reason: MotionCancellationReason) { cancellations.append((id, reason)) }
     func setControlMode(_ mode: RobotControlMode) { controlModes.append(mode) }
-    func setConversationPhase(_ phase: ConversationPhase) {}
-    func utteranceConfirmed() {}
+    func setConversationPhase(_ phase: ConversationPhase) { phases.append(phase) }
+    func utteranceConfirmed() { confirmations += 1 }
     func stopAll(reason: MotionCancellationReason) {}
     func updateTrackingTarget(_ target: RobotTrackingTarget?) {}
 }

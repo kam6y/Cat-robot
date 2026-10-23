@@ -72,7 +72,10 @@ struct ConversationComposition {
             replyPlaybackMode: .sentencePrefetch,
             motion: motion,
             memory: claude,
-            serviceTeardown: { await concreteRecognizer.shutdown() }
+            serviceTeardown: {
+                await MainActor.run { motion.setControlMode(.background); robotLink.suspend() }
+                await concreteRecognizer.shutdown()
+            }
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
                     longTermMemory: longTermMemory, usage: usage, robotMotion: motion, robotLink: robotLink, robotSettings: robotSettings)
