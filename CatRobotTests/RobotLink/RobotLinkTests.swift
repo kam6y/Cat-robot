@@ -397,10 +397,36 @@ final class RobotLinkTests: XCTestCase {
         XCTAssertFalse(reloaded.idleEnabled)
     }
 
+    func testQueuedPWMStopRechecksIdlePreferenceWithoutWaitingForCoordinatorTick() async throws {
+        for idleEnabled in [false, true] {
+            let h = RobotLinkHarness()
+            h.preferences.idleEnabled = false
+            await h.connectReady(status: robotStatus(state: .active, flags: [.link, .torque]))
+            h.transport.canSendWriteWithoutResponse = false
+            let sending = Task { try await self.send(.torque(false), h: h, priority: .idlePowerOff) }
+            await h.drain()
+            XCTAssertTrue(h.transport.commands.isEmpty)
+
+            h.preferences.idleEnabled = idleEnabled
+            h.transport.canSendWriteWithoutResponse = true
+            h.transport.emit(.readyToWrite(attempt: h.attempt))
+            await h.drain()
+            XCTAssertEqual(h.clock.now, 0, "No timer tick may be needed to protect PWM continuity")
+            if idleEnabled {
+                await assertTaskFailure(sending, .notReady)
+                XCTAssertFalse(h.transport.commands.contains(.torque(false)))
+            } else {
+                try await sending.value
+                XCTAssertEqual(h.transport.commands, [.torque(false)])
+            }
+        }
+    }
+
     func testQueuedGestureAndIdlePowerOffRecheckRestBeforeWrite() async {
         for (command, priority) in [(RobotCommand.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100), RobotCommandPriority.motion),
                                     (.torque(false), .idlePowerOff)] {
             let h = RobotLinkHarness()
+            h.preferences.idleEnabled = false
             await h.connectReady(status: robotStatus(state: .active, flags: [.link, .torque]))
             h.transport.canSendWriteWithoutResponse = false
             let sending = Task { try await self.send(command, h: h, priority: priority) }

@@ -494,7 +494,8 @@ final class RobotLink: RobotLinkControlling {
         case .gesture:
             guard snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true else { return false }
         case .torque(false) where priority == .idlePowerOff:
-            guard snapshot.status?.state == .active,
+            // A preference change can precede the coordinator's next tick while BLE is blocked.
+            guard !preferences.idleEnabled, snapshot.status?.state == .active,
                   snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true else { return false }
         default: break
         }
