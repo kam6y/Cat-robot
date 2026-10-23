@@ -1,7 +1,7 @@
 # iOS 首の接続・動作・校正 検証記録
 
 - 日付: 2026-10-23（JST）
-- 対象実装SHA: `818044e521ca47e0469a3ead9be800477db9282f`。以後の文書更新とレビュー修正は末尾へ追記する。
+- 対象実装SHA: `a2b09d8e8dcebb669a864b95ae4c48a85d42a671`。レビュー修正を含む。文書だけの追記コミットは対象実装を変更しない。
 - 承認済み設計: [iOSロボット接続設計](../superpowers/specs/2026-10-23-ios-robot-link-design.md)
 - 実装計画: [10タスクの計画](../superpowers/plans/2026-10-23-ios-robot-link.md)
 - 環境: macOS 26.6.2、Xcode 27.1（27A9275）、iPhoneOS/iPhoneSimulator SDK 27.1、iOS 27.0 Simulator（iPhone 17 Pro）、Swift 6、Ruby `xcodeproj` 1.27.0。SPMは`Package.resolved`の固定版を使用。
@@ -12,16 +12,16 @@
 | 設計の節 | 実装・観測 | 自動試験・確認 |
 |---|---|---|
 | 3 / 4: 値型境界とプロトコル | 9コマンド、4種のRead、deci整数、LE、長さ・版数・不正値の拒否 | `RobotProtocolTests`、FWの既存golden bytesとの照合 |
-| 4: 接続と世代 | 既知UUID取得、サービス限定検索、Info→暗号化Status→Notify→Calibration→Limits、取消終端待ち・manager破棄後の再試行 | `RobotLinkTests`、`CoreBluetoothRobotTransportTests` |
+| 4: 接続と世代 | 既知UUID取得、サービス限定検索、Info→暗号化Status→Notify→Calibration→Limits、取消終端待ち・manager破棄後の再試行、ロボットごとの初回ペアリング待ち、認証情報消失後の明示再試行、接続待ちのキャンセル | `RobotLinkTests`、`CoreBluetoothRobotTransportTests` |
 | 4: PING・フロー制御 | 1Hz、古いStatusと新しいPING echoの回復確認、期限付き送信、最新1件、STOP/PING優先、inactive未送信動作破棄 | `RobotLinkTests`、`RobotLifecycleIntegrationTests` |
 | 5.1: ターンスコープ | 同じSDKセッションを使った2ターン、スコープなし、取消後の古いTool.call、固定IDの生成終了通知 | `MotionTurnContextTests`、`MoveHeadToolTests`、`MotionReplyGeneratorTests` |
 | 5.1: 発話同期と切り替え | voice/typed共通run、3文先読み、最初のspeechStartedだけ解放、失敗したprimaryの予約をsecondaryより前に失効 | `MotionPlaybackIntegrationTests`、`OnDeviceFallbackReplyGeneratorTests` |
-| 5.2 / 5.3: 予算と波形 | 1サイクルずつ送信、初回完走、次の予測合計≤4秒、実測超過後の残り破棄、寄せ時間、左右交互tilt、Read確認した速度欄だけ更新 | `GestureTimingTests`、`MotionCoordinatorTests` |
+| 5.2 / 5.3: 予算と波形 | 1サイクルずつ送信、初回完走、次の予測合計≤4秒、実測超過後の残り破棄、寄せ時間、左右交互tilt、Read確認した速度欄だけ更新。完了待ちは予測+2秒/最大20秒、Status Readで再同期、動作中のままなら切断・再接続 | `GestureTimingTests`、`MotionCoordinatorTests` |
 | 5.4: 自動動作 | 4〜10秒間隔、±3°/±2°、1.2〜1.6秒のC²目標列、20Hz以下、0→−5°→0の約0.6秒MOVE列、古い列を再生しない | 偽時計で送信目標・時刻・優先順位を確認。実機の追従時間は未実施 |
 | 5.5 / 5.6: 所有権と停止 | settings/inactiveでは波形完走、明示停止・新会話・真の合成失敗は停止、backgroundはSTOPを送らず切断、ACTIVE静止2秒の低優先度PWM停止と古いticket失効 | `RobotLifecycleIntegrationTests`、`MotionCoordinatorTests` |
 | 6: 校正 | 静止待ち、新しいRead、10Hzプレビュー、保存ACK・saved・意図値照合、req折り返し、同req3回、全体2回、dirtyなentry復元、旧応答と切断後ドラフトの失効 | `RobotCalibrationSessionTests`、`RobotSettingsModelTests` |
 | 7 / 8: 画面と記録 | 同じLink/Motionの注入、未接続でも会話継続、3種の接続表示だけを投影、角度通知で再アナウンスしない、本文・引数全文を記録しない | `RobotStatusPresentationTests`、既存会話・アクセシビリティ試験、ログ呼び出しの確認 |
-| 7: レイアウト | Fakeのみの接続・校正画面の上下、会話ヘッダーを横向きの通常文字/最大Dynamic Typeで画像化。最大文字は1列。停止は上部に固定 | XCTest添付PNGを目視。スライダーの度数、反転、方向、停止、戻る、保存のラベルを確認。実機VoiceOverの操作受入は未実施 |
+| 7: レイアウト | Fakeのみの接続・校正画面の上下、会話ヘッダーを横向きの通常文字/最大Dynamic Typeで画像化。最大文字は1列。停止は上部に固定。接続キャンセルも通常/最大文字で確認 | XCTest添付PNGを目視。スライダーの度数、反転、方向、停止、戻る、保存のラベルを確認。実機VoiceOverの操作受入は未実施 |
 
 Swift側の予算用予測は、標準上限・中立でnod large 1.52秒、shake large 2.08秒、tilt large 2.48秒、look large 4.06秒（±20ms）を既存FWのホスト基準と照合した。これは実機の運動時間の再測定ではない。サーボのPlannerをSwiftに複製せず、完了はStatusで判定する。
 
@@ -29,12 +29,12 @@ Swift側の予算用予測は、標準上限・中立でnod large 1.52秒、shak
 
 | 項目 | 結果 |
 |---|---|
-| 全Simulator試験（実装SHA `818044e`） | 556件実行、1件skip、失敗0（20.773秒。Xcode起動・ビルド時間を除く） |
+| 全Simulator試験（最終実装SHA `a2b09d8`） | 564件実行、1件skip、失敗0（21.680秒。Xcode起動・ビルド時間を除く） |
 | skip | `SupertonicIntegrationDeviceTests`。Simulator条件で`Explicit iPhone integration test required`により明示的skip。専用iPhone runnerを使う既存の音声受入試験 |
 | プロジェクト生成と契約試験 | PASS。再生成でproject/schemeの追加差分なし |
-| generic iOS unsigned build | BUILD SUCCEEDED（実装SHA `818044e`、iPhoneOS SDK 27.1、署名・インストール・起動なし） |
+| generic iOS unsigned build | BUILD SUCCEEDED（レビュー修正後のアプリソース、iPhoneOS SDK 27.1、署名・インストール・起動なし） |
 | `git diff --check` | PASS |
-| 新しい担当によるブランチレビュー | 実行後に追記。ホストPASSを実機受入として扱わない |
+| 新しい担当によるブランチレビュー | 初回Critical 0 / Important 3 / Minor 0。3件を修正し、再現試験と全回帰で確認。詳細は末尾。ホストPASSを実機受入として扱わない |
 
 実行は`xcodebuild test -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=80F1BF36-5242-4067-A1D9-99399B852120' -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO`（only-testingなし、専用DerivedDataと固定SPMキャッシュを指定）。ビルドは`xcodebuild build -project CatRobot.xcodeproj -scheme CatRobot -destination 'generic/platform=iOS' -disableAutomaticPackageResolution CODE_SIGNING_ALLOWED=NO`。生成は`ruby scripts/generate_project.rb`と`ruby scripts/test_generate_project.rb`。
 
@@ -67,4 +67,16 @@ Tool.callは即時に予約を返し、発話開始が実行の最早時刻に�
 
 ## レビューと追記
 
-最終レビューの指摘・修正SHA・再検証をここへ追記する。マージ・push・配布はこの記録とは別の統合操作として扱う。
+別コンテキストの `gpt-6-astra` が、基点 `2f2677273cd16ddfd0f9ea8c8701ac0778029ec3` から文書コミット `d3420b186f241f8a7edf38577843176dff379631` までの全差分を読み取り専用で確認した。初回判定は **With fixes**、Critical 0 / Important 3 / Minor 0。以下の3件を `a2b09d8` で修正し、実装者が再現試験のRED→GREENと全体回帰で確認した。
+
+| 指摘 | 修正と確認 |
+|---|---|
+| 開始済みサイクルに完了待ち期限がない | 送信から予測+2秒、最大20秒で待ちと予約を失効。新しいStatus Readが静止を示すまで動作受付を再開せず、まだ動作中/Read失敗ならSTOPを送らず切断・再接続。予測期限、20秒上限、settings/inactive、background後の古いRead、回復後の新ターンを4テストで確認。最初の3テストは10 assertion、追加の動作中Readは2 assertionのREDを観測 |
+| 初回ペアリング猶予が全ロボット共通 | 暗号化Readの成功履歴をUUIDごとに保持。認証情報消失時はそのUUIDの履歴を失効。A→未ペアリングB、認証失敗後の明示再試行で6 assertionのREDを観測し修正。既知UUIDの通常5秒期限も維持 |
+| 接続待ち・再接続をUIから中断できない | connecting/preparing/reconnectingでは「接続をキャンセル」、connectedでは「接続を切る」、中断後は明示接続。4状態のモデル操作から実際のLinkを確認し、9 assertionのREDを観測。中断後20秒とresumeで再試行/PINGが出ず、明示操作で再開することを確認 |
+
+最初の修正後全体試験は564件・1 skip・失敗0。その後の画像追加を含む全体試験では、既存の `ConversationRecoveryTests.testPauseDuringFailureCleanupCannotEraseQueuedResumeOwnership` が後処理開始のポーリング前提で1回失敗した。テスト内の発話送出にも1秒の待機があり、後処理開始の1秒ポーリングと競合し得るため、既存の音声deactivate gateへの到達を直接待つようにした。後処理回数と全ての再開所有権のassertionは維持し、会話の製品コードは変更していない。最終の全体試験では同テスト0.019秒、**564件・1 skip・失敗0**（21.680秒）。真に後処理が進まない場合、この待ち合わせ自体は長く待つ可能性がある。
+
+接続キャンセルの横向き画像は通常文字・最大Dynamic Typeで確認し、最大文字ではスクロール途中の操作位置も確認した。生成プロジェクトの契約、署名なしgeneric iOS build、差分チェックもPASS。Minorの繰り越しはなし。
+
+レビューで範囲外としたカメラ追尾/対象を見失った挙動は承認済みサブ計画4のまま、FW変更/サーボ調整は既存の契約を使用する。追尾が使えることや物理特性をホスト検証から推定しない。上記の利用者在席による実機受入は全て未実施のまま。マージ・push・配布はこの記録とは別の統合操作として扱う。
