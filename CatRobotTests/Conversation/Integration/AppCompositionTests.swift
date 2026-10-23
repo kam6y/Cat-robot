@@ -3,6 +3,16 @@ import XCTest
 
 @MainActor
 final class AppCompositionTests: XCTestCase {
+    func testLiveCompositionLeavesInjectedCameraInert() async {
+        let source = FakeFaceCaptureSource(authorization: .notDetermined)
+        let composition = ConversationComposition.live(auth: .missing, faceCaptureSource: source)
+        await robotDrain()
+        XCTAssertNotNil(composition.faceTracking)
+        XCTAssertEqual(source.requests, 0)
+        XCTAssertTrue(source.starts.isEmpty)
+        await composition.dependencies.serviceTeardown()
+    }
+
     func testLiveCompositionIsLazyAndWiresClaudeRoles() async {
         let defaults = UserDefaults(suiteName: "composition-\(UUID().uuidString)")!
         let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults),

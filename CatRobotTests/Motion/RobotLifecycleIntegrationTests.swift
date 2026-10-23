@@ -9,19 +9,29 @@ final class RobotAppHarness {
     let playback: PlaybackIntegrationHarness
     let settings: RobotSettingsModel
     let coordinator: ConversationAppCoordinator
+    let faceSource: FakeFaceCaptureSource?
+    let faceTracking: FaceTrackingCoordinator?
 
-    init() {
+    init(faceEnabled: Bool = false) {
         ble.preferences.idleEnabled = false
         motion = MotionCoordinator(link: ble.link, clock: ble.clock, preferences: ble.preferences,
                                    random: ScriptedRobotRandom())
         let source = ReservingMotionReply(base: base, motion: motion)
         playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: source, motion: motion), motion: motion)
         let motion = motion
+        let capture = faceEnabled ? FakeFaceCaptureSource() : nil
+        faceSource = capture
+        let face: FaceTrackingCoordinator?
+        if let capture {
+            face = FaceTrackingCoordinator(source: capture, link: ble.link, clock: ble.clock,
+                preferences: ble.preferences, motion: motion)
+        } else { face = nil }
+        faceTracking = face
         settings = RobotSettingsModel(link: ble.link, preferences: ble.preferences, clock: ble.clock,
-                                      onControlModeChanged: { motion.setControlMode($0) })
+                                      onControlModeChanged: { motion.setControlMode($0); face?.setControlMode($0) })
         coordinator = ConversationAppCoordinator(viewModel: playback.viewModel,
             wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }),
-            link: ble.link, motion: motion, settingsModel: settings)
+            link: ble.link, motion: motion, settingsModel: settings, faceTracking: face)
     }
     func startConnectedConversation() async {
         await ble.connectReady()
@@ -62,6 +72,24 @@ final class RobotAppHarness {
 
 @MainActor
 final class RobotLifecycleIntegrationTests: XCTestCase {
+    func testRealRobotLinkCaptureStopsSynchronouslyForSettingsAndBackground() async throws {
+        let h = RobotAppHarness(faceEnabled: true)
+        await h.startConnectedConversation()
+        let source = try XCTUnwrap(h.faceSource)
+        XCTAssertEqual(source.starts.count, 1)
+        h.coordinator.openVoiceSettings()
+        XCTAssertEqual(source.stops, 1)
+        await h.coordinator.waitForOperations()
+        h.coordinator.closeVoiceSettings()
+        await h.coordinator.waitForOperations()
+        XCTAssertEqual(source.starts.count, 2)
+        h.coordinator.scenePhaseDidChange(.background)
+        XCTAssertEqual(source.stops, 2)
+        XCTAssertEqual(h.ble.transport.disconnects.count, 1)
+        await h.coordinator.waitForOperations()
+        await h.playback.viewModel.shutdown()
+    }
+
     func testSettingsModeIsSetBeforePlaybackCancellationAndWaveFinishes() async {
         let h = RobotAppHarness()
         let run = await h.startTypedWave()

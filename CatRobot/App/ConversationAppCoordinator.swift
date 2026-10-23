@@ -25,6 +25,8 @@ final class ConversationAppCoordinator {
     @ObservationIgnored private let wakeLock: ConversationScreenWakeLock
     @ObservationIgnored private let link: (any RobotLinkControlling)?
     @ObservationIgnored private let motion: any RobotMotionControlling
+    @ObservationIgnored private let faceTracking: FaceTrackingCoordinator?
+    @ObservationIgnored private var hasStartedConversation = false
     @ObservationIgnored private let settingsModel: RobotSettingsModel?
     @ObservationIgnored private var scenePhase: ConversationAppScenePhase = .active
     @ObservationIgnored private var wakeLockToken: ConversationScreenWakeLock.Token?
@@ -46,6 +48,7 @@ final class ConversationAppCoordinator {
         link: (any RobotLinkControlling)? = nil,
         motion: any RobotMotionControlling = NoopRobotMotionController(),
         settingsModel: RobotSettingsModel? = nil,
+        faceTracking: FaceTrackingCoordinator? = nil,
         beforeActionOperation: @escaping @MainActor @Sendable () async -> Void = {}
     ) {
         self.viewModel = viewModel
@@ -53,7 +56,34 @@ final class ConversationAppCoordinator {
         self.link = link
         self.motion = motion
         self.settingsModel = settingsModel
+        self.faceTracking = faceTracking
         self.beforeActionOperation = beforeActionOperation
+    }
+
+    func conversationPhaseDidChange(_ phase: ConversationPhase) { updateFaceEnvironment(phase: phase) }
+
+    private func updateFaceEnvironment(phase: ConversationPhase? = nil) {
+        let mode: RobotControlMode
+        switch scenePhase {
+        case .active: mode = isVoiceSettingsClosed ? .conversation : settingsModel?.effectiveControlMode ?? .settings
+        case .inactive: mode = .inactive
+        case .background: mode = .background
+        }
+        faceTracking?.setEnvironment(conversationVisible: destination == .conversation && hasStartedConversation && isVoiceSettingsClosed,
+            sceneActive: scenePhase == .active, mode: mode, phase: phase ?? viewModel.viewState.phase)
+    }
+
+    /// Microphone/model/audio preflight has already finished. Camera rejection never fails chat.
+    private func completeConversationStartIfEligible() async {
+        guard !Task.isCancelled, destination == .conversation, scenePhase == .active,
+              isVoiceSettingsClosed, viewModel.viewState.phase.permitsFaceTracking else { return }
+        hasStartedConversation = true
+        updateFaceEnvironment()
+        await faceTracking?.requestPermissionForConversation()
+        updateFaceEnvironment()
+        // Returning from background/settings can precede the OS permission result. The old
+        // start was cancelled, so the foreground owner must launch its replacement now.
+        if Task.isCancelled { resumeListeningIfNeeded() }
     }
 
     func beginConversation() {
@@ -68,7 +98,7 @@ final class ConversationAppCoordinator {
     /// 進行中の開始（マイク許可の待ちなど）があるときは重ねない。猫のタップによる一時停止もこれらの出来事で解ける。
     private func resumeListeningIfNeeded() {
         guard destination == .conversation, scenePhase == .active, isVoiceSettingsClosed,
-              activeStartIntentID == nil else { return }
+              activeStartIntentID == nil, faceTracking?.isAwaitingPermission != true else { return }
         launchStart()
     }
 
@@ -80,6 +110,7 @@ final class ConversationAppCoordinator {
         let task = Task { @MainActor [weak self, viewModel] in
             await viewModel.startConversation()
             guard let self else { return }
+            if self.activeStartIntentID == intentID { await self.completeConversationStartIfEligible() }
             if self.activeStartIntentID == intentID {
                 self.activeStartIntentID = nil
             }
@@ -113,6 +144,7 @@ final class ConversationAppCoordinator {
                 viewModel.deferMicrophonePermissionCompletion()
                 return
             }
+            if faceTracking?.isAwaitingPermission == true { return }
             forwardPauseIfNeeded()
         case .background:
             invalidateActionTasksForSceneInactivity()
@@ -139,6 +171,7 @@ final class ConversationAppCoordinator {
             link?.setApplicationActive(false)
             link?.suspend()
         }
+        updateFaceEnvironment()
     }
 
     func openVoiceSettings() {
@@ -146,6 +179,7 @@ final class ConversationAppCoordinator {
         isOpeningVoiceSettings = true
         settingsModel?.settingsDidOpen()
         motion.setControlMode(.settings)
+        updateFaceEnvironment()
         invalidateActionTasksForSceneInactivity()
         let generation = actionSceneGeneration
         activeStartIntentID = nil
@@ -235,8 +269,12 @@ final class ConversationAppCoordinator {
             openVoiceSettings: { [weak self] in self?.openVoiceSettings() },
             startNewConversation: { [weak self] in
                 self?.launchAction { [weak self] in
-                    await self?.viewModel.startNewConversation()
-                    self?.resumeListeningIfNeeded()
+                    guard let self else { return }
+                    self.hasStartedConversation = false
+                    self.updateFaceEnvironment()
+                    self.faceTracking?.resetConversation()
+                    await self.viewModel.startNewConversation()
+                    self.resumeListeningIfNeeded()
                 }
             },
             retryMemory: { [weak self] in
@@ -298,6 +336,8 @@ final class ConversationAppCoordinator {
                 return
             }
             await operation()
+            await self.completeConversationStartIfEligible()
+            self.updateFaceEnvironment()
             self.actionTasks[actionID] = nil
         }
         actionTasks[actionID] = task

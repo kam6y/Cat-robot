@@ -8,6 +8,7 @@ struct AppRootView: View {
     private let voiceSettings: SpeechVoiceSettings
     private let modelSettings: ConversationModelSettings
     private let usage: any ConversationUsageMetering
+    private let faceTracking: FaceTrackingCoordinator?
     private let robotSettings: RobotSettingsModel?
     private let robotLink: (any RobotLinkControlling)?
     @State private var robotStatus: RobotConnectionStatus?
@@ -24,8 +25,10 @@ struct AppRootView: View {
         memory: LongTermMemoryManager? = nil,
         usage: (any ConversationUsageMetering)? = nil,
         robotSettings: RobotSettingsModel? = nil,
-        robotLink: (any RobotLinkControlling)? = nil
+        robotLink: (any RobotLinkControlling)? = nil,
+        faceTracking: FaceTrackingCoordinator? = nil
     ) {
+        self.faceTracking = faceTracking
         self.robotSettings = robotSettings
         self.robotLink = robotLink
         _robotStatus = State(initialValue: robotLink.map { RobotStatusPresentation(snapshot: $0.snapshot).status })
@@ -39,7 +42,7 @@ struct AppRootView: View {
         _coordinator = State(
             initialValue: ConversationAppCoordinator(
                 viewModel: viewModel,
-                wakeLock: wakeLock, link: robotLink, motion: dependencies.motion, settingsModel: robotSettings
+                wakeLock: wakeLock, link: robotLink, motion: dependencies.motion, settingsModel: robotSettings, faceTracking: faceTracking
             )
         )
     }
@@ -60,7 +63,7 @@ struct AppRootView: View {
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {
             ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
-                                     memory: memoryViewModel, usage: usage, robotSettings: robotSettings,
+                                     memory: memoryViewModel, usage: usage, robotSettings: robotSettings, faceTracking: faceTracking,
                                      onDeleteAll: { await coordinator.deleteAllMemory() },
                                      onDone: coordinator.closeVoiceSettings)
 
@@ -71,6 +74,28 @@ struct AppRootView: View {
                 guard !Task.isCancelled else { return }
                 let status = RobotStatusPresentation(snapshot: snapshot).status
                 if robotStatus != status { robotStatus = status }
+            }
+        }
+        .background {
+            FaceTrackingOrientationReader { orientation in faceTracking?.setOrientation(orientation) }
+                .frame(width: 0, height: 0)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            if let orientation = FaceTrackingOrientationReader.orientation(device: UIDevice.current.orientation, interface: .unknown) {
+                faceTracking?.setOrientation(orientation)
+            }
+        }
+        .onChange(of: viewModel.viewState.phase, initial: true) { _, phase in
+            coordinator.conversationPhaseDidChange(phase)
+        }
+        .onAppear { faceTracking?.setThermalState(ProcessInfo.processInfo.thermalState) }
+        .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
+            faceTracking?.setThermalState(ProcessInfo.processInfo.thermalState)
+        }
+        .overlay(alignment: .top) {
+            if coordinator.destination == .conversation, faceTracking?.status == .pausedForHeat {
+                Text("熱のため顔追尾を一時停止しています")
+                    .font(.caption).padding(8).background(.thinMaterial, in: Capsule()).padding(.top, 8)
             }
         }
         .preferredColorScheme(.dark)

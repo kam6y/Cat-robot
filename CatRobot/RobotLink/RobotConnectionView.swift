@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct RobotConnectionView: View {
     @Bindable var model: RobotSettingsModel
+    var faceTracking: FaceTrackingCoordinator? = nil
+    @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showsDevices = false
 
@@ -81,6 +84,25 @@ struct RobotConnectionView: View {
                     Divider()
                     Toggle("待機中も少し動く", isOn: $preferences.idleEnabled)
                 }.padding(.top, 8)
+            }
+            if let faceTracking {
+                GroupBox("顔追尾") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("顔に合わせて首を向ける", isOn: Binding(get: { faceTracking.isEnabled }, set: { enabled in
+                            Task { await faceTracking.setEnabled(enabled) }
+                        }))
+                        .accessibilityIdentifier("faceTrackingEnabled")
+                        Text(faceTracking.status.text).font(.subheadline).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("faceTrackingStatus")
+                        if faceTracking.needsSystemSettings {
+                            Button("カメラの許可を設定") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                            }
+                        }
+                        Text("映像はこのiPhone内だけで処理し、保存・送信しません。オンの会話中は、待機中の動きがオフでも首の位置を保持します。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }.padding(.top, 8)
+                }
             }
             Text("首がつながっていない間も、会話は続けられます。")
                 .font(.footnote).foregroundStyle(.secondary)

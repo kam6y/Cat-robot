@@ -10,7 +10,7 @@ struct CatRobotApp: App {
         WindowGroup {
             AppRootView(dependencies: composition.dependencies, voiceSettings: composition.voiceSettings,
                         modelSettings: composition.modelSettings, memory: composition.longTermMemory, usage: composition.usage,
-                        robotSettings: composition.robotSettings, robotLink: composition.robotLink)
+                        robotSettings: composition.robotSettings, robotLink: composition.robotLink, faceTracking: composition.faceTracking)
         }
     }
 }

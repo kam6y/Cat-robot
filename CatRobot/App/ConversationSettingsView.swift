@@ -10,6 +10,7 @@ struct ConversationSettingsView: View {
     @Bindable var modelSettings: ConversationModelSettings
     let memory: LongTermMemoryViewModel
     let usage: any ConversationUsageMetering
+    let faceTracking: FaceTrackingCoordinator?
     let robotSettings: RobotSettingsModel?
     /// 「すべて削除」の実体。覚えていることと会話の要約を消す。確認はこの画面で済ませる。
     let onDeleteAll: @MainActor () async -> Void
@@ -20,8 +21,9 @@ struct ConversationSettingsView: View {
 
     init(voiceSettings: SpeechVoiceSettings, modelSettings: ConversationModelSettings,
          memory: LongTermMemoryViewModel, usage: any ConversationUsageMetering,
-         robotSettings: RobotSettingsModel? = nil,
+         robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
          onDeleteAll: @escaping @MainActor () async -> Void, onDone: @escaping () -> Void) {
+        self.faceTracking = faceTracking
         self.robotSettings = robotSettings
         self.voiceSettings = voiceSettings; self.modelSettings = modelSettings
         self.memory = memory; self.usage = usage; self.onDeleteAll = onDeleteAll; self.onDone = onDone
@@ -82,7 +84,7 @@ struct ConversationSettingsView: View {
                 }
                 if let robotSettings {
                     Section("ロボット") {
-                        NavigationLink("首の接続と調整") { RobotConnectionView(model: robotSettings) }
+                        NavigationLink("首の接続と調整") { RobotConnectionView(model: robotSettings, faceTracking: faceTracking) }
                     }
                 }
                 Section("情報") {

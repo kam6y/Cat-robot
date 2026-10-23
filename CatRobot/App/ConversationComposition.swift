@@ -12,6 +12,7 @@ struct ConversationComposition {
     let longTermMemory: LongTermMemoryManager
     let usage: any ConversationUsageMetering
     let robotLink: any RobotLinkControlling
+    let faceTracking: FaceTrackingCoordinator
     let robotSettings: RobotSettingsModel
 
     static func live(voiceSettings: SpeechVoiceSettings = SpeechVoiceSettings(),
@@ -19,15 +20,21 @@ struct ConversationComposition {
                      auth: ClaudeAuthConfiguration = .live(),
                      robotTransport: (any RobotTransport)? = nil,
                      robotClock: (any RobotClock)? = nil,
-                     robotPreferences: RobotPreferences? = nil) -> Self {
+                     robotPreferences: RobotPreferences? = nil,
+                     faceCaptureSource: (any FaceCaptureSource)? = nil) -> Self {
         let clock = robotClock ?? SystemRobotClock()
         let preferences = robotPreferences ?? RobotPreferences()
         let robotLink = RobotLink(transport: robotTransport ?? CoreBluetoothRobotTransport(),
                                   clock: clock, preferences: preferences)
         let motion = MotionCoordinator(link: robotLink, clock: clock, preferences: preferences,
                                        random: SystemRobotRandomSource())
+        let faceTracking = FaceTrackingCoordinator(source: faceCaptureSource ?? AppleFaceCaptureSource(clock: clock),
+            link: robotLink, clock: clock, preferences: preferences, motion: motion)
         let robotSettings = RobotSettingsModel(link: robotLink, preferences: preferences, clock: clock,
-                                               onControlModeChanged: { motion.setControlMode($0) })
+                                               onControlModeChanged: {
+                                                   motion.setControlMode($0)
+                                                   faceTracking.setControlMode($0)
+                                               })
         let memoryStore: any ConversationMemoryStore
         let longTermStore: any LongTermMemoryStore
         if let directory = try? FileConversationMemoryStore.defaultDirectory() {
@@ -72,11 +79,15 @@ struct ConversationComposition {
             motion: motion,
             memory: claude,
             serviceTeardown: {
-                await MainActor.run { motion.setControlMode(.background); robotLink.suspend() }
+                await MainActor.run {
+                    faceTracking.setEnvironment(conversationVisible: false, sceneActive: false, mode: .background, phase: .paused)
+                    motion.setControlMode(.background)
+                    robotLink.suspend()
+                }
                 await concreteRecognizer.shutdown()
             }
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
-                    longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, robotSettings: robotSettings)
+                    longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, faceTracking: faceTracking, robotSettings: robotSettings)
     }
 }

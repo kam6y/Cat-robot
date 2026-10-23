@@ -33,6 +33,7 @@ final class FaceTrackingCoordinator {
 
     private(set) var status: FaceTrackingStatus = .off
     var isEnabled: Bool { preferences.trackingEnabled }
+    var isAwaitingPermission: Bool { permissionTask != nil }
     var needsSystemSettings: Bool { source.authorization == .denied || source.authorization == .restricted }
     private let source: any FaceCaptureSource
     private let link: any RobotLinkControlling
@@ -109,6 +110,11 @@ final class FaceTrackingCoordinator {
 
     func setEnvironment(conversationVisible: Bool, sceneActive: Bool, mode: RobotControlMode, phase: ConversationPhase) {
         environment = .init(conversationVisible: conversationVisible, sceneActive: sceneActive, mode: mode, phase: phase)
+        reconcile()
+    }
+
+    func setControlMode(_ mode: RobotControlMode) {
+        environment.mode = mode
         reconcile()
     }
 

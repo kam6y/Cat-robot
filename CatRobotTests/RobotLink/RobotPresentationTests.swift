@@ -42,10 +42,12 @@ final class RobotPresentationTests: XCTestCase {
         h.transport.emit(.value(attempt: h.attempt, characteristic: .limits, data: Data([0xB0, 4, 0xE8, 3, 0x58, 2, 0x2C, 1])))
         try await opening.value
         let model = RobotSettingsModel(link: h.link, preferences: h.preferences, clock: h.clock)
+        let face = FaceTrackingCoordinator(source: FakeFaceCaptureSource(), link: h.link,
+            clock: h.clock, preferences: h.preferences, motion: MotionControllerSpy())
         for size in [DynamicTypeSize.large, .accessibility5] {
             try await capture(NavigationStack { RobotCalibrationView(session: session, onClose: { _ in }) },
                               name: "calibration-\(size)", size: size)
-            try await capture(NavigationStack { RobotConnectionView(model: model) },
+            try await capture(NavigationStack { RobotConnectionView(model: model, faceTracking: face) },
                               name: "connection-\(size)", size: size)
         }
         let waiting = RobotLinkHarness()
@@ -69,6 +71,14 @@ final class RobotPresentationTests: XCTestCase {
         XCTAssertGreaterThan(host.view.bounds.width, host.view.bounds.height)
         attach(host.view, name: "\(name)-top")
         if let scroll = scrollView(in: host.view) {
+            if name.hasPrefix("connection-"), size.isAccessibilitySize {
+                let bottom = max(0, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
+                for (index, offset) in stride(from: CGFloat(0), through: bottom, by: max(1, scroll.bounds.height * 0.8)).enumerated() {
+                    scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+                    try await Task.sleep(for: .milliseconds(100))
+                    attach(host.view, name: "\(name)-page-\(index)")
+                }
+            }
             if name.hasPrefix("pending-connection"), size.isAccessibilitySize {
                 scroll.setContentOffset(CGPoint(x: 0, y: 220), animated: false)
                 try await Task.sleep(for: .milliseconds(100))
