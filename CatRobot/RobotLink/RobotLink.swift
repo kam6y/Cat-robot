@@ -259,6 +259,7 @@ final class RobotLink: RobotLinkControlling {
         nextPingAt = nil
         snapshot = RobotLinkSnapshot(state: .connecting, device: device,
                                      discoveredDevices: snapshot.discoveredDevices)
+        snapshot.connectionID = newAttempt
         transport.stopScan()
         if direct { transport.connect(device.id, attempt: newAttempt) }
         else { transport.retrieve(device.id) }
@@ -472,6 +473,15 @@ final class RobotLink: RobotLinkControlling {
         guard attempt != nil, !closing, encryptedStatusReceived else { return false }
         if case .stop = command, priority == .manualStop { return true }
         if case .ping = command, priority == .heartbeat { return preparation == .ready }
+        switch command {
+        case .setCalibration:
+            guard snapshot.status?.flags.contains(.gesture) == false else { return false }
+        case .setLimits:
+            guard snapshot.status?.flags.intersection([.gesture, .moving, .returning]).isEmpty == true else { return false }
+        case .move, .center:
+            if priority == .calibration, snapshot.status?.flags.contains(.gesture) != false { return false }
+        default: break
+        }
         return motionIsAvailable
     }
 
@@ -565,6 +575,7 @@ final class RobotLink: RobotLinkControlling {
         recovery = nil
         nextPingAt = nil
         snapshot.motionAvailable = false
+        snapshot.connectionID = nil
     }
 
     private func terminate(_ reason: RobotLinkFailure) {

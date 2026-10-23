@@ -64,6 +64,7 @@ struct RobotLinkSnapshot: Equatable, Sendable {
     var statusReceivedAt: TimeInterval?
     var motionAvailable = false
     var failure: RobotLinkFailure?
+    var connectionID: UUID?
 }
 
 enum RobotCommandPriority: Int, Comparable, Sendable {
