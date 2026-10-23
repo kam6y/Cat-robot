@@ -666,8 +666,10 @@ final class MotionCoordinator: RobotMotionControlling {
     private func servicePowerOff() {
         let permitted: Bool
         switch mode { case .conversation, .settings: permitted = true; default: permitted = false }
-        guard permitted, atRest, snapshot.status?.state == .active, active == nil, autoTask == nil,
-              strengthTask == nil, stopTask == nil else {
+        // Reattaching PWM can visibly jump. Keep it continuous while idle motion is enabled,
+        // including a trip through settings before returning to the conversation.
+        guard permitted, !preferences.idleEnabled, atRest, snapshot.status?.state == .active,
+              active == nil, autoTask == nil, strengthTask == nil, stopTask == nil else {
             if restSince != nil || powerOffTicket != nil { resetPowerOff() }
             return
         }
@@ -678,8 +680,9 @@ final class MotionCoordinator: RobotMotionControlling {
         powerOffTicket = ticket
         let link = link, clock = clock
         powerOffTask = Task { [weak self] in
-            guard let self, self.restGeneration == generation, self.snapshot.connectionID == connection,
-                  link.snapshot.connectionID == connection, self.atRest, self.snapshot.status?.state == .active else { return }
+            guard let self, !self.preferences.idleEnabled, self.restGeneration == generation,
+                  self.snapshot.connectionID == connection, link.snapshot.connectionID == connection,
+                  self.atRest, self.snapshot.status?.state == .active else { return }
             do {
                 try await link.send(.torque(false), priority: .idlePowerOff, token: ticket, expiresAt: clock.now + 0.3)
             } catch {

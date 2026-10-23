@@ -317,8 +317,60 @@ final class MotionCoordinatorTests: XCTestCase {
         }
     }
 
+    func testIdleEnabledKeepsPWMAcrossSettingsAndWaitingMovements() async {
+        let h = MotionHarness()
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
+        h.motion.setControlMode(.calibration(UUID()))
+        await h.drain()
+        h.motion.setControlMode(.settings)
+        await h.advanceFresh(by: 3)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        h.motion.setControlMode(.conversation)
+        h.motion.setConversationPhase(.listening)
+        await h.advanceFresh(by: 18, step: 0.05)
+        XCTAssertTrue(h.sentCommands.contains { if case .move = $0 { true } else { false } })
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)), "Do not cycle PWM between idle movements")
+        h.motion.stopAll(reason: .userStop)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .stop)
+    }
+
+    func testEnablingIdleInvalidatesQueuedPWMStop() async {
+        let h = MotionHarness()
+        h.preferences.idleEnabled = false
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
+        await h.drain()
+        h.link.writable = false
+        await h.advanceFresh(by: 2)
+        XCTAssertTrue(h.link.queuedCommands.contains(.torque(false)))
+        h.preferences.idleEnabled = true
+        await h.advanceFresh(by: 0.05)
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        await h.advanceFresh(by: 3)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+    }
+
+    func testDisablingIdleStartsFreshRestPeriodBeforePWMStop() async {
+        let h = MotionHarness()
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
+        h.motion.setControlMode(.settings)
+        await h.drain()
+        await h.advanceFresh(by: 3)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        h.preferences.idleEnabled = false
+        await h.advanceFresh(by: 0.05)
+        await h.advanceFresh(by: 1.9)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        await h.advanceFresh(by: 0.1)
+        XCTAssertEqual(h.sentCommands.filter { $0 == .torque(false) }.count, 1)
+    }
+
     func testIdleTorqueCannotStopNewMoveAfterBackpressure() async {
         let h = MotionHarness()
+        h.preferences.idleEnabled = false
         h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
         await h.drain()
         h.link.writable = false
@@ -336,6 +388,7 @@ final class MotionCoordinatorTests: XCTestCase {
 
     func testIdleTorqueIsActiveRestOnlyAndFiresOnce() async {
         let h = MotionHarness()
+        h.preferences.idleEnabled = false
         await h.advanceFresh(by: 3)
         XCTAssertFalse(h.sentCommands.contains(.torque(false)))
         h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
