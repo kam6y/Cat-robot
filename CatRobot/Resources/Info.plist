@@ -24,6 +24,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Cat Robotは、ロボットの首に接続して動かすためにBluetoothを使用します。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。音声は端末上で処理されます。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

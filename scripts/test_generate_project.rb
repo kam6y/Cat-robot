@@ -78,6 +78,11 @@ run_generator!
 assert(PBXPROJ_PATH.file?, "generated project.pbxproj is missing")
 assert(SCHEME_PATH.file?, "generated shared scheme is missing")
 
+info = Xcodeproj::Plist.read_from_path(ROOT.join("CatRobot/Resources/Info.plist").to_s)
+reason = info["NSBluetoothAlwaysUsageDescription"]
+assert(reason.is_a?(String) && !reason.strip.empty?, "Bluetooth usage description is missing")
+assert(!info.key?("UIBackgroundModes"), "the robot link must remain foreground-only")
+
 project = Xcodeproj::Project.open(PROJECT_PATH.to_s)
 targets = project.targets.to_h { |target| [target.name, target] }
 assert(targets.keys.sort == %w[CatRobot CatRobotTests], "expected exactly CatRobot and CatRobotTests targets")

@@ -13,7 +13,7 @@ enum RobotBluetoothState: Sendable {
 enum RobotLinkFailure: Error, Equatable, Sendable {
     case bluetoothUnavailable(RobotBluetoothState)
     case disconnected, timedOut, cancelled, notReady, expired
-    case protocolMismatch, invalidData, saveFailed, valueMismatch
+    case protocolMismatch, invalidData, saveFailed, valueMismatch, authenticationFailed
 }
 
 enum RobotTransportEvent: Sendable {
