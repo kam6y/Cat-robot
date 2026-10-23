@@ -248,28 +248,28 @@ final class MotionCoordinatorTests: XCTestCase {
     }
 
     func testIdleIntervalBoundsSmoothSamplesAndRate() async {
-        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2, 1.4]))
+        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2]))
         h.motion.setConversationPhase(.listening)
         await h.advanceFresh(by: 3.9)
         XCTAssertTrue(h.sentCommands.isEmpty)
         await h.advanceFresh(by: 0.1)
-        await h.advanceFresh(by: 1.4, step: 0.05)
+        await h.advanceFresh(by: 3.0, step: 0.05)
         let moves = h.link.sent.filter { if case .move = $0.command { true } else { false } }
         XCTAssertGreaterThan(moves.count, 20)
         for move in moves {
             guard case let .move(yaw, pitch, speed) = move.command else { return XCTFail() }
             XCTAssertLessThanOrEqual(abs(yaw), 30)
             XCTAssertLessThanOrEqual(abs(pitch), 20)
-            XCTAssertEqual(speed, 30)
+            XCTAssertEqual(speed, 10)
         }
         for pair in zip(moves, moves.dropFirst()) { XCTAssertGreaterThanOrEqual(pair.1.at - pair.0.at, 0.049_999) }
-        XCTAssertEqual(moves.first?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 30))
-        XCTAssertEqual(moves.last?.command, .move(yawDeci: 30, pitchDeci: 20, speed: 30))
-        XCTAssertEqual(moves.last!.at - moves.first!.at, 1.4, accuracy: 0.051)
+        XCTAssertEqual(moves.first?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 10))
+        XCTAssertEqual(moves.last?.command, .move(yawDeci: 30, pitchDeci: 20, speed: 10))
+        XCTAssertEqual(moves.last!.at - moves.first!.at, 3.0, accuracy: 0.051)
     }
 
     func testToolSpeechInvalidatesBlockedIdleMove() async {
-        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2, 1.4]))
+        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2, 3.5]))
         h.motion.setConversationPhase(.listening)
         await h.advanceFresh(by: 4.1, step: 0.05)
         h.link.writable = false
@@ -297,6 +297,24 @@ final class MotionCoordinatorTests: XCTestCase {
         XCTAssertEqual(moves.last?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 100))
         XCTAssertTrue(moves.contains { $0.command == .move(yawDeci: 0, pitchDeci: -50, speed: 100) })
         XCTAssertTrue(h.gestureCommands.isEmpty)
+    }
+
+    func testAcknowledgementReturnsFromManualPoseAtCalibrationSpeed() async {
+        let poses: [(Int16, Int16)] = [(-600, 0), (600, 0), (0, -300), (0, 300)]
+        for (yaw, pitch) in poses {
+            let h = MotionHarness()
+            h.link.emitStatus(robotStatus(yaw: yaw, pitch: pitch))
+            await h.drain()
+            h.motion.utteranceConfirmed()
+            await h.drain()
+            await h.advanceFresh(by: 0.6, step: 0.05)
+            let commands = h.sentCommands.filter { if case .move = $0 { true } else { false } }
+            XCTAssertEqual(commands.count, 13)
+            XCTAssertTrue(commands.allSatisfy {
+                if case .move(_, _, 10) = $0 { true } else { false }
+            }, "Automatic acknowledgement must not rapidly recenter a manual pose")
+            XCTAssertEqual(commands.last, .move(yawDeci: 0, pitchDeci: 0, speed: 10))
+        }
     }
 
     func testIdleTorqueCannotStopNewMoveAfterBackpressure() async {

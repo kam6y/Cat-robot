@@ -583,7 +583,7 @@ final class MotionCoordinator: RobotMotionControlling {
             if clock.now + 0.000_001 >= nextIdleAt! {
                 nextIdleAt = nil
                 let yaw = random.next(in: -3...3), pitch = random.next(in: -2...2)
-                startColumn(kind: .idle, duration: random.next(in: 1.2...1.6), yaw: yaw, pitch: pitch)
+                startColumn(kind: .idle, duration: random.next(in: 3...4), yaw: yaw, pitch: pitch)
             }
         } else { nextIdleAt = nil }
     }
@@ -594,8 +594,13 @@ final class MotionCoordinator: RobotMotionControlling {
         autoToken = token
         autoKind = kind
         let start = clock.now
-        let fromYaw = max(-3, min(3, Double(snapshot.status?.yawDeci ?? 0) / 10))
-        let fromPitch = max(-2, min(2, Double(snapshot.status?.pitchDeci ?? 0) / 10))
+        let currentYaw = Double(snapshot.status?.yawDeci ?? 0) / 10
+        let currentPitch = Double(snapshot.status?.pitchDeci ?? 0) / 10
+        let fromYaw = max(-3, min(3, currentYaw))
+        let fromPitch = max(-2, min(2, currentPitch))
+        // A small acknowledgement can start at a manual endpoint. Recenter gently.
+        let needsSlowApproach = abs(currentYaw) > 3 || abs(currentPitch) > 2
+        let speed: UInt8 = kind == .idle || needsSlowApproach ? 10 : 100
         let link = link, clock = clock, connection = snapshot.connectionID
         autoTask = Task { [weak self] in
             do {
@@ -616,7 +621,7 @@ final class MotionCoordinator: RobotMotionControlling {
                     }
                     let command = RobotCommand.move(yawDeci: self.deci(y, cap: kind == .idle ? 3 : 45),
                                                     pitchDeci: self.deci(p, cap: kind == .idle ? 2 : 20),
-                                                    speed: kind == .idle ? 30 : 100)
+                                                    speed: speed)
                     try await link.send(command, priority: .motion, token: token, expiresAt: clock.now + 0.3)
                     if u >= 1 { break }
                     // Missed deadlines skip samples rather than emitting an old burst.
