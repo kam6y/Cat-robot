@@ -100,10 +100,7 @@ DecodeResult decodeCommand(const uint8_t* data, size_t len) {
             r.command.saveCal.req = data[1];
             break;
         case CommandType::SetLimits:
-            r.command.setLimits.yawVelDeci = readU16(data + 1);
-            r.command.setLimits.pitchVelDeci = readU16(data + 3);
-            r.command.setLimits.yawAngDeci = readI16(data + 5);
-            r.command.setLimits.pitchAngDeci = readI16(data + 7);
+            decodeLimitsWrite(data + 1, len - 1, r.command.setLimits);  // 固定長は上で確認済み
             if (r.command.setLimits.yawAngDeci < 0 || r.command.setLimits.pitchAngDeci < 0) {
                 return fail(DecodeError::NegativeAngleLimit);
             }

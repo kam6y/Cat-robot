@@ -60,18 +60,6 @@ float holdProfile(GestureId id, float x) {
     return 1.0f - smoothStep((t - shape.move - shape.hold) / shape.move);
 }
 
-// 軸ごとの振幅（度）。保持型は到達度に掛ける係数。
-void axisAmplitudes(GestureId id, float amp, float& yaw, float& pitch) {
-    switch (id) {
-        case GestureId::Nod: yaw = 0.0f; pitch = -amp; break;
-        case GestureId::Shake: yaw = amp; pitch = 0.0f; break;
-        case GestureId::TiltL: yaw = amp; pitch = -0.5f * amp; break;
-        case GestureId::TiltR: yaw = -amp; pitch = -0.5f * amp; break;
-        case GestureId::LookUp: yaw = 0.0f; pitch = amp; break;
-        case GestureId::LookDown: yaw = 0.0f; pitch = -amp; break;
-    }
-}
-
 bool isWindowedSine(GestureId id) {
     return id == GestureId::Nod || id == GestureId::Shake;
 }
@@ -109,6 +97,18 @@ float stretchFor(const AxisLimits& limits, float v, float a, float j) {
 
 }  // namespace
 
+JointTargets gestureAmplitudes(GestureId id, float ampDeg) {
+    switch (id) {
+        case GestureId::Nod: return {0.0f, -ampDeg};
+        case GestureId::Shake: return {ampDeg, 0.0f};
+        case GestureId::TiltL: return {ampDeg, -0.5f * ampDeg};
+        case GestureId::TiltR: return {-ampDeg, -0.5f * ampDeg};
+        case GestureId::LookUp: return {0.0f, ampDeg};
+        case GestureId::LookDown: return {0.0f, -ampDeg};
+    }
+    return {0.0f, 0.0f};
+}
+
 WaveformPeaks GesturePlayer::windowedSinePeaks() { return kWindowedSinePeaks; }
 
 float GesturePlayer::baseCycleSeconds(GestureId id) {
@@ -135,30 +135,27 @@ void GesturePlayer::start(const GestureSpec& spec, const AxisLimits& yaw, const 
     dt_ = dtSeconds;
 
     const float scaledCycle = baseCycleSeconds(id_) * 100.0f / speed;
-    float yawAmp, pitchAmp;
-    axisAmplitudes(id_, amp_, yawAmp, pitchAmp);
+    const JointTargets amplitudes = gestureAmplitudes(id_, amp_);
     float v, a, j;
-    axisPeaks(id_, yawAmp, scaledCycle, v, a, j);
+    axisPeaks(id_, amplitudes.yaw, scaledCycle, v, a, j);
     float s = stretchFor(yaw, v, a, j);
-    axisPeaks(id_, pitchAmp, scaledCycle, v, a, j);
+    axisPeaks(id_, amplitudes.pitch, scaledCycle, v, a, j);
     s = std::max(s, stretchFor(pitch, v, a, j));
     stretch_ = s;
     cycleSeconds_ = scaledCycle * s;
 
     count_ = static_cast<uint32_t>(std::lround(totalSeconds() / dt_)) + 1u;
     index_ = 0;
-    active_ = true;
 }
 
 JointTargets GesturePlayer::evaluate(float phase) const {
-    float yawAmp, pitchAmp;
-    axisAmplitudes(id_, amp_, yawAmp, pitchAmp);
+    const JointTargets amplitudes = gestureAmplitudes(id_, amp_);
     const float profile = isWindowedSine(id_) ? windowedSine(phase) : holdProfile(id_, phase);
-    return JointTargets{yawAmp * profile, pitchAmp * profile};
+    return JointTargets{amplitudes.yaw * profile, amplitudes.pitch * profile};
 }
 
 JointTargets GesturePlayer::step() {
-    if (!active_) {
+    if (!active()) {
         return JointTargets{0.0f, 0.0f};
     }
     float phase;
@@ -170,9 +167,6 @@ JointTargets GesturePlayer::step() {
     }
     const JointTargets out = evaluate(phase);
     ++index_;
-    if (index_ >= count_) {
-        active_ = false;
-    }
     return out;
 }
 

@@ -24,6 +24,8 @@ struct CalBlob {
     uint16_t crc16;          // version〜pitchGainCenti の CRC-16/CCITT-FALSE（calBlobCrc）
 };
 constexpr uint8_t kCalBlobVersion = 1;
+// CRC と構造体のパディングを除き、保存対象の校正値が一致するか。
+bool sameCalibration(const CalBlob& a, const CalBlob& b);
 // version から pitchGainCenti までを 10 B（多バイトはリトルエンディアン）に並べて計算する。
 uint16_t calBlobCrc(const CalBlob& blob);
 
@@ -94,6 +96,7 @@ private:
     void acceptMaintenanceRequest(uint32_t nowMillis);
     void handleStop(uint32_t nowMillis);
     void noteAccepted(bool saturated);
+    bool pwmEnabled() const;
 
     void applyJointTargets(float yawJoint, float pitchJoint, bool* saturated);
     void setServoTargets(float yawServo, float pitchServo);

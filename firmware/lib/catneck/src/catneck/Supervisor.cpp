@@ -12,11 +12,6 @@ uint8_t clampSpeedPercent(uint8_t speed) {
     return speed;
 }
 
-bool sameCalibration(const CalBlob& a, const CalBlob& b) {
-    return a.version == b.version && a.yawOffDeci == b.yawOffDeci && a.pitchOffDeci == b.pitchOffDeci &&
-           a.invert == b.invert && a.yawGainCenti == b.yawGainCenti && a.pitchGainCenti == b.pitchGainCenti;
-}
-
 bool gainInRange(float gain) {
     return std::isfinite(gain) && gain >= config::kMinGain && gain <= config::kMaxGain;
 }
@@ -24,6 +19,11 @@ bool gainInRange(float gain) {
 int16_t toDeci(float deg) { return static_cast<int16_t>(std::lround(deg * 10.0f)); }
 
 }  // namespace
+
+bool sameCalibration(const CalBlob& a, const CalBlob& b) {
+    return a.version == b.version && a.yawOffDeci == b.yawOffDeci && a.pitchOffDeci == b.pitchOffDeci &&
+           a.invert == b.invert && a.yawGainCenti == b.yawGainCenti && a.pitchGainCenti == b.pitchGainCenti;
+}
 
 uint16_t calBlobCrc(const CalBlob& blob) {
     const uint8_t bytes[10] = {
@@ -115,11 +115,9 @@ void Supervisor::onCommand(const Command& command, Source source, uint32_t nowMi
             spec.ampDeg = command.gesture.ampDeci / 10.0f;
             spec.repeats = command.gesture.repeats;
             spec.speedPercent = command.gesture.speed;
-            const bool usesYaw = spec.id == GestureId::Shake || spec.id == GestureId::TiltL || spec.id == GestureId::TiltR;
-            const bool usesPitch = spec.id != GestureId::Shake;
-            const float pitchAmp = (spec.id == GestureId::TiltL || spec.id == GestureId::TiltR) ? spec.ampDeg * 0.5f : spec.ampDeg;
-            saturated = (usesYaw && spec.ampDeg > yaw_.axis.limits().maxAngle) ||
-                        (usesPitch && pitchAmp > pitch_.axis.limits().maxAngle);
+            const JointTargets amplitudes = gestureAmplitudes(spec.id, spec.ampDeg);
+            saturated = std::fabs(amplitudes.yaw) > yaw_.axis.limits().maxAngle ||
+                        std::fabs(amplitudes.pitch) > pitch_.axis.limits().maxAngle;
             acceptMotionRequest(nowMillis);
             if (phase_ != GesturePhase::None) {
                 hasPendingGesture_ = true;
@@ -288,8 +286,7 @@ Outputs Supervisor::tick(uint32_t nowMillis) {
     pitch_.planner.step();
 
     Outputs out{};
-    out.pwmEnabled = state_ == SupervisorState::BootCenter || state_ == SupervisorState::Active ||
-                     state_ == SupervisorState::Returning || state_ == SupervisorState::RelaxWait;
+    out.pwmEnabled = pwmEnabled();
     out.yawPulseUs = yaw_.axis.servoToPulseUs(yaw_.planner.state().pos);
     out.pitchPulseUs = pitch_.axis.servoToPulseUs(pitch_.planner.state().pos);
     return out;
@@ -339,6 +336,11 @@ void Supervisor::handleStop(uint32_t nowMillis) { enterState(SupervisorState::Id
 void Supervisor::noteAccepted(bool saturated) {
     rejected_ = false;
     saturated_ = saturated;
+}
+
+bool Supervisor::pwmEnabled() const {
+    return state_ == SupervisorState::BootCenter || state_ == SupervisorState::Active ||
+           state_ == SupervisorState::Returning || state_ == SupervisorState::RelaxWait;
 }
 
 // ---- 目標と Planner ---------------------------------------------------------------
@@ -501,15 +503,15 @@ CalBlob Supervisor::currentBlob() const {
                                        (pitch_.axis.calibration().invert ? 2 : 0));
     blob.yawGainCenti = static_cast<uint16_t>(std::lround(yaw_.axis.calibration().gain * 100.0f));
     blob.pitchGainCenti = static_cast<uint16_t>(std::lround(pitch_.axis.calibration().gain * 100.0f));
-    blob.crc16 = calBlobCrc(blob);
     return blob;
 }
 
 bool Supervisor::isDirty() const { return !haveSaved_ || !sameCalibration(currentBlob(), savedBlob_); }
 
 bool Supervisor::persist() {
-    const CalBlob blob = currentBlob();
+    CalBlob blob = currentBlob();
     if (haveSaved_ && sameCalibration(blob, savedBlob_)) return true;  // 同じなら書かない（NVS の摩耗を避ける）
+    blob.crc16 = calBlobCrc(blob);  // 状態照会では不要。保存する値にだけ付ける
     if (!storage_.save(blob)) return false;
     savedBlob_ = blob;
     haveSaved_ = true;
@@ -522,11 +524,9 @@ Status Supervisor::status() const {
     Status st{};
     st.yawDeci = toDeci(yaw_.axis.servoToJoint(yaw_.planner.state().pos));
     st.pitchDeci = toDeci(pitch_.axis.servoToJoint(pitch_.planner.state().pos));
-    const bool pwm = state_ == SupervisorState::BootCenter || state_ == SupervisorState::Active ||
-                     state_ == SupervisorState::Returning || state_ == SupervisorState::RelaxWait;
     uint16_t flags = 0;
     if (linkUp_) flags |= StatusFlags::Link;
-    if (pwm) flags |= StatusFlags::Torque;
+    if (pwmEnabled()) flags |= StatusFlags::Torque;
     if (!plannersAtRest() || phase_ == GesturePhase::Playing) flags |= StatusFlags::Moving;
     if (brownout_) flags |= StatusFlags::Brownout;
     if (saturated_) flags |= StatusFlags::Saturated;

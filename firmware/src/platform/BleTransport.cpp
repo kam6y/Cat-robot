@@ -71,8 +71,8 @@ void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
     server_->advertiseOnDisconnect(true);
 
     NimBLEService* service = server_->createService(kServiceUuid);
-    commandChar_ = service->createCharacteristic(kCommandUuid, NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC);
-    commandChar_->setCallbacks(&g_commandCallbacks);
+    NimBLECharacteristic* command = service->createCharacteristic(kCommandUuid, NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC);
+    command->setCallbacks(&g_commandCallbacks);
     statusChar_ = service->createCharacteristic(kStatusUuid,
                                                 NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::NOTIFY);
     calibrationChar_ = service->createCharacteristic(
@@ -82,7 +82,7 @@ void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
     limitsChar_ = service->createCharacteristic(
         kLimitsUuid, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::WRITE_ENC);
     limitsChar_->setCallbacks(&g_limitsCallbacks);
-    infoChar_ = service->createCharacteristic(kInfoUuid, NIMBLE_PROPERTY::READ);
+    NimBLECharacteristic* infoChar = service->createCharacteristic(kInfoUuid, NIMBLE_PROPERTY::READ);
 
     InfoData info{};
     info.protocol = config::kProtocolVersion;
@@ -93,7 +93,7 @@ void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
     info.caps = 0;
     uint8_t infoBytes[kInfoSize];
     encodeInfo(info, infoBytes);
-    infoChar_->setValue(infoBytes, sizeof infoBytes);
+    infoChar->setValue(infoBytes, sizeof infoBytes);
     uint8_t zeros[kStatusSize] = {};
     statusChar_->setValue(zeros, kStatusSize);
     calibrationChar_->setValue(zeros, kCalibrationSize);

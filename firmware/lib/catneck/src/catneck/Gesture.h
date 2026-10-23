@@ -20,6 +20,9 @@ struct JointTargets {
     float pitch;
 };
 
+// 軸ごとの符号つき振幅。保持型は到達角、正弦型は波形に掛ける係数。
+JointTargets gestureAmplitudes(GestureId id, float ampDeg);
+
 // 窓つき正弦（正規化後）の位相 x に関する 1〜3 階導関数の絶対値の最大
 struct WaveformPeaks {
     float d1;
@@ -32,7 +35,7 @@ public:
     // 再生を始める。速度・加速度・加加速度の上限（Planner と同じ式）を超える波形は時間を伸ばす。
     void start(const GestureSpec& spec, const AxisLimits& yaw, const AxisLimits& pitch,
                float dtSeconds = config::kTickSeconds);
-    bool active() const { return active_; }
+    bool active() const { return index_ < count_; }
     // 現在 tick のジョイント目標を返して 1 tick 進める。最後の標本（t = 総時間）を返した後 active() は false。
     JointTargets step();
     float totalSeconds() const { return cycleSeconds_ * repeats_; }
@@ -51,7 +54,6 @@ private:
     float dt_ = config::kTickSeconds;
     uint32_t index_ = 0;
     uint32_t count_ = 0;
-    bool active_ = false;
 };
 
 }  // namespace catneck

@@ -51,11 +51,9 @@ private:
 
     Supervisor* supervisor_ = nullptr;
     NimBLEServer* server_ = nullptr;
-    NimBLECharacteristic* commandChar_ = nullptr;
     NimBLECharacteristic* statusChar_ = nullptr;
     NimBLECharacteristic* calibrationChar_ = nullptr;
     NimBLECharacteristic* limitsChar_ = nullptr;
-    NimBLECharacteristic* infoChar_ = nullptr;
     char name_[16] = "CatRobot-????";
     char address_[18] = "";
 
