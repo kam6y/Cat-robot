@@ -71,9 +71,17 @@ struct RobotConnectionView: View {
             GroupBox("首の動き") {
                 VStack(spacing: 14) {
                     Text("動きの強さ").frame(maxWidth: .infinity, alignment: .leading)
-                    Picker("動きの強さ", selection: $preferences.strength) {
-                        ForEach(RobotMotionStrength.allCases, id: \.self) { Text($0.displayName).tag($0) }
-                    }.pickerStyle(.menu).accessibilityLabel("動きの強さ")
+                    Menu {
+                        ForEach(RobotMotionStrength.allCases, id: \.self) { strength in
+                            Button(strength.displayName) { preferences.strength = strength }
+                        }
+                    } label: {
+                        Label(model.displayedStrengthText, systemImage: "chevron.up.chevron.down")
+                    }.accessibilityLabel("動きの強さ").accessibilityValue(model.displayedStrengthText)
+                    if model.strengthIsPending {
+                        Text("選んだ強さはまだ反映されていません。首の停止を待ち、接続を確認してください。必要ならつなぎ直してください。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     Divider()
                     Toggle("待機中も少し動く", isOn: $preferences.idleEnabled)
                 }.padding(.top, 8)

@@ -1,0 +1,378 @@
+import XCTest
+@testable import CatRobot
+
+@MainActor
+final class MotionCoordinatorTests: XCTestCase {
+    private let nod = RobotMotionRequest(gesture: .nod, intensity: .large, repeats: 3)
+
+    func testSpeechReleasesOnceAndKeepsRunningAfterSpeechEnds() async {
+        let h = MotionHarness()
+        let turn = MotionTurnID()
+        h.motion.beginTurn(turn)
+        XCTAssertEqual(h.motion.reserve(.init(gesture: .nod, intensity: .large, repeats: 1), for: turn), .reserved(cycles: 1))
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+        h.motion.speechStarted(turn)
+        h.motion.speechStarted(turn)
+        h.motion.speechFinished(turn)
+        h.motion.generationFinished(turn, outcome: .success)
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands, [.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100)])
+        await h.completeCycle(after: 1.52)
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+    }
+
+    func testBudgetCountsIndividualCycles() async {
+        for (gesture, count, duration) in [(RobotGesture.nod, 2, 1.52), (.shake, 1, 2.08), (.lookUp, 1, 4.06)] {
+            let h = MotionHarness()
+            let turn = MotionTurnID()
+            h.motion.beginTurn(turn)
+            XCTAssertEqual(h.motion.reserve(.init(gesture: gesture, intensity: .large, repeats: 3), for: turn), .reserved(cycles: count))
+            h.motion.speechStarted(turn)
+            await h.drain()
+            for _ in 0..<count { await h.completeCycle(after: duration) }
+            XCTAssertEqual(h.gestureCommands.count, count)
+            XCTAssertTrue(h.gestureCommands.allSatisfy { if case .gesture(_, _, 1, 100) = $0 { true } else { false } })
+            XCTAssertFalse(h.sentCommands.contains(.stop))
+        }
+    }
+
+    func testNewTurnDropsUnstartedOldCyclesButFinishesCurrent() async {
+        let h = MotionHarness()
+        let old = h.reserve(repeats: 3)
+        h.motion.speechStarted(old)
+        await h.drain()
+        await h.startCycle()
+        let next = h.reserve(.shake)
+        h.motion.speechStarted(next)
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands.count, 1)
+        XCTAssertEqual(h.motion.reserve(nod, for: old), .invalidated)
+        await h.completeCycle(after: 1.52)
+        XCTAssertEqual(h.gestureCommands, [.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100),
+                                         .gesture(id: 2, ampDeci: 250, repeats: 1, speed: 100)])
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+    }
+
+    func testSettingsFinishesCycleAndCalibrationRejectsReservations() async {
+        let h = MotionHarness()
+        let turn = h.reserve(repeats: 3)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.startCycle()
+        h.motion.setControlMode(.settings)
+        h.motion.cancelTurn(turn, reason: .playbackCancelled)
+        await h.completeCycle(after: 1.52)
+        XCTAssertEqual(h.gestureCommands.count, 1)
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+        let next = MotionTurnID()
+        h.motion.beginTurn(next)
+        h.motion.setControlMode(.calibration(UUID()))
+        XCTAssertEqual(h.motion.reserve(nod, for: next), .unavailable)
+    }
+
+    func testNoObservedStartWithinOneSecondDropsRemainingCycles() async {
+        let h = MotionHarness()
+        let turn = h.reserve(repeats: 3)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.advanceFresh(by: 1.1)
+        XCTAssertEqual(h.gestureCommands.count, 1)
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+    }
+
+    func testMeasuredOverrunDropsNextWithoutCuttingCurrent() async {
+        let h = MotionHarness()
+        let turn = h.reserve(repeats: 3)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.completeCycle(after: 3.4)
+        XCTAssertEqual(h.gestureCommands.count, 1)
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+    }
+
+    func testLateOldCancellationCannotStopNewTurn() async {
+        let h = MotionHarness()
+        let old = h.reserve()
+        h.motion.speechStarted(old)
+        await h.drain()
+        await h.completeCycle(after: 1.52)
+        let next = h.reserve(.shake)
+        h.motion.speechStarted(next)
+        await h.drain()
+        h.motion.cancelTurn(old, reason: .playbackCancelled)
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands.count, 2)
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+    }
+
+    func testExplicitStopAndBackgroundUseDifferentCommands() async {
+        for background in [false, true] {
+            let h = MotionHarness()
+            let turn = h.reserve()
+            h.motion.speechStarted(turn)
+            await h.drain()
+            await h.startCycle()
+            h.motion.stopAll(reason: background ? .background : .userStop)
+            await h.drain()
+            XCTAssertEqual(h.sentCommands.filter { $0 == .stop }.count, background ? 0 : 1)
+            XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+        }
+    }
+
+    func testTiltStartsLeftAndAlternatesOnlyWhenSent() async {
+        let h = MotionHarness()
+        for _ in 0..<3 {
+            let turn = h.reserve(.tilt)
+            h.motion.speechStarted(turn)
+            await h.drain()
+            await h.completeCycle(after: 2.48)
+        }
+        XCTAssertEqual(h.gestureCommands, [3, 4, 3].map { .gesture(id: $0, ampDeci: 150, repeats: 1, speed: 100) })
+    }
+
+    func testLookAtUserUsesOnlyFreshTrackingAndSaturatesAutonomousRange() async {
+        for fresh in [false, true] {
+            let h = MotionHarness()
+            h.motion.updateTrackingTarget(.init(yaw: 90, pitch: -60, validUntil: fresh ? 10 : -1))
+            let turn = h.reserve(.lookAtUser, repeats: 3)
+            h.motion.speechStarted(turn)
+            await h.drain()
+            XCTAssertEqual(h.sentCommands, fresh ? [.move(yawDeci: 450, pitchDeci: -200, speed: 100)] : [.center(speed: 100)])
+        }
+    }
+
+    func testInvalidArgumentsAndMissingTurnDoNotReserve() {
+        let h = MotionHarness()
+        XCTAssertEqual(h.motion.reserve(nod, for: MotionTurnID()), .invalidated)
+        let turn = MotionTurnID()
+        h.motion.beginTurn(turn)
+        for repeats in [0, 4] {
+            XCTAssertEqual(h.motion.reserve(.init(gesture: .nod, intensity: .small, repeats: repeats), for: turn), .invalidArguments)
+        }
+    }
+
+    func testIdleIntervalBoundsSmoothSamplesAndRate() async {
+        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2, 1.4]))
+        h.motion.setConversationPhase(.listening)
+        await h.advanceFresh(by: 3.9)
+        XCTAssertTrue(h.sentCommands.isEmpty)
+        await h.advanceFresh(by: 0.1)
+        await h.advanceFresh(by: 1.4, step: 0.05)
+        let moves = h.link.sent.filter { if case .move = $0.command { true } else { false } }
+        XCTAssertGreaterThan(moves.count, 20)
+        for move in moves {
+            guard case let .move(yaw, pitch, speed) = move.command else { return XCTFail() }
+            XCTAssertLessThanOrEqual(abs(yaw), 30)
+            XCTAssertLessThanOrEqual(abs(pitch), 20)
+            XCTAssertEqual(speed, 30)
+        }
+        for pair in zip(moves, moves.dropFirst()) { XCTAssertGreaterThanOrEqual(pair.1.at - pair.0.at, 0.049_999) }
+        XCTAssertEqual(moves.first?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 30))
+        XCTAssertEqual(moves.last?.command, .move(yawDeci: 30, pitchDeci: 20, speed: 30))
+        XCTAssertEqual(moves.last!.at - moves.first!.at, 1.4, accuracy: 0.051)
+    }
+
+    func testToolSpeechInvalidatesBlockedIdleMove() async {
+        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2, 1.4]))
+        h.motion.setConversationPhase(.listening)
+        await h.advanceFresh(by: 4.1, step: 0.05)
+        h.link.writable = false
+        await h.advanceFresh(by: 0.05)
+        XCTAssertTrue(h.link.queuedCommands.contains { if case .move = $0 { true } else { false } })
+        let turn = h.reserve()
+        h.motion.speechStarted(turn)
+        await h.drain()
+        let before = h.sentCommands.count
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertFalse(h.sentCommands.dropFirst(before).contains { if case .move = $0 { true } else { false } })
+        XCTAssertEqual(h.gestureCommands.count, 1)
+    }
+
+    func testUtteranceAcknowledgementUsesPointSixSecondMoveColumn() async {
+        let h = MotionHarness()
+        h.motion.utteranceConfirmed()
+        await h.drain()
+        await h.advanceFresh(by: 0.6, step: 0.05)
+        let moves = h.link.sent.filter { if case .move = $0.command { true } else { false } }
+        XCTAssertEqual(moves.count, 13)
+        XCTAssertEqual(moves.first?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 100))
+        XCTAssertEqual(moves.last?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 100))
+        XCTAssertTrue(moves.contains { $0.command == .move(yawDeci: 0, pitchDeci: -50, speed: 100) })
+        XCTAssertTrue(h.gestureCommands.isEmpty)
+    }
+
+    func testIdleTorqueCannotStopNewMoveAfterBackpressure() async {
+        let h = MotionHarness()
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
+        await h.drain()
+        h.link.writable = false
+        await h.advanceFresh(by: 2)
+        XCTAssertTrue(h.link.queuedCommands.contains(.torque(false)))
+        let turn = h.reserve()
+        h.motion.speechStarted(turn)
+        await h.drain()
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        XCTAssertEqual(h.gestureCommands.count, 1)
+    }
+
+    func testIdleTorqueIsActiveRestOnlyAndFiresOnce() async {
+        let h = MotionHarness()
+        await h.advanceFresh(by: 3)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
+        await h.drain()
+        await h.advanceFresh(by: 1.9)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        await h.advanceFresh(by: 0.1)
+        await h.advanceFresh(by: 3)
+        XCTAssertEqual(h.sentCommands.filter { $0 == .torque(false) }.count, 1)
+        XCTAssertFalse(h.sentCommands.contains(.torque(true)))
+    }
+
+    func testStrengthWaitsForRestAndReadbackWithoutChangingAngles() async {
+        let h = MotionHarness()
+        let model = RobotSettingsModel(link: h.link, preferences: h.preferences, clock: h.clock)
+        let turn = h.reserve()
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.startCycle()
+        h.preferences.strength = .calm
+        await h.advanceFresh(by: 0.2)
+        XCTAssertFalse(h.sentCommands.contains { if case .setLimits = $0 { true } else { false } })
+        await h.completeCycle(after: 1.52)
+        XCTAssertEqual(h.sentCommands.last, .setLimits(.init(yawVelocityDeci: 600, pitchVelocityDeci: 500, yawAngleDeci: 0, pitchAngleDeci: 0)))
+        XCTAssertEqual(h.link.limitsReadCount, 1)
+        XCTAssertEqual(model.displayedStrength, .standard)
+        h.link.completeLimitsRead(.init(yawVelocityDeci: 600, pitchVelocityDeci: 500, yawAngleDeci: 600, pitchAngleDeci: 300))
+        await h.drain()
+        XCTAssertEqual(model.displayedStrength, .calm)
+    }
+
+    func testWrongStrengthReadbackKeepsActualDisplayAndDoesNotLoop() async {
+        let h = MotionHarness()
+        let model = RobotSettingsModel(link: h.link, preferences: h.preferences, clock: h.clock)
+        h.preferences.strength = .active
+        await h.advanceFresh(by: 0.1)
+        XCTAssertEqual(h.sentCommands.last, .setLimits(.init(yawVelocityDeci: 1_800, pitchVelocityDeci: 1_200, yawAngleDeci: 0, pitchAngleDeci: 0)))
+        h.link.completeLimitsRead(standardRobotLimits)
+        await h.drain()
+        await h.advanceFresh(by: 1)
+        XCTAssertEqual(model.displayedStrength, .standard)
+        XCTAssertEqual(h.sentCommands.filter { if case .setLimits = $0 { true } else { false } }.count, 1)
+    }
+
+    func testDisconnectDiscardsQueuedMotionAndNeverReplaysOnReconnect() async {
+        let h = MotionHarness()
+        h.link.writable = false
+        let turn = h.reserve()
+        h.motion.speechStarted(turn)
+        await h.drain()
+        h.link.disconnect()
+        await h.drain()
+        h.link.reconnect()
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+    }
+
+    func testTimingTraceSeparatesSpeechAndPreviousCycleWait() async {
+        let h = MotionHarness()
+        let old = h.reserve()
+        h.motion.speechStarted(old)
+        await h.drain()
+        await h.startCycle()
+        await h.clock.advance(by: 0.2)
+        let next = h.reserve(.shake)
+        h.motion.speechStarted(next)
+        await h.completeCycle(after: 1.32)
+        let sent = h.trace.events.last { $0.turn == next && $0.point == .sent }
+        XCTAssertEqual(sent?.at ?? -1, 1.52, accuracy: 0.001)
+        XCTAssertEqual(sent?.speechToSend ?? -1, 1.32, accuracy: 0.001)
+        XCTAssertEqual(sent?.previousCycleWait ?? -1, 1.32, accuracy: 0.001)
+        XCTAssertNotNil(h.trace.events.first { $0.turn == next && $0.point == .eligible })
+    }
+    func testCenteringIsChargedOnlyForTheFirstPendingCycle() async {
+        let h = MotionHarness()
+        h.link.emitStatus(robotStatus(yaw: 450, pitch: 200))
+        await h.drain()
+        let turn = MotionTurnID()
+        h.motion.beginTurn(turn)
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .reserved(cycles: 2))
+    }
+
+    func testUnobservedReconnectCannotReleaseOldReservationOrScheduledWrite() async {
+        for reconnectAfterSpeech in [false, true] {
+            let h = MotionHarness()
+            await h.drain()
+            let turn = h.reserve()
+            h.link.publishesUpdates = false
+            if reconnectAfterSpeech { h.motion.speechStarted(turn) }
+            h.link.disconnect()
+            h.link.reconnect()
+            if !reconnectAfterSpeech { h.motion.speechStarted(turn) }
+            await h.drain()
+            XCTAssertTrue(h.sentCommands.isEmpty)
+            XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+        }
+    }
+
+    func testAcknowledgementCannotCrossAnUnobservedConnectionEpoch() async {
+        let h = MotionHarness()
+        await h.drain()
+        h.link.publishesUpdates = false
+        h.motion.utteranceConfirmed()
+        h.link.disconnect()
+        h.link.reconnect()
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+    }
+
+    func testRejectedReservationRecordsAnEnumeratedResult() {
+        let h = MotionHarness()
+        let turn = MotionTurnID()
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+        XCTAssertEqual(h.trace.events.last?.point, .reserved)
+        XCTAssertEqual(h.trace.events.last?.result, .invalidated)
+        h.motion.beginTurn(turn)
+        h.motion.setControlMode(.settings)
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .unavailable)
+        XCTAssertEqual(h.trace.events.last?.result, .unavailable)
+    }
+
+    func testLookAtUserTargetExpiresWhileWaitingForFlowControl() async {
+        let h = MotionHarness()
+        h.motion.updateTrackingTarget(.init(yaw: 30, pitch: 10, validUntil: 0.1))
+        h.link.writable = false
+        let turn = h.reserve(.lookAtUser)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.clock.advance(by: 0.2)
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+    }
+
+    func testStrengthReadbackDoesNotDependOnSnapshotObserverOrdering() async {
+        let h = MotionHarness()
+        h.preferences.strength = .calm
+        await h.advanceFresh(by: 0.1)
+        XCTAssertEqual(h.link.limitsReadCount, 1)
+        h.link.publishesUpdates = false
+        h.link.completeLimitsRead(.init(yawVelocityDeci: 600, pitchVelocityDeci: 500, yawAngleDeci: 600, pitchAngleDeci: 300))
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.filter { if case .setLimits = $0 { true } else { false } }.count, 1)
+        h.motion.stopAll(reason: .linkLost)
+        await h.drain()
+    }
+
+}

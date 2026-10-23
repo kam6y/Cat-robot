@@ -329,6 +329,24 @@ final class RobotLinkTests: XCTestCase {
         XCTAssertFalse(reloaded.idleEnabled)
     }
 
+    func testQueuedGestureAndIdlePowerOffRecheckRestBeforeWrite() async {
+        for (command, priority) in [(RobotCommand.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100), RobotCommandPriority.motion),
+                                    (.torque(false), .idlePowerOff)] {
+            let h = RobotLinkHarness()
+            await h.connectReady(status: robotStatus(state: .active, flags: [.link, .torque]))
+            h.transport.canSendWriteWithoutResponse = false
+            let sending = Task { try await self.send(command, h: h, priority: priority) }
+            await h.drain()
+            h.receiveStatus(robotStatus(state: .active, flags: [.link, .torque, .moving, .gesture]))
+            await h.drain()
+            h.transport.canSendWriteWithoutResponse = true
+            h.transport.emit(.readyToWrite(attempt: h.attempt))
+            await h.drain()
+            await assertTaskFailure(sending, .notReady)
+            XCTAssertFalse(h.transport.commands.contains(command))
+        }
+    }
+
     private func send(_ command: RobotCommand, h: RobotLinkHarness,
                       priority: RobotCommandPriority = .motion, token: UUID = UUID(),
                       lifetime: TimeInterval = 0.3) async throws {

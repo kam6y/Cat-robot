@@ -41,6 +41,20 @@ final class RobotSettingsModel {
 
     var presentation: RobotConnectionPresentation { .init(snapshot: snapshot) }
 
+    /// Only the freshly read velocity caps describe an applied strength while connected.
+    var displayedStrength: RobotMotionStrength? {
+        guard snapshot.state == .connected, let limits = snapshot.limits else { return preferences.strength }
+        return RobotMotionStrength.allCases.first { $0.matches(limits) }
+    }
+    var displayedStrengthText: String {
+        if let displayedStrength { return displayedStrength.displayName }
+        guard let limits = snapshot.limits else { return "速度上限を確認してください" }
+        return "左右\(Int(limits.yawVelocityDeci) / 10)°/秒・上下\(Int(limits.pitchVelocityDeci) / 10)°/秒"
+    }
+    var strengthIsPending: Bool {
+        snapshot.state == .connected && snapshot.limits.map { !preferences.strength.matches($0) } == true
+    }
+
     func settingsDidOpen() {
         guard !settingsOpen else { return }
         settingsOpen = true

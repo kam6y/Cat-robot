@@ -484,7 +484,14 @@ final class RobotLink: RobotLinkControlling {
         case .setLimits:
             guard snapshot.status?.flags.intersection([.gesture, .moving, .returning]).isEmpty == true else { return false }
         case .move, .center:
-            if priority == .calibration, snapshot.status?.flags.contains(.gesture) != false { return false }
+            guard snapshot.status?.flags.contains(.gesture) == false else { return false }
+            if case .center = command, priority == .motion,
+               snapshot.status?.flags.intersection([.moving, .returning]).isEmpty != true { return false }
+        case .gesture:
+            guard snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true else { return false }
+        case .torque(false) where priority == .idlePowerOff:
+            guard snapshot.status?.state == .active,
+                  snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true else { return false }
         default: break
         }
         return motionIsAvailable
