@@ -362,27 +362,41 @@ async def run(args) -> int:
     def on_disconnect(_client) -> None:
         print("切断されました")
 
-    async with BleakClient(device, disconnected_callback=on_disconnect, timeout=args.connect_timeout) as client:
-        print(f"接続: {device.name or '?'} ({device.address})")
+    client = BleakClient(device, disconnected_callback=on_disconnect, timeout=args.connect_timeout)
+    await client.connect()
+    print(f"接続: {device.name or '?'} ({device.address})")
+    session: Session | None = None
+    try:
         if args.cmd == "info":
             print(format_info(decode_info(bytes(await client.read_gatt_char(CHAR_INFO)))))
             return 0
         session = Session(client)
+        # 暗号化が必要な Status を先に読んでペアリングを起こす。Command は応答なし書き込みなので、
+        # 未ペアのまま書いても ATT エラーが返らず macOS はペアリングを始めない。Notify も暗号化後にしか届かない
+        await session.read_status()
         await session.subscribe()
         if args.cmd == "watch":
             session.log_status = True
             await asyncio.sleep(args.seconds)
             return 0
         session.start_keepalive()
-        try:
-            rc = await dispatch(args, session)
-            if args.hold > 0:
-                print(f"{args.hold:.0f} 秒保持（PING 継続）…")
-                await asyncio.sleep(args.hold)
-            return rc
-        finally:
+        rc = await dispatch(args, session)
+        if args.hold > 0:
+            print(f"{args.hold:.0f} 秒保持（PING 継続）…")
+            await asyncio.sleep(args.hold)
+        return rc
+    except BleakError as e:
+        # 切断時のエラーで本体のエラーを隠さない（暗号化が必要な特性でのペアリング失敗など）
+        print(f"BLE エラー（{args.cmd}）: {e}", file=sys.stderr)
+        return 1
+    finally:
+        if session is not None:
             await session.stop_keepalive()
-            print("切断します（首は安全復帰して脱力します）")
+        print("切断します（首は安全復帰して脱力します）")
+        try:
+            await client.disconnect()
+        except BleakError as e:
+            print(f"切断時のエラー（無視）: {e}", file=sys.stderr)
 
 
 def build_parser() -> argparse.ArgumentParser:

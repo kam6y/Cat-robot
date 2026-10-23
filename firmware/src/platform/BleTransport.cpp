@@ -245,10 +245,19 @@ void BleTransport::publishStatus(const Status& status, bool changed, uint32_t no
     if (!changed && nowMillis - lastNotifyMillis_ < config::kStatusPeriodMs) return;
     lastNotifyMillis_ = nowMillis;
     encodeStatus(status, lastStatus_);
+    // Read は READ_ENC で守られるが Notify は NimBLE が暗号化の有無を見ずに送る（実機で確認: 未ペアの
+    // central に届いた）。暗号化済みの接続にだけ送り、Read と同じ条件にそろえる
+    if (!server_->getPeerInfoByHandle(acceptedHandle_).isEncrypted()) return;
     statusChar_->notify(lastStatus_, sizeof lastStatus_);
 }
 
-void BleTransport::clearBonds() { NimBLEDevice::deleteAllBonds(); }
+void BleTransport::clearBonds() {
+    // deleteAllBonds() は OUR_SEC の数だけ消す。途中で止まったペアリングは PEER_SEC（相手の LTK）だけを
+    // 残し、ATT が「Insufficient Encryption」を返して macOS が二度とペアリングしない状態になる（実機で
+    // 確認）。store 全体（our/peer sec・CCCD・IRK）を消す
+    NimBLEDevice::deleteAllBonds();
+    ble_store_clear();
+}
 
 void BleTransport::openPairWindow() {
     windowOpen_ = true;

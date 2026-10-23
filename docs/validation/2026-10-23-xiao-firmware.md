@@ -71,8 +71,8 @@
 | `STATUS` | flags 0x0200 = PAIR_OPEN（ボンド 0 なので常時受付） |
 | `PAIR OPEN` | `OK` |
 | NVS の保存値 | Task 8 で保存した既定値が再書き込み後も `saved=1`（アプリ領域の書き換えで NVS は消えない） |
-| Mac からアドバタイズが見えること | **未実施**。`ble_client.py scan` はこのターミナルの Bluetooth 権限で止まり、`system_profiler SPBluetoothDataType` には未接続機器が出ない。利用者在席時に権限を許可して `scan` → `info` → `watch` を行う |
-| ペアリング・暗号化特性の Read/Notify・窓外の切断（R2） | **未実施** |
+| Mac からアドバタイズが見えること | 実施（Task 12 の表）。Bluetooth 権限を許可すると `scan` で見える |
+| ペアリング・暗号化特性の Read/Notify・窓外の切断（R2） | ペアリングと Read/Notify は実施（Task 12 の表）。窓外の切断は未実施 |
 
 ## 最終レビュー後の修正（2026-10-23、利用者不在、`xiao_bringup` ビルド = サーボ出力なし）
 
@@ -89,6 +89,20 @@
 
 I3（`test_return_deadline_2s` が期限分岐を通らない）は Minor に再格付けして保留: RETURNING は常に 90/60°/s に引き上げるので ±60°/±30° からでも 1 秒以内に中立へ着き、2 秒期限は C1 修正後は到達不能な安全網。
 
+## Task 12 受入（2026-10-23 朝、利用者在席）
+
+### BLE 経路（`xiao_bringup` ビルド、首は動かさない）
+
+| 確認 | 結果 |
+|---|---|
+| Mac のターミナルに Bluetooth 権限を許可 → `ble_client.py scan` | `CatRobot-5E8E address=41BD40E1-…（CoreBluetooth の UUID） rssi=-84 services=['c47b0000-…']` |
+| `ble_client.py info`（暗号化不要） | `proto=1 fw=0.1.0 hw=1 caps=0x00` |
+| `ble_client.py watch`（未ペアのまま購読） | STATUS が 200 ms ごとに届いた（flags LINK,PAIR_OPEN）。**発見**: Read は READ_ENC で拒否されるが Notify は NimBLE が暗号化の有無を見ずに送るため、未ペアの central に 12 B の状態が届く（最終レビューが「実機で確認」とした項目）。→ `publishStatus` を暗号化済みの接続にだけ送るよう修正 |
+| `ble_client.py cal get`（READ_ENC、ペアリングを起こすはず） | 最初の試行（利用者）で失敗し、その後は毎回 ATT `0x0F Insufficient Encryption`。macOS は 0x0F ではペアリングを始めない。原因: NimBLE の ATT 権限検査は PEER_SEC（相手の LTK）の有無で 0x0F/0x05 を分け、`getNumBonds()`/`deleteAllBonds()` は OUR_SEC を数える。最初のペアリングが途中で止まり PEER_SEC だけが残っていた（`bonds=0` なのに 0x0F）。→ `BONDS CLEAR` を `ble_store_clear()`（our/peer sec・CCCD・IRK を全部消す）に変更。ツール側も、接続直後に Status を読んで（READ_ENC）ペアリングを確実に起こすようにした（Command は応答なし書き込みなので未ペアだと黙って捨てられ、macOS はペアリングを始めない） |
+| 修正後: `BONDS CLEAR` → `cal get` | `Calibration: {'yaw_off': 0.0, 'pitch_off': 0.0, 'invert': 0, 'saved': 1}`、`INFO` の `bonds=1`。macOS のダイアログなし（Just Works） |
+| ペア済みで `watch` | STATUS 受信（暗号化済み）。USB リセット後も `bonds=1`（NVS に保持） |
+| 最初のペアリングが止まった原因 | 未特定（SM のログは取れていない）。再発時は `BONDS CLEAR` で復旧できる |
+
 ## 受入基準（設計書 §5）の状態
 
 | ID | 内容 | 状態 |
@@ -102,7 +116,7 @@ I3（`test_return_deadline_2s` が期限分岐を通らない）は Minor に再
 | T-FW-6 | 遅延（MOVE → MOVING=1 の中央値 ≤ 300 ms） | **未実施** |
 | T-FW-7 | 再接続 ≤ 5 秒 | **未実施** |
 | T-FW-8 | シリアル同等性（HEX = BLE） | 一部実施: `HEX 09 07` が PING と同じ結果（bring-up）。定型動作は未実施 |
-| T-FW-9 | ペアリング・BONDS CLEAR・窓の挙動 | **未実施** |
+| T-FW-9 | ペアリング・BONDS CLEAR・窓の挙動 | 一部実施: ペアリング（Just Works）・暗号化 Read/Notify・再起動後のボンド保持・`BONDS CLEAR` を確認。60 秒窓の外での未ペア拒否は未実施 |
 | T-FW-10 | ホストテスト `pio test -e native` 全件合格 | **合格**: 74 件（2026-10-23、Protocol 10・Axis 5・Planner 15・Gesture 7・Supervisor 29・SerialParser 7・Smoke 1） |
 
 ## 未実施一覧（利用者在席時に行う）
