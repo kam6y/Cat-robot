@@ -201,7 +201,7 @@ final class RobotCalibrationSession {
             phase = .failed(.cancelled)
         } else {
             _ = invalidatePreview()
-            if let directionToken { link.invalidate(directionToken) }
+            if let directionToken { invalidateToken(directionToken) }
             direction = UUID()
         }
         let token = issueToken()
@@ -246,7 +246,7 @@ final class RobotCalibrationSession {
     }
 
     private func beginDirection() -> (UUID, UUID) {
-        if let directionToken { link.invalidate(directionToken) }
+        if let directionToken { invalidateToken(directionToken) }
         direction = UUID()
         let token = issueToken()
         directionToken = token
@@ -257,6 +257,11 @@ final class RobotCalibrationSession {
         let token = UUID()
         tokens.insert(token)
         return token
+    }
+
+    private func invalidateToken(_ token: UUID) {
+        guard tokens.remove(token) != nil else { return }
+        link.invalidate(token)
     }
 
     @discardableResult
@@ -274,7 +279,7 @@ final class RobotCalibrationSession {
         let previous = previewTask
         previous?.cancel()
         previewTask = nil
-        if let previewToken { link.invalidate(previewToken) }
+        if let previewToken { invalidateToken(previewToken) }
         previewToken = nil
         return previous
     }
@@ -317,7 +322,7 @@ final class RobotCalibrationSession {
         }
         if snapshot.status?.flags.contains(.gesture) == true {
             _ = invalidatePreview()
-            if let directionToken { link.invalidate(directionToken) }
+            if let directionToken { invalidateToken(directionToken) }
             direction = UUID()
         }
         for (id, waiter) in waiters where waiter.operation == operation && waiter.predicate(snapshot) {

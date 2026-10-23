@@ -9,7 +9,7 @@ final class AppCompositionTests: XCTestCase {
                                                        modelSettings: ConversationModelSettings(defaults: defaults),
                                                        auth: .missing)
         XCTAssertTrue(composition.dependencies.reply is MotionReplyGenerator)
-        XCTAssertTrue(composition.dependencies.motion === composition.robotMotion)
+        XCTAssertTrue(composition.dependencies.motion is MotionCoordinator)
         XCTAssertTrue(composition.dependencies.modelAvailability is OnDeviceFallbackReplyGenerator)
         XCTAssertTrue(composition.dependencies.memory is ClaudeConversationService)
         XCTAssertTrue(composition.dependencies.classifier is RoutedAddressClassifier)

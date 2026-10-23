@@ -13,7 +13,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
     private var peripheral: CBPeripheral?
     private var service: CBService?
     private var characteristics: [RobotCharacteristic: CBCharacteristic] = [:]
-    private var characteristicAttempts: [ObjectIdentifier: UUID] = [:]
     private var activeAttempt: UUID?
     private var closing = false
 
@@ -61,7 +60,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
         activeAttempt = attempt
         closing = false
         characteristics.removeAll()
-        characteristicAttempts.removeAll()
         service = nil
         guard let central, central.state == .poweredOn, let selected = known[id] else {
             continuation.yield(.failed(attempt: attempt, reason: .notReady))
@@ -76,7 +74,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
         guard activeAttempt == attempt else { return }
         closing = true
         characteristics.removeAll()
-        characteristicAttempts.removeAll()
         service = nil
         if let central, let peripheral {
             central.cancelPeripheralConnection(peripheral)
@@ -98,7 +95,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
         closing = false
         known.removeAll()
         characteristics.removeAll()
-        characteristicAttempts.removeAll()
         start()
     }
 
@@ -194,7 +190,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
             found[kind] = characteristic
         }
         characteristics = found
-        characteristicAttempts = Dictionary(uniqueKeysWithValues: found.values.map { (ObjectIdentifier($0), attempt) })
         continuation.yield(.gattReady(attempt: attempt))
     }
 
@@ -227,7 +222,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
         guard accepts(peripheral), let attempt = activeAttempt,
               invalidatedServices.contains(where: { $0 === service }) else { return }
         characteristics.removeAll()
-        characteristicAttempts.removeAll()
         continuation.yield(.failed(attempt: attempt, reason: .invalidData))
     }
 
@@ -237,7 +231,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
 
     private func accepts(_ peripheral: CBPeripheral, characteristic: CBCharacteristic) -> (UUID, RobotCharacteristic)? {
         guard accepts(peripheral), let attempt = activeAttempt,
-              characteristicAttempts[ObjectIdentifier(characteristic)] == attempt,
               let kind = characteristics.first(where: { $0.value === characteristic })?.key else { return nil }
         return (attempt, kind)
     }
@@ -259,7 +252,6 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
         peripheral = nil
         service = nil
         characteristics.removeAll()
-        characteristicAttempts.removeAll()
         activeAttempt = nil
         closing = false
         continuation.yield(.disconnected(attempt: attempt, reason: reason))

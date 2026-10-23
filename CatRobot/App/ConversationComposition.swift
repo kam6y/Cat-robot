@@ -11,7 +11,6 @@ struct ConversationComposition {
     let modelSettings: ConversationModelSettings
     let longTermMemory: LongTermMemoryManager
     let usage: any ConversationUsageMetering
-    let robotMotion: any RobotMotionControlling
     let robotLink: any RobotLinkControlling
     let robotSettings: RobotSettingsModel
 
@@ -78,6 +77,6 @@ struct ConversationComposition {
             }
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
-                    longTermMemory: longTermMemory, usage: usage, robotMotion: motion, robotLink: robotLink, robotSettings: robotSettings)
+                    longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, robotSettings: robotSettings)
     }
 }
