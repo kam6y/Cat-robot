@@ -7,6 +7,7 @@ enum RobotCalibrationPhase: Equatable, Sendable {
     case closed
 }
 
+// Directions as seen by a person facing the robot. Protocol yaw remains robot-relative.
 enum RobotCalibrationEdge: Sendable { case left, right, up, down }
 
 @MainActor
@@ -177,8 +178,8 @@ final class RobotCalibrationSession {
         }
         var yaw = status.yawDeci, pitch = status.pitchDeci
         switch edge {
-        case .left: yaw = min(limits.yawAngleDeci, 600)
-        case .right: yaw = -min(limits.yawAngleDeci, 600)
+        case .left: yaw = -min(limits.yawAngleDeci, 600)
+        case .right: yaw = min(limits.yawAngleDeci, 600)
         case .up: pitch = min(limits.pitchAngleDeci, 300)
         case .down: pitch = -min(limits.pitchAngleDeci, 300)
         }

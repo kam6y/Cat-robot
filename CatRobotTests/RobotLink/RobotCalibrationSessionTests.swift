@@ -198,17 +198,25 @@ final class RobotCalibrationSessionTests: XCTestCase {
         XCTAssertFalse(session.canEdit)
     }
 
-    func testEdgeUsesFreshLimitsAtLowSpeedAndExplicitStopIsImmediate() async throws {
+    func testEdgesUseFacingUserDirectionsFreshLimitsAndLowSpeed() async throws {
         let (h, session) = try await editing()
-        let move = Task { try await session.moveToEdge(.left) }
-        await h.drain()
-        h.transport.emit(.value(attempt: h.attempt, characteristic: .limits,
-                                data: Data([0xB0, 4, 0xE8, 3, 0xF4, 1, 0xFA, 0])))
-        try await move.value
+        let edges: [RobotCalibrationEdge] = [.left, .right, .up, .down]
+        for edge in edges {
+            let move = Task { try await session.moveToEdge(edge) }
+            await h.drain()
+            h.transport.emit(.value(attempt: h.attempt, characteristic: .limits,
+                                    data: Data([0xB0, 4, 0xE8, 3, 0xF4, 1, 0xFA, 0])))
+            try await move.value
+        }
         try await session.center()
         await session.stop()
-        XCTAssertEqual(h.transport.commands.suffix(3), [
-            .move(yawDeci: 500, pitchDeci: 0, speed: 10), .center(speed: 10), .stop
+        // Facing the robot, the user's left is the robot's negative yaw.
+        XCTAssertEqual(h.transport.commands.suffix(6), [
+            .move(yawDeci: -500, pitchDeci: 0, speed: 10),
+            .move(yawDeci: 500, pitchDeci: 0, speed: 10),
+            .move(yawDeci: 0, pitchDeci: 250, speed: 10),
+            .move(yawDeci: 0, pitchDeci: -250, speed: 10),
+            .center(speed: 10), .stop
         ])
     }
 

@@ -75,6 +75,8 @@ struct RobotCalibrationView: View {
             }.disabled(!session.canEdit)
             GroupBox("動かして確認") {
                 VStack(alignment: .leading, spacing: 12) {
+                    Text("左右はロボットと向かい合って見た方向です。")
+                        .font(.footnote).foregroundStyle(.secondary)
                     Button("正面を向かせる") { Task { try? await session.center() } }.disabled(!session.canEdit)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
                         edgeButton("左端へ", .left)
