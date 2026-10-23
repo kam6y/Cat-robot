@@ -177,6 +177,23 @@ void test_tilt_uses_both_axes() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, -20.0f, dt.pitch[lookHold]);
 }
 
+// 窓つき正弦の導関数ピーク（定数）が解析式の細かい走査と一致する（ESP32-C3 では毎回の走査が 1 軸 12 ms かかった）
+void test_windowed_sine_peak_constants_match_scan() {
+    const double pi = 3.14159265358979323846, norm = 0.649519052838329;
+    double d1 = 0, d2 = 0, d3 = 0;
+    const int n = 20000;
+    for (int i = 0; i <= n; ++i) {
+        const double x = double(i) / n, s = std::sin(pi * x), c = std::cos(pi * x), s2 = s * s, c2 = c * c;
+        d1 = std::fmax(d1, std::fabs(2 * pi * s2 * (3 * c2 - s2)));
+        d2 = std::fmax(d2, std::fabs(2 * pi * pi * s * c * (6 * c2 - 10 * s2)));
+        d3 = std::fmax(d3, std::fabs(2 * pi * pi * pi * (6 * c2 * c2 - 48 * s2 * c2 + 10 * s2 * s2)));
+    }
+    const catneck::WaveformPeaks peaks = catneck::GesturePlayer::windowedSinePeaks();
+    TEST_ASSERT_FLOAT_WITHIN(static_cast<float>(d1 / norm) * 1e-3f, static_cast<float>(d1 / norm), peaks.d1);
+    TEST_ASSERT_FLOAT_WITHIN(static_cast<float>(d2 / norm) * 1e-3f, static_cast<float>(d2 / norm), peaks.d2);
+    TEST_ASSERT_FLOAT_WITHIN(static_cast<float>(d3 / norm) * 1e-3f, static_cast<float>(d3 / norm), peaks.d3);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_base_cycles);
@@ -186,5 +203,6 @@ int main(int, char**) {
     RUN_TEST(test_stretch_when_limits_exceeded);
     RUN_TEST(test_repeats_and_speed);
     RUN_TEST(test_tilt_uses_both_axes);
+    RUN_TEST(test_windowed_sine_peak_constants_match_scan);
     return UNITY_END();
 }

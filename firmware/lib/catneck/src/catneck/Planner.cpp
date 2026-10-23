@@ -27,6 +27,18 @@ void Planner::reset(float pos) {
     publish();
 }
 
+void Planner::reset(float pos, float vel, float acc) {
+    if (!std::isfinite(pos) || !std::isfinite(vel) || !std::isfinite(acc)) return;
+    limit_ = requestedLimit_;
+    transitioning_ = false;
+    const double v = std::clamp<double>(vel, -limit_, limit_);
+    const double a = std::clamp<double>(acc, -maxAcc(), maxAcc());
+    motion_ = {pos, v, a};
+    target_ = pos;
+    replan();
+    publish();
+}
+
 void Planner::setTarget(float pos) {
     if (!std::isfinite(pos) || target_ == pos) return;
     target_ = pos;

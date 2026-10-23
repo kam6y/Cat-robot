@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "catneck/Config.h"
+#include "catneck/Gesture.h"
 #include "catneck/Supervisor.h"
 
 using namespace catneck;
@@ -288,20 +289,6 @@ void test_silence_3s_returns_then_relaxes() {
     }
 }
 
-void test_disconnect_during_gesture_returns_immediately() {
-    Sim sim;
-    sim.bootToIdle();
-    sim.sup.onLink(true, sim.now);
-    TEST_ASSERT_TRUE(sim.flag(StatusFlags::Link));
-    sim.send(gestureCmd(GestureId::Nod, 15));
-    sim.advance(200);
-    TEST_ASSERT_TRUE(sim.flag(StatusFlags::Gesture));
-    sim.sup.onLink(false, sim.now);
-    assertState(sim, SupervisorState::Returning);
-    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
-    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Link));
-}
-
 void test_ping_after_reconnect_does_not_resume() {
     Sim sim;
     sim.bootToIdle();
@@ -476,67 +463,151 @@ void test_torque_off_discards_playing_and_pending() {
     }
 }
 
-void test_set_limits_during_gesture_follows_transition_rule() {
-    Sim sim;
-    sim.bootToIdle();
-    sim.send(gestureCmd(GestureId::Shake, 25));
-    float prev = 0.0f;
-    float peakVel = 0.0f;
-    for (int i = 0; i < 15; ++i) {  // 300 ms: 加速中
+// ---- 定型動作 = GesturePlayer の波形をそのまま出力（利用者の実機比較で採用、ledger Task 12）----
+
+AxisLimits yawLimits() { return AxisLimits{config::kYawMaxAngle, config::kYawDefaultVel}; }
+AxisLimits pitchLimits() { return AxisLimits{config::kPitchMaxAngle, config::kPitchDefaultVel}; }
+
+// 定型動作を最後まで再生し、開始から GESTURE フラグが下りるまでの ms を返す
+uint32_t playGesture(Sim& sim, GestureId id, float amp, uint8_t speed, Kinematics* yawK = nullptr,
+                     Kinematics* pitchK = nullptr) {
+    sim.send(gestureCmd(id, amp, 1, speed));
+    const uint32_t start = sim.now;
+    while (sim.flag(StatusFlags::Gesture) && sim.now - start < 30000) {
         sim.advance(20);
-        float joint = sim.yawJoint();
-        peakVel = std::fmax(peakVel, std::fabs(joint - prev) / kDt);
-        prev = joint;
-    }
-    TEST_ASSERT_TRUE(peakVel > 30.0f);
-    sim.send(setLimitsCmd(200, 0, 0, 0));  // yaw 120 → 20°/s
-    // T_tr = (120 − 20)/1200 + 3·1200/12000 = 0.383 s → 20 tick 目以降は新上限内
-    for (int i = 1; i <= 500; ++i) {  // 20°/s では残り約 100° に 5 s 余り
-        sim.advance(20);
-        float joint = sim.yawJoint();
-        float vel = std::fabs(joint - prev) / kDt;
-        prev = joint;
-        TEST_ASSERT_TRUE(vel <= 120.5f);
-        TEST_ASSERT_TRUE(std::fabs(joint) <= 60.05f);
-        if (i >= 20) TEST_ASSERT_TRUE(vel <= 20.5f);
+        if (yawK) yawK->push(sim.yawJoint());
+        if (pitchK) pitchK->push(sim.pitchJoint());
         if (sim.now % 1000 == 0) sim.send(pingCmd(1));
-        if (!sim.flag(StatusFlags::Gesture) && !sim.flag(StatusFlags::Moving)) break;
     }
     TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
-    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Moving));
+    return sim.now - start;
 }
 
-void test_nod_large_through_planner_meets_timing() {
+void test_nod_large_waveform_timing_and_amplitude() {
+    GesturePlayer ref;
+    ref.start(GestureSpec{GestureId::Nod, 15.0f, 1, 100}, yawLimits(), pitchLimits());
     Sim sim;
     sim.bootToIdle();
-    sim.send(torqueCmd(true));
-    sim.advance(100);
-    sim.send(gestureCmd(GestureId::Nod, 15, 1, 100));
     Kinematics k;
     k.push(sim.pitchJoint());
-    uint32_t startMs = 0, endMs = 0;
-    for (int i = 0; i < 200; ++i) {
-        sim.advance(20);
-        float p = sim.pitchJoint();
-        if (startMs == 0 && std::fabs(p - k.pos.back()) > 1e-4f) startMs = sim.now - 20;
-        k.push(p);
-        if (startMs != 0 && !sim.flag(StatusFlags::Moving) && !sim.flag(StatusFlags::Gesture)) {
-            endMs = sim.now;
-            break;
-        }
-    }
-    TEST_ASSERT_TRUE(startMs != 0 && endMs != 0);
-    float seconds = (endMs - startMs) / 1000.0f;
-    std::printf("nod: %.2f s min=%.2f max=%.2f vel=%.1f acc=%.0f jerk=%.0f\n", seconds, k.posMin, k.posMax, k.velMax,
-                k.accMax, k.jerkMax);
-    TEST_ASSERT_TRUE(seconds >= 1.0f && seconds <= 1.3f);
-    TEST_ASSERT_TRUE(k.posMin <= -13.5f);
-    TEST_ASSERT_TRUE(k.posMax >= 13.5f);
+    const uint32_t ms = playGesture(sim, GestureId::Nod, 15.0f, 100, nullptr, &k);
+    std::printf("nod(wave): %u ms (ref %.2f s) min=%.2f max=%.2f vel=%.1f acc=%.0f\n", ms, ref.totalSeconds(),
+                k.posMin, k.posMax, k.velMax, k.accMax);
+    // 波形の総時間 + ピッチの 3 tick ずらし（FW-PWR-1）以内に終わる
+    TEST_ASSERT_TRUE(ms >= static_cast<uint32_t>(ref.totalSeconds() * 1000.0f));
+    TEST_ASSERT_TRUE(ms <= static_cast<uint32_t>(ref.totalSeconds() * 1000.0f) + 5 * config::kTickMs);
+    TEST_ASSERT_TRUE(k.posMin <= -14.5f);  // 下→上、振幅は波形どおり
+    TEST_ASSERT_TRUE(k.posMax >= 14.5f);
     TEST_ASSERT_TRUE(k.velMax <= config::kPitchDefaultVel + 0.5f);
     TEST_ASSERT_TRUE(k.accMax <= 2 * config::kPitchDefaultVel / config::kAccelTime + 5.0f);
-    TEST_ASSERT_TRUE(k.jerkMax <= 4 * config::kPitchDefaultVel / (config::kAccelTime * config::kAccelTime) * 1.05f + 1.0f);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1500.0f, sim.out.pitchPulseUs);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1500.0f, sim.out.yawPulseUs);
+}
+
+void test_gesture_sets_moving_flag_while_waveform_runs() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(gestureCmd(GestureId::Nod, 15));
+    sim.advance(300);
+    TEST_ASSERT_TRUE(sim.flag(StatusFlags::Gesture));
+    TEST_ASSERT_TRUE(sim.flag(StatusFlags::Moving));
+    TEST_ASSERT_TRUE(std::fabs(sim.pitchJoint()) > 1.0f);
+}
+
+void test_tilt_pitch_starts_three_ticks_after_yaw() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(gestureCmd(GestureId::TiltL, 15));
+    int yawStart = -1, pitchStart = -1;
+    for (int i = 1; i <= 100; ++i) {
+        sim.advance(20);
+        if (yawStart < 0 && std::fabs(sim.yawJoint()) > 1e-3f) yawStart = i;
+        if (pitchStart < 0 && std::fabs(sim.pitchJoint()) > 1e-3f) pitchStart = i;
+        if (yawStart > 0 && pitchStart > 0) break;
+    }
+    TEST_ASSERT_TRUE(yawStart > 0 && pitchStart > 0);
+    TEST_ASSERT_TRUE(pitchStart - yawStart >= static_cast<int>(config::kStaggerTicks));
+}
+
+// speed は GesturePlayer が時間を 100/speed 倍にする（上限で伸びる分は別。test_gesture で固定）。
+// Supervisor はその波形をそのままの長さで再生する
+void test_gesture_speed_stretches_time() {
+    auto run = [](GestureId id, float amp, uint8_t speed) -> uint32_t {
+        Sim sim;
+        sim.bootToIdle();
+        return playGesture(sim, id, amp, speed);
+    };
+    auto ref = [](GestureId id, float amp, uint8_t speed) -> uint32_t {
+        GesturePlayer w;
+        w.start(GestureSpec{id, amp, 1, speed}, yawLimits(), pitchLimits());
+        return static_cast<uint32_t>(w.totalSeconds() * 1000.0f);
+    };
+    for (GestureId id : {GestureId::Nod, GestureId::LookUp}) {
+        const uint32_t t100 = run(id, 15, 100);
+        const uint32_t t50 = run(id, 15, 50);
+        TEST_ASSERT_TRUE(t100 >= ref(id, 15, 100) && t100 <= ref(id, 15, 100) + 5 * config::kTickMs);
+        TEST_ASSERT_TRUE(t50 >= ref(id, 15, 50) && t50 <= ref(id, 15, 50) + 5 * config::kTickMs);
+        TEST_ASSERT_TRUE(t50 > t100 + 500);
+    }
+}
+
+void test_disconnect_during_gesture_hands_over_smoothly() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.sup.onLink(true, sim.now);
+    sim.send(gestureCmd(GestureId::Shake, 25));
+    float prev = sim.yawJoint();
+    float vel = 0.0f;
+    for (int i = 0; i < 15; ++i) {  // 300 ms: 振り出しの途中
+        sim.advance(20);
+        vel = (sim.yawJoint() - prev) / kDt;
+        prev = sim.yawJoint();
+    }
+    TEST_ASSERT_TRUE(std::fabs(vel) > 20.0f);
+    sim.sup.onLink(false, sim.now);
+    assertState(sim, SupervisorState::Returning);
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    const float accMax = 2 * config::kYawDefaultVel / config::kAccelTime;
+    uint32_t start = sim.now;
+    while (sim.sup.state() == SupervisorState::Returning && sim.now - start <= config::kReturnDeadlineMs) {
+        sim.advance(20);
+        const float v = (sim.yawJoint() - prev) / kDt;
+        prev = sim.yawJoint();
+        TEST_ASSERT_TRUE(std::fabs(v - vel) <= accMax * kDt + 5.0f);  // 速度が連続（受け渡し）
+        TEST_ASSERT_TRUE(std::fabs(v) <= config::kYawDefaultVel + 0.5f);
+        vel = v;
+    }
+    assertState(sim, SupervisorState::RelaxWait);  // 期限内に中立へ
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 0.0f, sim.yawJoint());
+}
+
+void test_set_limits_during_gesture_keeps_waveform_then_applies() {
+    Sim sim;
+    sim.bootToIdle();
+    GesturePlayer ref;
+    ref.start(GestureSpec{GestureId::Shake, 25.0f, 1, 100}, yawLimits(), pitchLimits());
+    sim.send(gestureCmd(GestureId::Shake, 25));
+    const uint32_t start = sim.now;
+    sim.advance(300);
+    sim.send(setLimitsCmd(200, 0, 0, 0));  // yaw 20°/s。再生中の波形は開始時の上限のまま完走する
+    float yawAbsMax = 0.0f;
+    while (sim.flag(StatusFlags::Gesture) && sim.now - start < 10000) {
+        sim.advance(20);
+        yawAbsMax = std::fmax(yawAbsMax, std::fabs(sim.yawJoint()));
+        if (sim.now % 1000 == 0) sim.send(pingCmd(1));
+    }
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    TEST_ASSERT_TRUE(sim.now - start <= static_cast<uint32_t>(ref.totalSeconds() * 1000.0f) + 5 * config::kTickMs);
+    TEST_ASSERT_TRUE(yawAbsMax >= 24.5f && yawAbsMax <= 25.5f);
+    TEST_ASSERT_TRUE(sim.settle());
+    sim.send(moveCmd(30, 0));  // 以後の移動は新しい上限
+    float prev = sim.yawJoint();
+    for (int i = 0; i < 400 && (sim.flag(StatusFlags::Moving) || i < 5); ++i) {
+        sim.advance(20);
+        TEST_ASSERT_TRUE(std::fabs(sim.yawJoint() - prev) / kDt <= 20.5f);
+        prev = sim.yawJoint();
+        if (sim.now % 1000 == 0) sim.send(pingCmd(1));
+    }
 }
 
 void test_set_cal_from_idle_starts_output_smoothly() {
@@ -792,31 +863,6 @@ void test_gain_and_save_follow_maintenance_rules() {
     }
 }
 
-void test_gesture_speed_scales_hold_and_time() {
-    auto run = [](GestureId id, float amp, uint8_t speed) -> uint32_t {
-        Sim sim;
-        sim.bootToIdle();
-        sim.send(gestureCmd(id, amp, 1, speed));
-        const uint32_t start = sim.now;
-        while (sim.flag(StatusFlags::Gesture) && sim.now - start < 20000) {
-            sim.advance(20);
-            if (sim.now % 1000 == 0) sim.send(pingCmd(1));
-        }
-        TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
-        return sim.now - start;
-    };
-    const uint32_t look100 = run(GestureId::LookUp, 15, 100);
-    const uint32_t look50 = run(GestureId::LookUp, 15, 50);
-    TEST_ASSERT_TRUE(look50 >= look100 + 2000 - 40);  // 保持 2.0 s が 4.0 s になる
-    const uint32_t nod100 = run(GestureId::Nod, 15, 100);
-    const uint32_t nod50 = run(GestureId::Nod, 15, 50);
-    TEST_ASSERT_TRUE(nod50 >= nod100 * 13 / 10);  // 移動は速度上限 50% で遅くなる（静止→静止なので 2 倍にはならない）
-    TEST_ASSERT_TRUE(nod50 <= nod100 * 5 / 2);
-    const uint32_t tilt100 = run(GestureId::TiltL, 15, 100);
-    const uint32_t tilt50 = run(GestureId::TiltL, 15, 50);
-    TEST_ASSERT_TRUE(tilt50 >= tilt100 + 1500 - 40);  // 保持 1.5 s が 3.0 s になる
-}
-
 void test_status_fields() {
     Sim sim(true);
     TEST_ASSERT_TRUE(sim.flag(StatusFlags::Brownout));
@@ -883,7 +929,7 @@ int main(int, char**) {
     RUN_TEST(test_boot_discards_requests_but_remembers_stop);
     RUN_TEST(test_move_from_idle_activates_and_moves);
     RUN_TEST(test_silence_3s_returns_then_relaxes);
-    RUN_TEST(test_disconnect_during_gesture_returns_immediately);
+    RUN_TEST(test_disconnect_during_gesture_hands_over_smoothly);
     RUN_TEST(test_ping_after_reconnect_does_not_resume);
     RUN_TEST(test_return_deadline_2s);
     RUN_TEST(test_command_timestamp_ahead_of_tick_keeps_active);
@@ -893,8 +939,10 @@ int main(int, char**) {
     RUN_TEST(test_gesture_queue_rules);
     RUN_TEST(test_maintenance_requests_do_not_cancel_return);
     RUN_TEST(test_torque_off_discards_playing_and_pending);
-    RUN_TEST(test_set_limits_during_gesture_follows_transition_rule);
-    RUN_TEST(test_nod_large_through_planner_meets_timing);
+    RUN_TEST(test_set_limits_during_gesture_keeps_waveform_then_applies);
+    RUN_TEST(test_nod_large_waveform_timing_and_amplitude);
+    RUN_TEST(test_gesture_sets_moving_flag_while_waveform_runs);
+    RUN_TEST(test_tilt_pitch_starts_three_ticks_after_yaw);
     RUN_TEST(test_set_cal_from_idle_starts_output_smoothly);
     RUN_TEST(test_save_success_clears_dirty);
     RUN_TEST(test_save_failure_sets_save_error_and_sets_save_seq);
@@ -905,7 +953,7 @@ int main(int, char**) {
     RUN_TEST(test_gain_save_failure_keeps_ram_value_and_marks_dirty);
     RUN_TEST(test_gain_change_with_offset_moves_to_original_joint_target);
     RUN_TEST(test_gain_and_save_follow_maintenance_rules);
-    RUN_TEST(test_gesture_speed_scales_hold_and_time);
+    RUN_TEST(test_gesture_speed_stretches_time);
     RUN_TEST(test_status_fields);
     RUN_TEST(test_return_speed_switch_uses_transition_rule);
     return UNITY_END();

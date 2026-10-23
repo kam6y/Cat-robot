@@ -449,7 +449,7 @@
 - Calibration（6 B）: yaw_off int16、pitch_off int16、invert uint8（bit0 ヨー、bit1 ピッチ）、saved uint8。Limits（8 B）: yaw_v uint16、pitch_v uint16（0.1°/s）、yaw_a int16、pitch_a int16（0.1°）。Info（8 B）: proto、fw major/minor/patch、hw id（1 = E17）、caps、予約 2 B
 - コマンド長は固定: MOVE 6、GESTURE 5、STOP 1、CENTER 2、TORQUE 2、SET_CAL 6、SAVE_CAL 2、SET_LIMITS 9、PING 2。長さ不一致・未知種別・GESTURE id 範囲外・TORQUE 0/1 以外・SET_LIMITS の負の角度上限・SAVE_CAL の req 0 は拒否（REJECTED）。それ以外の範囲外は飽和（SATURATED）
 - 校正の保存: SET_CAL で値を送り、直前の `save_seq` と異なる req で SAVE_CAL、`save_seq` = req の Status を待つ（1 秒で同じ req を再送、冪等）。SAVE_ERROR = 0 なら成功、Calibration を Read して照合する
-- GESTURE の実装は極値を経由する静止→静止の S 字移動の列（設計書 §4.4）。`speed` は保持時間を 100/speed 倍にし、移動区間は速度上限を speed% に縮める
+- GESTURE の実装は C² の波形（窓つき正弦・5 次多項式）をそのままサーボ角にする（設計書 §4.4、2026-10-23 の実機比較で採用）。`speed` は波形の時間を 100/speed 倍にする。速度・加速度の上限を超える波形は振幅を保って時間を伸ばす。再生中の SET_LIMITS は以後の移動に効く
 
 ### 7.6 電源に関する要件
 
@@ -684,10 +684,10 @@ struct RememberTool: Tool {
 
 | gesture | small | medium | large | 波形 |
 |---|---|---|---|---|
-| nod | ピッチ ±5° | ±10° | ±15° | 下→上→中立。時間はファームウェアの上限で決まる（ホスト試験の実測、既定上限・speed 100: small 0.84 秒、medium 1.06 秒、large 1.28 秒） |
-| shake | ヨー ±8° | ±15° | ±25° | 左→右→中立。時間は上限で決まる（同実測: small 0.92 秒、medium 1.18 秒、large 1.46 秒） |
-| tilt | ヨー 8° ＋ ピッチ −4° | 12° ＋ −6° | 15° ＋ −8° | 片側へ寄せて 1.5 秒保持（同実測、往復込み: large 2.22 秒） |
-| look_up | ピッチ +8° | +14° | +20° | 上限の速さで移動、2 秒保持（同実測、往復込み: small 2.60 秒、large 2.84 秒） |
+| nod | ピッチ ±5° | ±10° | ±15° | 下→上→中立の正弦波。基準 1.0 秒、上限で伸びる（ホスト試験の実測、既定上限・speed 100: small 1.06 秒、medium 1.06 秒、large 1.52 秒） |
+| shake | ヨー ±8° | ±15° | ±25° | 左→右→中立の正弦波。基準 1.0 秒、上限で伸びる（同実測: small 1.06 秒、medium 1.26 秒、large 2.08 秒） |
+| tilt | ヨー 8° ＋ ピッチ −4° | 12° ＋ −6° | 15° ＋ −8° | 片側へ寄せて 1.5 秒保持（同実測、往復込み: large 2.48 秒） |
+| look_up | ピッチ +8° | +14° | +20° | 1.0 秒で移動、2 秒保持、1.0 秒で戻る（同実測、往復込み: 4.06 秒。振幅によらない） |
 | look_down | ピッチ −8° | −14° | −20° | 同上 |
 | look_at_user | 追尾対象へ | 同左 | 同左 | 追尾と同じ速度 |
 | center | 中立へ | 同左 | 同左 | 1 秒 |

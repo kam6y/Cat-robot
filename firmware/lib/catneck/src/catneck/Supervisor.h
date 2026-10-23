@@ -1,6 +1,6 @@
 // 安全状態機械（設計書 §4.5）。コマンド・リンク・tick を受けて PWM 許可と各軸のパルス幅を決める。Arduino 非依存。
-// 定型動作は「極値を経由する静止→静止の S 字移動の列」として Planner に流す（ledger Task 6 の ruling。
-// 波形を tick ごとに追従させる方式は、目標で停止できることを保証する Planner では制動距離ぶん遅れて振幅と時間が崩れる）。
+// 定型動作は GesturePlayer の波形（設計書 §4.4）を tick ごとにそのままサーボ角にする。中断時は直前の標本から
+// 速度・加速度を推定して Planner に引き渡す（利用者の実機比較で波形出力を採用、ledger Task 12）。
 #pragma once
 
 #include <cstdint>
@@ -82,14 +82,6 @@ public:
 private:
     enum class GesturePhase : uint8_t { None, Centering, Playing };
 
-    // 定型動作の 1 区切り: 両軸のジョイント目標と、到達後に保持する tick 数
-    struct GestureStep {
-        float yaw;
-        float pitch;
-        uint32_t holdTicks;
-    };
-    static constexpr uint8_t kMaxGestureSteps = 8;
-
     struct AxisUnit {
         Axis axis;
         Planner planner;
@@ -111,9 +103,10 @@ private:
     bool plannersAtRest() const;
 
     void startGesture(const GestureSpec& spec);
-    void buildGestureSteps(const GestureSpec& spec);
-    void applyGestureStep();
     void serviceGesture();
+    void playWaveformTick();
+    void applyGestureSample(float yawJoint, float pitchJoint);
+    void handOverFromWaveform();
     void finishGesture();
     void discardMotion();
 
@@ -142,10 +135,13 @@ private:
     uint32_t pitchHoldTicks_ = 0;
 
     GesturePhase phase_ = GesturePhase::None;
-    GestureStep steps_[kMaxGestureSteps]{};
-    uint8_t stepCount_ = 0;
-    uint8_t stepIndex_ = 0;
-    uint32_t holdRemaining_ = 0;
+    GesturePlayer wave_;
+    GestureSpec activeGesture_{};
+    float pitchDelay_[config::kStaggerTicks]{};  // ピッチを 3 tick 遅らせる環（FW-PWR-1）
+    uint8_t pitchDelayIndex_ = 0;
+    uint8_t drainTicks_ = 0;                     // 波形終了後に環を吐き出す残り tick
+    float yawHist_[3]{};                         // 直前 3 標本のサーボ角（受け渡しの速度・加速度推定）
+    float pitchHist_[3]{};
     bool hasPendingGesture_ = false;
     GestureSpec pendingGesture_{};
     bool hasPendingMove_ = false;

@@ -16,6 +16,8 @@ class Planner {
 public:
     explicit Planner(float dtSeconds = 0.02f);
     void reset(float pos);
+    // 波形からの受け渡し: 位置・速度・加速度を与えて、そこから上限内で止まり pos へ戻る経路にする
+    void reset(float pos, float vel, float acc);
     void setTarget(float pos);
     // A decrease retains the effective old limits until a jerk-limited stop;
     // repeated calls with the same requested cap do not restart that transition.

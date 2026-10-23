@@ -276,6 +276,28 @@ void test_short_move_from_rest_follows_triangular_profile() {
     TEST_ASSERT_FLOAT_WITHIN(1e-6f, 4.0f, planner.state().pos);
 }
 
+// 波形からの受け渡し: 位置・速度・加速度を与えて reset すると、速度が連続したまま上限内で止まり reset 位置へ戻る
+void test_reset_with_motion_hands_over_continuously() {
+    Planner planner(kDt);
+    planner.setMaxVel(120.0f);
+    planner.reset(10.0f, 50.0f, 0.0f);
+    TEST_ASSERT_FALSE(planner.atTarget());
+    const PlannerState first = planner.step();
+    TEST_ASSERT_FLOAT_WITHIN(0.3f, 11.0f, first.pos);  // 50°/s のまま 20 ms 進む（減速はこれから）
+    TEST_ASSERT_FLOAT_WITHIN(1200.0f * kDt + 0.5f, 50.0f, first.vel);
+    float prevVel = first.vel;
+    int ticks = 1;
+    while (!planner.atTarget() && ticks < 200) {
+        const PlannerState s = planner.step();
+        TEST_ASSERT_TRUE(std::fabs(s.vel - prevVel) / kDt <= 1200.0f + 5.0f);
+        TEST_ASSERT_TRUE(std::fabs(s.vel) <= 120.5f);
+        prevVel = s.vel;
+        ++ticks;
+    }
+    TEST_ASSERT_TRUE(planner.atTarget());
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 10.0f, planner.state().pos);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_rest_to_max_vel_takes_0_2_to_0_3_s);
@@ -293,5 +315,6 @@ int main(int, char**) {
     RUN_TEST(test_random_retargets_respect_absolute_limit_not_configured);
     RUN_TEST(test_rescale_keeps_output_pulse);
     RUN_TEST(test_short_move_from_rest_follows_triangular_profile);
+    RUN_TEST(test_reset_with_motion_hands_over_continuously);
     return UNITY_END();
 }

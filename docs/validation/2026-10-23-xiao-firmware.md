@@ -118,13 +118,25 @@ I3（`test_return_deadline_2s` が期限分岐を通らない）は Minor に再
 | T-FW-8 シリアル同等性 | `serial_cli.py --encode gesture nod 15` → `HEX 02 01 96 01 00` → `OK`（BLE と同じ復号器・同じ Supervisor 経路） |
 | ツールの修正 | `gesture` の位置引数 `name` が `--name`（機器名）を上書きして接続できなかった → dest を分離。`gesture` に所要時間、`reconnect` に接続時間、`--no-ping`（3 秒無通信の確認用）を追加 |
 
+### 定型動作の方式比較と採用（利用者在席）
+
+| 項目 | 結果 |
+|---|---|
+| 比較方法 | 比較用の一時ビルド（シリアル `GMODE WAVE|PATH` で切替、コミットしない）で nod 15°・shake 25°・look_up 20° を WAVE（GesturePlayer の波形を直接出力）→ PATH（極値経由の S 字、当時の実装）の順に再生 |
+| 所要（BLE 往復込み） | WAVE: nod 1.56 / shake 2.13 / look_up 4.11 秒。PATH: nod 1.35 / shake 1.53 / look_up 2.91 秒 |
+| 利用者判定 | 「前半（WAVE）の方が良かった」→ 波形出力を採用。nod large の受入「1.0〜1.3 秒」は「波形どおり（既定上限で約 1.5 秒）」に改定 |
+| 実装（TDD） | Supervisor: 波形を tick ごとにサーボ角へ、Planner は標本に静止で追従、RETURNING 入りで直前 3 標本から速度・加速度を推定して `Planner::reset(pos, vel, acc)` に引き渡し（速度連続）、ピッチ 3 tick 遅延（FW-PWR-1）、再生中の SET_LIMITS/SET_CAL は Planner 目標を触らない。極値経由の実装は撤去。テスト: Supervisor 5 件（時間・振幅・上限、MOVING、ピッチ遅延、speed、受け渡しの連続性、SET_LIMITS）、Planner 1 件 |
+| 採用後の実機 | `xiao` 再書き込み → gesture nod 15 = 1.59 秒、shake 25 = 2.16、look_up 20 = 4.11、tilt_l 15 = 2.55（BLE 往復込み）。`demo` 18 動作完了 |
+| 発見: tick 25 ms | 採用後の `INFO` で `tick_max_us=25153`、`tick_avg_us=525`。GesturePlayer::start が窓つき正弦の導関数ピークを毎回 401 点走査していた（FPU なしで 1 軸 12 ms、2 軸で 24 ms）。定数化（200,001 点の走査値、test_gesture で照合） |
+| 定数化後の実機 | `xiao` 再書き込み → `demo` 18 動作完了、`INFO` tick_max_us=2365、tick_avg_us=494（demo 中込み）、tick_dropped=0 |
+
 ## 受入基準（設計書 §5）の状態
 
 | ID | 内容 | 状態 |
 |---|---|---|
 | T-FW-0 | 脱力の確認 | **条件変更**: 保持し続ける機種（上記）。PWM 停止は確認、保持は利用者が受け入れ |
 | T-FW-1 | 起動（跳ねなし、起動行、1.5 秒で IDLE） | **合格**（利用者目視、起動行、IDLE） |
-| T-FW-2 | 定型動作 `demo`（6 種 × 3 段階、nod large 1.0〜1.3 秒、BROWNOUT なし） | **合格**（18 動作完了、nod large 1.32 秒 BLE 往復込み、BROWNOUT なし） |
+| T-FW-2 | 定型動作 `demo`（6 種 × 3 段階、nod large は波形どおり、BROWNOUT なし） | **合格**（波形出力で 18 動作完了、nod large 1.59 秒 BLE 往復込み = 波形 1.52 秒 + 往復、BROWNOUT なし） |
 | T-FW-3 | 安全復帰（3 秒無通信、切断、PING で解除されない、5 秒以内に脱力） | **合格**（無通信 3 秒 → 復帰 → 2 秒で IDLE、切断 → 約 2.5 秒で IDLE。PING 非解除はホストテストのみ） |
 | T-FW-4 | キャリブレーション（cal set → save → 再起動 → cal get） | **合格**（invert 2 が再起動後も保持） |
 | T-FW-5 | 制限とゲイン（+5/+15/+30° の差分角、`GAIN`、±60°/±30° でリミットに当たらない） | **合格**（反転確定、+15°/+30° とも目視一致で既定ゲインのまま。端 ±60°/±30° は demo の範囲まで） |

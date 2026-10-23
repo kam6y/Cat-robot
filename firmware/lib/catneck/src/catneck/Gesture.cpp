@@ -17,26 +17,9 @@ float windowedSine(float x) {
     return std::sin(2.0f * kPi * x) * s * s / kWindowedSineNorm;
 }
 
-// 位相 x に関する 1〜3 階導関数の絶対値の最大（正規化前の 2 s³ c の解析式を標本化）
-void windowedSinePeaks(float& d1, float& d2, float& d3) {
-    d1 = d2 = d3 = 0.0f;
-    constexpr int kSamples = 400;
-    for (int i = 0; i <= kSamples; ++i) {
-        const float x = static_cast<float>(i) / kSamples;
-        const float s = std::sin(kPi * x);
-        const float c = std::cos(kPi * x);
-        const float s2 = s * s, c2 = c * c;
-        const float g1 = 2.0f * kPi * s2 * (3.0f * c2 - s2);
-        const float g2 = 2.0f * kPi * kPi * s * c * (6.0f * c2 - 10.0f * s2);
-        const float g3 = 2.0f * kPi * kPi * kPi * (6.0f * c2 * c2 - 48.0f * s2 * c2 + 10.0f * s2 * s2);
-        d1 = std::max(d1, std::fabs(g1));
-        d2 = std::max(d2, std::fabs(g2));
-        d3 = std::max(d3, std::fabs(g3));
-    }
-    d1 /= kWindowedSineNorm;
-    d2 /= kWindowedSineNorm;
-    d3 /= kWindowedSineNorm;
-}
+// 位相 x に関する 1〜3 階導関数の絶対値の最大（正規化後）。解析式 2 s³ c の導関数を 200,001 点で走査した値
+// （test_gesture が走査と照合する）。実行時に走査すると ESP32-C3（FPU なし）で 1 軸 12 ms かかる
+constexpr WaveformPeaks kWindowedSinePeaks{9.673596609f, 83.142789030f, 954.745716690f};
 
 // 5 次の滑らかな移動 q(u) = 6u⁵ − 15u⁴ + 10u³（両端で速度・加速度 0）
 float smoothStep(float u) {
@@ -101,11 +84,9 @@ void axisPeaks(GestureId id, float ampAxis, float cycle, float& v, float& a, flo
         return;
     }
     if (isWindowedSine(id)) {
-        float d1, d2, d3;
-        windowedSinePeaks(d1, d2, d3);
-        v = d * d1 / cycle;
-        a = d * d2 / (cycle * cycle);
-        j = d * d3 / (cycle * cycle * cycle);
+        v = d * kWindowedSinePeaks.d1 / cycle;
+        a = d * kWindowedSinePeaks.d2 / (cycle * cycle);
+        j = d * kWindowedSinePeaks.d3 / (cycle * cycle * cycle);
         return;
     }
     const HoldShape shape = holdShape(id);
@@ -127,6 +108,8 @@ float stretchFor(const AxisLimits& limits, float v, float a, float j) {
 }
 
 }  // namespace
+
+WaveformPeaks GesturePlayer::windowedSinePeaks() { return kWindowedSinePeaks; }
 
 float GesturePlayer::baseCycleSeconds(GestureId id) {
     switch (id) {

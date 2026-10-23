@@ -20,6 +20,13 @@ struct JointTargets {
     float pitch;
 };
 
+// 窓つき正弦（正規化後）の位相 x に関する 1〜3 階導関数の絶対値の最大
+struct WaveformPeaks {
+    float d1;
+    float d2;
+    float d3;
+};
+
 class GesturePlayer {
 public:
     // 再生を始める。速度・加速度・加加速度の上限（Planner と同じ式）を超える波形は時間を伸ばす。
@@ -31,6 +38,7 @@ public:
     float totalSeconds() const { return cycleSeconds_ * repeats_; }
     float stretch() const { return stretch_; }
     static float baseCycleSeconds(GestureId id);
+    static WaveformPeaks windowedSinePeaks();
 
 private:
     JointTargets evaluate(float phase) const;

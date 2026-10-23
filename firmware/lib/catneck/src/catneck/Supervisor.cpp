@@ -139,7 +139,9 @@ void Supervisor::onCommand(const Command& command, Source source, uint32_t nowMi
             yaw_.axis.setCalibration(command.setCal.yawOffDeci / 10.0f, (command.setCal.invert & 1) != 0, &sat1);
             pitch_.axis.setCalibration(command.setCal.pitchOffDeci / 10.0f, (command.setCal.invert & 2) != 0, &sat2);
             acceptMotionRequest(nowMillis);
-            reapplyJointTargets();  // 現在のジョイント目標を新しいキャリブレーションで言い直す（S 字で移る）
+            // 現在のジョイント目標を新しいキャリブレーションで言い直す（S 字で移る）。波形の再生中は標本が
+            // 毎 tick 新しいキャリブレーションで変換されるので触らない
+            if (phase_ != GesturePhase::Playing) reapplyJointTargets();
             noteAccepted(sat1 || sat2);
             return;
         }
@@ -158,7 +160,7 @@ void Supervisor::onCommand(const Command& command, Source source, uint32_t nowMi
             }
             acceptMaintenanceRequest(nowMillis);
             applyPlannerVelocities();
-            reapplyJointTargets();  // 角度上限の再飽和
+            if (phase_ != GesturePhase::Playing) reapplyJointTargets();  // 角度上限の再飽和（波形は標本ごとに飽和）
             noteAccepted(sat1 || sat2);
             return;
         }
@@ -310,6 +312,7 @@ void Supervisor::enterState(SupervisorState next, uint32_t nowMillis) {
             applyPlannerVelocities();
             break;
         case SupervisorState::Returning: {
+            if (phase_ == GesturePhase::Playing) handOverFromWaveform();
             discardMotion();
             returnStartMillis_ = nowMillis;
             applyPlannerVelocities();
@@ -394,59 +397,12 @@ bool Supervisor::plannersAtRest() const {
 }
 
 // ---- 定型動作 ------------------------------------------------------------------
-// 極値を経由する静止→静止の移動の列。各区切りは両軸が静止してから次へ進む。
-// nod: 0 → −amp → +amp →（くり返し）→ 0、shake: 0 → +amp → −amp → … → 0
-// tilt: (±amp, −amp/2) で 1.5 s 保持 → 0、look: (0, ±amp) で 2.0 s 保持 → 0
-
-void Supervisor::buildGestureSteps(const GestureSpec& spec) {
-    const uint8_t repeats = spec.repeats == 0 ? 1 : (spec.repeats > 3 ? 3 : spec.repeats);
-    const float amp = spec.ampDeg;
-    // speed は保持時間を 100/speed 倍に伸ばす（移動区間は Planner の速度上限を speed% に縮めて遅くする）
-    const uint32_t speed = clampSpeedPercent(spec.speedPercent);
-    const uint32_t kTiltHoldTicks = 1500 / config::kTickMs * 100 / speed;
-    const uint32_t kLookHoldTicks = 2000 / config::kTickMs * 100 / speed;
-    stepCount_ = 0;
-    auto push = [this](float yaw, float pitch, uint32_t hold) {
-        if (stepCount_ < kMaxGestureSteps) steps_[stepCount_++] = {yaw, pitch, hold};
-    };
-    switch (spec.id) {
-        case GestureId::Nod:
-            for (uint8_t i = 0; i < repeats; ++i) {
-                push(0.0f, -amp, 0);
-                push(0.0f, amp, 0);
-            }
-            push(0.0f, 0.0f, 0);
-            break;
-        case GestureId::Shake:
-            for (uint8_t i = 0; i < repeats; ++i) {
-                push(amp, 0.0f, 0);
-                push(-amp, 0.0f, 0);
-            }
-            push(0.0f, 0.0f, 0);
-            break;
-        case GestureId::TiltL:
-        case GestureId::TiltR: {
-            const float yaw = spec.id == GestureId::TiltL ? amp : -amp;
-            for (uint8_t i = 0; i < repeats; ++i) {
-                push(yaw, -amp * 0.5f, kTiltHoldTicks);
-                push(0.0f, 0.0f, 0);
-            }
-            break;
-        }
-        case GestureId::LookUp:
-        case GestureId::LookDown: {
-            const float pitch = spec.id == GestureId::LookUp ? amp : -amp;
-            for (uint8_t i = 0; i < repeats; ++i) {
-                push(0.0f, pitch, kLookHoldTicks);
-                push(0.0f, 0.0f, 0);
-            }
-            break;
-        }
-    }
-}
+// GesturePlayer の波形を tick ごとにそのままサーボ角にする。Planner は各標本に静止で追従させ、中断（切断・無通信の
+// RETURNING）では直前 3 標本から速度・加速度を推定して Planner に引き渡す。ピッチは 3 tick 遅らせて両軸の始動を
+// ずらす（FW-PWR-1）。再生中の波形は開始時の上限で完走し、SET_LIMITS は以後の移動に効く。
 
 void Supervisor::startGesture(const GestureSpec& spec) {
-    buildGestureSteps(spec);
+    activeGesture_ = spec;
     phase_ = GesturePhase::Centering;
     speedPercent_ = clampSpeedPercent(spec.speedPercent);
     applyPlannerVelocities();
@@ -454,37 +410,63 @@ void Supervisor::startGesture(const GestureSpec& spec) {
     applyJointTargets(0.0f, 0.0f, &ignored);  // 起点は中立
 }
 
-void Supervisor::applyGestureStep() {
-    const GestureStep& step = steps_[stepIndex_];
-    holdRemaining_ = step.holdTicks;
-    bool ignored = false;
-    applyJointTargets(step.yaw, step.pitch, &ignored);
-}
-
 void Supervisor::serviceGesture() {
     if (phase_ == GesturePhase::Centering && plannersAtRest()) {
-        phase_ = GesturePhase::Playing;
-        stepIndex_ = 0;
-        if (stepCount_ == 0) {
-            phase_ = GesturePhase::None;
-            finishGesture();
-            return;
+        wave_.start(activeGesture_, yaw_.axis.limits(), pitch_.axis.limits(), config::kTickSeconds);
+        const float yawServo = yaw_.planner.state().pos;
+        const float pitchServo = pitch_.planner.state().pos;
+        for (float& v : pitchDelay_) v = pitch_.axis.servoToJoint(pitchServo);
+        pitchDelayIndex_ = 0;
+        drainTicks_ = config::kStaggerTicks;
+        for (int i = 0; i < 3; ++i) {
+            yawHist_[i] = yawServo;
+            pitchHist_[i] = pitchServo;
         }
-        applyGestureStep();
-        return;
+        phase_ = GesturePhase::Playing;
     }
-    if (phase_ != GesturePhase::Playing || !plannersAtRest()) return;
-    if (holdRemaining_ > 0) {
-        --holdRemaining_;
-        return;
-    }
-    ++stepIndex_;
-    if (stepIndex_ >= stepCount_) {
+    if (phase_ == GesturePhase::Playing) playWaveformTick();
+}
+
+void Supervisor::playWaveformTick() {
+    // 波形の最後の標本を出したあと、遅らせたピッチが終端に届くまで kStaggerTicks だけ吐き出す
+    const JointTargets t = wave_.active() ? wave_.step() : JointTargets{yaw_.axis.servoToJoint(yawHist_[0]), 0.0f};
+    const float pitchDelayed = pitchDelay_[pitchDelayIndex_];
+    pitchDelay_[pitchDelayIndex_] = t.pitch;
+    pitchDelayIndex_ = static_cast<uint8_t>((pitchDelayIndex_ + 1) % config::kStaggerTicks);
+    applyGestureSample(t.yaw, pitchDelayed);
+    if (wave_.active()) return;
+    if (drainTicks_ == 0) {
         phase_ = GesturePhase::None;
         finishGesture();
-        return;
+    } else {
+        --drainTicks_;
     }
-    applyGestureStep();
+}
+
+void Supervisor::applyGestureSample(float yawJoint, float pitchJoint) {
+    bool sat1 = false, sat2 = false;
+    yaw_.jointTarget = yaw_.axis.clampJoint(yawJoint, &sat1);
+    pitch_.jointTarget = pitch_.axis.clampJoint(pitchJoint, &sat2);
+    const float yawServo = yaw_.axis.jointToServo(yaw_.jointTarget);
+    const float pitchServo = pitch_.axis.jointToServo(pitch_.jointTarget);
+    yawHist_[2] = yawHist_[1];
+    yawHist_[1] = yawHist_[0];
+    yawHist_[0] = yawServo;
+    pitchHist_[2] = pitchHist_[1];
+    pitchHist_[1] = pitchHist_[0];
+    pitchHist_[0] = pitchServo;
+    yaw_.planner.reset(yawServo);
+    pitch_.planner.reset(pitchServo);
+    pitchHeld_ = false;
+}
+
+void Supervisor::handOverFromWaveform() {
+    const float dt = config::kTickSeconds;
+    auto hand = [dt](Planner& planner, const float* h) {
+        planner.reset(h[0], (h[0] - h[1]) / dt, (h[0] - 2.0f * h[1] + h[2]) / (dt * dt));
+    };
+    hand(yaw_.planner, yawHist_);
+    hand(pitch_.planner, pitchHist_);
 }
 
 void Supervisor::finishGesture() {
@@ -545,7 +527,7 @@ Status Supervisor::status() const {
     uint16_t flags = 0;
     if (linkUp_) flags |= StatusFlags::Link;
     if (pwm) flags |= StatusFlags::Torque;
-    if (!plannersAtRest()) flags |= StatusFlags::Moving;
+    if (!plannersAtRest() || phase_ == GesturePhase::Playing) flags |= StatusFlags::Moving;
     if (brownout_) flags |= StatusFlags::Brownout;
     if (saturated_) flags |= StatusFlags::Saturated;
     if (isDirty()) flags |= StatusFlags::CalDirty;
