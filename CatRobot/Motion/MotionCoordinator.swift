@@ -360,7 +360,7 @@ final class MotionCoordinator: RobotMotionControlling {
         ready && snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true
     }
     private var isWaiting: Bool { phase == .idle || phase == .listening }
-    private var permitsTrackingPhase: Bool { isWaiting || phase == .thinking || phase == .speaking }
+    private var permitsTrackingPhase: Bool { phase.permitsFaceTracking }
     private var preservesStartedCycle: Bool {
         switch mode { case .settings, .calibration, .inactive: true; default: false }
     }

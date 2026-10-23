@@ -46,3 +46,13 @@ protocol FaceCaptureSource: AnyObject {
     func start(generation: UUID, orientation: FaceLandscapeOrientation)
     func stop()
 }
+
+extension ConversationPhase {
+    /// Classification and clarification are ongoing conversation, not camera ownership changes.
+    var permitsFaceTracking: Bool {
+        switch self {
+        case .idle, .listening, .classifying, .clarifying, .thinking, .speaking: true
+        case .preparing, .paused, .failed: false
+        }
+    }
+}

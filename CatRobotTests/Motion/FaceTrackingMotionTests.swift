@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class FaceTrackingMotionTests: XCTestCase {
     func testTrackingUsesSlowBoundedMovesDuringThinkingAndSpeaking() async {
-        for phase in [ConversationPhase.thinking, .speaking] {
+        for phase in [ConversationPhase.thinking, .speaking, .classifying, .clarifying] {
             let h = makeHarness()
             h.motion.setConversationPhase(phase)
             follow(h, yaw: 90, pitch: -30)
