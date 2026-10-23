@@ -58,11 +58,7 @@ struct RobotConnectionView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     if let device = model.snapshot.device {
                         Text(device.name).font(.headline)
-                        if model.snapshot.state == .connected {
-                            Button("接続を切る", action: model.disconnect)
-                        } else {
-                            Button("このロボットに接続") { model.select(device) }
-                        }
+                        Button(model.connectionActionTitle, action: model.performConnectionAction)
                     } else { Text("接続先が未選択です") }
                     Divider()
                     Button("検索・接続先を変更") { model.startSearch(); showsDevices = true }

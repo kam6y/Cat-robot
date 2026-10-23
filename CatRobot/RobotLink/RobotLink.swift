@@ -55,7 +55,7 @@ final class RobotLink: RobotLinkControlling {
     private var permissionTimedOut = false
     private var lastClockAt: TimeInterval = 0
     private var applicationActive = true
-    private var authenticatedBefore = false
+    private var authenticatedDeviceIDs: Set<UUID> = []
     private var encryptedStatusReceived = false
     private var initialRestObserved = false
     private var nextPingAt: TimeInterval?
@@ -338,7 +338,7 @@ final class RobotLink: RobotLinkControlling {
             snapshot.info = try RobotProtocol.decodeInfo(data)
             if preparation == .info {
                 preparation = .encryptedStatus
-                if !authenticatedBefore {
+                if snapshot.device.map({ authenticatedDeviceIDs.contains($0.id) }) != true {
                     pairingRemaining = 30
                     lastClockAt = clock.now
                     preparationDeadline = nil
@@ -354,7 +354,7 @@ final class RobotLink: RobotLinkControlling {
             if recovery?.written == true, recovery?.seq == status.pingSeq { recovery?.echoSeen = true }
             if preparation == .encryptedStatus {
                 encryptedStatusReceived = true
-                authenticatedBefore = true
+                if let device = snapshot.device { authenticatedDeviceIDs.insert(device.id) }
                 pairingRemaining = nil
                 preparationDeadline = clock.now + 5
                 preparation = .notify
@@ -578,6 +578,9 @@ final class RobotLink: RobotLinkControlling {
     }
 
     private func endOperations(_ reason: RobotLinkFailure) {
+        if reason == .authenticationFailed, let device = snapshot.device {
+            authenticatedDeviceIDs.remove(device.id)
+        }
         removeCommands(where: { _ in true }, error: reason)
         let pending = reads.values.flatMap { $0 }
         reads.removeAll()

@@ -43,6 +43,20 @@ final class RobotSettingsModel {
 
     var presentation: RobotConnectionPresentation { .init(snapshot: snapshot) }
 
+    var connectionActionTitle: String {
+        switch snapshot.state {
+        case .connected: "接続を切る"
+        case .connecting, .preparing, .reconnecting: "接続をキャンセル"
+        default: "このロボットに接続"
+        }
+    }
+    func performConnectionAction() {
+        switch link.snapshot.state {
+        case .connecting, .preparing, .reconnecting, .connected: disconnect()
+        default: if let device = link.snapshot.device { select(device) }
+        }
+    }
+
     /// Only the freshly read velocity caps describe an applied strength while connected.
     var displayedStrength: RobotMotionStrength? {
         guard snapshot.state == .connected, let limits = snapshot.limits else { return preferences.strength }

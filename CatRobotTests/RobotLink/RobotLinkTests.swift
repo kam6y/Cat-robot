@@ -215,6 +215,74 @@ final class RobotLinkTests: XCTestCase {
         XCTAssertEqual(h.transport.scans, 1)
     }
 
+    func testEachRobotGetsItsOwnInitialPairingGraceDuringInactive() async {
+        let h = RobotLinkHarness()
+        await h.connectReady()
+        let first = h.attempt
+        let other = RobotDevice(id: UUID(), name: "Other CatRobot", rssi: -50)
+        h.transport.knownDevices[other.id] = other
+        h.link.select(other)
+        h.transport.emit(.disconnected(attempt: first, reason: .cancelled))
+        await h.drain()
+        let second = h.attempt
+        XCTAssertNotEqual(first, second)
+        h.transport.emit(.gattReady(attempt: second))
+        await h.drain()
+        h.transport.emit(.value(attempt: second, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        await h.drain()
+        await h.clock.advance(by: 1)
+        h.link.setApplicationActive(false)
+        await h.clock.advance(by: 60)
+        XCTAssertEqual(h.transport.disconnects, [first])
+        XCTAssertEqual(h.link.snapshot.state, .preparing)
+        h.link.setApplicationActive(true)
+        await h.finishPreparation()
+        XCTAssertEqual(h.link.snapshot.state, .connected)
+        XCTAssertEqual(h.link.snapshot.device?.id, other.id)
+    }
+
+    func testLostPairingInformationRestoresGraceForExplicitRetry() async {
+        let h = RobotLinkHarness()
+        await h.connectReady()
+        let old = h.attempt
+        h.transport.emit(.failed(attempt: old, reason: .authenticationFailed))
+        await h.drain()
+        h.link.disconnectByUser()
+        h.transport.emit(.disconnected(attempt: old, reason: .authenticationFailed))
+        await h.drain()
+        h.link.select(h.device)
+        await h.drain()
+        let retry = h.attempt
+        h.transport.emit(.gattReady(attempt: retry))
+        await h.drain()
+        h.transport.emit(.value(attempt: retry, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        await h.drain()
+        h.link.setApplicationActive(false)
+        await h.clock.advance(by: 60)
+        XCTAssertEqual(h.transport.disconnects, [old])
+        XCTAssertEqual(h.link.snapshot.state, .preparing)
+        h.link.setApplicationActive(true)
+        await h.finishPreparation()
+        XCTAssertEqual(h.link.snapshot.state, .connected)
+    }
+
+    func testKnownRobotRetainsNormalFiveSecondPreparationDeadline() async {
+        let h = RobotLinkHarness()
+        await h.connectReady()
+        let old = h.attempt
+        h.transport.emit(.disconnected(attempt: old, reason: .disconnected))
+        await h.drain()
+        await h.clock.advance(by: 2)
+        let retry = h.attempt
+        h.transport.emit(.gattReady(attempt: retry))
+        await h.drain()
+        h.transport.emit(.value(attempt: retry, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        await h.drain()
+        await h.clock.advance(by: 5.1)
+        XCTAssertEqual(h.transport.disconnects, [retry])
+        XCTAssertEqual(h.link.snapshot.state, .reconnecting(.timedOut))
+    }
+
     func testReadsOfSameCharacteristicAreSerialized() async throws {
         let h = RobotLinkHarness()
         await h.connectReady()

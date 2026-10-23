@@ -82,6 +82,100 @@ final class MotionCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
     }
 
+    func testStartedCycleTimesOutAndWaitsForStatusResynchronization() async {
+        let h = MotionHarness()
+        let turn = h.reserve(repeats: 3)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.startCycle()
+        await h.advanceFresh(by: 3.45)
+        XCTAssertEqual(h.link.statusReadCount, 0)
+        await h.advanceFresh(by: 0.1)
+        XCTAssertEqual(h.link.statusReadCount, 1)
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+
+        // A notification alone cannot release an uncertain cycle or its old queue.
+        h.link.emitStatus(robotStatus())
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands.count, 1)
+        let next = MotionTurnID()
+        h.motion.beginTurn(next)
+        XCTAssertEqual(h.motion.reserve(nod, for: next), .unavailable)
+        h.link.completeStatusRead(robotStatus())
+        await h.drain()
+        XCTAssertEqual(h.motion.reserve(.init(gesture: .shake, intensity: .large, repeats: 1), for: next), .reserved(cycles: 1))
+        h.motion.speechStarted(next)
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands.count, 2)
+    }
+
+    func testCompletionDeadlineIsCappedAtTwentySecondsWithSlowReadbackLimits() async {
+        let h = MotionHarness()
+        let slow = RobotLimits(yawVelocityDeci: 10, pitchVelocityDeci: 10, yawAngleDeci: 600, pitchAngleDeci: 300)
+        h.link.completeLimitsRead(slow)
+        await h.drain()
+        XCTAssertEqual(h.link.limitsReadCount, 1)
+        // The attempted strength change did not apply; admission must use the actual low caps.
+        h.link.completeLimitsRead(slow)
+        await h.drain()
+        let turn = h.reserve()
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.startCycle()
+        await h.advanceFresh(by: 19.9)
+        XCTAssertEqual(h.link.statusReadCount, 0)
+        await h.advanceFresh(by: 0.2)
+        XCTAssertEqual(h.link.statusReadCount, 1)
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+        XCTAssertEqual(h.gestureCommands.count, 1)
+        h.link.completeStatusRead(robotStatus())
+        await h.drain()
+    }
+
+    func testCompletionTimeoutAlsoBoundsSettingsAndInactiveButBackgroundDoesNotRecover() async {
+        for mode in [RobotControlMode.settings, .inactive] {
+            let h = MotionHarness()
+            let turn = h.reserve()
+            h.motion.speechStarted(turn)
+            await h.drain()
+            await h.startCycle()
+            h.motion.setControlMode(mode)
+            await h.advanceFresh(by: 3.6)
+            XCTAssertEqual(h.link.statusReadCount, 1, "\(mode)")
+            XCTAssertFalse(h.sentCommands.contains(.stop))
+            h.motion.setControlMode(.background)
+            h.link.completeStatusRead(robotStatus())
+            await h.drain()
+            await h.advanceFresh(by: 25)
+            XCTAssertEqual(h.link.statusReadCount, 1)
+            XCTAssertEqual(h.gestureCommands.count, 1)
+            XCTAssertFalse(h.sentCommands.contains(.stop))
+        }
+    }
+
+    func testTimedOutCycleStillMovingOnReadReconnectsWithoutStop() async {
+        let h = MotionHarness()
+        let turn = h.reserve(repeats: 3)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        await h.startCycle()
+        await h.advanceFresh(by: 3.6)
+        XCTAssertEqual(h.link.statusReadCount, 1)
+        h.link.completeStatusRead(robotStatus(state: .active, flags: [.link, .moving, .gesture]))
+        await h.drain()
+        XCTAssertEqual(h.link.suspendCount, 1)
+        XCTAssertEqual(h.link.snapshot.state, .reconnecting(.disconnected))
+        XCTAssertFalse(h.sentCommands.contains(.stop))
+        XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
+        h.link.reconnect()
+        await h.drain()
+        let next = h.reserve(.shake)
+        h.motion.speechStarted(next)
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands.count, 2)
+    }
+
     func testMeasuredOverrunDropsNextWithoutCuttingCurrent() async {
         let h = MotionHarness()
         let turn = h.reserve(repeats: 3)

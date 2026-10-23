@@ -25,11 +25,12 @@ final class RecordingRobotLink: RobotLinkControlling {
     private var observers: [UUID: AsyncStream<RobotLinkSnapshot>.Continuation] = [:]
     private var pending: [UUID: Pending] = [:]
     private var invalid: Set<UUID> = []
-    private var reads: [UUID: CheckedContinuation<Data, Error>] = [:]
+    private var reads: [UUID: (characteristic: RobotCharacteristic, continuation: CheckedContinuation<Data, Error>)] = [:]
     var writable = true
     var publishesUpdates = true
     var queuedCommands: [RobotCommand] { pending.values.map(\.command) }
     var limitsReadCount = 0
+    var statusReadCount = 0
     var startCount = 0
     var suspendCount = 0
 
@@ -115,14 +116,14 @@ final class RecordingRobotLink: RobotLinkControlling {
     }
 
     func read(_ characteristic: RobotCharacteristic) async throws -> Data {
-        guard characteristic == .limits else { throw RobotLinkFailure.notReady }
-        limitsReadCount += 1
+        guard characteristic == .limits || characteristic == .status else { throw RobotLinkFailure.notReady }
+        if characteristic == .limits { limitsReadCount += 1 } else { statusReadCount += 1 }
         let id = UUID()
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { reads[id] = $0 }
+            try await withCheckedThrowingContinuation { reads[id] = (characteristic, $0) }
         } onCancel: {
             Task { @MainActor [weak self] in
-                self?.reads.removeValue(forKey: id)?.resume(throwing: RobotLinkFailure.cancelled)
+                self?.reads.removeValue(forKey: id)?.continuation.resume(throwing: RobotLinkFailure.cancelled)
             }
         }
     }
@@ -132,9 +133,15 @@ final class RecordingRobotLink: RobotLinkControlling {
         func le(_ value: UInt16) -> [UInt8] { [UInt8(truncatingIfNeeded: value), UInt8(truncatingIfNeeded: value >> 8)] }
         let data = Data(le(limits.yawVelocityDeci) + le(limits.pitchVelocityDeci)
                         + le(UInt16(bitPattern: limits.yawAngleDeci)) + le(UInt16(bitPattern: limits.pitchAngleDeci)))
-        let ready = reads.values
-        reads.removeAll()
-        for read in ready { read.resume(returning: data) }
+        completeReads(.limits, data: data)
+    }
+    func completeStatusRead(_ status: RobotStatus) {
+        emitStatus(status)
+        completeReads(.status, data: robotStatusBytes(status))
+    }
+    private func completeReads(_ characteristic: RobotCharacteristic, data: Data) {
+        let ids = reads.keys.filter { reads[$0]?.characteristic == characteristic }
+        for id in ids { reads.removeValue(forKey: id)?.continuation.resume(returning: data) }
     }
 }
 

@@ -16,6 +16,43 @@ final class RobotSettingsModelTests: XCTestCase {
         XCTAssertTrue(h.transport.attempts.isEmpty)
     }
 
+    func testConnectionControlCancelsPendingStatesUntilExplicitReconnect() async {
+        for state in [RobotLinkState.connecting, .preparing, .reconnecting(.disconnected), .connected] {
+            let h = RobotLinkHarness()
+            let model = makeModel(h)
+            switch state {
+            case .connecting:
+                model.select(h.device)
+                h.transport.emit(.bluetooth(state: .poweredOn))
+                await h.drain()
+            case .preparing: await h.beginGatt()
+            default:
+                await h.connectReady()
+                if case .reconnecting = state {
+                    h.transport.emit(.disconnected(attempt: h.attempt, reason: .disconnected))
+                    await h.drain()
+                }
+            }
+            XCTAssertEqual(model.snapshot.state, state)
+            XCTAssertEqual(model.connectionActionTitle, state == .connected ? "接続を切る" : "接続をキャンセル")
+            let old = h.attempt
+            model.performConnectionAction()
+            h.transport.emit(.disconnected(attempt: old, reason: .cancelled))
+            await h.drain()
+            XCTAssertEqual(h.link.snapshot.state, .suspended)
+            XCTAssertEqual(model.connectionActionTitle, "このロボットに接続")
+            let attempts = h.transport.attempts.count, commands = h.transport.commands.count
+            await h.clock.advance(by: 20)
+            h.link.resume()
+            await h.drain()
+            XCTAssertEqual(h.transport.attempts.count, attempts)
+            XCTAssertEqual(h.transport.commands.count, commands)
+            model.performConnectionAction()
+            await h.drain()
+            XCTAssertEqual(h.transport.attempts.count, attempts + 1)
+        }
+    }
+
     func testOpeningCalibrationWaitsForRest() async throws {
         let h = RobotLinkHarness()
         await h.connectReady(status: robotStatus(state: .active, flags: [.link, .gesture, .moving]))

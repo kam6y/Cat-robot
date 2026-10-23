@@ -961,10 +961,9 @@ final class ConversationRecoveryTests: XCTestCase {
         let failedTurn = Task(priority: .low) {
             await harness.emitCompletedUtterance("猫ちゃん、質問", at: 0)
         }
-        let didBeginCleanup = await harness.waitUntil {
-            await harness.audio.deactivateCount == 1
-        }
-        XCTAssertTrue(didBeginCleanup)
+        await deactivateGate.waitUntilEntered()
+        let deactivationsDuringCleanup = await harness.audio.deactivateCount
+        XCTAssertEqual(deactivationsDuringCleanup, 1)
 
         let pause = Task(priority: .low) {
             await harness.sut.sceneBecameInactive()

@@ -5,7 +5,7 @@ enum MotionTracePoint: String, Sendable {
     case reserved, speechStarted, eligible, sent, startObserved, completed, discarded
 }
 enum MotionTraceResult: String, Sendable {
-    case success, reserved, unavailable, invalidArguments, invalidated, budgetExceeded, noStart, sendFailed, interrupted
+    case success, reserved, unavailable, invalidArguments, invalidated, budgetExceeded, noStart, completionTimedOut, sendFailed, interrupted
 }
 struct MotionTraceEvent: Sendable {
     let turn: MotionTurnID?
@@ -74,6 +74,8 @@ final class MotionCoordinator: RobotMotionControlling {
     private var observer: Task<Void, Never>?
     private var timer: Task<Void, Never>?
     private var sending: Task<Void, Never>?
+    private var resynchronizationID: UUID?
+    private var resynchronizationTask: Task<Void, Never>?
     private var autoTask: Task<Void, Never>?
     private var autoToken: UUID?
     private var autoKind: AutoKind?
@@ -123,7 +125,7 @@ final class MotionCoordinator: RobotMotionControlling {
 
     deinit {
         observer?.cancel(); timer?.cancel(); sending?.cancel(); autoTask?.cancel()
-        strengthTask?.cancel(); stopTask?.cancel(); powerOffTask?.cancel()
+        strengthTask?.cancel(); stopTask?.cancel(); powerOffTask?.cancel(); resynchronizationTask?.cancel()
     }
 
     func beginTurn(_ id: MotionTurnID) {
@@ -265,6 +267,8 @@ final class MotionCoordinator: RobotMotionControlling {
         lastTracking = nil
         switch reason {
         case .background, .linkLost:
+            resynchronizationID = nil
+            resynchronizationTask?.cancel(); resynchronizationTask = nil
             if case .background = reason { mode = .background }
             if let token = strengthToken { link.invalidate(token) }
             strengthTask?.cancel(); strengthTask = nil; strengthToken = nil; strengthReading = false
@@ -286,7 +290,7 @@ final class MotionCoordinator: RobotMotionControlling {
     }
 
     private var ready: Bool {
-        snapshot.state == .connected && snapshot.motionAvailable && snapshot.connectionID != nil
+        resynchronizationID == nil && snapshot.state == .connected && snapshot.motionAvailable && snapshot.connectionID != nil
             && snapshot.statusReceivedAt.map { clock.now - $0 < 1 - 0.000_001 } == true
     }
     private var atRest: Bool {
@@ -332,13 +336,51 @@ final class MotionCoordinator: RobotMotionControlling {
 
     private func tick() {
         refreshLinkState()
-        if let active, let written = active.writtenAt, active.startedAt == nil,
-           clock.now - written >= 1 - 0.000_001 {
-            record(.discarded, turn: active.turn, cycle: active.plan.id, result: .noStart)
-            if turn?.id == active.turn { turn?.valid = false; turn?.pending.removeAll() }
-            discardActive()
+        if let active, let written = active.writtenAt {
+            if active.startedAt == nil, clock.now - written >= 1 - 0.000_001 {
+                record(.discarded, turn: active.turn, cycle: active.plan.id, result: .noStart)
+                if turn?.id == active.turn { turn?.valid = false; turn?.pending.removeAll() }
+                discardActive()
+            } else if active.startedAt != nil,
+                      clock.now - written >= min(active.plan.predicted + 2, 20) - 0.000_001 {
+                resynchronizeAfterTimeout(active)
+            }
         }
         service()
+    }
+
+    private func resynchronizeAfterTimeout(_ cycle: RunningCycle) {
+        record(.discarded, turn: cycle.turn, cycle: cycle.plan.id, result: .completionTimedOut)
+        turn?.valid = false
+        turn?.pending.removeAll()
+        turn?.waitingSince = nil
+        discardActive()
+        cancelAuto()
+        resetPowerOff()
+        let id = UUID(), connection = snapshot.connectionID, link = link
+        resynchronizationID = id
+        resynchronizationTask = Task { [weak self] in
+            var synchronizedRest = false
+            do {
+                try Task.checkCancellation()
+                guard link.snapshot.connectionID == connection else { throw RobotLinkFailure.disconnected }
+                let status = try RobotProtocol.decodeStatus(try await link.read(.status))
+                synchronizedRest = (status.state == .idle || status.state == .active)
+                    && status.flags.intersection([.moving, .gesture, .returning]).isEmpty
+            } catch { }
+            guard let self, self.resynchronizationID == id else { return }
+            self.refreshLinkState()
+            guard self.resynchronizationID == id else { return }
+            self.resynchronizationID = nil
+            self.resynchronizationTask = nil
+            if !synchronizedRest, link.snapshot.connectionID == connection {
+                // A failed read or a still-busy robot recovers through disconnect, without STOP.
+                link.suspend()
+                link.resume()
+                self.refreshLinkState()
+            }
+            self.service()
+        }
     }
 
     private func service() {

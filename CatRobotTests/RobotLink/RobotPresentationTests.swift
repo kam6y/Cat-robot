@@ -48,6 +48,13 @@ final class RobotPresentationTests: XCTestCase {
             try await capture(NavigationStack { RobotConnectionView(model: model) },
                               name: "connection-\(size)", size: size)
         }
+        let waiting = RobotLinkHarness()
+        await waiting.beginGatt()
+        let waitingModel = RobotSettingsModel(link: waiting.link, preferences: waiting.preferences, clock: waiting.clock)
+        for size in [DynamicTypeSize.large, .accessibility5] {
+            try await capture(NavigationStack { RobotConnectionView(model: waitingModel) },
+                              name: "pending-connection-\(size)", size: size)
+        }
         session.cancel()
     }
     private func capture<V: View>(_ view: V, name: String, size: DynamicTypeSize) async throws {
@@ -62,6 +69,11 @@ final class RobotPresentationTests: XCTestCase {
         XCTAssertGreaterThan(host.view.bounds.width, host.view.bounds.height)
         attach(host.view, name: "\(name)-top")
         if let scroll = scrollView(in: host.view) {
+            if name.hasPrefix("pending-connection"), size.isAccessibilitySize {
+                scroll.setContentOffset(CGPoint(x: 0, y: 220), animated: false)
+                try await Task.sleep(for: .milliseconds(100))
+                attach(host.view, name: "\(name)-cancel-control")
+            }
             scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)), animated: false)
             try await Task.sleep(for: .milliseconds(100))
             attach(host.view, name: "\(name)-bottom")
