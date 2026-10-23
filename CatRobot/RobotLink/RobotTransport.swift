@@ -53,6 +53,13 @@ enum RobotLinkState: Equatable, Sendable {
     case suspended, unsupported
 }
 
+/// Recorded synchronously at the BLE write boundary, before send's continuation resumes.
+struct RobotTrackingWrite: Equatable, Sendable {
+    let token: UUID
+    let command: RobotCommand
+    let at: TimeInterval
+}
+
 struct RobotLinkSnapshot: Equatable, Sendable {
     var state: RobotLinkState = .unselected
     var device: RobotDevice?
@@ -65,10 +72,11 @@ struct RobotLinkSnapshot: Equatable, Sendable {
     var motionAvailable = false
     var failure: RobotLinkFailure?
     var connectionID: UUID?
+    var trackingWrite: RobotTrackingWrite?
 }
 
 enum RobotCommandPriority: Int, Comparable, Sendable {
-    case manualStop, heartbeat, calibration, motion, idlePowerOff
+    case manualStop, heartbeat, calibration, toolMotion, motion, tracking, idlePowerOff
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 

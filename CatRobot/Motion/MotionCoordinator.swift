@@ -56,7 +56,7 @@ final class MotionCoordinator: RobotMotionControlling {
         var writtenAt: TimeInterval?
         var startedAt: TimeInterval?
     }
-    private enum AutoKind { case idle, acknowledgement, tracking }
+    private enum AutoKind { case idle, acknowledgement, tracking, settling }
     private struct StrengthAttempt: Equatable { let connection: UUID; let strength: RobotMotionStrength }
 
     private let link: any RobotLinkControlling
@@ -80,8 +80,14 @@ final class MotionCoordinator: RobotMotionControlling {
     private var autoToken: UUID?
     private var autoKind: AutoKind?
     private var nextIdleAt: TimeInterval?
-    private var tracking: RobotTrackingTarget?
-    private var lastTracking: RobotTrackingTarget?
+    private var trackingState: RobotTrackingState = .disabled
+    private var trackingOwnerConnection: UUID?
+    private var trackingOwnerToken: UUID?
+    private var lastTrackingCommand: RobotCommand?
+    private var lastTrackingWriteAt = -TimeInterval.infinity
+    private var lastTrackingAttemptAt = -TimeInterval.infinity
+    private var trackingReturnIssued = false
+    private var automaticMotionSuspended = false
     private var strengthTask: Task<Void, Never>?
     private var strengthToken: UUID?
     private var strengthReading = false
@@ -165,6 +171,7 @@ final class MotionCoordinator: RobotMotionControlling {
         }
         if turn?.speechAt != nil, active != nil, turn?.waitingSince == nil { turn?.waitingSince = clock.now }
         record(.reserved, turn: id, result: .reserved)
+        cancelAuto()
         service()
         return .reserved(cycles: count)
     }
@@ -203,7 +210,7 @@ final class MotionCoordinator: RobotMotionControlling {
         turn?.valid = false
         turn?.pending.removeAll()
         turn?.waitingSince = nil
-        let hadAutonomousMotion = autoTask != nil
+        let hadAutonomousMotion = autoTask != nil || ownsTracking
         cancelAuto()
         resetPowerOff()
         if case .playbackCancelled = reason, preservesStartedCycle {
@@ -228,6 +235,8 @@ final class MotionCoordinator: RobotMotionControlling {
         switch mode {
         case .background: stopAll(reason: .background)
         case .settings, .calibration, .inactive:
+            trackingState = .disabled
+            settleOwnedTracking()
             turn?.valid = false
             turn?.pending.removeAll()
             if active?.writtenAt == nil { discardActive() }
@@ -243,19 +252,30 @@ final class MotionCoordinator: RobotMotionControlling {
     func setConversationPhase(_ phase: ConversationPhase) {
         refreshLinkState()
         self.phase = phase
-        if !isWaiting, autoKind == .idle || autoKind == .tracking { cancelAuto() }
+        if !isWaiting, autoKind == .idle { cancelAuto() }
+        if !permitsTrackingPhase, autoKind == .tracking { cancelAuto(); settleOwnedTracking() }
         service()
     }
 
     func utteranceConfirmed() {
         refreshLinkState()
-        guard mode == .conversation, atRest, active == nil, strengthTask == nil, stopTask == nil else { return }
-        cancelAuto()
-        startColumn(kind: .acknowledgement, duration: 0.6, yaw: 0, pitch: 0)
+        guard mode == .conversation, atRest || ownsTracking, active == nil, strengthTask == nil,
+              stopTask == nil, !automaticMotionSuspended, turn?.pending.isEmpty != false else { return }
+        if preferences.trackingEnabled, freshTracking != nil, let status = snapshot.status {
+            let pose = FacePose(yaw: Double(status.yawDeci) / 10, pitch: Double(status.pitchDeci) / 10)
+            guard abs(pose.yaw) <= 45, abs(pose.pitch) <= 10, min(5, pose.pitch + 10) >= 1 else { return }
+            cancelAuto()
+            startColumn(kind: .acknowledgement, duration: 0.6, yaw: 0, pitch: 0, facePose: pose)
+        } else {
+            guard atRest else { return }
+            cancelAuto()
+            clearTrackingOwnership()
+            startColumn(kind: .acknowledgement, duration: 0.6, yaw: 0, pitch: 0)
+        }
     }
 
     func stopAll(reason: MotionCancellationReason) {
-        let hadMotion = active != nil || autoTask != nil
+        let hadMotion = active != nil || autoTask != nil || ownsTracking
         turn?.valid = false
         turn?.pending.removeAll()
         turn?.waitingSince = nil
@@ -263,8 +283,11 @@ final class MotionCoordinator: RobotMotionControlling {
         cancelAuto()
         resetPowerOff()
         nextIdleAt = nil
-        tracking = nil
-        lastTracking = nil
+        trackingState = .disabled
+        clearTrackingOwnership()
+        trackingReturnIssued = false
+        lastTrackingWriteAt = -.infinity
+        lastTrackingAttemptAt = -.infinity
         switch reason {
         case .background, .linkLost:
             resynchronizationID = nil
@@ -279,14 +302,54 @@ final class MotionCoordinator: RobotMotionControlling {
         }
     }
 
-    func updateTrackingTarget(_ target: RobotTrackingTarget?) {
+    func setTrackingState(_ state: RobotTrackingState) {
         refreshLinkState()
-        if let target, target.yaw.isFinite, target.pitch.isFinite, target.validUntil.isFinite,
-           target.validUntil > clock.now {
-            tracking = target
-        } else { tracking = nil }
+        if case let .following(target) = state {
+            guard target.yaw.isFinite, target.pitch.isFinite, target.validUntil.isFinite,
+                  target.validUntil > clock.now else {
+                setTrackingState(.holding)
+                return
+            }
+        }
+        if state != .returnToCenter { trackingReturnIssued = false }
+        trackingState = state
         if autoKind == .tracking { cancelAuto() }
+        if state == .disabled { settleOwnedTracking() }
         service()
+    }
+
+    func setAutomaticMotionSuspended(_ suspended: Bool) {
+        refreshLinkState()
+        guard automaticMotionSuspended != suspended else { return }
+        automaticMotionSuspended = suspended
+        if suspended { cancelAuto(); settleOwnedTracking() }
+        service()
+    }
+
+    func updateTrackingTarget(_ target: RobotTrackingTarget?) {
+        setTrackingState(target.map(RobotTrackingState.following) ?? .disabled)
+    }
+
+    private var ownsTracking: Bool {
+        ready && trackingOwnerConnection != nil && trackingOwnerConnection == snapshot.connectionID
+            && trackingOwnerToken != nil && trackingOwnerToken == snapshot.trackingWrite?.token
+            && snapshot.status?.flags.intersection([.gesture, .returning]).isEmpty == true
+    }
+
+    private func clearTrackingOwnership() {
+        trackingOwnerConnection = nil
+        trackingOwnerToken = nil
+        lastTrackingCommand = nil
+    }
+
+    private func settleOwnedTracking() {
+        guard ownsTracking, active == nil, let status = snapshot.status else {
+            clearTrackingOwnership()
+            return
+        }
+        cancelAuto()
+        startTrackingCommand(.move(yawDeci: status.yawDeci, pitchDeci: status.pitchDeci, speed: 10),
+                             validUntil: clock.now + 0.3, settling: true)
     }
 
     private var ready: Bool {
@@ -297,12 +360,13 @@ final class MotionCoordinator: RobotMotionControlling {
         ready && snapshot.status?.flags.intersection([.moving, .gesture, .returning]).isEmpty == true
     }
     private var isWaiting: Bool { phase == .idle || phase == .listening }
+    private var permitsTrackingPhase: Bool { isWaiting || phase == .thinking || phase == .speaking }
     private var preservesStartedCycle: Bool {
         switch mode { case .settings, .calibration, .inactive: true; default: false }
     }
     private var freshTracking: RobotTrackingTarget? {
-        guard let tracking, tracking.validUntil > clock.now else { return nil }
-        return tracking
+        guard case let .following(target) = trackingState, target.validUntil > clock.now else { return nil }
+        return target
     }
 
     private func refreshLinkState() {
@@ -325,6 +389,12 @@ final class MotionCoordinator: RobotMotionControlling {
         let connectionChanged = snapshot.connectionID != next.connectionID
         let newStatus = snapshot.status != next.status || snapshot.statusReceivedAt != next.statusReceivedAt
         snapshot = next
+        if let write = next.trackingWrite, write.token == autoToken, autoKind != .settling {
+            trackingOwnerConnection = next.connectionID
+            trackingOwnerToken = write.token
+            lastTrackingCommand = write.command
+            lastTrackingWriteAt = write.at
+        }
         if newStatus { statusVersion &+= 1 }
         if connectionChanged { failedStrength = nil }
         if connectionChanged || next.state != .connected || !next.motionAvailable {
@@ -391,7 +461,7 @@ final class MotionCoordinator: RobotMotionControlling {
         if active == nil, autoTask == nil, stopTask == nil, atRest, strengthTask == nil,
            mode == .conversation || mode == .settings { applyStrengthIfNeeded() }
         if active == nil, autoTask == nil, stopTask == nil, strengthTask == nil,
-           mode == .conversation, atRest, turn?.valid == true, turn?.speechAt != nil,
+           mode == .conversation, atRest || ownsTracking, turn?.valid == true, turn?.speechAt != nil,
            var next = turn?.pending.first, let limits = snapshot.limits, let status = snapshot.status {
             let prediction = estimate(next.request, limits: limits, current: status)
             if next.ordinal > 1, turn!.completedSeconds + prediction > 4 + 0.000_001 {
@@ -413,6 +483,7 @@ final class MotionCoordinator: RobotMotionControlling {
         resetPowerOff()
         cancelAuto()
         let command = command(for: plan.request)
+        clearTrackingOwnership()
         let token = UUID()
         let status = snapshot.status!
         let requiresStart: Bool
@@ -432,7 +503,7 @@ final class MotionCoordinator: RobotMotionControlling {
             do {
                 try Task.checkCancellation()
                 guard link.snapshot.connectionID == connection else { throw RobotLinkFailure.disconnected }
-                try await link.send(command, priority: .motion, token: token, expiresAt: expiresAt)
+                try await link.send(command, priority: .toolMotion, token: token, expiresAt: expiresAt)
                 self?.cycleWritten(plan.id)
             } catch { self?.cycleFailed(plan.id) }
         }
@@ -572,23 +643,49 @@ final class MotionCoordinator: RobotMotionControlling {
     }
 
     private func serviceAutonomous() {
-        let permitted = mode == .conversation && isWaiting && atRest && active == nil && strengthTask == nil
-            && stopTask == nil && turn?.pending.isEmpty != false
+        let permitted = mode == .conversation && permitsTrackingPhase && !automaticMotionSuspended
+            && active == nil && strengthTask == nil && stopTask == nil && turn?.pending.isEmpty != false
         guard permitted, autoTask == nil else { nextIdleAt = nil; return }
-        if let target = freshTracking {
-            nextIdleAt = nil
-            if target != lastTracking { startTracking(target) }
-        } else if preferences.idleEnabled {
-            if nextIdleAt == nil { nextIdleAt = clock.now + random.next(in: 4...10) }
-            if clock.now + 0.000_001 >= nextIdleAt! {
+        if preferences.trackingEnabled {
+            switch trackingState {
+            case .following:
                 nextIdleAt = nil
-                let yaw = random.next(in: -3...3), pitch = random.next(in: -2...2)
-                startColumn(kind: .idle, duration: random.next(in: 3...4), yaw: yaw, pitch: pitch)
+                if let target = freshTracking, atRest || ownsTracking {
+                    let command = RobotCommand.move(yawDeci: deci(target.yaw, cap: 45),
+                                                    pitchDeci: deci(target.pitch, cap: 10), speed: 20)
+                    if command != lastTrackingCommand, trackingCadenceReady {
+                        startTrackingCommand(command, validUntil: target.validUntil)
+                    }
+                }
+                return
+            case .holding: nextIdleAt = nil; return
+            case .returnToCenter:
+                if !trackingReturnIssued {
+                    nextIdleAt = nil
+                    if atRest || ownsTracking, trackingCadenceReady {
+                        startTrackingCommand(.move(yawDeci: 0, pitchDeci: 0, speed: 10), validUntil: clock.now + 0.3)
+                    }
+                    return
+                }
+            case .disabled, .searching: break
             }
-        } else { nextIdleAt = nil }
+        }
+        guard isWaiting, atRest, preferences.idleEnabled else { nextIdleAt = nil; return }
+        if nextIdleAt == nil { nextIdleAt = clock.now + random.next(in: 4...10) }
+        if clock.now + 0.000_001 >= nextIdleAt! {
+            nextIdleAt = nil
+            clearTrackingOwnership()
+            let yaw = random.next(in: -3...3), pitch = random.next(in: -2...2)
+            startColumn(kind: .idle, duration: random.next(in: 3...4), yaw: yaw, pitch: pitch)
+        }
     }
 
-    private func startColumn(kind: AutoKind, duration: TimeInterval, yaw: Double, pitch: Double) {
+    private var trackingCadenceReady: Bool {
+        clock.now - lastTrackingWriteAt >= 0.2 - 0.000_001
+            && clock.now - lastTrackingAttemptAt >= 0.2 - 0.000_001
+    }
+
+    private func startColumn(kind: AutoKind, duration: TimeInterval, yaw: Double, pitch: Double, facePose: FacePose? = nil) {
         resetPowerOff()
         let token = UUID()
         autoToken = token
@@ -600,7 +697,7 @@ final class MotionCoordinator: RobotMotionControlling {
         let fromPitch = max(-2, min(2, currentPitch))
         // A small acknowledgement can start at a manual endpoint. Recenter gently.
         let needsSlowApproach = abs(currentYaw) > 3 || abs(currentPitch) > 2
-        let speed: UInt8 = kind == .idle || needsSlowApproach ? 10 : 100
+        let speed: UInt8 = facePose != nil ? 20 : (kind == .idle || needsSlowApproach ? 10 : 100)
         let link = link, clock = clock, connection = snapshot.connectionID
         autoTask = Task { [weak self] in
             do {
@@ -613,8 +710,10 @@ final class MotionCoordinator: RobotMotionControlling {
                     let u = elapsed + 0.000_001 >= duration ? 1 : max(0, elapsed / duration)
                     let y: Double, p: Double
                     if kind == .acknowledgement {
-                        y = 0
-                        p = u <= 0.5 ? -5 * Self.smooth(u * 2) : -5 * (1 - Self.smooth((u - 0.5) * 2))
+                        let amplitude = facePose.map { min(5, $0.pitch + 10) } ?? 5
+                        y = facePose?.yaw ?? 0
+                        let dip = u <= 0.5 ? amplitude * Self.smooth(u * 2) : amplitude * (1 - Self.smooth((u - 0.5) * 2))
+                        p = (facePose?.pitch ?? 0) - dip
                     } else {
                         y = fromYaw + (yaw - fromYaw) * Self.smooth(u)
                         p = fromPitch + (pitch - fromPitch) * Self.smooth(u)
@@ -622,7 +721,14 @@ final class MotionCoordinator: RobotMotionControlling {
                     let command = RobotCommand.move(yawDeci: self.deci(y, cap: kind == .idle ? 3 : 45),
                                                     pitchDeci: self.deci(p, cap: kind == .idle ? 2 : 20),
                                                     speed: speed)
-                    try await link.send(command, priority: .motion, token: token, expiresAt: clock.now + 0.3)
+                    try await link.send(command, priority: facePose == nil ? .motion : .tracking,
+                                        token: token, expiresAt: clock.now + 0.3)
+                    if facePose != nil, self.autoToken == token {
+                        self.trackingOwnerConnection = connection
+                        self.trackingOwnerToken = token
+                        self.lastTrackingCommand = command
+                        self.lastTrackingWriteAt = clock.now
+                    }
                     if u >= 1 { break }
                     // Missed deadlines skip samples rather than emitting an old burst.
                     next = clock.now + 0.05
@@ -632,19 +738,29 @@ final class MotionCoordinator: RobotMotionControlling {
         }
     }
 
-    private func startTracking(_ target: RobotTrackingTarget) {
+    private func startTrackingCommand(_ command: RobotCommand, validUntil: TimeInterval, settling: Bool = false) {
         resetPowerOff()
         let token = UUID()
         autoToken = token
-        autoKind = .tracking
-        lastTracking = target
-        let command = RobotCommand.move(yawDeci: deci(target.yaw, cap: 45), pitchDeci: deci(target.pitch, cap: 20), speed: 100)
+        autoKind = settling ? .settling : .tracking
+        lastTrackingAttemptAt = clock.now
         let link = link, clock = clock, connection = snapshot.connectionID
+        let returning = trackingState == .returnToCenter
         autoTask = Task { [weak self] in
             do {
                 try Task.checkCancellation()
                 guard link.snapshot.connectionID == connection else { throw RobotLinkFailure.disconnected }
-                try await link.send(command, priority: .motion, token: token, expiresAt: min(target.validUntil, clock.now + 0.3))
+                try await link.send(command, priority: .tracking, token: token, expiresAt: min(validUntil, clock.now + 0.3))
+                if let self, self.autoToken == token, self.snapshot.connectionID == connection {
+                    self.lastTrackingWriteAt = clock.now
+                    if settling { self.clearTrackingOwnership() }
+                    else {
+                        self.trackingOwnerConnection = connection
+                        self.trackingOwnerToken = token
+                        self.lastTrackingCommand = command
+                        if returning { self.trackingReturnIssued = true }
+                    }
+                }
             } catch { }
             self?.finishAuto(token)
         }
@@ -668,7 +784,7 @@ final class MotionCoordinator: RobotMotionControlling {
         switch mode { case .conversation, .settings: permitted = true; default: permitted = false }
         // Reattaching PWM can visibly jump. Keep it continuous while idle motion is enabled,
         // including a trip through settings before returning to the conversation.
-        guard permitted, !preferences.idleEnabled, atRest, snapshot.status?.state == .active,
+        guard permitted, !preferences.idleEnabled, !preferences.trackingEnabled, atRest, snapshot.status?.state == .active,
               active == nil, autoTask == nil, strengthTask == nil, stopTask == nil else {
             if restSince != nil || powerOffTicket != nil { resetPowerOff() }
             return
@@ -680,7 +796,7 @@ final class MotionCoordinator: RobotMotionControlling {
         powerOffTicket = ticket
         let link = link, clock = clock
         powerOffTask = Task { [weak self] in
-            guard let self, !self.preferences.idleEnabled, self.restGeneration == generation,
+            guard let self, !self.preferences.idleEnabled, !self.preferences.trackingEnabled, self.restGeneration == generation,
                   self.snapshot.connectionID == connection, link.snapshot.connectionID == connection,
                   self.atRest, self.snapshot.status?.state == .active else { return }
             do {
@@ -705,6 +821,7 @@ final class MotionCoordinator: RobotMotionControlling {
     }
 
     private func sendStop() {
+        clearTrackingOwnership()
         guard snapshot.state == .connected, stopTask == nil else { return }
         let token = UUID()
         stopToken = token

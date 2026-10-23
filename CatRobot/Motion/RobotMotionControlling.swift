@@ -36,6 +36,10 @@ struct RobotTrackingTarget: Equatable, Sendable {
     let validUntil: TimeInterval
 }
 
+enum RobotTrackingState: Equatable, Sendable {
+    case disabled, searching, following(RobotTrackingTarget), holding, returnToCenter
+}
+
 @MainActor
 protocol RobotMotionControlling: AnyObject, Sendable {
     func beginTurn(_ id: MotionTurnID)
@@ -49,6 +53,8 @@ protocol RobotMotionControlling: AnyObject, Sendable {
     func utteranceConfirmed()
     func stopAll(reason: MotionCancellationReason)
     func updateTrackingTarget(_ target: RobotTrackingTarget?)
+    func setTrackingState(_ state: RobotTrackingState)
+    func setAutomaticMotionSuspended(_ suspended: Bool)
 }
 
 @MainActor
@@ -65,6 +71,8 @@ final class NoopRobotMotionController: RobotMotionControlling {
     func utteranceConfirmed() {}
     func stopAll(reason: MotionCancellationReason) {}
     func updateTrackingTarget(_ target: RobotTrackingTarget?) {}
+    func setTrackingState(_ state: RobotTrackingState) {}
+    func setAutomaticMotionSuspended(_ suspended: Bool) {}
 }
 
 @MainActor

@@ -1,0 +1,260 @@
+import XCTest
+@testable import CatRobot
+
+@MainActor
+final class FaceTrackingMotionTests: XCTestCase {
+    func testTrackingUsesSlowBoundedMovesDuringThinkingAndSpeaking() async {
+        for phase in [ConversationPhase.thinking, .speaking] {
+            let h = makeHarness()
+            h.motion.setConversationPhase(phase)
+            follow(h, yaw: 90, pitch: -30)
+            await h.drain()
+            XCTAssertEqual(h.sentCommands, [.move(yawDeci: 450, pitchDeci: -100, speed: 20)])
+        }
+    }
+
+    func testTrackingUpdatesItsOwnMovingTargetAtMostFiveTimesPerSecond() async {
+        let h = makeHarness()
+        follow(h, yaw: 10)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 30))
+        await h.advanceFresh(by: 0.1)
+        follow(h, yaw: 20)
+        await h.advanceFresh(by: 0.1)
+        follow(h, yaw: 30)
+        await h.advanceFresh(by: 0.2)
+        XCTAssertEqual(h.sentCommands, [10, 20, 30].map { .move(yawDeci: $0 * 10, pitchDeci: 0, speed: 20) })
+        for pair in zip(h.link.sent, h.link.sent.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(pair.1.at - pair.0.at, 0.199_999)
+        }
+    }
+
+    func testExpiryRefreshOfSameAnglesDoesNotResend() async {
+        let h = makeHarness()
+        follow(h, yaw: 20)
+        await h.drain()
+        await h.advanceFresh(by: 0.2)
+        follow(h, yaw: 20, lifetime: 5)
+        await h.advanceFresh(by: 0.4)
+        XCTAssertEqual(h.sentCommands.count, 1)
+    }
+
+    func testOnlyLatestPendingTargetSurvivesBackpressure() async {
+        let h = makeHarness()
+        h.link.writable = false
+        follow(h, yaw: 10)
+        await h.drain()
+        follow(h, yaw: 30)
+        await h.advanceFresh(by: 0.2)
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 300, pitchDeci: 0, speed: 20)])
+    }
+
+    func testExpiredTargetDoesNotWriteAfterBackpressure() async {
+        let h = makeHarness()
+        h.link.writable = false
+        follow(h, yaw: 10, lifetime: 0.1)
+        await h.advanceFresh(by: 0.2)
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+    }
+
+    func testToolReservationInvalidatesPendingTrackingBeforeSpeech() async {
+        let h = makeHarness()
+        h.link.writable = false
+        follow(h, yaw: 10)
+        await h.drain()
+        let turn = h.reserve()
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+        h.motion.speechStarted(turn)
+        await h.drain()
+        XCTAssertEqual(h.gestureCommands.count, 1)
+    }
+
+    func testToolSupersedesOwnedTrackingWithoutPowerInterruption() async {
+        let h = makeHarness()
+        follow(h, yaw: 20)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .torque, .moving], yaw: 80))
+        await h.drain()
+        h.motion.speechStarted(h.reserve())
+        await h.drain()
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 200, pitchDeci: 0, speed: 20),
+                                        .gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100)])
+    }
+
+    func testTrackingAndToolsCannotStealUnownedMovingNeck() async {
+        for flags: RobotStatusFlags in [[.link, .moving], [.link, .moving, .gesture]] {
+            let h = makeHarness()
+            h.link.emitStatus(robotStatus(flags: flags))
+            await h.drain()
+            follow(h, yaw: 20)
+            h.motion.speechStarted(h.reserve())
+            await h.advanceFresh(by: 0.3)
+            XCTAssertTrue(h.sentCommands.isEmpty)
+        }
+    }
+
+    func testInactiveAndDisableInvalidateUnsentTracking() async {
+        for disabled in [true, false] {
+            let h = makeHarness()
+            h.link.writable = false
+            follow(h, yaw: 20)
+            await h.drain()
+            if disabled { h.motion.setTrackingState(.disabled) }
+            else { h.motion.setControlMode(.inactive) }
+            h.link.writable = true
+            h.link.flush()
+            await h.drain()
+            XCTAssertTrue(h.sentCommands.isEmpty)
+        }
+    }
+
+    func testDisablingWrittenTrackingSettlesOnlyItsOwnMoveWithoutStop() async {
+        let h = makeHarness()
+        follow(h, yaw: 30)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving], yaw: 120, pitch: 20))
+        await h.drain()
+        h.motion.setTrackingState(.disabled)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 300, pitchDeci: 0, speed: 20),
+                                        .move(yawDeci: 120, pitchDeci: 20, speed: 10)])
+    }
+
+    func testDisableSeesWriteBeforeSendingTaskResumes() async {
+        let h = makeHarness()
+        h.link.writable = false
+        follow(h, yaw: 30)
+        await h.drain()
+        h.link.writable = true
+        h.link.flush()
+        // The transport has written, but send's awaiting task has not resumed yet.
+        h.motion.setTrackingState(.disabled)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 300, pitchDeci: 0, speed: 20),
+                                        .move(yawDeci: 0, pitchDeci: 0, speed: 10)])
+    }
+
+    func testFaceAcknowledgementDoesNotJumpFromPoseOutsideTrackingRange() async {
+        let h = makeHarness()
+        follow(h, yaw: 30)
+        await h.drain()
+        h.link.emitStatus(robotStatus(yaw: 500, pitch: 150))
+        h.motion.utteranceConfirmed()
+        await h.advanceFresh(by: 0.6, step: 0.05)
+        XCTAssertEqual(h.sentCommands.count, 1)
+    }
+
+    func testDisconnectDiscardsTrackingOwnershipAndTarget() async {
+        let h = makeHarness()
+        follow(h, yaw: 20)
+        await h.drain()
+        h.link.disconnect()
+        await h.drain()
+        h.link.reconnect()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving]))
+        await h.advanceFresh(by: 0.3)
+        XCTAssertEqual(h.sentCommands.count, 1)
+    }
+
+    func testHoldingSuppressesIdleAndSearchingAllowsIt() async {
+        let h = makeHarness()
+        h.motion.setConversationPhase(.listening)
+        h.motion.setTrackingState(.holding)
+        await h.advanceFresh(by: 8)
+        XCTAssertTrue(h.sentCommands.isEmpty)
+        h.motion.setTrackingState(.searching)
+        await h.advanceFresh(by: 4.1)
+        XCTAssertFalse(h.sentCommands.isEmpty)
+    }
+
+    func testReturnWaitsForToolAndSendsOnlyOnce() async {
+        let h = makeHarness()
+        h.motion.speechStarted(h.reserve())
+        await h.drain()
+        await h.startCycle()
+        h.motion.setTrackingState(.returnToCenter)
+        await h.advanceFresh(by: 0.2)
+        XCTAssertEqual(h.sentCommands.count, 1)
+        await h.completeCycle(after: 1.5)
+        await h.advanceFresh(by: 0.5)
+        XCTAssertEqual(h.sentCommands.filter { $0 == .move(yawDeci: 0, pitchDeci: 0, speed: 10) }.count, 1)
+    }
+
+    func testTrackingHoldsPWMWhenIdleDisabledButExplicitStopWins() async {
+        let h = makeHarness()
+        h.preferences.idleEnabled = false
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque]))
+        h.motion.setTrackingState(.searching)
+        await h.advanceFresh(by: 3)
+        XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        h.motion.stopAll(reason: .userStop)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .stop)
+    }
+
+    func testThermalSuspensionPreventsTrackingAndIdleUntilReleased() async {
+        let h = makeHarness()
+        h.motion.setConversationPhase(.listening)
+        h.motion.setAutomaticMotionSuspended(true)
+        follow(h, yaw: 20)
+        await h.advanceFresh(by: 8)
+        XCTAssertTrue(h.sentCommands.isEmpty)
+        h.motion.setTrackingState(.searching)
+        h.motion.setAutomaticMotionSuspended(false)
+        await h.advanceFresh(by: 4.1)
+        XCTAssertFalse(h.sentCommands.isEmpty)
+    }
+
+    func testFaceAcknowledgementKeepsYawAndReturnsToCurrentPitch() async {
+        let h = makeHarness()
+        h.link.emitStatus(robotStatus(yaw: 300, pitch: 20))
+        follow(h, yaw: 30, pitch: 2)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving], yaw: 300, pitch: 20))
+        h.motion.utteranceConfirmed()
+        await h.drain()
+        await h.advanceFresh(by: 0.6, step: 0.05)
+        let moves = h.sentCommands.compactMap { command -> (Int16, Int16)? in
+            if case let .move(yaw, pitch, _) = command { (yaw, pitch) } else { nil }
+        }
+        XCTAssertTrue(moves.allSatisfy { $0.0 == 300 })
+        XCTAssertTrue(moves.contains { $0.1 == -30 })
+        XCTAssertEqual(moves.last?.1, 20)
+    }
+
+    func testFaceAcknowledgementShrinksOrSkipsAtLowerPitchLimit() async {
+        for (pitch, expectedCount, expectedMinimum): (Int16, Int, Int16) in [(-80, 14, -100), (-95, 1, -95)] {
+            let h = makeHarness()
+            h.link.emitStatus(robotStatus(yaw: 300, pitch: pitch))
+            follow(h, yaw: 30, pitch: Double(pitch) / 10)
+            await h.drain()
+            h.motion.utteranceConfirmed()
+            await h.drain()
+            await h.advanceFresh(by: 0.6, step: 0.05)
+            let pitches = h.sentCommands.compactMap { command -> Int16? in
+                if case let .move(_, p, _) = command { p } else { nil }
+            }
+            XCTAssertEqual(pitches.count, expectedCount)
+            XCTAssertEqual(pitches.min(), expectedMinimum)
+            XCTAssertEqual(pitches.last, pitch)
+        }
+    }
+
+    private func makeHarness() -> MotionHarness {
+        let h = MotionHarness()
+        h.preferences.trackingEnabled = true
+        return h
+    }
+    private func follow(_ h: MotionHarness, yaw: Double, pitch: Double = 0, lifetime: TimeInterval = 2) {
+        h.motion.setTrackingState(.following(.init(yaw: yaw, pitch: pitch, validUntil: h.clock.now + lifetime)))
+    }
+}

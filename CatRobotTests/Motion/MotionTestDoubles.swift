@@ -67,6 +67,7 @@ final class RecordingRobotLink: RobotLinkControlling {
     func disconnect() {
         snapshot.state = .reconnecting(.disconnected)
         snapshot.connectionID = nil
+        snapshot.trackingWrite = nil
         snapshot.motionAvailable = false
         publish()
     }
@@ -110,6 +111,13 @@ final class RecordingRobotLink: RobotLinkControlling {
             else if snapshot.state != .connected { write.continuation.resume(throwing: RobotLinkFailure.notReady) }
             else {
                 sent.append(.init(command: write.command, priority: write.priority, at: clock.now))
+                switch write.command {
+                case .move, .center, .gesture, .stop, .torque, .setCalibration:
+                    snapshot.trackingWrite = write.priority == .tracking
+                        ? .init(token: write.token, command: write.command, at: clock.now) : nil
+                    publish()
+                default: break
+                }
                 write.continuation.resume()
             }
         }
@@ -173,6 +181,7 @@ final class MotionHarness {
     init(random: ScriptedRobotRandom = ScriptedRobotRandom()) {
         link = RecordingRobotLink(clock: clock)
         preferences = RobotPreferences(defaults: UserDefaults(suiteName: "MotionTests.\(UUID().uuidString)")!)
+        preferences.trackingEnabled = false
         let trace = trace
         motion = MotionCoordinator(link: link, clock: clock, preferences: preferences, random: random,
                                    trace: { trace.events.append($0) })
