@@ -1,6 +1,7 @@
 import Foundation
 
-/// A rectangle in the raw, unmirrored image; lower-left origin, normalized to 0...1.
+/// An unmirrored landscape-reference rectangle, lower-left origin, normalized to 0...1.
+/// Landscape-left is half-turned; the adapter normalizes the camera's physical sensor mounting.
 struct FaceRectangle: Equatable, Sendable {
     let x: Double
     let y: Double
@@ -8,6 +9,7 @@ struct FaceRectangle: Equatable, Sendable {
     let height: Double
 }
 
+/// Matches UIInterfaceOrientation: landscapeRight has the charging port on the right.
 enum FaceLandscapeOrientation: Equatable, Sendable {
     case landscapeLeft, landscapeRight
 }
