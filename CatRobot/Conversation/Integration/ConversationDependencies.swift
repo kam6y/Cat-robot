@@ -17,6 +17,7 @@ struct ConversationDependencies: Sendable {
     let audioSession: any AudioSessionControlling
     let memory: any ConversationMemoryManaging
     let replyPlaybackMode: ReplyPlaybackMode
+    let motion: any RobotMotionControlling
     let replyTraceSink: any ReplyTraceSink
     let latency: any ConversationLatencyTracking
     let addresseePolicy: AddresseePolicy
@@ -38,6 +39,7 @@ struct ConversationDependencies: Sendable {
         latency: any ConversationLatencyTracking,
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         replyPlaybackMode: ReplyPlaybackMode = .completeResponse,
+        motion: any RobotMotionControlling = NoopRobotMotionController(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         addresseePolicy: AddresseePolicy = AddresseePolicy(),
         now: @escaping @Sendable () -> TimeInterval = {
@@ -63,6 +65,7 @@ struct ConversationDependencies: Sendable {
         self.latency = latency
         self.replyTraceSink = replyTraceSink
         self.replyPlaybackMode = replyPlaybackMode
+        self.motion = motion
         self.addresseePolicy = addresseePolicy
         self.now = now
         self.clarificationDelay = clarificationDelay

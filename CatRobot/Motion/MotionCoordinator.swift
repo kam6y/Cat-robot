@@ -200,6 +200,7 @@ final class MotionCoordinator: RobotMotionControlling {
         turn?.valid = false
         turn?.pending.removeAll()
         turn?.waitingSince = nil
+        let hadAutonomousMotion = autoTask != nil
         cancelAuto()
         resetPowerOff()
         if case .playbackCancelled = reason, preservesStartedCycle {
@@ -210,7 +211,7 @@ final class MotionCoordinator: RobotMotionControlling {
         if wasRunning { discardActive() }
         switch reason {
         case .background, .linkLost: break
-        default: if wasRunning { sendStop() }
+        default: if wasRunning || hadAutonomousMotion { sendStop() }
         }
     }
 

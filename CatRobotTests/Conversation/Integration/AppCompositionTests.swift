@@ -8,7 +8,8 @@ final class AppCompositionTests: XCTestCase {
         let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults),
                                                        modelSettings: ConversationModelSettings(defaults: defaults),
                                                        auth: .missing)
-        XCTAssertTrue(composition.dependencies.reply is OnDeviceFallbackReplyGenerator)
+        XCTAssertTrue(composition.dependencies.reply is MotionReplyGenerator)
+        XCTAssertTrue(composition.dependencies.motion === composition.robotMotion)
         XCTAssertTrue(composition.dependencies.modelAvailability is OnDeviceFallbackReplyGenerator)
         XCTAssertTrue(composition.dependencies.memory is ClaudeConversationService)
         XCTAssertTrue(composition.dependencies.classifier is RoutedAddressClassifier)

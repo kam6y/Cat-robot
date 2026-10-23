@@ -2,6 +2,14 @@ import XCTest
 @testable import CatRobot
 
 final class ConversationInstructionsTests: XCTestCase {
+    func testMoveHeadGuidanceExplainsReservationAndDoesNotEmbedConnectionState() {
+        XCTAssertTrue(ConversationInstructions.toolGuidance.contains("move_head"))
+        XCTAssertTrue(ConversationInstructions.toolGuidance.contains("予約"))
+        XCTAssertTrue(ConversationInstructions.toolGuidance.contains("発話"))
+        XCTAssertFalse(ConversationInstructions.fixedPrefix.contains("首と接続中"))
+        XCTAssertFalse(ConversationInstructions.fixedPrefix.contains("首と未接続"))
+    }
+
     func testFixedPrefixDoesNotChangeWithMemory() {
         let empty = ConversationInstructions(longTermFacts: "", summary: "", recentTurns: [])
         let full = ConversationInstructions(

@@ -16,6 +16,7 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
         var reason: String { self == .dailyLimitReached ? "dailyLimit" : "claudeFailure" }
     }
 
+    private let motion: any RobotMotionControlling
     private let primary: ClaudeConversationService
     private let secondary: any ReplyGenerating
     private let secondaryAvailability: any ModelAvailabilityChecking
@@ -25,7 +26,9 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
     private var consecutiveClaudeFailures = 0
 
     init(primary: ClaudeConversationService, secondary: any ReplyGenerating, secondaryAvailability: any ModelAvailabilityChecking,
-         usage: any ConversationUsageMetering, configuration: @escaping @Sendable () async -> ConversationModelConfiguration) {
+         usage: any ConversationUsageMetering, configuration: @escaping @Sendable () async -> ConversationModelConfiguration,
+         motion: any RobotMotionControlling = NoopRobotMotionController()) {
+        self.motion = motion
         self.primary = primary
         self.secondary = secondary
         self.secondaryAvailability = secondaryAvailability
@@ -124,6 +127,8 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
     /// 端末内モデルの累積スナップショットに注意書きを前置し、本文のある完了した往復だけを保存する。
     private func onDevice(_ utterance: String, notice: String, cause: FallbackCause,
                           failureCount: Int) async throws -> AsyncThrowingStream<String, Error> {
+        try Task.checkCancellation()
+        if let turn = MotionTurnContext.current { await motion.cancelTurn(turn, reason: .fallback) }
         try Task.checkCancellation()
         // 日次上限の経路でも記憶を準備する。Claude のセッション生成やネットワーク送信は行わない。
         try await primary.prepareMemory()

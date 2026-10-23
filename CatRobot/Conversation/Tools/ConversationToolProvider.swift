@@ -9,3 +9,10 @@ protocol ConversationToolProvider: Sendable {
 struct RememberToolProvider: ConversationToolProvider {
     func tools(memory: any LongTermMemoryWriting) -> [any Tool] { [RememberTool(memory: memory)] }
 }
+
+struct RobotConversationToolProvider: ConversationToolProvider {
+    let motion: any RobotMotionControlling
+    func tools(memory: any LongTermMemoryWriting) -> [any Tool] {
+        [RememberTool(memory: memory), MoveHeadTool(motion: motion)]
+    }
+}

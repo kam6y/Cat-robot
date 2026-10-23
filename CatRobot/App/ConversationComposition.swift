@@ -11,6 +11,7 @@ struct ConversationComposition {
     let modelSettings: ConversationModelSettings
     let longTermMemory: LongTermMemoryManager
     let usage: any ConversationUsageMetering
+    let robotMotion: any RobotMotionControlling
     let robotLink: any RobotLinkControlling
     let robotSettings: RobotSettingsModel
 
@@ -24,7 +25,10 @@ struct ConversationComposition {
         let preferences = robotPreferences ?? RobotPreferences()
         let robotLink = RobotLink(transport: robotTransport ?? CoreBluetoothRobotTransport(),
                                   clock: clock, preferences: preferences)
-        let robotSettings = RobotSettingsModel(link: robotLink, preferences: preferences, clock: clock)
+        let motion = MotionCoordinator(link: robotLink, clock: clock, preferences: preferences,
+                                       random: SystemRobotRandomSource())
+        let robotSettings = RobotSettingsModel(link: robotLink, preferences: preferences, clock: clock,
+                                               onControlModeChanged: { motion.setControlMode($0) })
         let memoryStore: any ConversationMemoryStore
         let longTermStore: any LongTermMemoryStore
         if let directory = try? FileConversationMemoryStore.defaultDirectory() {
@@ -39,12 +43,13 @@ struct ConversationComposition {
         let usage = UserDefaultsUsageMeter()
         let configuration: @Sendable () async -> ConversationModelConfiguration = { await MainActor.run { modelSettings.configuration } }
         let claude = ClaudeConversationService(factory: factory, memoryStore: memoryStore, longTermMemory: longTermMemory,
-                                               tools: RememberToolProvider(),
+                                               tools: RobotConversationToolProvider(motion: motion),
                                                configuration: configuration, usage: usage)
         let onDeviceAvailability = FoundationModelAvailabilityService()
-        let reply = OnDeviceFallbackReplyGenerator(primary: claude, secondary: FoundationModelReplyService(),
-                                                   secondaryAvailability: onDeviceAvailability, usage: usage,
-                                                   configuration: configuration)
+        let fallback = OnDeviceFallbackReplyGenerator(primary: claude, secondary: FoundationModelReplyService(),
+                                                      secondaryAvailability: onDeviceAvailability, usage: usage,
+                                                      configuration: configuration, motion: motion)
+        let reply = MotionReplyGenerator(base: fallback, motion: motion)
         let classifier = RoutedAddressClassifier(onDevice: FoundationModelAddressClassifier(),
                                                  onDeviceAvailability: onDeviceAvailability,
                                                  claude: FoundationModelAddressClassifier(client: ClaudeAddressModelClient(auth: auth)))
@@ -56,7 +61,7 @@ struct ConversationComposition {
         let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voiceSettings.selected })
         let dependencies = ConversationDependencies(
             microphonePermission: MicrophonePermissionService(),
-            modelAvailability: reply,
+            modelAvailability: fallback,
             recognizer: concreteRecognizer,
             classifier: classifier,
             reply: reply,
@@ -65,10 +70,11 @@ struct ConversationComposition {
             latency: ConversationLatencyTracker.live(),
             replyTraceSink: OSReplyTraceSink(),
             replyPlaybackMode: .sentencePrefetch,
+            motion: motion,
             memory: claude,
             serviceTeardown: { await concreteRecognizer.shutdown() }
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
-                    longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, robotSettings: robotSettings)
+                    longTermMemory: longTermMemory, usage: usage, robotMotion: motion, robotLink: robotLink, robotSettings: robotSettings)
     }
 }

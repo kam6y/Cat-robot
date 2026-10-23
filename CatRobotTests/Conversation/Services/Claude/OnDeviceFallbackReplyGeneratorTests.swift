@@ -65,6 +65,30 @@ final class OnDeviceFallbackReplyGeneratorTests: XCTestCase {
                                        usage: usage, configuration: { .init(dailyTurnLimit: limit) })
     }
 
+    func testOnDeviceEntryInvalidatesMotionBeforeSecondaryGenerationIncludingDailyLimit() async throws {
+        for daily in [false, true] {
+            let h = MotionHarness()
+            let turn = MotionTurnID()
+            h.motion.beginTurn(turn)
+            XCTAssertEqual(h.motion.reserve(.init(gesture: .nod, intensity: .large, repeats: 1), for: turn), .reserved(cycles: 1))
+            let usage = ConversationUsageSpy()
+            await usage.setLimitReached(daily)
+            let primary = makeClaudeService(StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [], failure: URLError(.timedOut))]), usage: usage)
+            let secondary = MotionProbeSecondary(motion: h.motion)
+            let generator = OnDeviceFallbackReplyGenerator(primary: primary, secondary: secondary,
+                secondaryAvailability: Availability(value: .available), usage: usage,
+                configuration: { .init() }, motion: h.motion)
+            _ = try await MotionTurnContext.$current.withValue(turn) { try await self.collect(generator.streamReply(to: "質問")) }
+            let observed = await secondary.reservationAtEntry
+            let scope = await secondary.scope
+            XCTAssertEqual(observed, .invalidated)
+            XCTAssertEqual(scope, turn)
+            h.motion.speechStarted(turn)
+            await h.drain()
+            XCTAssertTrue(h.sentCommands.isEmpty)
+        }
+    }
+
     func testHealthyClaudePassesThroughUntouched() async throws {
         let generator = sut(makeClaudeService(StubSessionFactory()))
         let snapshots = try await collect(generator.streamReply(to: "こんにちは"))

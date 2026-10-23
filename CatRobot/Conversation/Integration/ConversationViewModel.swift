@@ -97,7 +97,7 @@ final class ConversationViewModel {
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
-        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode)
+        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode, motion: dependencies.motion)
     }
 
     var isAwaitingMicrophonePermission: Bool {
