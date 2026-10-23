@@ -280,8 +280,11 @@ async def dispatch(args, session: Session) -> int:
         await session.write(encode_center(args.speed))
         return report("center", await session.wait_settled())
     if cmd == "gesture":
-        await session.write(encode_gesture(args.name, args.amp, args.repeats, args.speed))
-        return report("gesture", await session.wait_gesture_done())
+        started = time.monotonic()
+        await session.write(encode_gesture(args.gesture_name, args.amp, args.repeats, args.speed))
+        done = await session.wait_gesture_done()
+        print(f"  所要 {time.monotonic() - started:.2f} s（書き込みから GESTURE フラグが下りた通知まで。通知は変化時に即時）")
+        return report("gesture", done)
     if cmd == "stop":
         await session.write(encode_stop())
         return report("stop", await session.next_status(2.0))
@@ -342,13 +345,16 @@ async def cmd_scan(args) -> int:
 async def cmd_reconnect(args) -> int:
     device = await with_scan_deadline(find_device(args.name, args.address, args.scan_timeout), args.scan_timeout)
     for round_no in (1, 2):
+        started = time.monotonic()
         async with BleakClient(device, timeout=args.connect_timeout) as client:
             info = decode_info(bytes(await client.read_gatt_char(CHAR_INFO)))
-            print(f"接続 {round_no}: {format_info(info)}")
+            status = decode_status(bytes(await client.read_gatt_char(CHAR_STATUS)))  # 暗号化の再確立まで含める
+            print(f"接続 {round_no}: {format_info(info)} / {format_status(status)}"
+                  f"（接続開始から暗号化 Read 完了まで {time.monotonic() - started:.2f} s）")
         print(f"切断 {round_no}")
         if round_no == 1:
             await asyncio.sleep(1.0)
-    print("reconnect 成功")
+    print("reconnect 成功（設計書 §4.9 / T-FW-7: 2 回目が 5 秒以内）")
     return 0
 
 
@@ -379,11 +385,14 @@ async def run(args) -> int:
             session.log_status = True
             await asyncio.sleep(args.seconds)
             return 0
-        session.start_keepalive()
+        if not args.no_ping:
+            session.start_keepalive()
         rc = await dispatch(args, session)
         if args.hold > 0:
-            print(f"{args.hold:.0f} 秒保持（PING 継続）…")
+            print(f"{args.hold:.0f} 秒保持（{'PING なし: 3 秒で安全復帰するはず' if args.no_ping else 'PING 継続'}）…")
+            session.log_status = args.no_ping  # PING なしの保持中は STATUS を流して復帰の経過を見せる
             await asyncio.sleep(args.hold)
+            session.log_status = False
         return rc
     except BleakError as e:
         # 切断時のエラーで本体のエラーを隠さない（暗号化が必要な特性でのペアリング失敗など）
@@ -406,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scan-timeout", type=float, default=5.0)
     parser.add_argument("--connect-timeout", type=float, default=20.0)
     parser.add_argument("--hold", type=float, default=0.0, help="完了後に接続を保つ秒数（既定 0）")
+    parser.add_argument("--no-ping", action="store_true", help="キープアライブ PING を送らない（3 秒無通信の安全復帰を見る）")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("scan", help="CatRobot を探す")
     sub.add_parser("info", help="Info を読む（暗号化不要）")
@@ -416,7 +426,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("pitch", type=float)
     p.add_argument("--speed", type=int, default=0, help="速度上限の %%（0 = 100）")
     p = sub.add_parser("gesture", help="GESTURE")
-    p.add_argument("name", choices=sorted(GESTURE_IDS, key=GESTURE_IDS.get))
+    # dest を分ける: 位置引数 name は --name（機器名）を上書きしてしまう
+    p.add_argument("gesture_name", metavar="name", choices=sorted(GESTURE_IDS, key=GESTURE_IDS.get))
     p.add_argument("amp", type=float, help="振幅（度、最大 25.5）")
     p.add_argument("--repeats", type=int, default=1)
     p.add_argument("--speed", type=int, default=0)
