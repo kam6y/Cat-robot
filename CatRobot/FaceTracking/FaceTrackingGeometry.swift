@@ -25,7 +25,7 @@ enum FaceTrackingGeometry {
         let tangent = tan(fov * .pi / 360)
         // This robot mounts the front camera to the observer's left of screen center.
         // Fixed correction for the usual 0.5–1m distance; apply BEFORE the deadband.
-        let yawDelta = -atan(direction * (2 * face.centerX - 1) * tangent) * 180 / .pi - 14
+        let yawDelta = -atan(direction * (2 * face.centerX - 1) * tangent) * 180 / .pi - 8
         let pitchDelta = atan(direction * (2 * face.centerY - 1) * tangent / aspect) * 180 / .pi
         return .init(yaw: max(-45, min(45, pose.yaw + (abs(yawDelta) <= 4 ? 0 : yawDelta))),
                      pitch: max(-10, min(10, pose.pitch + (abs(pitchDelta) <= 4 ? 0 : pitchDelta))))
