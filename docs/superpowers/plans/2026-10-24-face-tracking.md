@@ -157,4 +157,4 @@ Attended follow-up: The user confirmed that sideways gestures preserve the facin
 
 The user then requested a total correction of 10°. Adjusted the same direction from -8° to -10°. The updated geometry/coordinator fixtures passed 33/33; signed app d365916 was installed and launched normally at 16:21 JST. The 10° visual comparison remains pending.
 
-The user requested a total correction of 14°. Adjust the same direction from -10° to -14°, update the existing geometry/coordinator fixtures, verify them, and install the signed app.
+The user requested a total correction of 14°. Adjusted the same direction from -10° to -14°. The updated geometry/coordinator fixtures passed 33/33; signed app c8c22a5 was installed and launched normally at 21:42 JST. The 14° visual comparison remains pending.
