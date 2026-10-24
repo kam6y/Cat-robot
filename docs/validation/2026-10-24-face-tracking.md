@@ -117,7 +117,7 @@ Consoleの11:51:35.591006、11:51:43.919738、11:51:52.260986、11:52:00.595844�
 以前の首制御受入でもPWM停止・再開を挟むと跳ねることを実機で確認済み。今回は首側のServoDriverが毎回detach/attachしている境界を調べ、PWM停止をduty0で行ってチャネルを再利用する候補を検証する。ESP32Servo3.2.1のrelease()はpwm.write(0)、Arduino-ESP323.3.12のdetachはタイマーを解放し、再attachはLEDC dutyを読み出してチャネルを構成する。再接続/途中パルスの不連続を減らす仮説であり、パルス波形の測定も改善の実機確認もまだ行っていない。実位置のフィードバックがないことによる最初の位置合わせは別の制約として残る。
 
 
-### PWM再開の検証版（FW 0.1.1、実機評価前）
+### PWM再開の検証版（FW 0.1.1、実機評価中）
 
 ServoDriverの停止処理をdetach/attachからrelease（duty0）へ変更し、初回だけチャネルを割り当てる。再開時は現在のPlanner標本をそのまま出力する。Supervisorの安全復帰・PWM停止時刻、BLEプロトコル、校正・保存処理は変更しない。起動前の入力状態とCATNECK_NO_PWMの出力禁止も維持する。
 
@@ -127,4 +127,4 @@ ServoDriverの停止処理をdetach/attachからrelease（duty0）へ変更し�
 - 復元用FW 0.1.0を変更前にビルドして保管。firmware.bin SHA-256: `87ae58a80886a118ad4d4ad57810bc8aedaf7031ff48e40da543cc9957c830dd`。
 - 検証版FW 0.1.1のfirmware.bin SHA-256: `6fb6fac49b5bfe66aba394e044f2af553745f06cf86fb61b9051dfb93178d6fb`。
 
-実機への書き込みと、ホーム画面でPWM停止を挟んだ復帰時の比較は未実施。今回の変更による改善は未判定。
+利用者が「首は正面付近で、そばで見られる」と回答後、STATUS yaw=0/pitch=0・PWM停止・BLE未接続を再確認して書き込んだ（`face-pwm-candidate-upload.log`、書き込みデータのハッシュ検証成功）。12:13:51のINFOでFW 0.1.1、proto=1、cal=6.5,0、inv=0,1、gain=11.11,11.11、saved=1、bonds=2、brownout=0を確認。STATUSは正面・停止・err=0。実機へ書き込んだバイナリは上記検証版ハッシュと一致し、ソースは`bda8e8c`。ホーム画面で5秒以上待って戻る比較を2〜3回依頼した。今回の変更による改善は利用者の観察待ち。
