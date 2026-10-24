@@ -1,145 +1,166 @@
-# 顔追尾の設計案
+# Face Tracking Implementation Plan
 
-日付: 2026-10-24
-状態: 2026-10-24、利用者の「初期設定からONで、権限が認められなかった場合はOFFにして」を反映して実装へ進む。製品コードは計画作成時点で未変更。
-基点: `feature/claude-neck` / `20a7100`（首制御の実機21動作と統合前simplifyを完了）
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Native execution was already selected; preserve it. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-## 目的と範囲
+**Goal:** Turn the neck toward an on-device detected face during conversation, with default-on permission handling and safe interaction with existing motions.
 
-利用者が横へ動いたとき、猫がゆっくり顔を向ける。既存の会話と首の動作を保ちながら、「相手を見ている」と感じられる追尾を加える。ユーザーが承認した順序は、音声会話の確認、7動作×3強度と統合、顔追尾。前の2段階は完了している。
+**Architecture:** A serial video-only AVFoundation/Vision adapter emits value-only observations. A main-actor coordinator applies lifecycle, permission, thermal, freshness, and loss policy; pure geometry aligns capture-time observations with robot pose. MotionCoordinator remains the only neck arbiter and RobotLink retains its last-write checks.
 
-対象は要件FR-MOV-8〜10、FR-MOV-11の追尾優先順位、FR-VIS-1・4・5の顔検出・権限・稼働条件。今回の成果は前面カメラでの顔検出、首の追尾、10秒の見失い復帰、設定と状態表示、熱によるカメラ停止、通常会話と併用した実機検証。
+**Tech Stack:** Swift 6, SwiftUI/Observation, AVFoundation, Vision, XCTest; existing RobotClock and RobotLink; no new package.
 
-猫の顔の再デザイン・瞳の追従・`express`・画像をClaudeに渡す`look`・おやすみ画面は別の仕事とする。全体要件の権限オンボーディング再編成や、critical時の会話停止も今回の顔追尾単体の完成とは区別する。今回追加する映像は保存・外部送信しない。顔の人物識別もしない。
+**Spec:** `docs/superpowers/specs/2026-10-24-face-tracking-design.md` (approved with initial ON / permission denial OFF).
 
-失敗条件は、同じ場所にいる人を追って首が振動すること、左右が逆になること、会話やツール動作と首の制御が競合すること、カメラ拒否で会話が使えなくなること、画面外や設定・校正中にカメラ/追尾が再開すること。
+## Global Constraints
 
-## 採用方式と比較
+- Local front video only, no images persisted or sent to conversation services; no AVAudioSession reconfiguration or audio input.
+- Actual image buffers ≤640×480; actual acquisition ≤5fps; unsupported configurations fail closed for tracking only.
+- Automatic tracking speed 20%, yaw ±45°, pitch ±10°, ±4° deadband; one return to center at speed 10 after 10 seconds since last valid capture.
+- Capture freshness ≤400ms; STATUS freshness ≤1s; capture-time pose interpolation from 1s history; never substitute completion time for capture time.
+- Priority: explicit stop/background/disconnect > tool > acknowledgement > tracking > idle. Only an owned tracking MOVE may be superseded while moving.
+- Default tracking ON; saved false remains false; denied/restricted permission persists OFF and does not fail conversation preflight.
+- Camera runs only for eligible foreground conversation, ready neck, authorized camera and fair-or-lower temperature; serious/critical suspend camera/tracking/idle, then 10s cool recovery.
+- Both landscape directions; no preview or eye redesign; calibration/settings own the neck and suppress capture.
+- Reuse isolated worktree `/Users/goodapple/.codex/worktrees/9b35/Cat_robot`, branch `feature/face-tracking`. No push. Preserve existing voice/calibration contracts.
+- Regenerate Xcode files with `ruby scripts/generate_project.rb`; never hand-edit PBX entries. Tests use `/private/tmp/cat-ios-link/run-tests.sh`; each task's completion check runs the entire simulator suite.
 
-既存の承認済み要件FR-VIS-1は、前面カメラの640×480以下・5fps以下の映像とVisionの顔矩形検出を指定している。これを採用し、Swift 6 / AVFoundation / Vision / 既存MotionCoordinatorで実装する。追加の外部ライブラリやサーバーは要らない。
+## Review Focus
 
-ARKitの顔姿勢推定は、今回必要な「顔が画面のどこにあるか」に対して追跡対象やセッション管理が増える。クラウドでの映像解析は、常時映像を送らない要件に合わない。今回は要件に指定された方式を具体化する。
+- A permission dialog overlaps a scene transition or settings exit: a late approval must not revive capture in the wrong screen (Task 5 integration fixture).
+- Backpressure holds a tracking write while a tool, calibration, or stop takes ownership: old writes must be invalidated at the actual send boundary (Task 2 FakeTransport fixture).
+- A face result is delayed across rotation/reconnect while STATUS remains superficially fresh: both capture generation and pose history must be rejected (Tasks 1/3 fixtures).
+- Camera capture can contend with speech audio or deliver unexpected frame dimensions/rate despite nominal settings: enforce negotiated and observed limits, keep audio untouched (Task 4 policy tests and Task 6 device check).
+- A neck already moving from another owner cannot be distinguished by a generic moving flag: require explicit ownership and connection continuity; tracking must not steal it (Task 2 ownership tests).
 
-## 利用者に見える動き（提案）
+## File map
 
-- 「設定 → ロボット → 首の接続と調整」に「顔追尾」を加える。利用者の指定により初期値はオンとする。未保存の設定をオンとして扱い、既に利用者がオフにした設定は保持する。
-- 最初の会話開始時に、顔追尾がオンで権限未確定なら用途を説明してカメラ許可を求める。マイク等の進行中の権限要求とは重ねず、会話の権限準備が落ち着いてから要求する。設定でオンに戻す操作でも未確定なら許可を求める。拒否/制限で権限が得られなければ顔追尾の設定をオフにして保存し、会話は継続する。説明は「顔の位置に合わせて首を向けます。映像はこのiPhone内だけで処理し、保存・送信しません」。設定画面で許可を得ても撮影は始めず、会話画面へ戻ってから開始する。
-- 設定には「オフ」「顔を探しています」「顔を追っています」「カメラの許可が必要です」「熱のため一時停止」「カメラを使用できません」を表示する。拒否済みの場合はiOSの設定を開ける。設定値は再起動後も保存する。
-- 最初はspeed 20で追従する。保存済みの速度上限の20%であり、要件の50%以下を満たす。ヨー±45°、ピッチ±10°の上限を守る。微小なずれは±4°の不感帯で無視する。
-- 複数の顔がある場合は画面中央に最も近い顔を選ぶ。同距離なら矩形の面積が大きいもの、その後は安定した座標順で決める。人物の同一性は追わない。
-- 顔が見えなくなったら、そのときの向きを保つ。最後の有効な顔から10秒経過したらspeed 10で一度だけ正面へ戻る。戻った後は既存の待機微動設定へ従う。再検出時は新しい位置から追尾を再開する。
-- 顔追尾がオンの会話中は、顔の再検出時のPWM再開による跳ねを避けるため首の保持を続ける。明示停止・画面外・切断の既存停止は優先する。待機微動がオフでも顔追尾がオンなら保持を続ける点は、設定の短い説明に含める。
-- 見た目のカメラプレビューは通常画面に加えない。会話の字幕・猫の描画を使い続ける。
+- `CatRobot/FaceTracking/FaceTrackingTypes.swift`: Sendable observations, authorization/status enums, source boundary.
+- `CatRobot/FaceTracking/FaceTrackingGeometry.swift`: deterministic face selection, projection and capture-time pose history.
+- `CatRobot/FaceTracking/FaceTrackingCoordinator.swift`: permission, eligibility, observations and lost-face policy; no direct BLE send.
+- `CatRobot/FaceTracking/AppleFaceCaptureSource.swift`: serial camera/Vision adapter and camera format policy.
+- Existing `RobotMotionControlling.swift`, `MotionCoordinator.swift`, `RobotLink.swift`: tracking state, arbitration and power-hold guard.
+- Existing preferences, composition, app coordinator/root, connection/settings views and Info.plist: persistence and lifecycle/UI wiring.
+- Matching `CatRobotTests/FaceTracking/*` plus existing Motion/RobotLink/app integration tests: deterministic behavior tests.
 
-初期オンと権限が得られない場合のオフは利用者の指定。speed 20、保持の扱い、追尾中の確認頷き、今回の範囲は本設計で提案した条件である。上限・不感帯・10秒復帰・端末内処理は既存要件に由来する。
+### Task 1: Observation geometry, pose history and persistent preference
 
-## データと制御の分離
+**Files:** Create `CatRobot/FaceTracking/FaceTrackingTypes.swift`, `FaceTrackingGeometry.swift`, `CatRobotTests/FaceTracking/FaceTrackingGeometryTests.swift`, `FaceTrackingPreferencesTests.swift`; modify `CatRobot/RobotLink/RobotPreferences.swift`; regenerate `CatRobot.xcodeproj/project.pbxproj`.
 
-`FaceCaptureSource`相当の境界が、カメラ権限・映像取得・Vision実行を担当する。外へ返すのは撮影/処理時刻、接続世代とは別の撮影セッション世代、正規化した顔矩形、画角、向き、成功/顔なし/利用不可の区別だけ。画像バッファを会話モデル、View、保存層へ渡さない。
+**Interfaces:**
+- Produces `FaceRectangle(x:y:width:height:)` (Double normalized raw unmirrored image, lower-left origin), `FaceLandscapeOrientation` (`landscapeLeft`, `landscapeRight`), `FaceObservation(generation:capturedAt:completedAt:orientation:horizontalFieldOfView:aspectRatio:faces:)`.
+- Produces `FacePose(yaw:pitch:)`; `FacePoseHistory.record(at:pose:)`, `pose(at:now:) -> FacePose?`, `reset()`; `FaceTrackingGeometry.selectFace(_:)`, `project(_:pose:) -> FacePose?`.
+- Produces `RobotPreferences.trackingEnabled: Bool`, key `robot.trackingEnabled` default true.
+- Produces main-actor `FaceCaptureSource` with authorization, `requestAuthorization() async -> FaceCameraAuthorization`, `events() -> AsyncStream<FaceCaptureEvent>`, `start(generation:orientation:)`, `stop()`; adapter arrives Task 4, fake Task 3.
 
-`FaceTrackingCoordinator`相当の層が、設定、会話画面の所有権、カメラ状態、熱状態、顔の選択、時刻と角度の変換、見失い時間をまとめる。値型・Clock・Fake sourceを注入してSimulatorで検証できるようにする。自分でBLEへコマンドを送らない。
+- [ ] Step 1: Add tests with hand-calculated 90°/4:3 FOV fixtures: center preserves yaw 30/pitch -3; raw image x=.75 at orientation right means observer-left yaw -26.565051; left rotates both axes; image y=.75 gives +20.556045°. Test nearest center, equal-distance larger-area then coordinate tie; malformed rectangles/FOV/NaN rejected. Pose samples at 10 and 10.2 interpolate midpoint to (15,-2); missing brackets, >1s age and nonfinite values fail; reset discards history. Preferences default ON, setting OFF survives recreation.
+- [ ] Step 2: Generate project and run focused tests: `/private/tmp/cat-ios-link/run-tests.sh -only-testing:CatRobotTests/FaceTrackingGeometryTests -only-testing:CatRobotTests/FaceTrackingPreferencesTests`. Expected: missing new behavior/symbols, then RED behavioral assertions against minimal stubs if needed.
+- [ ] Step 3: Implement the interfaces. Convert normalized x/y through tangent projection, add pose, apply independent ±4° deadband and clamp yaw/pitch; store only finite ordered pose samples, retain a boundary sample for interpolation without allowing >1s-old poses. Use latest-first bounded history, no extrapolation.
+- [ ] Step 4: Rerun focused command and `ruby scripts/test_generate_project.rb`. Expected: PASS. Completion command: `/private/tmp/cat-ios-link/run-tests.sh`, expected all tests pass (device-only tests may skip).
+- [ ] Step 5: Commit `feat: add face projection and tracking preference`.
 
-MotionCoordinatorは唯一の首操作の調停者を保つ。既存`updateTrackingTarget`の入力を必要最小限拡張し、「有効な顔の位置」「見失って保持中」「正面復帰」「無効」を区別できるようにする。`nil`だけで、顔なし・権限拒否・10秒待機・設定オフを兼用しない。具体的な型名と内部構成は実装者が決めてよい。
+### Task 2: Motion ownership, tracking cadence and face-aware acknowledgement
 
-既存の`look_at_user`は、新鮮な顔の目標があるときだけその方向を使う。見失い中の保持姿勢を新鮮な顔とみなさない。顔入力がない時は現在どおり正面を向く。これはLLMの予約を新規に作るカメラ機能ではない。
+**Files:** Modify `CatRobot/Motion/RobotMotionControlling.swift`, `MotionCoordinator.swift`, `CatRobot/RobotLink/RobotLink.swift`, motion test doubles; create `CatRobotTests/Motion/FaceTrackingMotionTests.swift`; extend relevant RobotLink tests.
 
-## カメラ・時刻・座標
+**Interfaces:**
+- Consumes Task 1 `preferences.trackingEnabled`.
+- Produces `RobotTrackingState` cases `.disabled`, `.searching`, `.following(RobotTrackingTarget)`, `.holding`, `.returnToCenter`; `setTrackingState(_:)`, `setAutomaticMotionSuspended(_:)` on RobotMotionControlling. Retain `updateTrackingTarget(_:)` compatibility by translating it.
+- Existing `RobotTrackingTarget(yaw:pitch:validUntil:)` remains fresh-face-only input for look_at_user. Track sent pose separately from expiry.
 
-カメラは前面のvideo inputのみ。AVCaptureSessionやVision処理は直列の専用実行領域に隔離し、MainActorでstartRunningや画像処理をしない。音声inputを作らず、既存の会話用AVAudioSessionの設定を変更しない。`automaticallyConfiguresApplicationAudioSession = false`を明示する。
+- [ ] Step 1: Write tests for two targets ≤5Hz, latest-only under backpressure, identical angles/new expiry no resend, expired target no send; moving owned tracking can update and be preempted by tool, foreign MOVE/gesture cannot. Assert no STOP/TORQUE 0 between owned tracking and tool. Holding suppresses idle; return sends once when owner clears; searching permits idle. OFF/inactive invalidates held writes; active tracking holds PWM even with idle disabled; explicit stop still wins; heat suspends idle. Add relative acknowledgement at yaw30/pitch2: dip to -3 and return2, yaw30 preserved; pitch -9.5 skips (<1° room), -8 shrinks to2°. Old no-face acknowledgement behavior preserved.
+- [ ] Step 2: Run `/private/tmp/cat-ios-link/run-tests.sh -only-testing:CatRobotTests/FaceTrackingMotionTests -only-testing:CatRobotTests/RobotLinkTests`; expected RED for new arbitration behavior.
+- [ ] Step 3: Implement ownership tied to connection ID and written tracking token; reservation invalidates pending tracking, tool start may supersede only owned tracking. Retain existing cycle completion checks; don't refactor turn cancellation. Use command-equivalent angles for deduplication; cadence starts at actual successful write. Clamp automatic motion/speed; reset session ownership on disconnect/scene stop. Update RobotLink idle-power-off guard to honor enabled tracking.
+- [ ] Step 4: Run focused tests then completion command `/private/tmp/cat-ios-link/run-tests.sh`. Expected PASS including existing motion/calibration/lifecycle tests.
+- [ ] Step 5: Commit `feat: arbitrate continuous face tracking with robot motions`.
 
-対応形式を列挙し、実際の画像バッファが640×480以下、実際の取得間隔が0.2秒以上となる形式/出力設定を選ぶ。5fpsのframe durationがsupported range内にあることを確認してから設定する。対応設定が得られなければ顔追尾を利用不可として会話を継続し、黙って要件を超えるfpsで稼働しない。カメラのzoomは1、手ぶれ補正による動的な切り抜きは使わない。
+### Task 3: Tracking coordinator and lifecycle policy
 
-画像処理は同時に1件。遅れたフレームは捨て、処理待ちを積み上げない。`alwaysDiscardsLateVideoFrames = true`を明示する。MainActorへ渡す最新結果も1件にまとめる。取得セッション・画面方向が変わったら世代を進め、古いVision完了を無視する。
+**Files:** Create `CatRobot/FaceTracking/FaceTrackingCoordinator.swift`, `CatRobotTests/FaceTracking/FaceTrackingCoordinatorTests.swift`, `FaceTrackingTestDoubles.swift`; extend types from Task 1.
 
-iPhoneは横向き両方向に対応する。前面の鏡像とVisionの座標原点を混同せず、顔中心を「ロボットが見た左右・上方向」に正規化する。端末の向きはそのフレームに対応する値を使い、両向きの端と中央を固定fixtureでテストする。物理的な符号は校正UIと揃え、利用者がロボット正面から見て左へ動いたらyaw負、右ならyaw正、上ならpitch正となることを両向きで確認する。表示用の鏡像座標をそのまま首の符号に使わない。
+**Interfaces:**
+- Consumes FaceCaptureSource, RobotLinkControlling updates, RobotClock, RobotPreferences, RobotMotionControlling Task 2 methods.
+- Produces observable main-actor `FaceTrackingCoordinator` with `status`, `setEnabled(_:) async`, `requestPermissionForConversation() async`, `setEnvironment(conversationVisible:sceneActive:mode:phase:)`, `setOrientation(_:)`, `setThermalState(_:)`, `resetConversation()`. Camera permission completion never directly bypasses eligibility.
+- `FaceCaptureEvent` cases `.observation(FaceObservation)`, `.unavailable(generation:)`, `.interrupted(generation:)`; successful empty observation means no face, not source failure.
 
-画角は実際のcapture formatと出力のアスペクト比から求める。顔中心の中心からのずれを投影角へ変換し、そのフレームに対応するRobotStatusの論理角へ加えて絶対目標にする。単に「画面中央＝ロボットの0°」としない。主に頭部の画角に比べ人物の距離が十分ある通常会話距離を想定する。カメラと首軸の位置のずれによる近距離誤差は閉ループの実機確認で扱い、3D位置推定へ拡張しない。
+- [ ] Step 1: Fake source/clock tests: composition creates no camera; ON+notDetermined waits explicit request; denied/restricted persist OFF, saved OFF never prompts; late permission after leave doesn't start. Eligible ready foreground starts, settings/calibration/inactive/paused/error/disconnect/disable stop and advance generation. Reject old generation/orientation/result after reconnect. Feed bracketing STATUS plus face and assert absolute pose delivered; hold at 9.99s, center exactly10s once, no-face frames don't renew deadline, new valid face cancels return. Serious/critical stop automatic activity and fair must last10s to resume; reheat cancels recovery. No matching pose keeps only latest fresh frame pending until next STATUS.
+- [ ] Step 2: Run `/private/tmp/cat-ios-link/run-tests.sh -only-testing:CatRobotTests/FaceTrackingCoordinatorTests`; expected RED.
+- [ ] Step 3: Implement eligibility reconciliation, generation invalidation, freshness, pose history, lost timers from capturedAt and thermal recovery. Keep latest frame only, cap state/queues, publish simple Japanese states. Source failure suspends capture until a deliberate eligibility transition; don't create retry loops.
+- [ ] Step 4: Focused test then completion `/private/tmp/cat-ios-link/run-tests.sh`; expected PASS.
+- [ ] Step 5: Commit `feat: coordinate face tracking permissions and lifecycle`.
 
-時刻はRobotClockと同じ単調時刻へ揃える。captureのpresentation timeとホスト時計の対応を取り、処理完了時刻を撮影時刻の代用にしない。直近1秒のSTATUS履歴を保持し、撮影時刻の前後の標本から論理角を補間する。対応する標本がない、画像が古い（初期上限400ms）、STATUSが古い（既存1秒上限）場合は新規追尾指令を出さない。構成時刻の変換と古いデータの扱いはテストで固定する。
+### Task 4: Video-only front-camera Vision adapter
 
-STATUSはサーボへの論理指令角で、外部計測の実角度ではない。この前提を記録し、実機で反転・揺れ・過補正がないか確認する。投影関数の境界値・NaN・無効な画角/矩形は拒否する。
+**Files:** Create `CatRobot/FaceTracking/AppleFaceCaptureSource.swift`, `CatRobotTests/FaceTracking/FaceCapturePolicyTests.swift`; modify Info.plist.
 
-## 動作の優先順位と継続性
+**Interfaces:**
+- Implements FaceCaptureSource, emits Task 1/3 DTOs. Initializer is inert. Worker owns AVCaptureSession, delegate and Vision on one serial background queue; public bridge only transfers Sendable values.
+- Pure `FaceCapturePolicy` selects compatible format/output dimensions + min/max frame duration from value descriptors; converts sample host presentation time to RobotClock monotonic time through simultaneous anchors; validates actual dimensions and frame cadence.
 
-優先順位は明示停止/画面外/切断、ツール由来の動作、発話確定時の確認頷き、顔追尾、待機微動の順。設定・校正が所有している間は追尾しない。会話画面でidle/listening/thinking/speakingの間は検出できる。停止・エラー画面・会話開始前はカメラも止める。今回の機能は首の追尾なので、首の接続が準備できるまではカメラを稼働させず「首の接続待ち」とする。切断では撮影世代も失効させ、再接続後に新しい観測から始める。
+- [ ] Step 1: Write policy tests: choose ≤640×480/5fps supported range; reject only15/30fps formats and oversize outputs; invalid/nonfinite clocks/durations fail; host mapping preserves a 200ms-old capture time instead of completion time. Test observed oversize/too-fast frame policy and latest-only result buffering. Source authorization rejection is injected in coordinator tests; real dialogs/device are Task6.
+- [ ] Step 2: Focused `/private/tmp/cat-ios-link/run-tests.sh -only-testing:CatRobotTests/FaceCapturePolicyTests`; expected RED.
+- [ ] Step 3: Use local SDK/Apple primary docs to confirm nonmirrored raw orientation and effective FOV/aspect. Configure front video only, zoom1/stabilization off, no auto audio config, late-frame discard, supported duration ≥.2s. Run Vision rectangle detection serially; normalize raw coordinates per Task1 orientation, emit no images. Use host-clock mapping for CMSampleBuffer PTS; generation captures callbacks. Interruption/error notifications stop/emit failure; invalidate pending frames on stop/rotation. Add camera usage text from spec.
+- [ ] Step 4: Focused + completion `/private/tmp/cat-ios-link/run-tests.sh`, `ruby scripts/test_generate_project.rb`, and signed iPhone build; expected PASS, no sendability warnings or MainActor capture work.
+- [ ] Step 5: Commit `feat: detect faces locally with low-rate front camera`.
 
-追尾MOVEは最大5Hz、常に最新目標だけを使う。既に書いた自分の追尾MOVEの進行中も新しい目標へ更新できる。旧目標が終わるまで待って次を送る方式にはしない。一方、手動MOVE、校正、ツールGESTURE、接続復帰の動きを追尾MOVEで置き換えてはならない。MotionCoordinator内でこの所有権を接続世代と一緒に持つ。
+### Task 5: Composition, permission sequencing and settings UI
 
-ツール予約が受理されたら追尾の未送信コマンドを失効させる。発話開始でツール動作が実行可能になったら、書込済みの「自分が所有する追尾MOVE」だけは次の正規のツール指令で置き換えられる。途中にSTOP/TORQUE 0を挟まない。FWはGESTURE開始時に中立へ移る既存契約を使う。手動動作をこの特例へ含めない。ジェスチャの開始済みサイクルは既存契約どおり完走し、完了後は最新の顔を再評価する。古い顔目標を再生しない。
+**Files:** Modify ConversationComposition, ConversationAppCoordinator, AppRootView, CatRobotApp, ConversationSettingsView, RobotConnectionView/RobotSettingsModel as needed; extend `CatRobotTests/Motion/RobotLifecycleIntegrationTests.swift`, `CatRobotTests/Conversation/Integration/AppCompositionTests.swift`, `CatRobotTests/FaceTracking/FaceTrackingAppIntegrationTests.swift`.
 
-発話確定時の「聞き取れた」という確認頷きは、顔を追尾している時だけ、その時点のyaw/pitchを基準とする小さな動作へ変更する提案とする。yawは相手の方向を保ち、pitchを最大5°下げて元へ戻す約0.6秒のMOVE列にする。pitch±10°内に収まるよう振幅を縮め、1°未満しか動けなければ省略する。自分が所有する追尾MOVEは一時的に置き換えてよいが、ツール/手動/校正は中断しない。頷き中は顔の最新値だけを更新し、完了後に追尾へ戻す。顔追尾が無効または新鮮な顔がない場合の確認頷きと、ツールからの`nod`の契約は従来どおりとする。
+**Interfaces:**
+- Consume real FaceTrackingCoordinator as optional dependency in app coordinator/root/settings and concrete member of live composition. Forward robot mode changes to both motion and face coordinator. Forward conversation phase via root onChange; scene/settings transitions synchronously gate capture.
+- First conversation permission request occurs after awaited viewModel.startConversation microphone/preflight flow; lifecycle rechecks before requesting. Setting ON invokes async permission flow, but settings visibility keeps capture off.
 
-同じ角度の目標で有効期限だけが更新された時は再送しない。新しい顔を検出しただけで進行中のツールを取消ししない。最新の顔の位置を持っている間と、正常な見失いの10秒保持中は待機微動を止める。最初から顔が見つからない場合は既存の待機微動を許す。
+- [ ] Step 1: Integration tests: live composition inert; first conversation waits microphone permission before camera permission; denied camera leaves conversation listening and preference OFF; inactive camera dialog then active does not duplicate microphone/preflight/start. Opening settings during pending permission never starts capture; closing settings/foreground resumes only with new frame. New conversation resets lost timer; stop/error/paused suppress capture. Persisted OFF stays OFF after root recreation.
+- [ ] Step 2: Run `/private/tmp/cat-ios-link/run-tests.sh -only-testing:CatRobotTests/FaceTrackingAppIntegrationTests -only-testing:CatRobotTests/AppCompositionTests -only-testing:CatRobotTests/RobotLifecycleIntegrationTests`; expected RED.
+- [ ] Step 3: Wire shared coordinator, forward ownership and phase changes, serialize first permission with existing start intent. Add 顔追尾 toggle/status and settings-open action for denied camera; explanation: local only/no save/send; holding continues when enabled. Camera status never blocks chat UI.
+- [ ] Step 4: Focused + completion `/private/tmp/cat-ios-link/run-tests.sh`; expected PASS. Regenerate/build iPhone target, verify permissions and both landscape layouts.
+- [ ] Step 5: Commit `feat: connect face tracking to conversation and settings`.
 
-見失いの10秒は最後の有効な顔の撮影時刻から測り、顔なしフレームが続いても延長しない。復帰指令はツール・設定の所有権より優先しない。ツール中に10秒を超えた場合は完走後、まだ顔がなければ一度だけ正面へ戻る。接続断・画面外・オフ・セッション失効を跨いだ10秒タイマーや復帰指令は破棄する。
+### Task 6: Whole-feature verification and attended device acceptance
 
-## 権限・画面・熱・障害
+**Files:** Create `docs/validation/2026-10-24-face-tracking.md`; add targeted device probe/diagnostic value aggregation only if existing device-test pattern needs it; no persisted image/face-coordinate history.
 
-composition生成だけでは権限確認による要求、AVCaptureSession稼働、映像処理をしない。権限要求は初回の会話開始または明示のオン操作に伴って行う。要求中に画面を離れた時は、遅れた許可結果だけでカメラを始めない。シーンの前面状態と設定/校正の所有権を再確認する。
+**Interfaces:** Consumes all preceding production components. Records exact source revision, device/FW, dimensions/intervals, observed direction/naturalness, and explicit pending acceptance items.
 
-設定を開く、校正を始める、sceneがinactive/backgroundになる、会話を停止する、追尾をオフにする、カメラ割り込みや実行エラーが起きると、即座に撮影世代と未送信追尾を失効させてcaptureを止める。会話画面が前面で条件がそろったときだけ再開する。拒否・利用不可は会話のpreflight失敗にしない。新しい会話は追尾状態もリセットする。
+- [ ] Step 1: Run full simulator suite and iPhone signed build, inspect diff for source isolation, background capture, privacy and lifecycle omissions. Expected all tests PASS and build success. Any discovered defect requires failing regression first, then fix and suite.
+- [ ] Step 2: Dispatch one fresh whole-branch reviewer per executing-plans with spec/plan/ledger and Review Focus; evaluate findings, fix Important/Critical with RED→GREEN and full suite. Do user-requested simplify again before any new integration if needed; no integration while meaningful checks are pending.
+- [ ] Step 3: Install exact committed revision, normal launch, ask user for hardware observation only where required. Test both landscape orientations/left-right/up/down, multi-face,10s loss, settings/calibration/background, and voice+nod. Record actual buffer size/rate, thermal state, PWM/no jumping. Motion latency ≤500ms is physical/video observation, not inferred from BLE timestamp. Record failures honestly, correct and retry affected cases.
+- [ ] Step 4: Save validation with passed/pending limits (Qi2 one-hour acceptance separate). Completion command `/private/tmp/cat-ios-link/run-tests.sh`, expected PASS; commit `docs: record face tracking validation`. Do not call hardware acceptance complete without observation.
 
-書込済みの追尾だけを停止する必要がある場合は、現在の論理姿勢を目標にして低速に収束させる。別所有者のツールや校正には触れない。backgroundと切断は既存のRobotLink停止・FW中立復帰を使い、先にSTOPを挟まない。古いcapture/STATUS/権限完了で再開しないことを統合試験する。
+#### Task6 continuation: quieter tracking from attended feedback
 
-thermalStateがserious/criticalになったらカメラ・追尾・待機微動を一時停止し、短い状態表示を出す。温度回復がfair以下で10秒続き、画面/設定条件が許せば再開する。熱の停止は顔を見失った通常の10秒復帰とは別で、停止中に新しい追尾復帰コマンドを作らない。既存の明示停止や切断は引き続き有効。critical時の会話全体の制御は全体要件の別実装として残す。
+Files: `FaceCapturePolicy.swift`, `MotionCoordinator.swift`, `FaceCapturePolicyTests.swift`, `FaceTrackingMotionTests.swift`, `FaceTrackingCoordinatorTests.swift`, and the validation record. Uses existing APIs; no new public interface.
 
-ログは状態遷移、処理時間、破棄理由、フレーム間隔、目標とStatus時刻などの診断値だけをDebugで取得する。画像、顔の画像切出し、全矩形の連続履歴は永続化しない。通常は生の顔座標もログへ残さない。検証用に必要な集計は端末内で値だけを計算し、利用者の在席試験で記録する。
-
-## 検証と完了条件
-
-1. 純粋な角度変換: 両横向き、鏡像、中央/左右/上下、複数顔の選択、現在の首が±30°にある場合、補間、古い画像/STATUS、無効値、不感帯、45°/10°上限。
-2. Fake source/Clock: 初期設定はオン、許可前はカメラ未起動。初回の許可要求を他の権限要求と直列化し、拒否/制限時は設定を永続オフにする。既存のオフ設定・許可拒否・遅延許可・設定/校正・前面離脱・再開・オフ・新会話・熱回復で古い結果を再利用しない。9.99秒では保持、10秒で一度だけ復帰。
-3. 本番MotionCoordinatorとFakeLink: ツール優先、追尾中の新目標、手動MOVE不干渉、同角度の期限更新で再送しない、最大5Hz、最新目標の置換、書込直前の失効、追尾姿勢を保つ確認頷きと下限付近の縮小/省略、待機微動との切替、PWM保持と明示停止。
-4. カメラadapter/構成: MainActorで映像処理しない、音声sessionを変更しない、入力はvideoだけ、unsupported formatを扱う、画像保存先が増えない。既存の全回帰とiPhone向けビルド。
-5. 在席実機: 頭部にiPhoneを取り付けた状態で左右両向き・左右移動±40°・上下・複数人・遮蔽10秒・背景復帰・設定/校正・通常の音声会話/頷き併用を確認。低速から始め、逆向き/振動/跳ねがあれば止めて原因を切り分ける。
-6. 実機でバッファ寸法と実際のframe間隔を記録する。顔の移動→首の開始500ms以下は動画/観察時刻で評価し、内部の送信時刻だけで達成としない。温度と自然さを確認し、Qi2で1時間の長時間受入は別に記録する。
-
-追従の初期速度20%は実機で遅すぎる場合のみ50%以下の範囲で調整できる。振幅上限、不感帯、10秒復帰、端末外に映像を出さない条件を変更する場合は設計を見直す。
-
-## 設計の確認状況
-
-実装担当の視点で読み取り専用の確認を行い、重要な未決定点として「追尾中の確認頷きは正面へ戻るか、相手を向いたままか」の1点が挙がった。本案では後者を具体化して設計確認に含めた。符号は既存の校正契約、未接続時のカメラ停止は今回の首追尾という範囲から決めた。利用者は設計確認への回答で初期オン・権限不許可時オフを指定した。この修正を反映して実装へ進む。
-
-## 実装者に任せる判断
-
-型やファイルの名前、actor/直列queueの具体的構成、純粋関数の配置、テストfixtureの構造、現行UIに沿った短いラベルの調整は任せる。処理時間の測定値に基づくVision実行の最適化も、取得上限・外部送信なし・最新値優先を保つ範囲でよい。全体の首調停や取消方式を一般化する大きなリファクタリングは、この機能の必要範囲に限定する。
-
-## 参照
-
-- [既存要件](2026-10-11-cat-robot-claude-neck-requirements.md): FR-MOV-8〜11 / FR-VIS-1・4・5 / FR-RUN-5 / NFR-PERF-4。
-- [首制御の設計](2026-10-23-ios-robot-link-design.md)と[実機確認](../../validation/2026-10-23-ios-robot-link.md)。
-- Apple [顔の検出と追跡](https://developer.apple.com/documentation/vision/tracking-the-user-s-face-in-real-time): Visionの顔矩形と画像方向の扱い。
-- Apple [capture format](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format)と[frame duration](https://developer.apple.com/documentation/avfoundation/avcapturedevice/activevideominframeduration): 画角・対応fps範囲・構成ロック。
-- Apple [遅延フレームの破棄](https://developer.apple.com/documentation/avfoundation/avcapturevideodataoutput/alwaysdiscardslatevideoframes)と[音声セッションの自動設定](https://developer.apple.com/documentation/avfoundation/avcapturesession/automaticallyconfiguresapplicationaudiosession)。
-
-## 実機フィードバックによる落ち着きの調整（2026-10-24）
-
-利用者は左右・上下・見失い後の基本動作に問題はなさそうと回答した後、顔を止めていても細かな修正が続くことと、Qi2充電併用時の発熱を指摘し、更新頻度を下げる方向を求めた。Task6の実機調整として扱う。発熱の原因の内訳と温度低下はまだ測定できていない。
-
-撮影頻度のみを下げる案は処理回数を減らせるが、0.1°単位の目標変更を毎回送る現状は残る。そこで、実装者の判断として撮影を4fpsから3fpsへ下げ、所有中の追尾MOVEの最終書込目標との差が2°未満の軸は前回目標を維持する方式を採用する。どちらかの軸が2°以上変われば、その軸だけを更新する。差は直前の検出値でなく最終書込目標と比べ、ゆっくりした移動を累積して追えるようにする。初回・所有権を失った後の追尾はこの抑制に掛けない。
-
-撮影・Vision処理回数は定常時25%減り、取得待ちは4fps比で最大約83ms増える。2fpsでは画像の400ms鮮度と両立しないため、この小調整では採用しない。最大5Hzの指令上限、画像400ms/STATUS1秒の鮮度、角度上限、画像中央の4°不感帯、10秒復帰、確認頷き・手動・ツール動作の優先順位は維持する。2°未満の目標差を残す代わりに静止中の細かい修正を減らす。
-
-検証は、3fpsの対応形式選択、静止相当の小刻みな目標変化でMOVEが増えないこと、ゆっくりした累積移動・両軸・大きな移動・所有権変更の継続性、全体回帰、署名ビルド。実機では同じ位置で止めたときの落ち着き、追い始めの遅れ、実フレーム間隔・熱状態を再確認する。回数の削減を実温度の改善とは扱わない。
+- [ ] Adjust capture-selection tests to require a supported 3fps range; retain actual5fps rejection and timestamp-rounding fixture. Add motion fixtures with target20° then20.1/19.8/21.9° producing only the first MOVE, cumulative22° producing a second, and independent pitch suppression. Cover ownership loss and large shifts. Run the focused suite and observe RED before production edits.
+- [ ] Select3fps. In autonomous following only, retain each last-written tracking axis until its target differs by at least20 deci-degrees, using current automatic ownership; ordinary first targets and ownership changes bypass suppression. Keep normal cadence/expiry/admission checks. Run focused tests to GREEN.
+- [ ] Run full `/private/tmp/cat-ios-link/run-tests.sh`, signed iPhone build, verify embedded committed SHA, install and repeat attended stationary/moving checks. Record actual results and remaining limits; do not infer thermal benefit from fewer frames.
 
 姿勢補間待ちの追加条件: 新しい顔の画像が400ms以内で、前後のSTATUSを待っている間は通常の見失いへ切り替えない。以前の目標の有効期限は延長せず、新規MOVEは新しく投影できた目標だけを使用する。待機画像自体が400msで失効したら保持へ移る。3fps・処理50ms・STATUS5Hzでの一瞬の保持と、後続STATUSが来ない場合の期限切れをテストする。所有者を失った後は同じ目標でも再取得できることも検証する。
 
+#### Task6 continuation: PWM restart boundary
 
-## 在席受入で判明した正面ずれとツール頷き（2026-10-24追加）
-
-利用者は50cm〜1mで使用し、カメラの偏りによる画面の向きの違和感に対して「複雑にせず固定値でよい」と指定した。初期実装では画像から距離を推定する方式と調整UIを追加しなかった。後述の追加指定により、補正値の調整UIだけを追加する。実装判断として5°を初期比較値とし、利用者の追加指定「ハードウェア的に左にしか設置できないので左固定」に従い、初回のyaw補正は-5°固定とした。実機試行後、利用者が同じ方向へさらに3°の補正を指定したため、-8°へ変更した。続く「合計10にして」の指定で、-10°へ変更し、続く「14°にして」の指定で-14°へ変更した。その後の「8°にして」に従い、-8°へ戻した後、さらに「9°にして」の指定で現在は-9°固定。端末の向きで補正を反転させない。画像誤差へ補正を加えてから既存4°不感帯を適用する。角度上限・3fps・2°の送信差分は維持し、物理的な改善は利用者の観察で確認する。固定補正は距離による変化を完全には消さない。
-
-横を向いて大きく頷くと、従来GESTUREが中立へ戻すため相手を画角から外していた。相手を向いた姿勢を基準にツールの定型動作を実行し、終了後にその姿勢へ戻す。最新顔があれば追尾へ引き継ぎ、無ければ既存の保持/10秒復帰を守る。過去の顔へ向き直すリカバリーは追加しない。
-
-方式は、iOSのMOVE列で大きな波形を作る案（BLE間隔に形状が左右される）、既存GESTUREの全体的な意味変更（顔追尾なしの操作も変わる）、姿勢指定GESTURE追加を比較し、既存波形・停止契約を保つ姿勢指定を実装判断で採用する。protocol1へ9BのGESTURE_AT(0x0A)を追加し、既存5BのGESTUREは中立基準のまま。Info.capabilities bit1で対応を通知する。対応FWで顔追尾が有効な会話中は、実行時の新鮮なSTATUS yaw/pitchを基準に指定する。検出が一瞬途切れた保持中も現在姿勢を基準にし、古い顔の位置は再使用しない。予約時の古い姿勢は使わない。center/look_at_userは既存の意味を保つ。
-
-FWは指定基準へ既存Plannerで収束後、基準+波形を出力する。基準は軸上限で制限し、波形が範囲を超える場合は全軸共通倍率で振幅を縮める（nod/shakeは両側、その他は移動側の余裕）。遅延ピッチの終端も基準へ戻す。保留ジェスチャの基準は要求に付随し、停止・切断・無通信では既存と同様に破棄する。iOSの予算見積もりと完了姿勢も指定基準を扱う。上位所有者・送信失効・未対応FWへの送信禁止はRobotLinkで守る。
-
-追加レビューで、保持中の小さな発話確認頷きにも中立基準の経路が残ることを確認した。顔追尾がオンなら、新鮮なSTATUSに基づく現在姿勢を基準にする。±45°/±10°と振幅縮小・省略の既存条件を保ち、新しい顔がないことだけを理由に正面へ戻さない。またFWは指定姿勢への収束中に上限が変わった場合も、波形開始直前に振幅を再調整する。波形再生中の既存上限変更契約は維持する。
+- [x] Reproduce ServoDriver channel reset on disable/re-enable with a real-driver host test using recording Arduino/Servo boundaries; assert disabled duty0, retained timer/channel on resume, calibrated pulses, and no output in CATNECK_NO_PWM. Run `python3 firmware/tools/test_servo_driver.py` and observe RED.
+- [x] Preserve allocated servo channels when PWM is disabled, release output to zero duty, and write current planner pulses to resume. Keep all Supervisor stopping/returning timeouts and protocol/calibration behavior. Build baseline and candidate firmware and run `pio test -e native` plus the host adapter test.
+- [ ] Compare restart on the attended robot after centering. Retain the candidate only with observed improvement and stopped-output checks; otherwise restore the known baseline and record the remaining hardware limit. Firmware flashing must preserve NVS/bonds.
 
 
-## 補正値の画面設定（追加指定）
+#### Task6 continuation: fixed screen aim and anchored tool gestures
 
-利用者が「調整と回転方向」の画面から補正値を変えたいと指定し、調整中は追尾を止め、会話画面へ戻って確認する方式を選んだ。固定9°を初期値とする保存設定へ変更する。詳細は[顔追尾の左右補正設定](2026-10-24-face-aim-setting-design.md)を参照。この追加仕様が上記の固定値・UIなしという初期方針に優先する。
+User reports and observed serial trace establish the two acceptance gaps. Continue the previously selected Native execution and existing worktree.
+
+- [x] FW RED: raw9B0x0A packet decoded through realProtocol into realSupervisor; nod at(-34,6) keeps yaw and returns there, near-limit amplitude fits, pitch drain/queued origin/STOP/disconnect remain bounded; malformed length/ID rejected and legacy gesture still centers. Run native tests before implementation and record failure.
+- [x] FW GREEN: extend Protocol.h/cpp GestureAt with id/amp/repeats/speed/yawDeci/pitchDeci, GestureSpec centers with defaults0 and anchored flag, Supervisor anchors/clamps/scales and waveform offsets; capability bit1 in BleTransport, FW0.2.0. Run native and realServoDriver tests, build both targets.
+- [x] iOS RED/GREEN: add RobotCommand.gestureAt, protocol encoding, capability checks, all RobotLink priority/group/ownership paths, MotionCoordinator execution-time fresh-face anchor and cycle rest/prediction, GestureTiming anchor deltas. Test packet output from(-34,6), fresh/stale/unsupported, loss during gesture/no interruption/new acquisition, backpressure/manual takeover. Preserve legacy gestures when tracking is off or capability is absent; tracking-on gestures and small acknowledgements use fresh current STATUS even during face hold. Run focused then full tests.
+- [x] Aim RED/GREEN: FaceTrackingGeometry applies fixed -9° (tuned at the user’s request after device feedback) for the physically left-mounted camera, independent of image orientation before deadband; test corrected neutral, camera-centered movement, both orientations, boundaries/limits and production coordinator output. No new settings UI.
+- [ ] Verify full iOS/native suites and signed device/normal+bringup builds; preserve FW0.1.1 for rollback, update attended hardware at neutral. Compare fixed aim at50cm/1m and sideways large nod/other gestures, confirm return to same direction then live tracking. Record remaining limits honestly.
+
+Attended follow-up: The user confirmed that sideways gestures preserve the facing direction and tracking resumes. Their request for another3° of aim correction changes the fixed correction from-5° to-8°. The existing geometry/coordinator tests passed33/33; signed app78fc55d was installed and launched normally at13:12:36JST. The8° visual comparison remains pending.
+
+The user then requested a total correction of 10°. Adjusted the same direction from -8° to -10°. The updated geometry/coordinator fixtures passed 33/33; signed app d365916 was installed and launched normally at 16:21 JST. The 10° visual comparison remains pending.
+
+The user requested a total correction of 14°. Adjusted the same direction from -10° to -14°. The updated geometry/coordinator fixtures passed 33/33; signed app c8c22a5 was installed and launched normally at 21:42 JST. The 14° visual comparison remains pending.
+
+The user requested returning the total correction to 8°. Restored the existing 8° projection and geometry/coordinator fixtures, verified 33/33 tests, and installed signed app 0340663. Normal launch succeeded at 21:49 JST; visual comparison remains pending.
+
+The user then requested a total correction of 9°. Adjusted the same direction from -8° to -9°. The updated geometry/coordinator fixtures passed 33/33; signed app bcd232b was installed and launched normally at 21:54 JST. The 9° visual comparison remains pending.
 
 Subsequent user request: add an adjustable, persisted screen-aim control in the calibration screen. Continue with [the focused setting plan](2026-10-24-face-aim-setting.md); the user selected returning to the conversation to compare the result.
