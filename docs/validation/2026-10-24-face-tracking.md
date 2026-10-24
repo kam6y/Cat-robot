@@ -1,10 +1,10 @@
 # 顔追尾の検証記録
 
 - 日付: 2026-10-24（JST）
-- 対象ソース: `0340663e4fc6630d4d9ce63a3f6f273aeb518d38`（追尾安定化・左固定8°補正・姿勢基準ジェスチャと追加レビュー修正を含む）。後続の文書コミットはアプリのソースを変更しない。
+- 対象ソース: `bcd232bd4a1e77a81dd44dceaddc5fb9eb9408bf`（追尾安定化・左固定9°補正・姿勢基準ジェスチャと追加レビュー修正を含む）。後続の文書コミットはアプリのソースを変更しない。
 - ブランチ: `feature/face-tracking`、基点 `20a71003df37f23e559fae07c741ebb8645139e8`。
 - [承認済み設計](../superpowers/specs/2026-10-24-face-tracking-design.md)、[実装計画](../superpowers/plans/2026-10-24-face-tracking.md)。利用者の指定どおり初期オン、カメラ権限の拒否・制限は保存設定をオフにする。
-- **状態: 基本的な左右・上下・見失い復帰を確認。追尾安定化版で静止時の落ち着き・追尾の反応・音声と頷きの併用を利用者が良好と確認。PWM再開時の跳ねはFW0.1.1で改善を確認。全ジェスチャ対応版で向きを保った動作と追尾再開を利用者が確認。固定補正は利用者の指定で5°→8°→10°→14°→8°へ調整し、再調整後の8°版を実機へ更新済み。続く「9°にして」の指定で9°へ調整中。残る実機受入と長時間の発熱は未完了。統合・pushはしていない。**
+- **状態: 基本的な左右・上下・見失い復帰を確認。追尾安定化版で静止時の落ち着き・追尾の反応・音声と頷きの併用を利用者が良好と確認。PWM再開時の跳ねはFW0.1.1で改善を確認。全ジェスチャ対応版で向きを保った動作と追尾再開を利用者が確認。固定補正は利用者の指定で5°→8°→10°→14°→8°→9°へ調整し、9°版を実機へ更新済み。見た目は観察待ち。残る実機受入と長時間の発熱は未完了。統合・pushはしていない。**
 
 ## 自動検証
 
@@ -15,16 +15,17 @@
 | 10°調整後の関連試験 | d365916でGeometry / Coordinatorの既存33件、失敗0。試験本体1.826秒 |
 | 14°調整後の関連試験 | c8c22a5でGeometry / Coordinatorの既存33件、失敗0。試験本体1.962秒 |
 | 8°へ戻した後の関連試験 | 0340663でGeometry / Coordinatorの既存33件、失敗0。試験本体2.070秒 |
+| 9°調整後の関連試験 | bcd232bでGeometry / Coordinatorの既存33件、失敗0。試験本体2.211秒 |
 | FWホスト・ビルド | 88/88成功、ServoDriver通常/出力無効版成功、xiaoとxiao_bringupビルド成功 |
 | レビュー修正の再現 | 4テスト中3テストが5 assertionでRED。待機からの引き継ぎ2、非アクティブ時の収束2、見失い時の保持1。その後すべてGREEN。確認頷きの継続テストも成功 |
 | 修正後の関連試験 | レビュー修正時108件・失敗0。その後の追尾安定化では撮影・Motion・Coordinator・App・ライフサイクルの82件・失敗0。その後の固定補正・全ジェスチャでは関連112件と追加レビュー再現試験を経て、最終全体672件へ含めた |
 | プロジェクト生成契約 | `ruby scripts/test_generate_project.rb` PASS。Xcodeプロジェクトの手編集なし |
 | 差分検査 | `git diff --check` PASS |
-| iPhone向け署名ビルド | BUILD SUCCEEDED。埋め込み `CatRobotSourceRevision` は `0340663e4fc6630d4d9ce63a3f6f273aeb518d38` と一致。更新インストール後、21:49 JSTに通常起動 |
+| iPhone向け署名ビルド | BUILD SUCCEEDED。埋め込み `CatRobotSourceRevision` は `bcd232bd4a1e77a81dd44dceaddc5fb9eb9408bf` と一致。更新インストール後、21:54 JSTに通常起動 |
 
 試験はXcode 27.1 / iPhoneSimulator SDK 27.1、iOS 27.0 Simulator（iPhone 17 Pro）、Swift 6。`xcodebuild test` で全体を実行し、並列試験は無効。実機専用の `RobotMotionIntegrationDeviceTests` と `SupertonicIntegrationDeviceTests` はSimulatorで明示的にskipした。音声・生成・BLEにはテスト実装を使用し、この試験から物理的な追従や実カメラの稼働を推定しない。
 
-最終ビルドログは `/private/tmp/cat-ios-link/face-aim8-return-device-build.log`、インストールは `face-aim8-return-install.log`。
+最終ビルドログは `/private/tmp/cat-ios-link/face-aim9-device-build.log`、インストールは `face-aim9-install.log`。
 
 最終ログは `/private/tmp/cat-ios-link/face-anchor-ios-final.log`、xcresultは `/tmp/cat-ios-link/simulator/Logs/Test/Test-CatRobot-2026.10.24_12-50-56-+0900.xcresult`。再現ログは `face-final-review-red.log`、関連試験は `face-final-review-green.log`、生成契約は `face-final-generator.log`。
 
@@ -70,7 +71,7 @@
 
 | 項目 | 状態・必要な観測 |
 |---|---|
-| 対象版のインストール・通常起動 | 8°へ戻した0340663を更新インストールし、21:49 JSTに通常起動成功。署名済みアプリの埋め込みSHAを照合済み |
+| 対象版のインストール・通常起動 | 固定9°補正版bcd232bを更新インストールし、21:54 JSTに通常起動成功。署名済みアプリの埋め込みSHAを照合済み |
 | 初回カメラ許可 | 許可された状態で実カメラ・顔検出が動作。拒否時の会話継続とiOS設定経由の復帰は実機未確認 |
 | 実カメラの寸法・間隔 | 追尾安定化版b2666dfで640×480・実間隔0.333322〜0.333323秒・観測処理時間0.055439〜0.064541秒・thermal=1（fair）。画像・顔座標の記録なし |
 | 左右両横向き・上下・±40°の移動 | 584b5c1で現在の横向きの左右・上下を確認。静止中の細かな修正を調整し、b2666dfで静止20秒と左右追尾の再確認に利用者が「いい感じ」と回答。反対の横向き・±40°は未確認 |
@@ -184,4 +185,4 @@ cf9e961 / FW0.2.0の試行について、利用者は「向きを保って動き
 
 ### 合計9°への追加指定
 
-利用者の「9°にして」に従い、同じ方向へ1°を加え、固定補正を合計9°（内部yaw誤差への加算は-9°）に変更する。既存Geometry / Coordinatorのfixtureも9°へ更新し、関連33件は失敗0（2.211秒、`face-aim9-tests.log`）。実機更新と見た目の確認はこれから行う。
+利用者の「9°にして」に従い、同じ方向へ1°を加え、固定補正を合計9°（内部yaw誤差への加算は-9°）に変更する。既存Geometry / Coordinatorのfixtureも9°へ更新し、関連33件は失敗0（2.211秒、`face-aim9-tests.log`）。署名ビルド成功（`face-aim9-device-build.log`）後、埋め込みSHAがbcd232bと一致することを確認し、インストール成功（`face-aim9-install.log`）。21:54 JSTに通常起動した（`face-aim9-console.log`）。FW0.2.0は継続。9°に対する見た目の評価は未確認。

@@ -161,4 +161,4 @@ The user requested a total correction of 14°. Adjusted the same direction from 
 
 The user requested returning the total correction to 8°. Restored the existing 8° projection and geometry/coordinator fixtures, verified 33/33 tests, and installed signed app 0340663. Normal launch succeeded at 21:49 JST; visual comparison remains pending.
 
-The user then requested a total correction of 9°. Adjust the same direction from -8° to -9°, update the existing geometry/coordinator fixtures, verify them, and install the signed app.
+The user then requested a total correction of 9°. Adjusted the same direction from -8° to -9°. The updated geometry/coordinator fixtures passed 33/33; signed app bcd232b was installed and launched normally at 21:54 JST. The 9° visual comparison remains pending.
