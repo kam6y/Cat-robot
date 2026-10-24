@@ -43,6 +43,11 @@ struct FaceCaptureOptics: Sendable {
 }
 
 enum FaceCapturePolicy {
+    // Nominal 5fps can round a capture interval a few microseconds below 0.2s.
+    // Keep acquisition headroom while checking every actual frame against the 5fps ceiling.
+    private static let configuredFrameRate = 4.0
+    private static let minimumActualInterval = 0.2
+
     /// Vision reports upright boxes. Geometry uses a fixed, unmirrored landscape reference.
     static func rawRectangle(fromUpright rectangle: FaceRectangle,
                              orientation: FaceLandscapeOrientation) -> FaceRectangle {
@@ -70,7 +75,7 @@ enum FaceCapturePolicy {
                   format.horizontalFieldOfView > 0, format.horizontalFieldOfView < 180,
                   format.frameRateRanges.contains(where: {
                       $0.minimum.isFinite && $0.maximum.isFinite && $0.minimum > 0 &&
-                      $0.minimum <= 5 && $0.maximum >= 5
+                      $0.minimum <= configuredFrameRate && $0.maximum >= configuredFrameRate
                   }) else { return nil }
             // AVCaptureVideoDataOutput requires the EXACT native aspect; rounded sizes can throw.
             let divisor = gcd(format.width, format.height)
@@ -79,7 +84,7 @@ enum FaceCapturePolicy {
             if unitWidth % 2 != 0 || unitHeight % 2 != 0 { scale -= scale % 2 }
             guard scale > 0 else { return nil }
             return (.init(formatID: format.id, width: unitWidth * scale, height: unitHeight * scale,
-                          frameDuration: 0.2, horizontalFieldOfView: format.horizontalFieldOfView),
+                          frameDuration: 1 / configuredFrameRate, horizontalFieldOfView: format.horizontalFieldOfView),
                     Double(format.width) * Double(format.height))
         }
         return candidates.min {
@@ -94,10 +99,10 @@ enum FaceCapturePolicy {
                              previous: TimeInterval?, configuration: FaceCaptureConfiguration) -> Bool {
         guard width > 0, width <= 640, height > 0, height <= 480,
               width == configuration.width, height == configuration.height,
-              configuration.frameDuration.isFinite, configuration.frameDuration >= 0.2,
+              configuration.frameDuration.isFinite, configuration.frameDuration >= minimumActualInterval,
               at.isFinite, at >= 0 else { return false }
         guard let previous else { return true }
-        return previous.isFinite && previous >= 0 && at - previous >= configuration.frameDuration - 0.000_001
+        return previous.isFinite && previous >= 0 && at - previous >= minimumActualInterval - 0.000_001
     }
 
     static func makeEventStream() -> (stream: AsyncStream<FaceCaptureEvent>,

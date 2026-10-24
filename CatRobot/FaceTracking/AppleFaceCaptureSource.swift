@@ -164,8 +164,9 @@ private final class FaceCaptureWorker: NSObject, AVCaptureVideoDataOutputSampleB
         try device.lockForConfiguration()
         defer { device.unlockForConfiguration() }
         device.activeFormat = device.formats[selected.formatID]
-        device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 5)
-        device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 5)
+        let frameDuration = CMTime(seconds: selected.frameDuration, preferredTimescale: 600)
+        device.activeVideoMinFrameDuration = frameDuration
+        device.activeVideoMaxFrameDuration = frameDuration
         device.videoZoomFactor = 1
         if device.isGeometricDistortionCorrectionSupported { device.isGeometricDistortionCorrectionEnabled = false }
 
@@ -247,11 +248,13 @@ private final class FaceCaptureWorker: NSObject, AVCaptureVideoDataOutputSampleB
         }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let hostPTS = CMSyncConvertTime(pts, from: sessionClock, to: CMClockGetHostTimeClock())
-        guard let capturedAt = run.mapping.robotTime(hostTime: hostPTS.seconds),
+        let mappedCaptureTime = run.mapping.robotTime(hostTime: hostPTS.seconds)
+        guard let capturedAt = mappedCaptureTime,
               FaceCapturePolicy.acceptsFrame(width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer),
                   at: capturedAt, previous: run.previousCaptureTime, configuration: run.configuration) else {
             #if DEBUG
-            logger.debug("invalid frame width=\(CVPixelBufferGetWidth(buffer)) height=\(CVPixelBufferGetHeight(buffer))")
+            let delta = mappedCaptureTime.flatMap { current in run.previousCaptureTime.map { current - $0 } } ?? -1
+            logger.debug("invalid frame width=\(CVPixelBufferGetWidth(buffer)) height=\(CVPixelBufferGetHeight(buffer)) interval=\(delta) configured=\(run.configuration.frameDuration) minimum=0.2 captured=\(mappedCaptureTime ?? -1) previous=\(run.previousCaptureTime ?? -1) hostPTS=\(hostPTS.seconds) frames=\(run.frameCount)")
             #endif
             fail(generation: run.generation, interrupted: false)
             return
@@ -272,7 +275,7 @@ private final class FaceCaptureWorker: NSObject, AVCaptureVideoDataOutputSampleB
             }
             #if DEBUG
             if run.frameCount == 1 || run.frameCount % 25 == 0 {
-                logger.debug("frame width=\(CVPixelBufferGetWidth(buffer)) height=\(CVPixelBufferGetHeight(buffer)) interval=\(interval) processing=\(completedAt - capturedAt) faces=\(faces.count)")
+                logger.debug("frame width=\(CVPixelBufferGetWidth(buffer)) height=\(CVPixelBufferGetHeight(buffer)) interval=\(interval) processing=\(completedAt - capturedAt) faces=\(faces.count) thermal=\(ProcessInfo.processInfo.thermalState.rawValue)")
             }
             #endif
             continuation.yield(.observation(.init(generation: run.generation, capturedAt: capturedAt,
