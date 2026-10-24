@@ -49,7 +49,7 @@ struct RobotConnectionView: View {
         }
         .navigationDestination(isPresented: Binding(get: { model.calibration != nil }, set: { _ in })) {
             if let session = model.calibration {
-                RobotCalibrationView(session: session, onClose: model.closeCalibration)
+                RobotCalibrationView(session: session, preferences: model.preferences, onClose: model.closeCalibration)
             }
         }
     }

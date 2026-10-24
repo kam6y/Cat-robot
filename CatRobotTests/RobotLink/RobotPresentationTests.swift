@@ -45,7 +45,7 @@ final class RobotPresentationTests: XCTestCase {
         let face = FaceTrackingCoordinator(source: FakeFaceCaptureSource(), link: h.link,
             clock: h.clock, preferences: h.preferences, motion: MotionControllerSpy())
         for size in [DynamicTypeSize.large, .accessibility5] {
-            try await capture(NavigationStack { RobotCalibrationView(session: session, onClose: { _ in }) },
+            try await capture(NavigationStack { RobotCalibrationView(session: session, preferences: h.preferences, onClose: { _ in }) },
                               name: "calibration-\(size)", size: size)
             try await capture(NavigationStack { RobotConnectionView(model: model, faceTracking: face) },
                               name: "connection-\(size)", size: size)
@@ -71,7 +71,7 @@ final class RobotPresentationTests: XCTestCase {
         XCTAssertGreaterThan(host.view.bounds.width, host.view.bounds.height)
         attach(host.view, name: "\(name)-top")
         if let scroll = scrollView(in: host.view) {
-            if name.hasPrefix("connection-"), size.isAccessibilitySize {
+            if name.hasPrefix("calibration-") || (name.hasPrefix("connection-") && size.isAccessibilitySize) {
                 let bottom = max(0, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
                 for (index, offset) in stride(from: CGFloat(0), through: bottom, by: max(1, scroll.bounds.height * 0.8)).enumerated() {
                     scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)

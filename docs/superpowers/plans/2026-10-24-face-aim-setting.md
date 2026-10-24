@@ -34,9 +34,9 @@
 - `FaceTrackingGeometry.project(_:yawCorrection:pose:) -> FacePose?`; finite0...20 only, correction before deadband, pitch unchanged.
 - `RobotCalibrationView(session:preferences:onClose:)`; required shared preferences from settings composition.
 
-- [ ] Add a failing coordinator regression with persisted correction14° producing yaw-14° at camera center instead of the existing-9°; add preference round-trip,0/20 bounds, malformed values, and configured geometry cases. Run focused tests and observe the missing behavior.
-- [ ] Add normalized persistence and pass the value through real coordinator/geometry. Keep existing9° fixture expectations explicit. Run focused tests to green.
-- [ ] Add slider+stepper+9° reset to calibration view with local autosave explanation, pass shared preferences, clarify hardware-only save/restore labels. Extend existing render fixtures to show the entire calibration scroll area.
+- [x] Add a failing coordinator regression with persisted correction14° producing yaw-14° at camera center instead of the existing-9°; add preference round-trip,0/20 bounds, malformed values, and configured geometry cases. Run focused tests and observe the missing behavior.
+- [x] Add normalized persistence and pass the value through real coordinator/geometry. Keep existing9° fixture expectations explicit. Run focused tests to green.
+- [x] Add slider+stepper+9° reset to calibration view with local autosave explanation, pass shared preferences, clarify hardware-only save/restore labels. Extend existing render fixtures to show the entire calibration scroll area.
 - [ ] Add/extend app integration coverage for saved correction while settings/calibration remain stopped and first new conversation frame uses it. Run full `/private/tmp/cat-ios-link/run-tests.sh`; expected all pass except existing device-only skips. Inspect rendered attachments at normal/max text.
 - [ ] Commit implementation and run one fresh review of this addition from463730e. Verify/fix actionable findings with focused regression then full suite if behavior changes.
 - [ ] Build signed iPhone app with exact source SHA, verify embedded revision, install and launch normally. Record tests/render/device evidence and pending physical observation; commit validation docs.

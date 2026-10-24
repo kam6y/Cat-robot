@@ -48,8 +48,10 @@ final class FaceTrackingHarness {
     var following: [RobotTrackingTarget] {
         motion.trackingStates.compactMap { if case let .following(target) = $0 { target } else { nil } }
     }
-    init(authorization: FaceCameraAuthorization = .authorized, enabled: Bool = true) {
+    init(authorization: FaceCameraAuthorization = .authorized, enabled: Bool = true,
+         storedYawCorrection: Double? = nil) {
         defaults = UserDefaults(suiteName: "FaceTrackingTests.\(UUID().uuidString)")!
+        if let storedYawCorrection { defaults.set(storedYawCorrection, forKey: "robot.trackingYawCorrection") }
         preferences = RobotPreferences(defaults: defaults)
         preferences.trackingEnabled = enabled
         source = FakeFaceCaptureSource(authorization: authorization)

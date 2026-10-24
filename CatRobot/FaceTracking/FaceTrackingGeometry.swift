@@ -14,9 +14,10 @@ enum FaceTrackingGeometry {
         }
     }
 
-    static func project(_ observation: FaceObservation, pose: FacePose) -> FacePose? {
+    static func project(_ observation: FaceObservation, yawCorrection: Double, pose: FacePose) -> FacePose? {
         let fov = observation.horizontalFieldOfView, aspect = observation.aspectRatio
-        guard pose.isFinite, fov.isFinite, fov > 0, fov < 180,
+        guard yawCorrection.isFinite, (0...20).contains(yawCorrection),
+              pose.isFinite, fov.isFinite, fov > 0, fov < 180,
               aspect.isFinite, aspect > 0,
               let face = selectFace(observation.faces) else { return nil }
         // Raw front-camera frames are not mirrored. Rightward image motion is leftward
@@ -24,8 +25,8 @@ enum FaceTrackingGeometry {
         let direction = observation.orientation == .landscapeRight ? 1.0 : -1.0
         let tangent = tan(fov * .pi / 360)
         // This robot mounts the front camera to the observer's left of screen center.
-        // Fixed correction for the usual 0.5–1m distance; apply BEFORE the deadband.
-        let yawDelta = -atan(direction * (2 * face.centerX - 1) * tangent) * 180 / .pi - 9
+        // User-adjusted screen aim is applied BEFORE the deadband in either image orientation.
+        let yawDelta = -atan(direction * (2 * face.centerX - 1) * tangent) * 180 / .pi - yawCorrection
         let pitchDelta = atan(direction * (2 * face.centerY - 1) * tangent / aspect) * 180 / .pi
         return .init(yaw: max(-45, min(45, pose.yaw + (abs(yawDelta) <= 4 ? 0 : yawDelta))),
                      pitch: max(-10, min(10, pose.pitch + (abs(pitchDelta) <= 4 ? 0 : pitchDelta))))

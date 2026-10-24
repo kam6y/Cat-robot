@@ -3,6 +3,44 @@ import XCTest
 
 @MainActor
 final class FaceTrackingCoordinatorTests: XCTestCase {
+    func testPersistedScreenAimChangesActualTrackingTarget() async throws {
+        for (correction, expectedYaw) in [(0.0, 0.0), (9.5, -9.5), (14.0, -14.0), (20.0, -20.0)] {
+            let h = FaceTrackingHarness(storedYawCorrection: correction)
+            h.environment()
+            h.frame()
+            await robotDrain()
+            let target = try XCTUnwrap(h.following.last)
+            XCTAssertEqual(target.yaw, expectedYaw, accuracy: 0.000_001)
+            XCTAssertEqual(target.pitch, 0)
+        }
+    }
+
+    func testAimChangeDuringSettingsOrCalibrationWaitsForFreshConversationFrame() async throws {
+        for mode in [RobotControlMode.settings, .calibration(UUID())] {
+            let h = FaceTrackingHarness()
+            h.environment()
+            let old = try XCTUnwrap(h.source.starts.last)
+            h.frame()
+            await robotDrain()
+            XCTAssertEqual(h.following.count, 1)
+            h.environment(mode: mode)
+            h.preferences.trackingYawCorrection = 14
+            h.frame(generation: old.generation)
+            await robotDrain()
+            XCTAssertEqual(h.source.starts.count, 1)
+            XCTAssertEqual(h.motion.trackingStates.last, .disabled)
+            XCTAssertEqual(h.following.count, 1)
+            h.environment()
+            h.frame(generation: old.generation)
+            await robotDrain()
+            XCTAssertEqual(h.following.count, 1)
+            h.frame()
+            await robotDrain()
+            XCTAssertEqual(h.following.count, 2)
+            XCTAssertEqual(try XCTUnwrap(h.following.last).yaw, -14, accuracy: 0.000_001)
+        }
+    }
+
     func testConstructionIsInertAndUndeterminedPermissionWaitsForExplicitRequest() async {
         let h = FaceTrackingHarness(authorization: .notDetermined)
         await robotDrain()

@@ -231,7 +231,8 @@ final class FaceTrackingCoordinator {
         guard clock.now - observation.capturedAt < 0.4 - 0.000_001 else { pending = nil; return }
         guard let pose = poseHistory.pose(at: observation.capturedAt, now: clock.now) else { return }
         pending = nil
-        guard let target = FaceTrackingGeometry.project(observation, pose: pose) else { return }
+        guard let target = FaceTrackingGeometry.project(
+            observation, yawCorrection: preferences.trackingYawCorrection, pose: pose) else { return }
         lastFaceAt = observation.capturedAt
         setMotionState(.following(.init(yaw: target.yaw, pitch: target.pitch,
                                         validUntil: observation.capturedAt + 0.4)))

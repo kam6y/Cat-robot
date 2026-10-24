@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RobotCalibrationView: View {
     let session: RobotCalibrationSession
+    @Bindable var preferences: RobotPreferences
     let onClose: @MainActor (RobotCalibrationExit) async -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showsExitConfirmation = false
@@ -18,10 +19,12 @@ struct RobotCalibrationView: View {
                         offsets.frame(maxWidth: .infinity, alignment: .topLeading)
                         direction.frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    Button("今回の変更を戻す") { Task { try? await session.restoreEntry() } }
+                    Button("中立・回転方向の変更を戻す") { Task { try? await session.restoreEntry() } }
                         .disabled(!session.canEdit || !session.hasNewChanges)
-                    Button("ロボットに保存") { Task { _ = try? await session.save() } }
+                    Button("中立・回転方向をロボットに保存") { Task { _ = try? await session.save() } }
                         .buttonStyle(.borderedProminent).disabled(!session.canEdit)
+                    Divider()
+                    faceTrackingAim
                 }.padding(20)
             }.background(Color(.systemGroupedBackground))
         }
@@ -47,7 +50,34 @@ struct RobotCalibrationView: View {
             Button("保存して戻る") { Task { await onClose(.save) } }.disabled(!session.canEdit)
             Button("今回の変更を戻して戻る") { Task { await onClose(.restore) } }
             Button("そのまま編集", role: .cancel) {}
-        } message: { Text("未保存の変更があります。接続が切れている場合、変更を戻すことはできません。") }
+        } message: { Text("中立・回転方向に未保存の変更があります。接続が切れている場合、変更を戻すことはできません。顔追尾の補正はiPhoneに自動保存されます。") }
+    }
+
+    private var faceTrackingAim: some View {
+        GroupBox("顔追尾の向き") {
+            VStack(alignment: .leading, spacing: 12) {
+                Stepper(value: $preferences.trackingYawCorrection,
+                        in: RobotPreferences.trackingYawCorrectionRange,
+                        step: RobotPreferences.trackingYawCorrectionStep) {
+                    Text("左右補正  \(preferences.trackingYawCorrection, specifier: "%.1f")°").monospacedDigit()
+                }
+                .accessibilityLabel("顔追尾の左右補正を微調整")
+                .accessibilityValue(String(format: "%.1f度", preferences.trackingYawCorrection))
+                .accessibilityIdentifier("faceTrackingYawCorrectionStepper")
+                Slider(value: $preferences.trackingYawCorrection,
+                       in: RobotPreferences.trackingYawCorrectionRange,
+                       step: RobotPreferences.trackingYawCorrectionStep) { Text("顔追尾の左右補正") }
+                    .accessibilityValue(String(format: "%.1f度", preferences.trackingYawCorrection))
+                    .accessibilityIdentifier("faceTrackingYawCorrectionSlider")
+                HStack { Text("0°"); Spacer(); Text("20°") }
+                    .font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
+                Button("9°に戻す") { preferences.trackingYawCorrection = RobotPreferences.defaultTrackingYawCorrection }
+                    .disabled(preferences.trackingYawCorrection == RobotPreferences.defaultTrackingYawCorrection)
+                    .accessibilityLabel("顔追尾の補正を9度に戻す")
+                Text("左側のカメラと画面中央のずれを補正します。値はこのiPhoneに自動保存され、会話画面に戻ると反映されます。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }.padding(.top, 8)
+        }
     }
 
     private var offsets: some View {

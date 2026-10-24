@@ -138,6 +138,7 @@ final class FaceTrackingAppIntegrationTests: XCTestCase {
         XCTAssertEqual(h.face.following.count, 1)
         h.app.openVoiceSettings()
         XCTAssertEqual(h.face.source.stops, 1, "Stop capture synchronously before awaiting audio teardown")
+        h.settings.preferences.trackingYawCorrection = 14
         await h.app.waitForOperations()
         h.app.closeVoiceSettings()
         await h.app.waitForOperations()
@@ -156,6 +157,7 @@ final class FaceTrackingAppIntegrationTests: XCTestCase {
         h.face.frame()
         await robotDrain()
         XCTAssertEqual(h.face.following.count, 2)
+        XCTAssertEqual(try XCTUnwrap(h.face.following.last).yaw, -14, accuracy: 0.000_001)
         await h.close()
     }
 

@@ -8,14 +8,14 @@ final class FaceTrackingGeometryTests: XCTestCase {
         for (orientation, x) in [(FaceLandscapeOrientation.landscapeRight, 0.4208077798),
                                   (.landscapeLeft, 0.5791922202)] {
             let pose = FacePose(yaw: -20, pitch: 3)
-            XCTAssertEqual(FaceTrackingGeometry.project(observation(x: x, orientation: orientation), pose: pose), pose)
-            let centered = try XCTUnwrap(FaceTrackingGeometry.project(observation(orientation: orientation), pose: pose))
+            XCTAssertEqual(FaceTrackingGeometry.project(observation(x: x, orientation: orientation), yawCorrection: 9, pose: pose), pose)
+            let centered = try XCTUnwrap(FaceTrackingGeometry.project(observation(orientation: orientation), yawCorrection: 9, pose: pose))
             XCTAssertEqual(centered, FacePose(yaw: -29, pitch: 3))
         }
     }
 
     func testCameraCenterIncludesFixedScreenAimCorrection() throws {
-        let result = try XCTUnwrap(FaceTrackingGeometry.project(observation(), pose: .init(yaw: 30, pitch: -3)))
+        let result = try XCTUnwrap(FaceTrackingGeometry.project(observation(), yawCorrection: 9, pose: .init(yaw: 30, pitch: -3)))
         XCTAssertEqual(result, FacePose(yaw: 21, pitch: -3))
     }
 
@@ -24,31 +24,31 @@ final class FaceTrackingGeometryTests: XCTestCase {
         for (orientation, x, y) in [(FaceLandscapeOrientation.landscapeRight, 0.75, 0.55),
                                      (.landscapeLeft, 0.25, 0.45)] {
             let result = try XCTUnwrap(FaceTrackingGeometry.project(
-                observation(x: x, y: y, orientation: orientation), pose: .init(yaw: 0, pitch: 0)))
+                observation(x: x, y: y, orientation: orientation), yawCorrection: 9, pose: .init(yaw: 0, pitch: 0)))
             XCTAssertEqual(result.yaw, -35.565051, accuracy: 0.000_001)
             XCTAssertEqual(result.pitch, 4.289153, accuracy: 0.000_001)
         }
     }
 
     func testProjectionAddsPoseInsteadOfRecenteringNeck() throws {
-        let result = try XCTUnwrap(FaceTrackingGeometry.project(observation(x: 0.25), pose: .init(yaw: -30, pitch: 0)))
+        let result = try XCTUnwrap(FaceTrackingGeometry.project(observation(x: 0.25), yawCorrection: 9, pose: .init(yaw: -30, pitch: 0)))
         XCTAssertEqual(result.yaw, -12.434949, accuracy: 0.000_001)
     }
 
     func testDeadbandIsAppliedIndependentlyPerAxis() throws {
         let result = try XCTUnwrap(FaceTrackingGeometry.project(
-            observation(x: 0.4208077798, y: 0.55), pose: .init(yaw: 30, pitch: -2)))
+            observation(x: 0.4208077798, y: 0.55), yawCorrection: 9, pose: .init(yaw: 30, pitch: -2)))
         XCTAssertEqual(result.yaw, 30)
         XCTAssertEqual(result.pitch, 2.289153, accuracy: 0.000_001)
     }
 
     func testProjectionClampsBothAxesToTrackingLimits() throws {
         let positive = try XCTUnwrap(FaceTrackingGeometry.project(
-            observation(x: 0.1, y: 0.75), pose: .init(yaw: 30, pitch: 0)))
+            observation(x: 0.1, y: 0.75), yawCorrection: 9, pose: .init(yaw: 30, pitch: 0)))
         XCTAssertEqual(positive.yaw, 45)
         XCTAssertEqual(positive.pitch, 10)
         let negative = try XCTUnwrap(FaceTrackingGeometry.project(
-            observation(x: 0.9, y: 0.25), pose: .init(yaw: -30, pitch: 0)))
+            observation(x: 0.9, y: 0.25), yawCorrection: 9, pose: .init(yaw: -30, pitch: 0)))
         XCTAssertEqual(negative.yaw, -45)
         XCTAssertEqual(negative.pitch, -10)
     }
@@ -81,15 +81,32 @@ final class FaceTrackingGeometryTests: XCTestCase {
     }
 
     func testRejectsEmptyFacesInvalidOpticsAndNonfinitePose() {
-        XCTAssertNil(FaceTrackingGeometry.project(observation(faces: []), pose: .init(yaw: 0, pitch: 0)))
+        XCTAssertNil(FaceTrackingGeometry.project(observation(faces: []), yawCorrection: 9, pose: .init(yaw: 0, pitch: 0)))
         for fov in [0.0, -30, 180, .nan, .infinity] {
-            XCTAssertNil(FaceTrackingGeometry.project(observation(fov: fov), pose: .init(yaw: 0, pitch: 0)))
+            XCTAssertNil(FaceTrackingGeometry.project(observation(fov: fov), yawCorrection: 9, pose: .init(yaw: 0, pitch: 0)))
         }
         for aspect in [0.0, -1, .nan, .infinity] {
-            XCTAssertNil(FaceTrackingGeometry.project(observation(aspect: aspect), pose: .init(yaw: 0, pitch: 0)))
+            XCTAssertNil(FaceTrackingGeometry.project(observation(aspect: aspect), yawCorrection: 9, pose: .init(yaw: 0, pitch: 0)))
         }
-        XCTAssertNil(FaceTrackingGeometry.project(observation(), pose: .init(yaw: .nan, pitch: 0)))
-        XCTAssertNil(FaceTrackingGeometry.project(observation(), pose: .init(yaw: 0, pitch: .infinity)))
+        XCTAssertNil(FaceTrackingGeometry.project(observation(), yawCorrection: 9, pose: .init(yaw: .nan, pitch: 0)))
+        XCTAssertNil(FaceTrackingGeometry.project(observation(), yawCorrection: 9, pose: .init(yaw: 0, pitch: .infinity)))
+    }
+
+    func testConfiguredCorrectionChangesYawInBothOrientationsWithoutChangingPitch() throws {
+        for orientation in [FaceLandscapeOrientation.landscapeRight, .landscapeLeft] {
+            for (correction, expectedYaw) in [(0.0, 30.0), (5.5, 24.5), (14.0, 16.0), (20.0, 10.0)] {
+                let result = try XCTUnwrap(FaceTrackingGeometry.project(
+                    observation(orientation: orientation), yawCorrection: correction, pose: .init(yaw: 30, pitch: 3)))
+                XCTAssertEqual(result.yaw, expectedYaw, accuracy: 0.000_001)
+                XCTAssertEqual(result.pitch, 3)
+            }
+        }
+    }
+
+    func testInvalidCorrectionCannotProduceMotion() {
+        for correction in [-1.0, 21.0, .nan, .infinity, -.infinity] {
+            XCTAssertNil(FaceTrackingGeometry.project(observation(), yawCorrection: correction, pose: .init(yaw: 0, pitch: 0)))
+        }
     }
 
     func testPoseHistoryInterpolatesCaptureTime() throws {

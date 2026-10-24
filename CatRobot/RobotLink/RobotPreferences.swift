@@ -9,6 +9,25 @@ enum RobotMotionStrength: String, CaseIterable, Sendable {
 @Observable
 final class RobotPreferences {
     @ObservationIgnored private let defaults: UserDefaults
+    static let defaultTrackingYawCorrection = 9.0
+    static let trackingYawCorrectionRange = 0.0...20.0
+    static let trackingYawCorrectionStep = 0.5
+    private static let trackingYawCorrectionKey = "robot.trackingYawCorrection"
+    private var storedTrackingYawCorrection: Double
+
+    var trackingYawCorrection: Double {
+        get { storedTrackingYawCorrection }
+        set {
+            storedTrackingYawCorrection = Self.normalizedTrackingYawCorrection(newValue)
+            defaults.set(storedTrackingYawCorrection, forKey: Self.trackingYawCorrectionKey)
+        }
+    }
+
+    private static func normalizedTrackingYawCorrection(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultTrackingYawCorrection }
+        let bounded = min(trackingYawCorrectionRange.upperBound, max(trackingYawCorrectionRange.lowerBound, value))
+        return (bounded / trackingYawCorrectionStep).rounded() * trackingYawCorrectionStep
+    }
 
     var selectedDevice: RobotDevice? {
         didSet {
@@ -29,6 +48,8 @@ final class RobotPreferences {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        storedTrackingYawCorrection = Self.normalizedTrackingYawCorrection(
+            defaults.object(forKey: Self.trackingYawCorrectionKey) as? Double ?? Self.defaultTrackingYawCorrection)
         if let rawID = defaults.string(forKey: "robot.device.id"), let id = UUID(uuidString: rawID) {
             selectedDevice = RobotDevice(id: id,
                                          name: defaults.string(forKey: "robot.device.name") ?? "CatRobot",
