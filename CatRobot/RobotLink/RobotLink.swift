@@ -520,7 +520,7 @@ final class RobotLink: RobotLinkControlling {
                   snapshot.status?.flags.intersection([.gesture, .returning]).isEmpty == true else { return false }
             guard !commands.contains(where: { queued in
                 guard queued.priority != .automaticSettlement else { return false }
-                switch queued.command { case .move, .center, .gesture, .gestureAt, .stop: return true; default: return false }
+                return queued.command.isMotionCommand
             }) else { return false }
             return motionIsAvailable
         }
@@ -532,7 +532,7 @@ final class RobotLink: RobotLinkControlling {
             guard mayReplaceAutomatic || (atRest && !automaticMotionBlockedUntilRest) else { return false }
             guard !commands.contains(where: { queued in
                 guard queued.priority == .calibration || queued.priority == .manualStop else { return false }
-                switch queued.command { case .move, .center, .gesture, .gestureAt, .stop: return true; default: return false }
+                return queued.command.isMotionCommand
             }) else { return false }
         }
         if priority == .tracking || priority == .idleMotion {
@@ -543,7 +543,7 @@ final class RobotLink: RobotLinkControlling {
             // Never replace a manual/tool command still waiting for BLE capacity.
             guard !commands.contains(where: { queued in
                 guard queued.priority != priority else { return false }
-                switch queued.command { case .move, .center, .gesture, .gestureAt, .stop: return true; default: return false }
+                return queued.command.isMotionCommand
             }) else { return false }
         }
         switch command {
@@ -711,5 +711,14 @@ final class RobotLink: RobotLinkControlling {
         }
         published = snapshot
         for continuation in observers.values { continuation.yield(snapshot) }
+    }
+}
+
+private extension RobotCommand {
+    var isMotionCommand: Bool {
+        switch self {
+        case .move, .center, .gesture, .gestureAt, .stop: true
+        default: false
+        }
     }
 }
