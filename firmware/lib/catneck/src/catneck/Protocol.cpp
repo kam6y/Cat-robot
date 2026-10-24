@@ -26,6 +26,7 @@ size_t expectedLength(uint8_t type) {
     switch (static_cast<CommandType>(type)) {
         case CommandType::Move: return 6;
         case CommandType::Gesture: return 5;
+        case CommandType::GestureAt: return 9;
         case CommandType::Stop: return 1;
         case CommandType::Center: return 2;
         case CommandType::Torque: return 2;
@@ -69,6 +70,7 @@ DecodeResult decodeCommand(const uint8_t* data, size_t len) {
             r.command.move.speed = data[5];
             break;
         case CommandType::Gesture:
+        case CommandType::GestureAt:
             if (data[1] < 1 || data[1] > 6) {
                 return fail(DecodeError::BadGestureId);
             }
@@ -76,6 +78,10 @@ DecodeResult decodeCommand(const uint8_t* data, size_t len) {
             r.command.gesture.ampDeci = data[2];
             r.command.gesture.repeats = data[3];
             r.command.gesture.speed = data[4];
+            if (r.command.type == CommandType::GestureAt) {
+                r.command.gesture.yawCenterDeci = readI16(data + 5);
+                r.command.gesture.pitchCenterDeci = readI16(data + 7);
+            }
             break;
         case CommandType::Stop:
             break;

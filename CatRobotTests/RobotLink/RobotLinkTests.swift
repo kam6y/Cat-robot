@@ -543,6 +543,49 @@ final class RobotLinkTests: XCTestCase {
         }
     }
 
+    func testAnchoredGestureRequiresCapabilityAndPreemptsOnlyOwnedTracking() async throws {
+        let command = RobotCommand.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60)
+        let unsupported = RobotLinkHarness()
+        await unsupported.connectReady(capabilities: 1) // bit0 belongs to voltage measurement
+        await assertFailure(.notReady) { try await self.send(command, h: unsupported, priority: .toolMotion) }
+        for owner: RobotCommandPriority in [.tracking, .calibration] {
+            let h = RobotLinkHarness()
+            await h.connectReady(capabilities: 2)
+            try await send(.move(yawDeci: -340, pitchDeci: 60, speed: 20), h: h, priority: owner)
+            h.receiveStatus(robotStatus(flags: [.link, .moving], yaw: -340, pitch: 60))
+            await h.drain()
+            if owner == .tracking {
+                try await send(command, h: h, priority: .toolMotion)
+                XCTAssertEqual(h.transport.writtenData.last, Data([10, 1, 150, 1, 100, 0xAC, 0xFE, 60, 0]))
+                XCTAssertNil(h.link.snapshot.automaticWrite)
+                await assertFailure(.notReady) {
+                    try await self.send(.move(yawDeci: 0, pitchDeci: 0, speed: 20), h: h, priority: .tracking)
+                }
+            } else {
+                await assertFailure(.notReady) { try await self.send(command, h: h, priority: .toolMotion) }
+            }
+        }
+    }
+
+    func testQueuedAnchoredGestureCannotOverrideManualCenter() async throws {
+        let h = RobotLinkHarness()
+        await h.connectReady(capabilities: 2)
+        try await send(.move(yawDeci: -340, pitchDeci: 60, speed: 20), h: h, priority: .tracking)
+        h.receiveStatus(robotStatus(flags: [.link, .moving]))
+        await h.drain()
+        h.transport.canSendWriteWithoutResponse = false
+        let command = RobotCommand.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60)
+        let tool = Task { try await self.send(command, h: h, priority: .toolMotion) }
+        await h.drain()
+        let manual = Task { try await self.send(.center(speed: 10), h: h, priority: .calibration) }
+        await h.drain()
+        h.transport.canSendWriteWithoutResponse = true
+        h.transport.emit(.readyToWrite(attempt: h.attempt))
+        try await manual.value
+        await assertTaskFailure(tool, .cancelled)
+        XCTAssertFalse(h.transport.commands.contains(command))
+    }
+
     func testOnlyWrittenTrackingCanBeReplacedByToolWhileMoving() async throws {
         for tool in [RobotCommand.gesture(id: 1, ampDeci: 50, repeats: 1, speed: 100), .center(speed: 100)] {
             let h = RobotLinkHarness()

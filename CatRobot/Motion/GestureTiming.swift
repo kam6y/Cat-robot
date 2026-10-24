@@ -2,11 +2,16 @@ import Foundation
 
 /// Budget estimates, not servo control. Constants and quantization follow firmware Gesture.cpp / Config.h.
 enum GestureTiming {
-    static func estimate(request: RobotMotionRequest, limits: RobotLimits, current: RobotStatus) -> TimeInterval {
+    static func estimate(request: RobotMotionRequest, limits: RobotLimits, current: RobotStatus,
+                         anchor: FacePose? = nil) -> TimeInterval {
         let yawVelocity = max(0.1, Double(limits.yawVelocityDeci) / 10)
         let pitchVelocity = max(0.1, Double(limits.pitchVelocityDeci) / 10)
-        let centering = moveEstimate(yaw: Double(current.yawDeci) / 10, pitch: Double(current.pitchDeci) / 10,
+        let isExpressive = request.gesture != .center && request.gesture != .lookAtUser
+        let origin = isExpressive ? anchor : nil
+        let centering = moveEstimate(yaw: Double(current.yawDeci) / 10 - (origin?.yaw ?? 0),
+                                    pitch: Double(current.pitchDeci) / 10 - (origin?.pitch ?? 0),
                                     yawVelocity: yawVelocity, pitchVelocity: pitchVelocity)
+        // Firmware may shrink an anchored waveform near limits; requested amplitude gives a conservative budget.
         let amplitude = Double(request.amplitudeDeci) / 10
         let base: Double, ramp: Double, yaw: Double, pitch: Double
         switch request.gesture {

@@ -2,9 +2,21 @@ import XCTest
 @testable import CatRobot
 
 final class FaceTrackingGeometryTests: XCTestCase {
-    func testCenterPreservesCaptureTimeNeckPose() throws {
+    func testFixedLeftCameraAimIsCorrectedBeforeDeadbandInBothImageOrientations() throws {
+        // A 5-degree camera ray (tan(5deg)/2 from image center with 90deg FOV)
+        // corresponds to a person straight in front of the screen at the chosen fixed correction.
+        for (orientation, x) in [(FaceLandscapeOrientation.landscapeRight, 0.4562556682),
+                                  (.landscapeLeft, 0.5437443318)] {
+            let pose = FacePose(yaw: -20, pitch: 3)
+            XCTAssertEqual(FaceTrackingGeometry.project(observation(x: x, orientation: orientation), pose: pose), pose)
+            let centered = try XCTUnwrap(FaceTrackingGeometry.project(observation(orientation: orientation), pose: pose))
+            XCTAssertEqual(centered, FacePose(yaw: -25, pitch: 3))
+        }
+    }
+
+    func testCameraCenterIncludesFixedScreenAimCorrection() throws {
         let result = try XCTUnwrap(FaceTrackingGeometry.project(observation(), pose: .init(yaw: 30, pitch: -3)))
-        XCTAssertEqual(result, FacePose(yaw: 30, pitch: -3))
+        XCTAssertEqual(result, FacePose(yaw: 25, pitch: -3))
     }
 
     func testBothLandscapeOrientationsMapToObserverLeftAndUp() throws {
@@ -13,19 +25,19 @@ final class FaceTrackingGeometryTests: XCTestCase {
                                      (.landscapeLeft, 0.25, 0.45)] {
             let result = try XCTUnwrap(FaceTrackingGeometry.project(
                 observation(x: x, y: y, orientation: orientation), pose: .init(yaw: 0, pitch: 0)))
-            XCTAssertEqual(result.yaw, -26.565051, accuracy: 0.000_001)
+            XCTAssertEqual(result.yaw, -31.565051, accuracy: 0.000_001)
             XCTAssertEqual(result.pitch, 4.289153, accuracy: 0.000_001)
         }
     }
 
     func testProjectionAddsPoseInsteadOfRecenteringNeck() throws {
         let result = try XCTUnwrap(FaceTrackingGeometry.project(observation(x: 0.25), pose: .init(yaw: -30, pitch: 0)))
-        XCTAssertEqual(result.yaw, -3.434949, accuracy: 0.000_001)
+        XCTAssertEqual(result.yaw, -8.434949, accuracy: 0.000_001)
     }
 
     func testDeadbandIsAppliedIndependentlyPerAxis() throws {
         let result = try XCTUnwrap(FaceTrackingGeometry.project(
-            observation(x: 0.52, y: 0.55), pose: .init(yaw: 30, pitch: -2)))
+            observation(x: 0.4562556682, y: 0.55), pose: .init(yaw: 30, pitch: -2)))
         XCTAssertEqual(result.yaw, 30)
         XCTAssertEqual(result.pitch, 2.289153, accuracy: 0.000_001)
     }

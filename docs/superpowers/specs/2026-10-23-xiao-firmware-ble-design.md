@@ -257,7 +257,7 @@ Calibration（6 B）: ヨーオフセット int16（0.1°）、ピッチオフ�
 
 Limits（8 B）: ヨー速度上限 uint16（0.1°/s）、ピッチ速度上限 uint16、ヨー角度上限 int16（0.1°、対称な絶対値）、ピッチ角度上限 int16。Read は適用中の値。
 
-Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 major/minor/patch 各 uint8（初版 0.1.0）、ハードウェア ID uint8（= 1、E17 配線）、能力 uint8（bit0 電圧計測あり = 0）、予約 uint16（0）。
+Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 major/minor/patch 各 uint8（初版 0.1.0）、ハードウェア ID uint8（= 1、E17 配線）、能力 uint8（bit0 電圧計測あり = 0、bit1 姿勢指定GESTURE_AT対応。FW0.2.0はbit1=1）、予約 uint16（0）。
 
 #### コマンド（先頭 1 バイトが種別、長さは固定）
 
@@ -272,8 +272,9 @@ Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 majo
 | 0x07 | SAVE_CAL | 2 | req uint8（1〜255。0 は拒否） | 適用中の値を NVS に保存。保存値が既に同じなら書き込みを省略して成功扱い。成功（書き込み後の読み戻しが一致）で CAL_DIRTY と SAVE_ERROR を下げ、失敗で SAVE_ERROR を立てる。処理後に `save_seq` = req とし、変化による即時 Status 通知で結果を伝える。同じ req の再送は同じ処理を繰り返す（冪等）。保守要求 |
 | 0x08 | SET_LIMITS | 9 | yaw_v uint16、pitch_v uint16、yaw_a int16、pitch_a int16 | 絶対上限の内側、下限 5.0°/s・5.0° に飽和して更新。各欄 0 は「変更しない」。即時に有効で、角度上限は現在の目標の再飽和としてサーボ角目標に反映（S 字で移る）、速度上限は §4.3 の減速規則で反映。保守要求 |
 | 0x09 | PING | 2 | seq uint8 | キープアライブ。Status の seq に反映。保守要求 |
+| 0x0A | GESTURE_AT | 9 | id/amp/repeats/speed 各uint8、yawCenter/pitchCenter 各int16 | FW0.2.0以降・Info能力bit1。指定姿勢へPlannerで収束後、同姿勢を基準に定型波形を再生し、同姿勢で終了。基準を軸上限で制限し、全軸共通倍率で振幅を縮めて範囲内へ収める。保留と中断はGESTUREと同じ |
 
-- 拒否（無視して REJECTED を立て、累計に加える。通信に数えない）: 長さ不一致、未知の種別、GESTURE の id が 1〜6 以外、TORQUE の on が 0/1 以外、SET_LIMITS の角度上限が負、SAVE_CAL の req が 0
+- 拒否（無視して REJECTED を立て、累計に加える。通信に数えない）: 長さ不一致、未知の種別、GESTURE/GESTURE_AT の id が 1〜6 以外、TORQUE の on が 0/1 以外、SET_LIMITS の角度上限が負、SAVE_CAL の req が 0
 - 拒否以外の範囲外は飽和して受理し SATURATED を立てる
 - MOVE は 50 Hz まで連続受信できる。同じ tick に複数届いたら最後の値を使う
 - クライアントへの指針（サブ計画 3 向け）: Command は Write Without Response なので BLE 層の到達確認はない。校正の保存は次の手順で確かめる。(1) 保存したい値を SET_CAL で送る（プレビューは何度送ってもよい）。(2) 直前の Status の `save_seq` と異なる `req`（1〜255）を選び SAVE_CAL(req) を送る。(3) `save_seq` = req の Status を待つ。SAVE_ERROR = 0 なら保存成功、1 なら失敗。1 秒以内に来なければ同じ req で再送する（冪等）。(4) 成功後に Calibration を Read し、`saved` = 1 かつ値が意図どおりかを照合する。違えば（途中の SET_CAL が落ちた場合）SET_CAL から新しい req でやり直す。シリアルの `CAL`／`GAIN` も同じ校正状態を変えるが、`save_seq` は SAVE_CAL/`SAVE` 以外では変わらない

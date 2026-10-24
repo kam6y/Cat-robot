@@ -166,7 +166,7 @@ void test_hex_matches_binary_decoder() {
     TEST_ASSERT_EQUAL_UINT8(5, compact.command.ping.seq);
 
     assertError(parse("HEX 02 00"), "BAD_LENGTH");
-    assertError(parse("HEX 0A"), "UNKNOWN_TYPE");
+    assertError(parse("HEX 0B"), "UNKNOWN_TYPE");
     assertError(parse("HEX"), "BAD_ARGS");
     assertError(parse("HEX zz"), "BAD_ARGS");
     assertError(parse("HEX 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15"), "BAD_ARGS");

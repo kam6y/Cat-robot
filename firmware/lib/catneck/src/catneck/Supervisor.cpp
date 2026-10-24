@@ -1,5 +1,6 @@
 #include "catneck/Supervisor.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace catneck {
@@ -109,14 +110,21 @@ void Supervisor::onCommand(const Command& command, Source source, uint32_t nowMi
             noteAccepted(false);
             return;
         }
-        case CommandType::Gesture: {
+        case CommandType::Gesture:
+        case CommandType::GestureAt: {
             GestureSpec spec{};
             spec.id = command.gesture.id;
             spec.ampDeg = command.gesture.ampDeci / 10.0f;
             spec.repeats = command.gesture.repeats;
             spec.speedPercent = command.gesture.speed;
+            spec.anchored = command.type == CommandType::GestureAt;
+            if (spec.anchored) {
+                spec.yawCenter = command.gesture.yawCenterDeci / 10.0f;
+                spec.pitchCenter = command.gesture.pitchCenterDeci / 10.0f;
+            }
+            saturated = fitGesture(spec);
             const JointTargets amplitudes = gestureAmplitudes(spec.id, spec.ampDeg);
-            saturated = std::fabs(amplitudes.yaw) > yaw_.axis.limits().maxAngle ||
+            saturated = saturated || std::fabs(amplitudes.yaw) > yaw_.axis.limits().maxAngle ||
                         std::fabs(amplitudes.pitch) > pitch_.axis.limits().maxAngle;
             acceptMotionRequest(nowMillis);
             if (phase_ != GesturePhase::None) {
@@ -403,13 +411,33 @@ bool Supervisor::plannersAtRest() const {
 // RETURNING）では直前 3 標本から速度・加速度を推定して Planner に引き渡す。ピッチは 3 tick 遅らせて両軸の始動を
 // ずらす（FW-PWR-1）。再生中の波形は開始時の上限で完走し、SET_LIMITS は以後の移動に効く。
 
+bool Supervisor::fitGesture(GestureSpec& spec) const {
+    if (!spec.anchored) return false;
+    bool yawClamped = false, pitchClamped = false;
+    spec.yawCenter = yaw_.axis.clampJoint(spec.yawCenter, &yawClamped);
+    spec.pitchCenter = pitch_.axis.clampJoint(spec.pitchCenter, &pitchClamped);
+    const JointTargets amplitude = gestureAmplitudes(spec.id, spec.ampDeg);
+    const bool symmetric = spec.id == GestureId::Nod || spec.id == GestureId::Shake;
+    const auto scale = [symmetric](float center, float extent, float limit) {
+        if (extent == 0.0f) return 1.0f;
+        const float room = symmetric ? limit - std::fabs(center)
+                                    : limit - (extent > 0.0f ? center : -center);
+        return std::min(1.0f, std::max(0.0f, room / std::fabs(extent)));
+    };
+    const float factor = std::min(scale(spec.yawCenter, amplitude.yaw, yaw_.axis.limits().maxAngle),
+                                  scale(spec.pitchCenter, amplitude.pitch, pitch_.axis.limits().maxAngle));
+    spec.ampDeg *= factor;
+    return yawClamped || pitchClamped || factor < 1.0f;
+}
+
 void Supervisor::startGesture(const GestureSpec& spec) {
     activeGesture_ = spec;
+    fitGesture(activeGesture_);  // A queued gesture can start after limits have changed.
     phase_ = GesturePhase::Centering;
     speedPercent_ = clampSpeedPercent(spec.speedPercent);
     applyPlannerVelocities();
     bool ignored = false;
-    applyJointTargets(0.0f, 0.0f, &ignored);  // 起点は中立
+    applyJointTargets(activeGesture_.yawCenter, activeGesture_.pitchCenter, &ignored);
 }
 
 void Supervisor::serviceGesture() {
@@ -431,7 +459,8 @@ void Supervisor::serviceGesture() {
 
 void Supervisor::playWaveformTick() {
     // 波形の最後の標本を出したあと、遅らせたピッチが終端に届くまで kStaggerTicks だけ吐き出す
-    const JointTargets t = wave_.active() ? wave_.step() : JointTargets{yaw_.axis.servoToJoint(yawHist_[0]), 0.0f};
+    const JointTargets relative = wave_.active() ? wave_.step() : JointTargets{0.0f, 0.0f};
+    const JointTargets t{activeGesture_.yawCenter + relative.yaw, activeGesture_.pitchCenter + relative.pitch};
     const float pitchDelayed = pitchDelay_[pitchDelayIndex_];
     pitchDelay_[pitchDelayIndex_] = t.pitch;
     pitchDelayIndex_ = static_cast<uint8_t>((pitchDelayIndex_ + 1) % config::kStaggerTicks);

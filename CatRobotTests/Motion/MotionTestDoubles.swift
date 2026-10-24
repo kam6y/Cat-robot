@@ -57,6 +57,8 @@ final class RecordingRobotLink: RobotLinkControlling {
     func setApplicationActive(_ active: Bool) {}
     func disconnectByUser() { disconnect() }
 
+    func emitInfo(_ info: RobotInfo) { snapshot.info = info; publish() }
+
     func emitStatus(_ status: RobotStatus) {
         snapshot.status = status
         snapshot.statusReceivedAt = clock.now
@@ -117,7 +119,7 @@ final class RecordingRobotLink: RobotLinkControlling {
             else {
                 sent.append(.init(command: write.command, priority: write.priority, at: clock.now))
                 switch write.command {
-                case .move, .center, .gesture, .stop, .torque, .setCalibration:
+                case .move, .center, .gesture, .gestureAt, .stop, .torque, .setCalibration:
                     snapshot.automaticWrite = write.priority == .tracking || write.priority == .idleMotion
                         ? .init(token: write.token, command: write.command, at: clock.now, priority: write.priority) : nil
                     publish()

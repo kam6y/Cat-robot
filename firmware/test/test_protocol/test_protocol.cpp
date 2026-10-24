@@ -78,8 +78,27 @@ void test_decode_rejects_bad_lengths() {
     TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::BadLength), static_cast<int>(tooLong.error));
 }
 
+void test_decode_anchored_gesture_packet() {
+    DecodeResult r = decode({0x0A, 1, 150, 1, 100, 0xAC, 0xFE, 60, 0});
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_UINT8(0x0A, static_cast<uint8_t>(r.command.type));
+    TEST_ASSERT_EQUAL(static_cast<int>(GestureId::Nod), static_cast<int>(r.command.gesture.id));
+    TEST_ASSERT_EQUAL_UINT8(150, r.command.gesture.ampDeci);
+}
+
+void test_anchored_gesture_rejects_bad_length_and_id() {
+    TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::BadLength),
+                      static_cast<int>(decode({0x0A, 1, 150, 1, 100, 0, 0, 0}).error));
+    TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::BadLength),
+                      static_cast<int>(decode({0x0A, 1, 150, 1, 100, 0, 0, 0, 0, 0}).error));
+    for (uint8_t id : {0, 7}) {
+        TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::BadGestureId),
+                          static_cast<int>(decode({0x0A, id, 150, 1, 100, 0, 0, 0, 0}).error));
+    }
+}
+
 void test_decode_unknown_type() {
-    DecodeResult r = decode({0x0A});
+    DecodeResult r = decode({0x0B});
     TEST_ASSERT_FALSE(r.ok);
     TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::UnknownType), static_cast<int>(r.error));
     DecodeResult z = decode({0x00, 1, 2});
@@ -209,6 +228,8 @@ int main(int, char**) {
     RUN_TEST(test_decode_gesture_and_bad_id);
     RUN_TEST(test_decode_rejects_bad_lengths);
     RUN_TEST(test_decode_unknown_type);
+    RUN_TEST(test_decode_anchored_gesture_packet);
+    RUN_TEST(test_anchored_gesture_rejects_bad_length_and_id);
     RUN_TEST(test_decode_torque_and_set_limits);
     RUN_TEST(test_decode_save_cal_req);
     RUN_TEST(test_decode_simple_commands);

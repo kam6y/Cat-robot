@@ -37,6 +37,8 @@ struct RobotInfo: Equatable, Sendable {
     let patch: UInt8
     let hardwareID: UInt8
     let capabilities: UInt8
+
+    var supportsAnchoredGestures: Bool { capabilities & 2 != 0 }
 }
 
 enum RobotFirmwareState: UInt8, Sendable {
@@ -78,6 +80,7 @@ struct RobotStatus: Equatable, Sendable {
 enum RobotCommand: Equatable, Sendable {
     case move(yawDeci: Int16, pitchDeci: Int16, speed: UInt8)
     case gesture(id: UInt8, ampDeci: UInt8, repeats: UInt8, speed: UInt8)
+    case gestureAt(id: UInt8, ampDeci: UInt8, repeats: UInt8, speed: UInt8, yawDeci: Int16, pitchDeci: Int16)
     case stop
     case center(speed: UInt8)
     case torque(Bool)
@@ -105,6 +108,9 @@ enum RobotProtocol {
         case let .gesture(id, amp, repeats, speed):
             guard (1...6).contains(id) else { throw RobotProtocolError.invalidValue }
             bytes = [2, id, amp, repeats, speed]
+        case let .gestureAt(id, amp, repeats, speed, yaw, pitch):
+            guard (1...6).contains(id) else { throw RobotProtocolError.invalidValue }
+            bytes = [10, id, amp, repeats, speed] + littleEndian(yaw) + littleEndian(pitch)
         case .stop:
             bytes = [3]
         case let .center(speed):

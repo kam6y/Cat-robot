@@ -105,6 +105,7 @@ private:
     void freezePlanners();
     bool plannersAtRest() const;
 
+    bool fitGesture(GestureSpec& spec) const;
     void startGesture(const GestureSpec& spec);
     void serviceGesture();
     void playWaveformTick();

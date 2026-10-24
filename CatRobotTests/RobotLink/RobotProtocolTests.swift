@@ -19,6 +19,8 @@ final class RobotProtocolTests: XCTestCase {
                                  yawAngleDeci: 600, pitchAngleDeci: 300)
         let fixtures: [(RobotCommand, [UInt8])] = [
             (.gesture(id: 1, ampDeci: 150, repeats: 2, speed: 100), [2, 1, 150, 2, 100]),
+            (.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60),
+             [10, 1, 150, 1, 100, 0xAC, 0xFE, 60, 0]),
             (.stop, [3]),
             (.center(speed: 50), [4, 50]),
             (.torque(true), [5, 1]),
@@ -39,6 +41,8 @@ final class RobotProtocolTests: XCTestCase {
         let commands: [RobotCommand] = [
             .gesture(id: 0, ampDeci: 1, repeats: 1, speed: 100),
             .gesture(id: 7, ampDeci: 1, repeats: 1, speed: 100),
+            .gestureAt(id: 0, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60),
+            .gestureAt(id: 7, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60),
             .saveCalibration(req: 0),
             .setLimits(.init(yawVelocityDeci: 1200, pitchVelocityDeci: 1000,
                              yawAngleDeci: -1, pitchAngleDeci: 300)),

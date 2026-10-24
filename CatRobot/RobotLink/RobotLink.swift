@@ -520,7 +520,7 @@ final class RobotLink: RobotLinkControlling {
                   snapshot.status?.flags.intersection([.gesture, .returning]).isEmpty == true else { return false }
             guard !commands.contains(where: { queued in
                 guard queued.priority != .automaticSettlement else { return false }
-                switch queued.command { case .move, .center, .gesture, .stop: return true; default: return false }
+                switch queued.command { case .move, .center, .gesture, .gestureAt, .stop: return true; default: return false }
             }) else { return false }
             return motionIsAvailable
         }
@@ -532,7 +532,7 @@ final class RobotLink: RobotLinkControlling {
             guard mayReplaceAutomatic || (atRest && !automaticMotionBlockedUntilRest) else { return false }
             guard !commands.contains(where: { queued in
                 guard queued.priority == .calibration || queued.priority == .manualStop else { return false }
-                switch queued.command { case .move, .center, .gesture, .stop: return true; default: return false }
+                switch queued.command { case .move, .center, .gesture, .gestureAt, .stop: return true; default: return false }
             }) else { return false }
         }
         if priority == .tracking || priority == .idleMotion {
@@ -543,7 +543,7 @@ final class RobotLink: RobotLinkControlling {
             // Never replace a manual/tool command still waiting for BLE capacity.
             guard !commands.contains(where: { queued in
                 guard queued.priority != priority else { return false }
-                switch queued.command { case .move, .center, .gesture, .stop: return true; default: return false }
+                switch queued.command { case .move, .center, .gesture, .gestureAt, .stop: return true; default: return false }
             }) else { return false }
         }
         switch command {
@@ -554,7 +554,8 @@ final class RobotLink: RobotLinkControlling {
         case .move, .center:
             guard snapshot.status?.flags.contains(.gesture) == false else { return false }
             if case .center = command, priority == .motion, !atRest && !mayReplaceAutomatic { return false }
-        case .gesture:
+        case .gesture, .gestureAt:
+            if case .gestureAt = command, snapshot.info?.supportsAnchoredGestures != true { return false }
             guard atRest || ((priority == .motion || priority == .toolMotion) && mayReplaceAutomatic) else { return false }
         case .torque(false) where priority == .idlePowerOff:
             // A preference change can precede the coordinator's next tick while BLE is blocked.
@@ -578,7 +579,7 @@ final class RobotLink: RobotLinkControlling {
         case .setCalibration: 2
         case .ping: 3
         case .stop: 4
-        case .gesture, .center: 5
+        case .gesture, .gestureAt, .center: 5
         case .saveCalibration: 6
         case .setLimits: 7
         case .torque: 8
@@ -613,7 +614,7 @@ final class RobotLink: RobotLinkControlling {
             }
             transport.writeCommand(command.data, attempt: attempt)
             switch command.command {
-            case .move, .center, .gesture, .stop, .torque, .setCalibration:
+            case .move, .center, .gesture, .gestureAt, .stop, .torque, .setCalibration:
                 snapshot.automaticWrite = command.priority == .tracking || command.priority == .idleMotion
                     ? .init(token: command.token, command: command.command, at: clock.now, priority: command.priority) : nil
                 automaticMotionBlockedUntilRest = snapshot.automaticWrite == nil

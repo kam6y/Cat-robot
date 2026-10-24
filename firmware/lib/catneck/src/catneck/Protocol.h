@@ -16,6 +16,7 @@ enum class CommandType : uint8_t {
     SaveCal = 0x07,
     SetLimits = 0x08,
     Ping = 0x09,
+    GestureAt = 0x0A,
 };
 
 enum class GestureId : uint8_t {
@@ -37,6 +38,8 @@ struct GestureCmd {
     uint8_t ampDeci;
     uint8_t repeats;
     uint8_t speed;
+    int16_t yawCenterDeci;    // GestureAt only; legacy Gesture uses zero
+    int16_t pitchCenterDeci;
 };
 struct CenterCmd {
     uint8_t speed;
@@ -153,6 +156,10 @@ constexpr size_t kLimitsSize = 8;
 void encodeLimits(const LimitsData& limits, uint8_t* out8);
 // Limits 特性への Write（8 B のみ）
 bool decodeLimitsWrite(const uint8_t* data, size_t len, SetLimitsCmd& out);
+
+namespace InfoCapabilities {
+constexpr uint8_t AnchoredGesture = 1u << 1;
+}
 
 struct InfoData {
     uint8_t protocol;

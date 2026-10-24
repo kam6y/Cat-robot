@@ -483,6 +483,154 @@ uint32_t playGesture(Sim& sim, GestureId id, float amp, uint8_t speed, Kinematic
     return sim.now - start;
 }
 
+Command anchoredGestureCmd(GestureId id, float amp, float yaw, float pitch) {
+    const int16_t y = static_cast<int16_t>(std::lround(yaw * 10));
+    const int16_t p = static_cast<int16_t>(std::lround(pitch * 10));
+    const uint8_t bytes[] = {0x0A, static_cast<uint8_t>(id), static_cast<uint8_t>(std::lround(amp * 10)), 1, 100,
+        static_cast<uint8_t>(y & 255), static_cast<uint8_t>((y >> 8) & 255),
+        static_cast<uint8_t>(p & 255), static_cast<uint8_t>((p >> 8) & 255)};
+    const DecodeResult decoded = decodeCommand(bytes, sizeof bytes);
+    TEST_ASSERT_TRUE_MESSAGE(decoded.ok, "Anchored gesture must reach the real Supervisor through the wire decoder");
+    return decoded.command;
+}
+
+void test_anchored_nod_keeps_sideways_yaw_and_returns_to_its_origin() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(moveCmd(-34, 6));
+    TEST_ASSERT_TRUE(sim.settle());
+    sim.send(anchoredGestureCmd(GestureId::Nod, 15, -34, 6));
+    float pitchMin = 6, pitchMax = 6;
+    for (int i = 0; i < 1000 && sim.flag(StatusFlags::Gesture); ++i) {
+        sim.advance(20);
+        sim.send(pingCmd(1));
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, -34, sim.yawJoint());
+        pitchMin = std::fmin(pitchMin, sim.pitchJoint());
+        pitchMax = std::fmax(pitchMax, sim.pitchJoint());
+    }
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    TEST_ASSERT_TRUE(pitchMin < -8.5f && pitchMax > 20.5f);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, -34, sim.yawJoint());
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 6, sim.pitchJoint());
+}
+
+void test_anchored_nod_shrinks_waveform_to_available_pitch_room() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(moveCmd(55, 28));
+    TEST_ASSERT_TRUE(sim.settle());
+    sim.send(anchoredGestureCmd(GestureId::Nod, 15, 55, 28));
+    TEST_ASSERT_TRUE(sim.flag(StatusFlags::Saturated));
+    float low = 28, high = 28;
+    for (int i = 0; i < 1000 && sim.flag(StatusFlags::Gesture); ++i) {
+        sim.advance(20);
+        sim.send(pingCmd(1));
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, 55, sim.yawJoint());
+        low = std::fmin(low, sim.pitchJoint());
+        high = std::fmax(high, sim.pitchJoint());
+    }
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 26, low);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 30, high);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 28, sim.pitchJoint());
+}
+
+void test_queued_anchored_gesture_preserves_its_own_origin() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(anchoredGestureCmd(GestureId::Nod, 5, -25, 5));
+    sim.advance(100);
+    sim.send(anchoredGestureCmd(GestureId::Nod, 5, 20, -3));
+    for (int i = 0; i < 1000 && sim.flag(StatusFlags::Gesture); ++i) {
+        sim.advance(20);
+        sim.send(pingCmd(1));
+    }
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 20, sim.yawJoint());
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, -3, sim.pitchJoint());
+}
+
+void test_stop_discards_anchored_gesture_and_pending_origin() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(anchoredGestureCmd(GestureId::Nod, 15, -25, 5));
+    sim.advance(300);
+    sim.send(anchoredGestureCmd(GestureId::Nod, 5, 20, -3));
+    sim.send(stopCmd());
+    sim.advance(20);
+    TEST_ASSERT_FALSE(sim.out.pwmEnabled);
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    const float stoppedYaw = sim.yawJoint();
+    for (int i = 0; i < 30; ++i) { sim.send(pingCmd(1)); sim.advance(100); }
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, stoppedYaw, sim.yawJoint());
+    TEST_ASSERT_FALSE(sim.out.pwmEnabled);
+}
+
+void test_all_anchored_gestures_fit_limits_and_return_to_origin() {
+    struct Fixture { GestureId id; float yaw, pitch, yawLow, yawHigh, pitchLow, pitchHigh; };
+    const Fixture cases[] = {
+        {GestureId::Shake, 55, 6, 50, 60, 6, 6},
+        {GestureId::TiltL, 55, 28, 55, 60, 25.5f, 28},
+        {GestureId::TiltR, -55, 28, -60, -55, 25.5f, 28},
+        {GestureId::LookUp, -34, 28, -34, -34, 28, 30},
+        {GestureId::LookDown, -34, -28, -34, -34, -30, -28},
+    };
+    for (const Fixture& c : cases) {
+        Sim sim;
+        sim.bootToIdle();
+        sim.send(moveCmd(c.yaw, c.pitch));
+        TEST_ASSERT_TRUE(sim.settle());
+        sim.send(anchoredGestureCmd(c.id, 20, c.yaw, c.pitch));
+        float yl = c.yaw, yh = c.yaw, pl = c.pitch, ph = c.pitch;
+        for (int i = 0; i < 1000 && sim.flag(StatusFlags::Gesture); ++i) {
+            sim.advance(20); sim.send(pingCmd(1));
+            yl = std::fmin(yl, sim.yawJoint()); yh = std::fmax(yh, sim.yawJoint());
+            pl = std::fmin(pl, sim.pitchJoint()); ph = std::fmax(ph, sim.pitchJoint());
+        }
+        TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, c.yawLow, yl);
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, c.yawHigh, yh);
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, c.pitchLow, pl);
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, c.pitchHigh, ph);
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, c.yaw, sim.yawJoint());
+        TEST_ASSERT_FLOAT_WITHIN(0.05f, c.pitch, sim.pitchJoint());
+    }
+}
+
+void test_disconnect_from_anchored_gesture_returns_to_neutral_without_jump() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.sup.onLink(true, sim.now);
+    sim.send(moveCmd(-34, 6));
+    TEST_ASSERT_TRUE(sim.settle());
+    sim.send(anchoredGestureCmd(GestureId::Nod, 15, -34, 6));
+    sim.advance(300);
+    sim.sup.onLink(false, sim.now);
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    float yaw = sim.yawJoint(), pitch = sim.pitchJoint();
+    for (int i = 0; i < 100 && sim.sup.state() == SupervisorState::Returning; ++i) {
+        sim.advance(20);
+        TEST_ASSERT_TRUE(std::fabs(sim.yawJoint() - yaw) <= config::kYawDefaultVel * kDt + 0.1f);
+        TEST_ASSERT_TRUE(std::fabs(sim.pitchJoint() - pitch) <= config::kPitchDefaultVel * kDt + 0.1f);
+        yaw = sim.yawJoint(); pitch = sim.pitchJoint();
+    }
+    assertState(sim, SupervisorState::RelaxWait);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 0, sim.yawJoint());
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 0, sim.pitchJoint());
+    sim.advance(2000);
+    TEST_ASSERT_FALSE(sim.out.pwmEnabled);
+}
+
+void test_legacy_gesture_still_returns_to_neutral() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(moveCmd(-34, 6));
+    TEST_ASSERT_TRUE(sim.settle());
+    playGesture(sim, GestureId::Nod, 15, 100);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 0, sim.yawJoint());
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 0, sim.pitchJoint());
+}
+
 void test_nod_large_waveform_timing_and_amplitude() {
     GesturePlayer ref;
     ref.start(GestureSpec{GestureId::Nod, 15.0f, 1, 100}, yawLimits(), pitchLimits());
@@ -941,6 +1089,13 @@ int main(int, char**) {
     RUN_TEST(test_torque_off_discards_playing_and_pending);
     RUN_TEST(test_set_limits_during_gesture_keeps_waveform_then_applies);
     RUN_TEST(test_nod_large_waveform_timing_and_amplitude);
+    RUN_TEST(test_anchored_nod_keeps_sideways_yaw_and_returns_to_its_origin);
+    RUN_TEST(test_anchored_nod_shrinks_waveform_to_available_pitch_room);
+    RUN_TEST(test_queued_anchored_gesture_preserves_its_own_origin);
+    RUN_TEST(test_stop_discards_anchored_gesture_and_pending_origin);
+    RUN_TEST(test_legacy_gesture_still_returns_to_neutral);
+    RUN_TEST(test_all_anchored_gestures_fit_limits_and_return_to_origin);
+    RUN_TEST(test_disconnect_from_anchored_gesture_returns_to_neutral_without_jump);
     RUN_TEST(test_gesture_sets_moving_flag_while_waveform_runs);
     RUN_TEST(test_tilt_pitch_starts_three_ticks_after_yaw);
     RUN_TEST(test_set_cal_from_idle_starts_output_smoothly);

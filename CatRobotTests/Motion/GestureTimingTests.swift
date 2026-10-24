@@ -9,6 +9,16 @@ final class GestureTimingTests: XCTestCase {
         }
     }
 
+    func testAnchoredGestureOmitsUnneededTripToNeutralButCenterStillMoves() {
+        let current = robotStatus(yaw: -340, pitch: 60)
+        let anchor = FacePose(yaw: -34, pitch: 6)
+        let nod = RobotMotionRequest(gesture: .nod, intensity: .large, repeats: 1)
+        XCTAssertEqual(GestureTiming.estimate(request: nod, limits: standardRobotLimits, current: current, anchor: anchor), 1.52, accuracy: 0.020_001)
+        let center = RobotMotionRequest(gesture: .center, intensity: .large, repeats: 1)
+        XCTAssertEqual(GestureTiming.estimate(request: center, limits: standardRobotLimits, current: current, anchor: anchor),
+                       GestureTiming.estimate(request: center, limits: standardRobotLimits, current: current))
+    }
+
     func testVelocityStretchAndCenteringAreIncludedWithoutMultiplyingRepeats() {
         let request = RobotMotionRequest(gesture: .nod, intensity: .large, repeats: 1)
         let slow = RobotLimits(yawVelocityDeci: 600, pitchVelocityDeci: 500, yawAngleDeci: 600, pitchAngleDeci: 300)

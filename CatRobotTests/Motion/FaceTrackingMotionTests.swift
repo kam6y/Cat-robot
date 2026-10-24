@@ -183,6 +183,73 @@ final class FaceTrackingMotionTests: XCTestCase {
         XCTAssertEqual(h.gestureCommands.count, 1)
     }
 
+    func testEveryExpressiveToolUsesExecutionTimePoseOnAnchoredFirmware() async throws {
+        for (gesture, id, amp) in [(RobotGesture.nod, 1, 150), (.shake, 2, 250), (.tilt, 3, 150),
+                                    (.lookUp, 5, 200), (.lookDown, 6, 200)] {
+            let h = makeHarness()
+            h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
+            h.link.emitStatus(robotStatus(yaw: -200, pitch: 20))
+            follow(h, yaw: -30, pitch: 6)
+            await h.drain()
+            let turn = h.reserve(gesture)
+            h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
+            h.motion.speechStarted(turn)
+            await h.drain()
+            let command = try XCTUnwrap(h.sentCommands.last)
+            XCTAssertEqual(try RobotProtocol.encode(command), Data([10, UInt8(id), UInt8(amp), 1, 100, 0xAC, 0xFE, 60, 0]))
+            XCTAssertFalse(h.sentCommands.contains(.stop))
+            XCTAssertFalse(h.sentCommands.contains(.torque(false)))
+        }
+    }
+
+    func testTrackingDisabledKeepsLegacyGestureEvenOnCapableFirmware() async {
+        let h = makeHarness()
+        h.preferences.trackingEnabled = false
+        h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
+        h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
+        h.motion.speechStarted(h.reserve(.nod))
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100))
+    }
+
+    func testAnchoredGestureSurvivesFaceLossThenResumesOnlyFreshTracking() async {
+        let h = makeHarness()
+        h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
+        h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
+        follow(h, yaw: -34, pitch: 6)
+        await h.drain()
+        h.motion.speechStarted(h.reserve(.nod))
+        await h.drain()
+        let gesture = h.sentCommands.last
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque, .moving, .gesture], yaw: -340, pitch: -80))
+        await h.drain()
+        h.motion.setTrackingState(.holding)
+        await h.advanceFresh(by: 0.5)
+        XCTAssertEqual(h.sentCommands.last, gesture)
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque], yaw: -340, pitch: 60))
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, gesture)
+        follow(h, yaw: -30, pitch: 6)
+        await h.advanceFresh(by: 0.2)
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: -300, pitchDeci: 60, speed: 20))
+        XCTAssertFalse(h.sentCommands.contains(.center(speed: 100)))
+    }
+
+    func testToolKeepsCurrentPoseDuringFaceHoldAndExplicitCenterStillCenters() async throws {
+        let h = makeHarness()
+        h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
+        h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
+        h.motion.setTrackingState(.holding)
+        h.motion.speechStarted(h.reserve(.nod))
+        await h.drain()
+        XCTAssertEqual(try RobotProtocol.encode(try XCTUnwrap(h.sentCommands.last)),
+                       Data([10, 1, 150, 1, 100, 0xAC, 0xFE, 60, 0]))
+        await h.completeCycle(after: 2)
+        h.motion.speechStarted(h.reserve(.center))
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .center(speed: 100))
+    }
+
     func testToolSupersedesOwnedTrackingWithoutPowerInterruption() async {
         let h = makeHarness()
         follow(h, yaw: 20)

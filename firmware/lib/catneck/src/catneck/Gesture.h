@@ -13,6 +13,9 @@ struct GestureSpec {
     float ampDeg;          // 0.1° 単位の amp を度に直した値
     uint8_t repeats;       // 0 → 1、4 以上 → 3
     uint8_t speedPercent;  // 0 → 100、101 以上 → 100。時間を 100/speed 倍に伸ばす
+    bool anchored = false;
+    float yawCenter = 0.0f;
+    float pitchCenter = 0.0f;
 };
 
 struct JointTargets {

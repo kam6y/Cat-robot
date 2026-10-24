@@ -23,7 +23,9 @@ enum FaceTrackingGeometry {
         // to the person facing the robot. The other landscape rotates both image axes.
         let direction = observation.orientation == .landscapeRight ? 1.0 : -1.0
         let tangent = tan(fov * .pi / 360)
-        let yawDelta = -atan(direction * (2 * face.centerX - 1) * tangent) * 180 / .pi
+        // This robot mounts the front camera to the observer's left of screen center.
+        // Fixed correction for the usual 0.5–1m distance; apply BEFORE the deadband.
+        let yawDelta = -atan(direction * (2 * face.centerX - 1) * tangent) * 180 / .pi - 5
         let pitchDelta = atan(direction * (2 * face.centerY - 1) * tangent / aspect) * 180 / .pi
         return .init(yaw: max(-45, min(45, pose.yaw + (abs(yawDelta) <= 4 ? 0 : yawDelta))),
                      pitch: max(-10, min(10, pose.pitch + (abs(pitchDelta) <= 4 ? 0 : pitchDelta))))

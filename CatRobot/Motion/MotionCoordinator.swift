@@ -163,7 +163,7 @@ final class MotionCoordinator: RobotMotionControlling {
             turn!.accepted += 1
             turn!.pending.append(.init(request: request, ordinal: turn!.accepted, predicted: predicted))
             count += 1
-            expectedStatus = restAfter(command(for: request), current: status)
+            expectedStatus = restAfter(command(for: request, current: expectedStatus), current: expectedStatus)
         }
         guard count > 0 else {
             record(.reserved, turn: id, result: .budgetExceeded)
@@ -500,7 +500,7 @@ final class MotionCoordinator: RobotMotionControlling {
         let status = snapshot.status!
         let requiresStart: Bool
         switch command {
-        case .gesture: requiresStart = true
+        case .gesture, .gestureAt: requiresStart = true
         case .center: requiresStart = abs(Int(status.yawDeci)) > 1 || abs(Int(status.pitchDeci)) > 1
         case let .move(yaw, pitch, _): requiresStart = abs(Int(yaw) - Int(status.yawDeci)) > 1 || abs(Int(pitch) - Int(status.pitchDeci)) > 1
         default: requiresStart = false
@@ -575,7 +575,11 @@ final class MotionCoordinator: RobotMotionControlling {
         if let turn, turn.generationDone, turn.speechDone, turn.pending.isEmpty, active?.turn != turn.id { self.turn = nil }
     }
 
-    private func command(for request: RobotMotionRequest) -> RobotCommand {
+    private var usesAnchoredGestures: Bool {
+        preferences.trackingEnabled && snapshot.info?.supportsAnchoredGestures == true
+    }
+
+    private func command(for request: RobotMotionRequest, current: RobotStatus? = nil) -> RobotCommand {
         let id: UInt8
         switch request.gesture {
         case .nod: id = 1
@@ -588,12 +592,17 @@ final class MotionCoordinator: RobotMotionControlling {
             guard let target = freshTracking else { return .center(speed: 100) }
             return .move(yawDeci: deci(target.yaw, cap: 45), pitchDeci: deci(target.pitch, cap: 20), speed: 100)
         }
+        if usesAnchoredGestures, let pose = current ?? snapshot.status {
+            return .gestureAt(id: id, ampDeci: request.amplitudeDeci, repeats: 1, speed: 100,
+                              yawDeci: pose.yawDeci, pitchDeci: pose.pitchDeci)
+        }
         return .gesture(id: id, ampDeci: request.amplitudeDeci, repeats: 1, speed: 100)
     }
 
     private func estimate(_ request: RobotMotionRequest, limits: RobotLimits, current: RobotStatus) -> TimeInterval {
         guard request.gesture == .lookAtUser, let target = freshTracking else {
-            return GestureTiming.estimate(request: request, limits: limits, current: current)
+            return GestureTiming.estimate(request: request, limits: limits, current: current,
+                                          anchor: usesAnchoredGestures ? FacePose(yaw: Double(current.yawDeci) / 10, pitch: Double(current.pitchDeci) / 10) : nil)
         }
         let delta = RobotStatus(yawDeci: Int16(clamping: Int(current.yawDeci) - Int(deci(target.yaw, cap: 45))),
                                 pitchDeci: Int16(clamping: Int(current.pitchDeci) - Int(deci(target.pitch, cap: 20))), flags: current.flags,
@@ -603,7 +612,11 @@ final class MotionCoordinator: RobotMotionControlling {
     }
 
     private func restAfter(_ command: RobotCommand, current: RobotStatus) -> RobotStatus {
-        guard case let .move(yaw, pitch, _) = command else { return neutral(current) }
+        let yaw: Int16, pitch: Int16
+        switch command {
+        case let .move(y, p, _), let .gestureAt(_, _, _, _, y, p): (yaw, pitch) = (y, p)
+        default: return neutral(current)
+        }
         return .init(yawDeci: yaw, pitchDeci: pitch, flags: current.flags, pingSeq: current.pingSeq,
                      state: current.state, voltageCenti: current.voltageCenti,
                      rejectedCount: current.rejectedCount, saveSeq: current.saveSeq)

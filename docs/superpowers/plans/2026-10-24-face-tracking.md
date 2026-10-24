@@ -141,3 +141,14 @@ Files: `FaceCapturePolicy.swift`, `MotionCoordinator.swift`, `FaceCapturePolicyT
 - [x] Reproduce ServoDriver channel reset on disable/re-enable with a real-driver host test using recording Arduino/Servo boundaries; assert disabled duty0, retained timer/channel on resume, calibrated pulses, and no output in CATNECK_NO_PWM. Run `python3 firmware/tools/test_servo_driver.py` and observe RED.
 - [x] Preserve allocated servo channels when PWM is disabled, release output to zero duty, and write current planner pulses to resume. Keep all Supervisor stopping/returning timeouts and protocol/calibration behavior. Build baseline and candidate firmware and run `pio test -e native` plus the host adapter test.
 - [ ] Compare restart on the attended robot after centering. Retain the candidate only with observed improvement and stopped-output checks; otherwise restore the known baseline and record the remaining hardware limit. Firmware flashing must preserve NVS/bonds.
+
+
+#### Task6 continuation: fixed screen aim and anchored tool gestures
+
+User reports and observed serial trace establish the two acceptance gaps. Continue the previously selected Native execution and existing worktree.
+
+- [ ] FW RED: raw9B0x0A packet decoded through realProtocol into realSupervisor; nod at(-34,6) keeps yaw and returns there, near-limit amplitude fits, pitch drain/queued origin/STOP/disconnect remain bounded; malformed length/ID rejected and legacy gesture still centers. Run native tests before implementation and record failure.
+- [ ] FW GREEN: extend Protocol.h/cpp GestureAt with id/amp/repeats/speed/yawDeci/pitchDeci, GestureSpec centers with defaults0 and anchored flag, Supervisor anchors/clamps/scales and waveform offsets; capability bit1 in BleTransport, FW0.2.0. Run native and realServoDriver tests, build both targets.
+- [ ] iOS RED/GREEN: add RobotCommand.gestureAt, protocol encoding, capability checks, all RobotLink priority/group/ownership paths, MotionCoordinator execution-time fresh-face anchor and cycle rest/prediction, GestureTiming anchor deltas. Test packet output from(-34,6), fresh/stale/unsupported, loss during gesture/no interruption/new acquisition, backpressure/manual takeover. Preserve old gestures without fresh face. Run focused then full tests.
+- [ ] Aim RED/GREEN: FaceTrackingGeometry applies fixed-5° for the physically left-mounted camera, independent of image orientation before deadband; test corrected neutral, camera-centered movement, both orientations, boundaries/limits and production coordinator output. No new settings UI.
+- [ ] Verify full iOS/native suites and signed device/normal+bringup builds; preserve FW0.1.1 for rollback, update attended hardware at neutral. Compare fixed aim at50cm/1m and sideways large nod/other gestures, confirm return to same direction then live tracking. Record remaining limits honestly.

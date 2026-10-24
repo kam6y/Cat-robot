@@ -90,7 +90,7 @@ void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
     info.minor = config::kFwMinor;
     info.patch = config::kFwPatch;
     info.hwId = config::kHwId;
-    info.caps = 0;
+    info.caps = InfoCapabilities::AnchoredGesture;
     uint8_t infoBytes[kInfoSize];
     encodeInfo(info, infoBytes);
     infoChar->setValue(infoBytes, sizeof infoBytes);
