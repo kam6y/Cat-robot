@@ -42,3 +42,5 @@
 - [x] Build signed iPhone app with exact source SHA, verify embedded revision, install and launch normally. Record tests/render/device evidence and pending physical observation; commit validation docs.
 
 Final user adjustment: default/reset8.5°, preserve existing saved values. The user considers this topic complete after this update; remaining historical hardware checks are not reclassified as passed.
+
+Completed final default/reset8.5° update: related64 tests passed, signed source3c9f646 verified, iPhone installed and normally launched22:44:53JST. The requested work is closed per the user.

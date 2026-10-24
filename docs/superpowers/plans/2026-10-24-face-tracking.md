@@ -164,3 +164,5 @@ The user requested returning the total correction to 8°. Restored the existing 
 The user then requested a total correction of 9°. Adjusted the same direction from -8° to -9°. The updated geometry/coordinator fixtures passed 33/33; signed app bcd232b was installed and launched normally at 21:54 JST. The 9° visual comparison remains pending.
 
 Subsequent user request: add an adjustable, persisted screen-aim control in the calibration screen. Continue with [the focused setting plan](2026-10-24-face-aim-setting.md); the user selected returning to the conversation to compare the result.
+
+User closure: after adding the adjustment control, set its default/reset to8.5°. Installed3c9f646 at22:44:53JST and ended this topic as requested. Historical unchecked physical acceptance items remain unperformed; do not continue them without a new request.
