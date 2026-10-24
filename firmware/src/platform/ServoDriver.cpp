@@ -25,11 +25,9 @@ void ServoDriver::apply(const Outputs& outputs) {
 #else
     if (!outputs.pwmEnabled) {
         if (attached_) {
-            yaw_.detach();
-            pitch_.detach();
-            pinMode(yawPin_, INPUT);
-            pinMode(pitchPin_, INPUT);
-            attached_ = false;
+            // Zero duty stops pulses without reallocating LEDC channels/timers on resume.
+            yaw_.release();
+            pitch_.release();
         }
         return;
     }

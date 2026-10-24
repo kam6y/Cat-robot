@@ -46,7 +46,7 @@ constexpr uint32_t kStatusPeriodMs = 200;
 constexpr uint8_t kProtocolVersion = 1;
 constexpr uint8_t kFwMajor = 0;
 constexpr uint8_t kFwMinor = 1;
-constexpr uint8_t kFwPatch = 0;
+constexpr uint8_t kFwPatch = 1;
 constexpr uint8_t kHwId = 1;
 
 }  // namespace catneck::config

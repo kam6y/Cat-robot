@@ -23,6 +23,7 @@ pio run -e xiao                                                   # ビルド（
 pio run -e xiao -t upload --upload-port /dev/cu.usbmodem101       # 書き込み
 pio device monitor -p /dev/cu.usbmodem101 -b 115200               # シリアルモニタ（Ctrl-C で終了）
 pio test -e native                                                # ホスト単体テスト（実機不要）
+python3 tools/test_servo_driver.py                                # PWM停止・再開のアダプタ試験（実機不要）
 ```
 
 - ポート名は `ls /dev/cu.usbmodem*` で探す（本機は `/dev/cu.usbmodem101`。USB の差し口で番号が変わる）
@@ -95,5 +96,6 @@ src/Console.*       # シリアルの行を解釈して Supervisor へ
 src/platform/       # ServoDriver（ESP32Servo）、NvsStorage（Preferences）、SerialTransport、BleTransport（NimBLE）
 lib/catneck/        # コア（Arduino 非依存）: Protocol / Axis / Planner / Gesture / Supervisor / SerialParser
 test/               # Unity テスト（pio test -e native）
+tests_host/         # ServoDriver の記録用外部境界（通常版・PWMなし版をホストで実行）
 tools/              # Mac 用: ble_client.py、serial_cli.py、catneck_proto.py（共有の符号化・復号）
 ```

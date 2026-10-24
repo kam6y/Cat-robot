@@ -135,3 +135,9 @@ Files: `FaceCapturePolicy.swift`, `MotionCoordinator.swift`, `FaceCapturePolicyT
 - [ ] Run full `/private/tmp/cat-ios-link/run-tests.sh`, signed iPhone build, verify embedded committed SHA, install and repeat attended stationary/moving checks. Record actual results and remaining limits; do not infer thermal benefit from fewer frames.
 
 姿勢補間待ちの追加条件: 新しい顔の画像が400ms以内で、前後のSTATUSを待っている間は通常の見失いへ切り替えない。以前の目標の有効期限は延長せず、新規MOVEは新しく投影できた目標だけを使用する。待機画像自体が400msで失効したら保持へ移る。3fps・処理50ms・STATUS5Hzでの一瞬の保持と、後続STATUSが来ない場合の期限切れをテストする。所有者を失った後は同じ目標でも再取得できることも検証する。
+
+#### Task6 continuation: PWM restart boundary
+
+- [x] Reproduce ServoDriver channel reset on disable/re-enable with a real-driver host test using recording Arduino/Servo boundaries; assert disabled duty0, retained timer/channel on resume, calibrated pulses, and no output in CATNECK_NO_PWM. Run `python3 firmware/tools/test_servo_driver.py` and observe RED.
+- [x] Preserve allocated servo channels when PWM is disabled, release output to zero duty, and write current planner pulses to resume. Keep all Supervisor stopping/returning timeouts and protocol/calibration behavior. Build baseline and candidate firmware and run `pio test -e native` plus the host adapter test.
+- [ ] Compare restart on the attended robot after centering. Retain the candidate only with observed improvement and stopped-output checks; otherwise restore the known baseline and record the remaining hardware limit. Firmware flashing must preserve NVS/bonds.
