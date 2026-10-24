@@ -240,6 +240,12 @@ final class FaceTrackingCoordinator {
     private func updateLoss() {
         guard generation != nil else { return }
         guard let lastFaceAt else { status = .searching; return }
+        // A fresh detected face waiting for bracketing STATUS is not face loss.
+        // The old target still expires normally; only a newly projected target can send a MOVE.
+        if let pending, clock.now - pending.capturedAt < 0.4 - 0.000_001 {
+            status = .tracking
+            return
+        }
         if clock.now - lastFaceAt >= 10 - 0.000_001 {
             if !returnRequested { setMotionState(.returnToCenter) }
             status = .searching

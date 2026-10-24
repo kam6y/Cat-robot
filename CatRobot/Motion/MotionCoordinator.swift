@@ -663,9 +663,7 @@ final class MotionCoordinator: RobotMotionControlling {
             case .following:
                 nextIdleAt = nil
                 if let target = freshTracking, atRest || ownsTracking || ownsIdle {
-                    let command = RobotCommand.move(yawDeci: deci(target.yaw, cap: 45),
-                                                    pitchDeci: deci(target.pitch, cap: 10), speed: 20)
-                    if command != lastTrackingCommand, trackingCadenceReady {
+                    if let command = stabilizedTrackingCommand(for: target), trackingCadenceReady {
                         startTrackingCommand(command, validUntil: target.validUntil)
                     }
                 }
@@ -690,6 +688,18 @@ final class MotionCoordinator: RobotMotionControlling {
             let yaw = random.next(in: -3...3), pitch = random.next(in: -2...2)
             startColumn(kind: .idle, duration: random.next(in: 3...4), yaw: yaw, pitch: pitch)
         }
+    }
+
+    private func stabilizedTrackingCommand(for target: RobotTrackingTarget) -> RobotCommand? {
+        var yaw = deci(target.yaw, cap: 45), pitch = deci(target.pitch, cap: 10)
+        if ownsTracking, case let .move(previousYaw, previousPitch, speed)? = lastTrackingCommand, speed == 20 {
+            // Compare against the last actual write so slow movement accumulates, while
+            // detection noise cannot repeatedly restart the same physical motion.
+            if abs(Int(yaw) - Int(previousYaw)) < 20 { yaw = previousYaw }
+            if abs(Int(pitch) - Int(previousPitch)) < 20 { pitch = previousPitch }
+            if yaw == previousYaw, pitch == previousPitch { return nil }
+        }
+        return .move(yawDeci: yaw, pitchDeci: pitch, speed: 20)
     }
 
     private var trackingCadenceReady: Bool {

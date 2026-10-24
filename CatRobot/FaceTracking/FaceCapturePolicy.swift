@@ -43,9 +43,9 @@ struct FaceCaptureOptics: Sendable {
 }
 
 enum FaceCapturePolicy {
-    // Nominal 5fps can round a capture interval a few microseconds below 0.2s.
-    // Keep acquisition headroom while checking every actual frame against the 5fps ceiling.
-    private static let configuredFrameRate = 4.0
+    // Reduce camera/Vision work while retaining a cadence within the 400ms image freshness limit.
+    // Actual frames still obey the 5fps ceiling, with headroom for timestamp rounding.
+    private static let configuredFrameRate = 3.0
     private static let minimumActualInterval = 0.2
 
     /// Vision reports upright boxes. Geometry uses a fixed, unmirrored landscape reference.

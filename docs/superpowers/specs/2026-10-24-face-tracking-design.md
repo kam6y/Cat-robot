@@ -111,3 +111,15 @@ thermalStateがserious/criticalになったらカメラ・追尾・待機微動�
 - Apple [顔の検出と追跡](https://developer.apple.com/documentation/vision/tracking-the-user-s-face-in-real-time): Visionの顔矩形と画像方向の扱い。
 - Apple [capture format](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format)と[frame duration](https://developer.apple.com/documentation/avfoundation/avcapturedevice/activevideominframeduration): 画角・対応fps範囲・構成ロック。
 - Apple [遅延フレームの破棄](https://developer.apple.com/documentation/avfoundation/avcapturevideodataoutput/alwaysdiscardslatevideoframes)と[音声セッションの自動設定](https://developer.apple.com/documentation/avfoundation/avcapturesession/automaticallyconfiguresapplicationaudiosession)。
+
+## 実機フィードバックによる落ち着きの調整（2026-10-24）
+
+利用者は左右・上下・見失い後の基本動作に問題はなさそうと回答した後、顔を止めていても細かな修正が続くことと、Qi2充電併用時の発熱を指摘し、更新頻度を下げる方向を求めた。Task6の実機調整として扱う。発熱の原因の内訳と温度低下はまだ測定できていない。
+
+撮影頻度のみを下げる案は処理回数を減らせるが、0.1°単位の目標変更を毎回送る現状は残る。そこで、実装者の判断として撮影を4fpsから3fpsへ下げ、所有中の追尾MOVEの最終書込目標との差が2°未満の軸は前回目標を維持する方式を採用する。どちらかの軸が2°以上変われば、その軸だけを更新する。差は直前の検出値でなく最終書込目標と比べ、ゆっくりした移動を累積して追えるようにする。初回・所有権を失った後の追尾はこの抑制に掛けない。
+
+撮影・Vision処理回数は定常時25%減り、取得待ちは4fps比で最大約83ms増える。2fpsでは画像の400ms鮮度と両立しないため、この小調整では採用しない。最大5Hzの指令上限、画像400ms/STATUS1秒の鮮度、角度上限、画像中央の4°不感帯、10秒復帰、確認頷き・手動・ツール動作の優先順位は維持する。2°未満の目標差を残す代わりに静止中の細かい修正を減らす。
+
+検証は、3fpsの対応形式選択、静止相当の小刻みな目標変化でMOVEが増えないこと、ゆっくりした累積移動・両軸・大きな移動・所有権変更の継続性、全体回帰、署名ビルド。実機では同じ位置で止めたときの落ち着き、追い始めの遅れ、実フレーム間隔・熱状態を再確認する。回数の削減を実温度の改善とは扱わない。
+
+姿勢補間待ちの追加条件: 新しい顔の画像が400ms以内で、前後のSTATUSを待っている間は通常の見失いへ切り替えない。以前の目標の有効期限は延長せず、新規MOVEは新しく投影できた目標だけを使用する。待機画像自体が400msで失効したら保持へ移る。3fps・処理50ms・STATUS5Hzでの一瞬の保持と、後続STATUSが来ない場合の期限切れをテストする。所有者を失った後は同じ目標でも再取得できることも検証する。

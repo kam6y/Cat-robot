@@ -184,6 +184,41 @@ final class FaceTrackingCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.following.count, 1)
     }
 
+    func testFreshThreeFPSFrameWaitingForPoseDoesNotBrieflyDeclareFaceLoss() async {
+        let h = FaceTrackingHarness()
+        h.environment()
+        h.frame()
+        await robotDrain()
+        await h.clock.advance(by: 0.2)
+        h.link.emitStatus(robotStatus())
+        await robotDrain()
+        await h.clock.advance(by: 0.183_333)
+        h.frame(capturedAt: 0.333_333)
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 1) // This image still needs the next 5Hz STATUS.
+        await h.clock.advance(by: 0.016_667)
+        h.link.emitStatus(robotStatus())
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 2)
+        XCTAssertFalse(h.motion.trackingStates.contains(.holding))
+    }
+
+    func testPendingFaceStillEntersHoldWhenItsOwnImageExpires() async {
+        let h = FaceTrackingHarness()
+        h.environment()
+        h.frame()
+        await robotDrain()
+        await h.clock.advance(by: 0.2)
+        h.link.emitStatus(robotStatus())
+        await robotDrain()
+        await h.clock.advance(by: 0.183_333)
+        h.frame(capturedAt: 0.333_333)
+        await robotDrain()
+        await h.clock.advance(by: 0.35)
+        XCTAssertEqual(h.following.count, 1)
+        XCTAssertEqual(h.motion.trackingStates.last, .holding)
+    }
+
     func testMissingPoseExpiresInsteadOfUsingCompletionPose() async {
         let h = FaceTrackingHarness()
         h.environment()

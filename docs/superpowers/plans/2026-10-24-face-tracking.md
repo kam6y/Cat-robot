@@ -125,3 +125,13 @@
 - [ ] Step 2: Dispatch one fresh whole-branch reviewer per executing-plans with spec/plan/ledger and Review Focus; evaluate findings, fix Important/Critical with RED→GREEN and full suite. Do user-requested simplify again before any new integration if needed; no integration while meaningful checks are pending.
 - [ ] Step 3: Install exact committed revision, normal launch, ask user for hardware observation only where required. Test both landscape orientations/left-right/up/down, multi-face,10s loss, settings/calibration/background, and voice+nod. Record actual buffer size/rate, thermal state, PWM/no jumping. Motion latency ≤500ms is physical/video observation, not inferred from BLE timestamp. Record failures honestly, correct and retry affected cases.
 - [ ] Step 4: Save validation with passed/pending limits (Qi2 one-hour acceptance separate). Completion command `/private/tmp/cat-ios-link/run-tests.sh`, expected PASS; commit `docs: record face tracking validation`. Do not call hardware acceptance complete without observation.
+
+#### Task6 continuation: quieter tracking from attended feedback
+
+Files: `FaceCapturePolicy.swift`, `MotionCoordinator.swift`, `FaceCapturePolicyTests.swift`, `FaceTrackingMotionTests.swift`, `FaceTrackingCoordinatorTests.swift`, and the validation record. Uses existing APIs; no new public interface.
+
+- [ ] Adjust capture-selection tests to require a supported 3fps range; retain actual5fps rejection and timestamp-rounding fixture. Add motion fixtures with target20° then20.1/19.8/21.9° producing only the first MOVE, cumulative22° producing a second, and independent pitch suppression. Cover ownership loss and large shifts. Run the focused suite and observe RED before production edits.
+- [ ] Select3fps. In autonomous following only, retain each last-written tracking axis until its target differs by at least20 deci-degrees, using current automatic ownership; ordinary first targets and ownership changes bypass suppression. Keep normal cadence/expiry/admission checks. Run focused tests to GREEN.
+- [ ] Run full `/private/tmp/cat-ios-link/run-tests.sh`, signed iPhone build, verify embedded committed SHA, install and repeat attended stationary/moving checks. Record actual results and remaining limits; do not infer thermal benefit from fewer frames.
+
+姿勢補間待ちの追加条件: 新しい顔の画像が400ms以内で、前後のSTATUSを待っている間は通常の見失いへ切り替えない。以前の目標の有効期限は延長せず、新規MOVEは新しく投影できた目標だけを使用する。待機画像自体が400msで失効したら保持へ移る。3fps・処理50ms・STATUS5Hzでの一瞬の保持と、後続STATUSが来ない場合の期限切れをテストする。所有者を失った後は同じ目標でも再取得できることも検証する。

@@ -91,6 +91,59 @@ final class FaceTrackingMotionTests: XCTestCase {
         XCTAssertEqual(h.sentCommands.count, 1)
     }
 
+    func testStationaryFaceNoiseDoesNotRestartTrackingButSlowDriftAccumulates() async {
+        let h = makeHarness()
+        follow(h, yaw: 20)
+        await h.drain()
+        for yaw in [20.1, 19.8, 20.7, 21.4, 21.9] {
+            await h.advanceFresh(by: 0.35)
+            follow(h, yaw: yaw)
+            await h.drain()
+        }
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 200, pitchDeci: 0, speed: 20)])
+        await h.advanceFresh(by: 0.35)
+        follow(h, yaw: 22)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 200, pitchDeci: 0, speed: 20),
+                                        .move(yawDeci: 220, pitchDeci: 0, speed: 20)])
+    }
+
+    func testTrackingStabilizesEachAxisIndependentlyWithoutDelayingLargeChanges() async {
+        let h = makeHarness()
+        follow(h, yaw: 20, pitch: 3)
+        await h.drain()
+        await h.advanceFresh(by: 0.35)
+        follow(h, yaw: 20.9, pitch: 5)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: 200, pitchDeci: 50, speed: 20))
+        await h.advanceFresh(by: 0.35)
+        follow(h, yaw: -20, pitch: 4.5)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: -200, pitchDeci: 50, speed: 20))
+        await h.advanceFresh(by: 0.35)
+        follow(h, yaw: -20.5, pitch: -5)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: -200, pitchDeci: -50, speed: 20))
+    }
+
+    func testTrackingReacquiresSameTargetAfterAnotherOwnerMovesTheNeck() async throws {
+        let h = makeHarness()
+        follow(h, yaw: 20)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving], yaw: 200))
+        try await h.link.send(.center(speed: 20), priority: .motion, token: UUID(), expiresAt: h.clock.now + 1)
+        await h.advanceFresh(by: 0.35)
+        XCTAssertEqual(h.sentCommands.count, 2)
+        h.link.emitStatus(robotStatus())
+        follow(h, yaw: 20)
+        // The new observation may replace the auto attempt started by the fresh rest STATUS.
+        // Reacquisition must succeed at the next ordinary 5Hz command boundary.
+        await h.advanceFresh(by: 0.2)
+        XCTAssertEqual(h.sentCommands, [.move(yawDeci: 200, pitchDeci: 0, speed: 20),
+                                        .center(speed: 20),
+                                        .move(yawDeci: 200, pitchDeci: 0, speed: 20)])
+    }
+
     func testOnlyLatestPendingTargetSurvivesBackpressure() async {
         let h = makeHarness()
         h.link.writable = false

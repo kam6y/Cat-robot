@@ -2,7 +2,7 @@ import XCTest
 @testable import CatRobot
 
 final class FaceCapturePolicyTests: XCTestCase {
-    func testChoosesFourFPSAndLargestBoundedOutputWithNativeAspect() throws {
+    func testChoosesThreeFPSAndLargestBoundedOutputWithNativeAspect() throws {
         let selected = try XCTUnwrap(FaceCapturePolicy.select([
             format(0, width: 1920, height: 1080), format(1, width: 1280, height: 960),
             format(2, width: 640, height: 480)
@@ -10,14 +10,14 @@ final class FaceCapturePolicyTests: XCTestCase {
         XCTAssertEqual(selected.formatID, 2)
         XCTAssertEqual(selected.width, 640)
         XCTAssertEqual(selected.height, 480)
-        XCTAssertEqual(selected.frameDuration, 0.25)
+        XCTAssertEqual(selected.frameDuration, 1.0 / 3, accuracy: 0.000_001)
         XCTAssertEqual(selected.horizontalFieldOfView, 72)
         let wide = try XCTUnwrap(FaceCapturePolicy.select([format(3, width: 1920, height: 1080)]))
         XCTAssertEqual(wide.width, 640)
         XCTAssertEqual(wide.height, 360)
     }
 
-    func testRejectsFormatsWithoutFourFPSOrValidOptics() {
+    func testRejectsFormatsWithoutThreeFPSOrValidOptics() {
         XCTAssertNil(FaceCapturePolicy.select([format(0, minimumFPS: 15), format(1, minimumFPS: 30)]))
         for value in [0.0, -1, Double.nan, .infinity] {
             XCTAssertNil(FaceCapturePolicy.select([format(0, minimumFPS: value)]))
@@ -26,7 +26,9 @@ final class FaceCapturePolicyTests: XCTestCase {
         for value in [0.0, 180, Double.nan, .infinity] {
             XCTAssertNil(FaceCapturePolicy.select([format(0, fov: value)]))
         }
-        XCTAssertNil(FaceCapturePolicy.select([format(0, maximumFPS: 3)]))
+        XCTAssertNil(FaceCapturePolicy.select([format(0, maximumFPS: 2)]))
+        XCTAssertNil(FaceCapturePolicy.select([format(0, minimumFPS: 4)]))
+        XCTAssertNotNil(FaceCapturePolicy.select([format(0, minimumFPS: 3, maximumFPS: 3)]))
         XCTAssertNil(FaceCapturePolicy.select([format(0, width: 0)]))
         // No exact, even-pixel representation at the output size limit.
         XCTAssertNil(FaceCapturePolicy.select([format(0, width: 641, height: 479)]))
@@ -44,7 +46,7 @@ final class FaceCapturePolicyTests: XCTestCase {
 
     func testCadenceHeadroomAcceptsObservedClockRoundingButStillRejectsOverFiveFPS() throws {
         // iPhone 16 Pro reported 0.199995s for nominal 5fps, stopping on its second frame.
-        // Configure 4fps so the same rounding stays within the actual 5fps ceiling.
+        // The lower capture cadence also keeps the observed rounding within the actual 5fps ceiling.
         let selected = try XCTUnwrap(FaceCapturePolicy.select([format(0)]))
         XCTAssertGreaterThan(selected.frameDuration, 0.2)
         let configured = FaceCaptureConfiguration(formatID: 0, width: 640, height: 480,
