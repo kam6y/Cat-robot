@@ -621,6 +621,28 @@ void test_disconnect_from_anchored_gesture_returns_to_neutral_without_jump() {
     TEST_ASSERT_FALSE(sim.out.pwmEnabled);
 }
 
+void test_anchored_gesture_refits_limits_changed_during_approach() {
+    Sim sim;
+    sim.bootToIdle();
+    sim.send(anchoredGestureCmd(GestureId::Shake, 25, 40, 0));
+    sim.advance(100);
+    sim.send(setLimitsCmd(0, 0, 450, 0));
+    bool reachedOrigin = false;
+    float low = 40, high = 40;
+    for (int i = 0; i < 1000 && sim.flag(StatusFlags::Gesture); ++i) {
+        sim.advance(20); sim.send(pingCmd(1));
+        if (std::fabs(sim.yawJoint() - 40) < 0.05f) reachedOrigin = true;
+        if (reachedOrigin) {
+            low = std::fmin(low, sim.yawJoint()); high = std::fmax(high, sim.yawJoint());
+        }
+    }
+    TEST_ASSERT_TRUE(reachedOrigin);
+    TEST_ASSERT_FALSE(sim.flag(StatusFlags::Gesture));
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 35, low);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 45, high);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 40, sim.yawJoint());
+}
+
 void test_legacy_gesture_still_returns_to_neutral() {
     Sim sim;
     sim.bootToIdle();
@@ -1094,6 +1116,7 @@ int main(int, char**) {
     RUN_TEST(test_queued_anchored_gesture_preserves_its_own_origin);
     RUN_TEST(test_stop_discards_anchored_gesture_and_pending_origin);
     RUN_TEST(test_legacy_gesture_still_returns_to_neutral);
+    RUN_TEST(test_anchored_gesture_refits_limits_changed_during_approach);
     RUN_TEST(test_all_anchored_gestures_fit_limits_and_return_to_origin);
     RUN_TEST(test_disconnect_from_anchored_gesture_returns_to_neutral_without_jump);
     RUN_TEST(test_gesture_sets_moving_flag_while_waveform_runs);

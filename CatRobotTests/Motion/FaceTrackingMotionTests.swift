@@ -42,6 +42,19 @@ final class FaceTrackingMotionTests: XCTestCase {
                                         .move(yawDeci: 100, pitchDeci: 20, speed: 10)])
     }
 
+    func testAcknowledgementStartedDuringFaceHoldPreservesCurrentPose() async {
+        let h = makeHarness()
+        h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
+        h.motion.setTrackingState(.holding)
+        h.motion.utteranceConfirmed()
+        await h.advanceFresh(by: 0.6, step: 0.05)
+        XCTAssertFalse(h.sentCommands.isEmpty)
+        XCTAssertTrue(h.sentCommands.allSatisfy {
+            if case let .move(yaw, _, _) = $0 { yaw == -340 } else { false }
+        })
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: -340, pitchDeci: 60, speed: 20))
+    }
+
     func testFaceLossDoesNotInterruptAcknowledgement() async {
         let h = makeHarness()
         h.link.emitStatus(robotStatus(yaw: 300, pitch: 20))

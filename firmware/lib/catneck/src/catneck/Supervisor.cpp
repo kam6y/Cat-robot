@@ -442,6 +442,7 @@ void Supervisor::startGesture(const GestureSpec& spec) {
 
 void Supervisor::serviceGesture() {
     if (phase_ == GesturePhase::Centering && plannersAtRest()) {
+        fitGesture(activeGesture_);  // Maintenance can change limits during the approach.
         wave_.start(activeGesture_, yaw_.axis.limits(), pitch_.axis.limits(), config::kTickSeconds);
         const float yawServo = yaw_.planner.state().pos;
         const float pitchServo = pitch_.planner.state().pos;

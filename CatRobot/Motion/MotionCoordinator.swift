@@ -261,7 +261,8 @@ final class MotionCoordinator: RobotMotionControlling {
         refreshLinkState()
         guard mode == .conversation, atRest || ownsTracking, active == nil, strengthTask == nil,
               stopTask == nil, !automaticMotionSuspended, turn?.pending.isEmpty != false else { return }
-        if preferences.trackingEnabled, freshTracking != nil, let status = snapshot.status {
+        // A brief detection gap must not turn an acknowledgement into a trip to neutral.
+        if preferences.trackingEnabled, let status = snapshot.status {
             let pose = FacePose(yaw: Double(status.yawDeci) / 10, pitch: Double(status.pitchDeci) / 10)
             guard abs(pose.yaw) <= 45, abs(pose.pitch) <= 10, min(5, pose.pitch + 10) >= 1 else { return }
             cancelAuto()
