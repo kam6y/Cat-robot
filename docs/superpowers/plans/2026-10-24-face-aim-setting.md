@@ -1,6 +1,6 @@
 # Face Aim Setting Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Let the user persistently tune face-tracking screen aim from the existing calibration screen.
 
@@ -37,6 +37,6 @@
 - [x] Add a failing coordinator regression with persisted correction14° producing yaw-14° at camera center instead of the existing-9°; add preference round-trip,0/20 bounds, malformed values, and configured geometry cases. Run focused tests and observe the missing behavior.
 - [x] Add normalized persistence and pass the value through real coordinator/geometry. Keep existing9° fixture expectations explicit. Run focused tests to green.
 - [x] Add slider+stepper+9° reset to calibration view with local autosave explanation, pass shared preferences, clarify hardware-only save/restore labels. Extend existing render fixtures to show the entire calibration scroll area.
-- [ ] Add/extend app integration coverage for saved correction while settings/calibration remain stopped and first new conversation frame uses it. Run full `/private/tmp/cat-ios-link/run-tests.sh`; expected all pass except existing device-only skips. Inspect rendered attachments at normal/max text.
-- [ ] Commit implementation and run one fresh review of this addition from463730e. Verify/fix actionable findings with focused regression then full suite if behavior changes.
-- [ ] Build signed iPhone app with exact source SHA, verify embedded revision, install and launch normally. Record tests/render/device evidence and pending physical observation; commit validation docs.
+- [x] Add/extend app integration coverage for saved correction while settings/calibration remain stopped and first new conversation frame uses it. Run full `/private/tmp/cat-ios-link/run-tests.sh`; expected all pass except existing device-only skips. Inspect rendered attachments at normal/max text.
+- [x] Commit implementation and run one fresh review of this addition from463730e. Verify/fix actionable findings with focused regression then full suite if behavior changes.
+- [x] Build signed iPhone app with exact source SHA, verify embedded revision, install and launch normally. Record tests/render/device evidence and pending physical observation; commit validation docs.
