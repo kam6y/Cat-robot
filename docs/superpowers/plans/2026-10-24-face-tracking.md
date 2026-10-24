@@ -155,4 +155,4 @@ User reports and observed serial trace establish the two acceptance gaps. Contin
 
 Attended follow-up: The user confirmed that sideways gestures preserve the facing direction and tracking resumes. Their request for another3° of aim correction changes the fixed correction from-5° to-8°. The existing geometry/coordinator tests passed33/33; signed app78fc55d was installed and launched normally at13:12:36JST. The8° visual comparison remains pending.
 
-The user then requested a total correction of 10°. Adjust the same direction from -8° to -10°, update the existing geometry/coordinator fixtures, verify them, and install the signed app.
+The user then requested a total correction of 10°. Adjusted the same direction from -8° to -10°. The updated geometry/coordinator fixtures passed 33/33; signed app d365916 was installed and launched normally at 16:21 JST. The 10° visual comparison remains pending.
