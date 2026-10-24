@@ -9,7 +9,7 @@ enum RobotMotionStrength: String, CaseIterable, Sendable {
 @Observable
 final class RobotPreferences {
     @ObservationIgnored private let defaults: UserDefaults
-    static let defaultTrackingYawCorrection = 9.0
+    static let defaultTrackingYawCorrection = 8.5
     static let trackingYawCorrectionRange = 0.0...20.0
     static let trackingYawCorrectionStep = 0.5
     private static let trackingYawCorrectionKey = "robot.trackingYawCorrection"

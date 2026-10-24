@@ -71,9 +71,9 @@ struct RobotCalibrationView: View {
                     .accessibilityIdentifier("faceTrackingYawCorrectionSlider")
                 HStack { Text("0°"); Spacer(); Text("20°") }
                     .font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
-                Button("9°に戻す") { preferences.trackingYawCorrection = RobotPreferences.defaultTrackingYawCorrection }
+                Button("8.5°に戻す") { preferences.trackingYawCorrection = RobotPreferences.defaultTrackingYawCorrection }
                     .disabled(preferences.trackingYawCorrection == RobotPreferences.defaultTrackingYawCorrection)
-                    .accessibilityLabel("顔追尾の補正を9度に戻す")
+                    .accessibilityLabel("顔追尾の補正を8.5度に戻す")
                 Text("左側のカメラと画面中央のずれを補正します。値はこのiPhoneに自動保存され、会話画面に戻ると反映されます。")
                     .font(.footnote).foregroundStyle(.secondary)
             }.padding(.top, 8)

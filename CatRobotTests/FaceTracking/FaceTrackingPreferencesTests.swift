@@ -15,13 +15,13 @@ final class FaceTrackingPreferencesTests: XCTestCase {
         XCTAssertTrue(RobotPreferences(defaults: defaults).trackingEnabled)
     }
 
-    func testAimDefaultsToNineAndPersistsHalfDegreesIncludingZero() {
+    func testAimDefaultsToEightPointFiveAndPreservesSavedValuesIncludingZero() {
         let name = "FaceTrackingPreferencesTests.\(UUID())"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let preferences = RobotPreferences(defaults: defaults)
-        XCTAssertEqual(preferences.trackingYawCorrection, 9)
-        for value in [9.5, 0, 20] {
+        XCTAssertEqual(preferences.trackingYawCorrection, 8.5)
+        for value in [9.0, 8.5, 9.5, 0, 20] {
             preferences.trackingYawCorrection = value
             XCTAssertEqual(RobotPreferences(defaults: defaults).trackingYawCorrection, value)
         }
@@ -32,7 +32,7 @@ final class FaceTrackingPreferencesTests: XCTestCase {
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let cases: [(Any, Double)] = [(-2.0, 0), (25.0, 20), (10.24, 10), (10.26, 10.5),
-                                     (Double.nan, 9), (Double.infinity, 9), ("invalid", 9)]
+                                     (Double.nan, 8.5), (Double.infinity, 8.5), ("invalid", 8.5)]
         for (stored, expected) in cases {
             defaults.set(stored, forKey: "robot.trackingYawCorrection")
             XCTAssertEqual(RobotPreferences(defaults: defaults).trackingYawCorrection, expected)
@@ -45,7 +45,7 @@ final class FaceTrackingPreferencesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         let preferences = RobotPreferences(defaults: defaults)
         for (assigned, expected) in [(-99.0, 0.0), (99.0, 20.0), (10.24, 10.0), (10.26, 10.5),
-                                     (Double.nan, 9.0), (Double.infinity, 9.0)] {
+                                     (Double.nan, 8.5), (Double.infinity, 8.5)] {
             preferences.trackingYawCorrection = assigned
             XCTAssertEqual(preferences.trackingYawCorrection, expected)
             XCTAssertEqual(defaults.double(forKey: "robot.trackingYawCorrection"), expected)

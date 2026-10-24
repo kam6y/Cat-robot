@@ -202,8 +202,8 @@ final class FaceTrackingCoordinatorTests: XCTestCase {
         await robotDrain()
         let target = try XCTUnwrap(h.following.last)
         XCTAssertEqual(h.following.count, 1)
-        // Capture-time pose is 15 degrees; the fixed left-camera correction subtracts 9.
-        XCTAssertEqual(target.yaw, 6, accuracy: 0.000_001)
+        // Capture-time pose is 15 degrees; the default left-camera correction subtracts 8.5.
+        XCTAssertEqual(target.yaw, 6.5, accuracy: 0.000_001)
         XCTAssertEqual(target.validUntil, 0.55, accuracy: 0.000_001)
         XCTAssertEqual(h.coordinator.status, .tracking)
     }
