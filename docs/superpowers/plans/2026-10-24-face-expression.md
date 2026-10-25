@@ -1,6 +1,6 @@
 # Face Redesign and Express Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Preserve the previously selected Native execution method. Steps use checkbox (`- [ ]`) syntax for tracking. This request authorizes planning; do not start product implementation until the user asks to proceed.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. The user authorized implementation on 2026-10-26 and explicitly requested Claude to dispatch subagents and repeatedly compare/fix the vector face until visual discrepancies are resolved. Preserve Native execution for integration and use the requested Claude subagents for visual implementation/review. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 黒い外装と一体になる猫の顔を描き、9種類の表情を会話状態とClaudeの`express`ツールに連動させる。
 
@@ -8,12 +8,19 @@
 
 **Tech Stack:** Swift 6、SwiftUI/Observation、Foundation Models、既存のClaudeForFoundationModels 0.2.3、XCTest、既存RobotClock、Ruby xcodeproj 1.27.0。
 
-**Spec:** `docs/superpowers/specs/2026-10-24-face-expression-design.md`。元要件は`docs/superpowers/specs/2026-10-11-cat-robot-claude-neck-requirements.md` §6.4とFR-CONV-9。利用者は見た目を「当初の要件に沿っておまかせ」と指定した。
+**Spec:** `docs/superpowers/specs/2026-10-24-face-expression-design.md`。元要件は`docs/superpowers/specs/2026-10-11-cat-robot-claude-neck-requirements.md` §6.4とFR-CONV-9。2026-10-26に通常顔B案と、目を大きくしてきらめかせたhappyを利用者が採用した。
+
+**Approved visual references:** [通常顔B](../../design/face-expression-2026-10-26/neutral-b.png) / [happy](../../design/face-expression-2026-10-26/happy-b.png)。生成画像は設計資料として参照し、アプリではSwiftUIで再現する。
+
+## Visual comparison loop
+
+Claudeがベクター描画の実装と視覚比較のsubagentを担当する。採用画像の画面内の顔と、実際のSwiftUI静止レンダーを同じ顔領域・倍率で比較し、目の輪郭と間隔、瞳、ハイライト、配色、鼻、口、ひげ、happyの拡大と光の差分を具体的に指摘する。実装者が修正したら再レンダーし、新しい画像を比較subagentが再確認する。撮影された筐体・背景・反射は顔のベクター比較に含めず、同一ピクセルであるとは主張しない。レビューで顔の形・配置・色に未解消の相違が残らなくなるまで繰り返し、各回のレンダーと指摘、対応を記録する。これは以下の最終コードレビューとは別の反復であり、コードレビューの回数制限を適用しない。
 
 ## Global Constraints
 
 - iOS 27以上、Swift 6、横向き両方向。追加パッケージなし。Xcodeプロジェクトは`ruby scripts/generate_project.rb`で生成し、手編集しない。
 - 黒背景、画面内の耳なし、目・鼻・口・ひげだけ。9表情: neutral / happy / curious / thinking / listening / speaking / sleepy / surprised / sorry。
+- 通常顔はB案の丸い琥珀色の目。happyは目を開いたまま大きくし、明るい金色と瞳内のきらめき、控えめな縁の光で表す。静止時は閉じた笑顔。細めた笑い目へ変更しない。
 - `express(expression, hold_seconds)`、保持1〜10秒・既定3秒。未知の表情はneutral、秒数は1〜10へ丸める。発話前は最後の1件だけ予約し、最初の実再生開始から保持時間を測る。
 - `MotionTurnID` / `MotionTurnContext`を再利用する。新しいターンID体系、イベントバス、表情の永続化、常駐ポーリングは追加しない。
 - 口は既存のMouthPoseを再利用し、Supertonicでは文開始/終了に同期する。単語時刻を推測しない。文内の周期的な口パクは追加しない。
@@ -66,15 +73,15 @@ xcodebuild test -project CatRobot.xcodeproj -scheme CatRobot \
 
 **Interfaces:**
 - `enum FaceExpression: String, CaseIterable, Sendable`（9種類）。`static func normalized(_ raw: String) -> Self`、`static func automatic(for phase: ConversationPhase) -> Self`。
-- `struct CatFaceAppearance: Equatable, Sendable` は目の開き・傾き・瞳位置/大きさ・口の静止形・ひげ角度の値を持つ。`static func preset(_ expression: FaceExpression) -> Self`。パラメーター名/曲線の制御点はこのTask内に閉じ、他のTaskはpresetだけを使う。
+- `struct CatFaceAppearance: Equatable, Sendable` は目の大きさ・開き・傾き・瞳位置/大きさ・明るさとハイライト・縁の光・口の静止形・ひげ角度の値を持つ。`static func preset(_ expression: FaceExpression) -> Self`。パラメーター名/曲線の制御点はこのTask内に閉じ、他のTaskはpresetだけを使う。
 - `CatFaceView.init(expression: FaceExpression, mouthPose: MouthPose, reduceMotion: Bool, isAnimating: Bool)`。`isAnimating`は周期的な装飾を動かしてよいかだけを表し、音声や首を開始しない。
 - `ConversationViewState.heldExpression: FaceExpression? = nil`。表示は`heldExpression ?? FaceExpression.automatic(for: state.phase)`。旧`CatVisualState` / `catState`とViewModel/fixtureの代入を削除する。`ConversationRecoveryTests`のclarifyingに関する確認は、phaseとそこから導いたcuriousを検証する形へ置換する。
 
 - [ ] **Step 0: 実装開始時に作業環境を用意する。** `superpowers:using-git-worktrees`に従って専用worktreeを作り、基点・ブランチ・LocalAssetsの既存資産への参照・Simulatorを確認する。このTaskに着手するまで製品コードは変更しない。
 - [ ] **Step 1: 表情の値と形の既存/新規試験を書く。** `testAutomaticExpressionMatchesConversationPhase`で全phaseを設計表へ対応させる。`testExpressionNormalization`は`" HAPPY "→.happy`、空/未知→.neutral。`testEveryPresetFitsNormalizedCanvas`で全9表情×全MouthPoseの描画点が0...1内、閉口からwideまで開口が増えることを固定。旧参照画像の縦横比・耳・口周りの輪郭に依存した試験だけを新しい仕様へ置換する。
 - [ ] **Step 2: 関連試験を実行し未実装で失敗することを確認する。** `FaceExpressionTests` / `CatFaceGeometryTests`。失敗が新しい型/要件に起因することを確認する。
-- [ ] **Step 3: 上記の値と描画を実装する。** 16:9、目の中心(0.32,0.40)/(0.68,0.40)、鼻(0.50,0.61)、口(0.50,0.70)、設計の初期配色を使用。旧頭・耳・模様の不要な描画を取り除く。表情0.25秒補間、neutralかつidle/activeの時だけ3.5秒間隔・閉0.10/開0.12秒のまばたき。Reduce Motionまたは非activeでは補間/まばたきを停止する。`ConversationView`からphaseとscenePhaseに応じた`isAnimating`を渡す。口は全表情へ合成する。
-- [ ] **Step 4: 関連試験と描画確認。** `FaceExpressionTests` / `CatFaceGeometryTests` / `FaceRenderingTests` / `ConversationRecoveryTests`、生成契約を実行。UIHostingController＋UIGraphicsImageRendererで、固定サイズ・表情指定・isAnimating=falseの9表情一覧とhappy/sorry/sleepyの各口状態をXCTest添付画像に自動保存する。画像を目視し、目・瞳・ひげの欠けと黒背景への埋没を直す。SwiftUI previewは調整用として任意。装飾的な見た目を固定ピクセルのsnapshot比較だけで判定しない。
+- [ ] **Step 3: 上記の値と描画を実装する。** 16:9、目の中心(0.32,0.40)/(0.68,0.40)、目の幅0.22・高さ0.39、鼻(0.50,0.64)、口(0.50,0.73)、設計の初期配色を出発点とし、基準画像Bの丸い目へ調整する。happyは目を開いたまま約18%拡大し、瞳も少し大きくして、明るい金色・瞳内の四つ星形ハイライト・控えめな縁の光を加える。旧頭・耳・模様の不要な描画を取り除く。表情0.25秒補間、neutralかつidle/activeの時だけ3.5秒間隔・閉0.10/開0.12秒のまばたき。Reduce Motionまたは非activeでは補間/まばたきを停止する。happyのきらめきと縁の光は静的に描き、周期的な明滅を追加しない。`ConversationView`からphaseとscenePhaseに応じた`isAnimating`を渡す。口は全表情へ合成する。
+- [ ] **Step 4: 関連試験と描画確認。** `FaceExpressionTests` / `CatFaceGeometryTests` / `FaceRenderingTests` / `ConversationRecoveryTests`、生成契約を実行。UIHostingController＋UIGraphicsImageRendererで、固定サイズ・表情指定・isAnimating=falseの9表情一覧とhappy/sorry/sleepyの各口状態をXCTest添付画像に自動保存する。通常顔とhappyを採用した2枚の画像に照らし、丸い目・大きさ・配色・きらめきを確認する。happyは大きな瞳と閉じた笑顔、surprisedは小さな瞳と丸い口で違いが読めること、発話中もhappyの目が維持されることを目視する。目・瞳・ひげ・縁の光の欠けと黒背景への埋没を直す。SwiftUI previewは調整用として任意。装飾的な見た目を固定ピクセルのsnapshot比較だけで判定しない。
 - [ ] **Step 5: コミット。** `feat(face): render nine vector expressions on a black canvas`。
 
 ### Task 2: ターンに所属する表情予約と express ツール
