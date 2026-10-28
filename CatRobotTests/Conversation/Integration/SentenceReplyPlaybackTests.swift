@@ -5,7 +5,7 @@ import XCTest
 final class SentenceReplyPlaybackTests: XCTestCase {
     func testVoiceCaptureWaitsForLastSentenceAndCaptionStaysOriginal() async throws {
         let player = ControlledPCMPlayer()
-        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [0.1], sampleRate: 24_000) })
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [0.1], sampleRate: 24_000) })
         let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker)
         let run = await harness.beginVoiceTurn()
         await harness.reply.waitUntilRequested()
@@ -26,7 +26,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
     func testSentenceFailureAndCancellationCloseMouthAndRejectOldPlayerEvents() async {
         for failure in [false, true] {
             let player = ControlledPCMPlayer()
-            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
+            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
                 synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
             let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker)
             let run = Task { await harness.viewModel.submitTypedText("質問") }
@@ -64,7 +64,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
     func testGenerationFailureStopsPlaybackAndKeepsError() async throws {
         let reply = ControlledReply()
         let player = ControlledPCMPlayer()
-        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
         let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await reply.waitUntilRequested(); await reply.yield("一文目。続き")
@@ -79,7 +79,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
             let reply = ControlledReply()
             let firstFinished = expectation(description: "First sentence has finished")
             var synthesized: [String] = []
-            let speaker = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 },
+            let speaker = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, normalize: { $0 }, voice: { .f1 },
                 synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
             speaker.onInput = { _, spoken in synthesized.append(spoken) }
             let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
@@ -104,7 +104,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
     func testGenerationFailureStopsPlaybackWhileSentenceQueueIsFull() async throws {
         let reply = ControlledReply()
         let player = ControlledPCMPlayer()
-        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
         let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let stopped = expectation(description: "Generation failure ends playback without draining queued audio")
         var received: ConversationServiceError?
@@ -129,7 +129,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
     func testUnstableReplyWaitsForFinalAndMemoryKeepsOriginal() async throws {
         let reply = ControlledReply(stablePrefix: false)
         let player = ControlledPCMPlayer()
-        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
         let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let updates = PlaybackUpdates()
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
@@ -145,7 +145,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let store = InMemoryConversationMemoryStore()
         let claude = makeClaudeService(
             StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["iPhoneです。", "Bluetoothです。"])]), store: store)
-        let immediate = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 }, synthesize: { text, _ in
+        let immediate = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, normalize: { try await JapanesePronunciationService.shared.normalize($0) }, voice: { .f1 }, synthesize: { text, _ in
             XCTAssertFalse(text.contains("iPhone")); XCTAssertFalse(text.contains("Bluetooth"))
             return SpeechPCM(samples: [1], sampleRate: 24_000)
         })
@@ -158,7 +158,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
     func testNewestSnapshotsRetainAllSentencesWhilePlaybackIsBlocked() async throws {
         let reply = ControlledReply()
         let player = ControlledPCMPlayer()
-        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
         var spoken: [String] = []
         speaker.onInput = { original, _ in spoken.append(original) }
         let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)

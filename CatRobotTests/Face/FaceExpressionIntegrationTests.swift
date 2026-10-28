@@ -91,7 +91,7 @@ final class FaceExpressionIntegrationTests: XCTestCase {
             let observer = ReplyTurnMulticaster([motion, h.sut])
             let reserving = FaceReservingReply(base: base, expressions: h.sut, motion: motion)
             let player = ControlledPCMPlayer()
-            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
+            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
                 synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
             let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: reserving, motion: observer),
                 sentenceSpeaker: speaker, motion: motion,

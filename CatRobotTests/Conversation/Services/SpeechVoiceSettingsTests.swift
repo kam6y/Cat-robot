@@ -17,25 +17,3 @@ final class SpeechVoiceSettingsTests: XCTestCase {
         }
     }
 }
-
-final class SpeechPronunciationNormalizerTests: XCTestCase {
-    func testCuratedWordsRespectBoundariesAndPreserveOriginal() {
-        let cases: [(String, String)] = [
-            ("iPhoneケースとBluetoothを使う。", "アイフォーンケースとブルートゥースを使う。"),
-            ("IPHONE bluetooth iPhone 16 Pro", "アイフォーン ブルートゥース アイフォーン 16 Pro"),
-            ("myiPhone iPhone16 _Bluetooth Bluetooth_2", "myiPhone iPhone16 _Bluetooth Bluetooth_2"),
-            ("猫🐱とiPhone。Unknown。", "猫🐱とアイフォーン。Unknown。"),
-            ("", ""),
-            ("https://a.test/iPhone?q=Bluetooth iPhone", "https://a.test/iPhone?q=Bluetooth アイフォーン"),
-            ("連絡a@Bluetooth.test、iPhone", "連絡a@Bluetooth.test、アイフォーン"),
-            ("`iPhone。Bluetooth。` iPhone", "`iPhone。Bluetooth。` アイフォーン"),
-            ("```swift\niPhone。\nBluetooth\n```Bluetooth", "```swift\niPhone。\nBluetooth\n```ブルートゥース"),
-            ("iPhone `Bluetooth iPhone", "アイフォーン `Bluetooth iPhone")
-        ]
-        let normalizer = SpeechPronunciationNormalizer()
-        for (source, expected) in cases {
-            XCTAssertEqual(normalizer.normalize(source), expected, source)
-            XCTAssertEqual(normalizer.normalize(normalizer.normalize(source)), expected, source)
-        }
-    }
-}

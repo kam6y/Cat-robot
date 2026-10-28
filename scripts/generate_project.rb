@@ -39,7 +39,6 @@ def apply_common_settings(target)
       "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" => "NO",
       "SWIFT_STRICT_CONCURRENCY" => "complete",
       "SWIFT_VERSION" => "6.0",
-      "SWIFT_INCLUDE_PATHS" => ["$(inherited)", "$(SRCROOT)/native/japanese-pronunciation/include"],
       "TARGETED_DEVICE_FAMILY" => "1"
     )
   end

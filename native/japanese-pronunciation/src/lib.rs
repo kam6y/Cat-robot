@@ -117,17 +117,34 @@ impl Pronouncer {
         // Verify source coverage before NJD removes silent/unknown nodes. Conservative
         // whole-run preservation avoids guessing how changed nodes map to unknown text.
         let covered: String = njd.nodes.iter().map(|node| node.get_string()).collect();
-        if covered != normalized
-            || njd.nodes.is_empty()
-            || njd.nodes.iter().enumerate().any(|(i, node)| {
-                let numeric_separator = matches!(node.get_string(), "．" | "，")
-                    && i > 0
-                    && i + 1 < njd.nodes.len()
-                    && njd.nodes[i - 1].get_string().chars().all(is_digit)
-                    && njd.nodes[i + 1].get_string().chars().all(is_digit);
-                node.get_pron().mora_size() == 0 && !numeric_separator
-            })
-        {
+        if covered != normalized || njd.nodes.is_empty() {
+            return Ok(original.to_owned());
+        }
+        // Tokenizer context can prefer an unknown token even for a dictionary word.
+        // Recover only an exact, single known Latin-word entry; never guess a reading
+        // by splitting an unknown identifier into pronounceable letters.
+        for node in &mut njd.nodes {
+            if node.get_pron().mora_size() == 0 && is_latin_word(node.get_string()) {
+                let isolated = self
+                    .frontend
+                    .text_to_njd(node.get_string())
+                    .map_err(|_| Error::Conversion)?;
+                if isolated.nodes.len() == 1 {
+                    let known = &isolated.nodes[0];
+                    if known.get_string() == node.get_string() && known.get_pron().mora_size() > 0 {
+                        *node = known.clone();
+                    }
+                }
+            }
+        }
+        if njd.nodes.iter().enumerate().any(|(i, node)| {
+            let numeric_separator = matches!(node.get_string(), "．" | "，")
+                && i > 0
+                && i + 1 < njd.nodes.len()
+                && njd.nodes[i - 1].get_string().chars().all(is_digit)
+                && njd.nodes[i + 1].get_string().chars().all(is_digit);
+            node.get_pron().mora_size() == 0 && !numeric_separator
+        }) {
             return Ok(original.to_owned());
         }
         njd.preprocess();
@@ -150,6 +167,16 @@ impl Pronouncer {
         }
         Ok(result)
     }
+}
+
+fn is_latin_word(text: &str) -> bool {
+    fn letter(c: char) -> bool {
+        c.is_ascii_alphabetic() || ('Ａ'..='Ｚ').contains(&c) || ('ａ'..='ｚ').contains(&c)
+    }
+    text.chars().any(letter)
+        && text
+            .chars()
+            .all(|c| letter(c) || is_digit(c) || matches!(c, '_' | '＿' | '+' | '＋'))
 }
 
 fn is_digit(c: char) -> bool {

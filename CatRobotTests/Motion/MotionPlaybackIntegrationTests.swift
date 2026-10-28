@@ -96,7 +96,7 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
         let source = ReservingMotionReply(base: base, motion: h.motion)
         let wrapped = MotionReplyGenerator(base: source, motion: h.motion)
         let player = ControlledPCMPlayer()
-        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
                                                synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
         let sut = ReplyPlaybackCoordinator(reply: wrapped, speaker: speaker, motion: h.motion)
         let run = Task { try await sut.run(prompt: "三文", trace: nil, onUpdate: { _ in }) }

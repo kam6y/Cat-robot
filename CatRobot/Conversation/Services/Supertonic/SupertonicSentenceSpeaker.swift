@@ -6,6 +6,7 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
     private struct Prepared: Sendable { let sentence: SpeechSentence; let pcm: SpeechPCM }
     private enum Completion: Sendable { case played; case next(Prepared?) }
     private let player: any PCMPlaying
+    private let normalize: @Sendable (String) async throws -> String
     private let prepareModel: @Sendable () async throws -> Void
     private let voice: @MainActor @Sendable () -> SpeechVoicePreset
     private let synthesize: @Sendable (String, SpeechVoicePreset) async throws -> SpeechPCM
@@ -15,15 +16,20 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
     var onSynthesis: (@MainActor @Sendable (Int, String) -> Void)?
 
     init(player: any PCMPlaying, prepare: @escaping @Sendable () async throws -> Void,
+         normalize: @escaping @Sendable (String) async throws -> String,
          voice: @escaping @MainActor @Sendable () -> SpeechVoicePreset,
          synthesize: @escaping @Sendable (String, SpeechVoicePreset) async throws -> SpeechPCM) {
-        self.player = player; prepareModel = prepare; self.voice = voice; self.synthesize = synthesize
+        self.player = player; prepareModel = prepare; self.normalize = normalize; self.voice = voice; self.synthesize = synthesize
     }
     convenience init(engine: SupertonicEngine, voice: @escaping @MainActor @Sendable () -> SpeechVoicePreset) {
         self.init(player: PCMPlayer(), prepare: {
-            do { try await engine.prepare() }
+            do { try await engine.prepare(); try await JapanesePronunciationService.shared.prepare() }
             catch is CancellationError { throw ConversationServiceError.cancelled }
             catch { throw SupertonicErrorMapper.map(error) }
+        }, normalize: { text in
+            do { return try await JapanesePronunciationService.shared.normalize(text) }
+            catch is CancellationError { throw ConversationServiceError.cancelled }
+            catch { throw ConversationServiceError.speechSynthesisFailed }
         }, voice: voice, synthesize: { text, preset in
             do { return try await engine.synthesize(text: text, voiceID: preset.rawValue, steps: 8) }
             catch is CancellationError { throw ConversationServiceError.cancelled }
@@ -90,7 +96,8 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
     private func nextPrepared(_ channel: SpeechSentenceChannel, voice: SpeechVoicePreset) async throws -> Prepared? {
         guard let sentence = try await channel.next() else { return nil }
         try Task.checkCancellation()
-        let spoken = SpeechPronunciationNormalizer().normalize(sentence.original)
+        let spoken = try await normalize(sentence.original)
+        try Task.checkCancellation()
         onInput?(sentence.original, spoken)
         onSynthesis?(sentence.ordinal, "synthesisStarted")
         let pcm = try await synthesize(spoken, voice)

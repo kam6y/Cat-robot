@@ -195,7 +195,7 @@ assert(app.resources_build_phase.files_references.any? { |r| r.path == "Vendor/J
 pronunciation_validation = app.shell_script_build_phases.find { |p| p.name == "Validate jpreprocess assets" }
 assert(pronunciation_validation && app.build_phases.index(pronunciation_validation) < app.build_phases.index(app.source_build_phase), "jpreprocess must be validated before compilation")
 [app, tests].each do |target|
-  assert(target.build_configurations.all? { |c| Array(c.build_settings["SWIFT_INCLUDE_PATHS"]).flat_map { |v| v.split }.include?("$(SRCROOT)/native/japanese-pronunciation/include") }, "native C module must be importable by #{target.name}")
+  assert(target.build_configurations.all? { |c| !Array(c.build_settings["SWIFT_INCLUDE_PATHS"]).flat_map { |v| v.split }.include?("$(SRCROOT)/native/japanese-pronunciation/include") }, "native module must come from XCFramework only in #{target.name}")
 end
 assert(app.copy_files_build_phases.none? { |p| p.files_references.include?(native) }, "static jpreprocess library must not be embedded")
 

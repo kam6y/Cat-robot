@@ -21,7 +21,6 @@ final class ReplySentenceStreamBufferTests: XCTestCase {
             for index in original.indices { output += try buffer.receive(String(original[...index])) }
             output += try buffer.receive(original, final: true)
             XCTAssertEqual(output.map(\.original).joined(), original)
-            XCTAssertEqual(output.map { SpeechPronunciationNormalizer().normalize($0.original) }.joined(), original)
         }
     }
     func testProtectsCodeAndOnlyAllowsUnsentSuffixRevision() throws {

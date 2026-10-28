@@ -151,3 +151,17 @@ fn numeric_grouping_is_distinct_from_a_comma_separated_list() {
         assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
     }
 }
+
+#[test]
+fn known_english_word_is_recovered_when_context_selects_unknown_token() {
+    assert_eq!(
+        frontend().pronounce("iPhoneとBluetooth。").unwrap(),
+        "アイフォーントブルートゥース。"
+    );
+    assert_eq!(
+        frontend()
+            .pronounce("iPhoneケースとBluetoothを使う。")
+            .unwrap(),
+        "アイフォーンケーストブルートゥースヲツカウ。"
+    );
+}
