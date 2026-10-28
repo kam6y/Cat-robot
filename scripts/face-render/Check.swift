@@ -117,6 +117,22 @@ enum GeometryCheck {
             }
         }
 
+        // testOnlySleepingShowsSleepMarksAboveTheClosedEyes
+        for expression in FaceExpression.allCases {
+            let expected: CGFloat = expression == .sleeping ? 1 : 0
+            expect(CatFaceAppearance.preset(expression).sleepMarks == expected, "\(expression): sleep marks should be \(expected)")
+        }
+        let marks = CatFaceGeometry.sleepMarks().map(\.bounds)
+        expect(marks.count == 3, "sleeping: \(marks.count) Zs, expected 3")
+        for (smaller, larger) in zip(marks, marks.dropFirst()) {
+            expect(smaller.maxX < larger.minX && larger.minY < smaller.minY && smaller.height < larger.height,
+                   "sleeping: Zs \(smaller) and \(larger) do not rise and grow to the right")
+        }
+        let arcTop = CatFaceSide.allCases.map { CatFaceGeometry.eye(side: $0, appearance: sleeping).closedLid.bounds.minY }.min()!
+        for mark in marks {
+            expect(mark.minX > 0.5 && mark.maxY < arcTop, "sleeping: Z \(mark) is not on the right above the closed eyes")
+        }
+
         // testPupilsAndHighlightsStayVisible
         for expression in FaceExpression.allCases {
             for problem in visibilityProblems(.preset(expression)) {

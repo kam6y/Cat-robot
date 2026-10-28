@@ -1,0 +1,5 @@
+Z group bbox prev x 952..1178 y 60..240 | new x 997..1223 y 60..240 | shift x +45/+45 px (0.035*1280 = 44.8) y +0/+0
+new right edge cv 0.9555
+Z mask after +45px shift: IoU 0.9922
+sleeping canvas prev vs new: changed px outside the old+new Z regions 0
+prev vs new: 36/39 identical; differ: ['canvas-sleeping-closed.png', 'gallery.png', 'screen-sleeping.png']

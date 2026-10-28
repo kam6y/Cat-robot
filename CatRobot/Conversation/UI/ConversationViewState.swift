@@ -80,7 +80,6 @@ struct ConversationViewState: Equatable, Sendable {
         phase == .paused && isAwaitingTapToResume && !isSleeping
             && !ConversationMemoryPresentation(state: memoryState).blocksConversation
     }
-    var faceOpacity: Double { showsTapToResume ? 0.5 : 1 }
     var statusChips: [ConversationStatusChip] {
         var chips: [ConversationStatusChip] = []
         if isSleeping {

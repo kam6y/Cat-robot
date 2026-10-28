@@ -2,11 +2,11 @@ import FoundationModels
 
 struct ExpressTool: Tool {
     let name = "express"
-    let description = "返答の発話開始に合わせる猫の表情を予約する。expressionはneutral, happy, curious, thinking, listening, speaking, sleepy, surprised, sorry。hold_secondsは1〜10秒、省略は3秒。不明な表情はneutral、秒数は範囲内に丸める。結果は表示済みではなく予約を表す。"
+    let description = "返答の発話開始に合わせる猫の表情を予約する。expressionはneutral, happy, curious, thinking, speaking, sleepy, surprised, sorry。hold_secondsは1〜10秒、省略は3秒。不明な表情はneutral、秒数は範囲内に丸める。結果は表示済みではなく予約を表す。"
 
     @Generable
     struct Arguments {
-        @Guide(description: "neutral, happy, curious, thinking, listening, speaking, sleepy, surprised, sorry のいずれか")
+        @Guide(description: "neutral, happy, curious, thinking, speaking, sleepy, surprised, sorry のいずれか")
         var expression: String
         @Guide(description: "保持秒数。1〜10、省略時は3")
         var hold_seconds: Int?
@@ -37,7 +37,6 @@ struct ExpressTool: Tool {
         case .happy: "うれしい"
         case .curious: "興味を持った"
         case .thinking: "考え中の"
-        case .listening: "聞いている"
         case .speaking: "話している"
         case .sleepy: "眠そうな"
         case .surprised: "驚いた"

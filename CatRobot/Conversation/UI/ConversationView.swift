@@ -195,8 +195,6 @@ struct ConversationView: View {
             )
         }
         .buttonStyle(.plain)
-        .opacity(state.faceOpacity)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.faceOpacity)
         .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
         .accessibilityLabel(accessibility.listeningAction)
         .accessibilityValue(accessibility.microphoneValue)

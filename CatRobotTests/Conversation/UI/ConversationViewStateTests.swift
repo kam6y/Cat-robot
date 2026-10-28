@@ -10,7 +10,6 @@ final class ConversationViewStateTests: XCTestCase {
             state.caption = "前の返事"
             state.provisionalTranscript = "ねこちゃん"
             XCTAssertEqual(state.statusChips.map(\.title), phase == .listening ? ["聞き取り中"] : [], "\(phase)")
-            XCTAssertEqual(state.faceOpacity, 1, "\(phase)")
         }
     }
 
@@ -43,18 +42,15 @@ final class ConversationViewStateTests: XCTestCase {
         state.isAwaitingTapToResume = true
         XCTAssertEqual(state.statusChips, [.paused])
         XCTAssertEqual(state.statusChips.map(\.title), ["一時停止中・猫をタップで再開"])
-        XCTAssertEqual(state.faceOpacity, 0.5)
         state.memoryState = .unsaved
         XCTAssertTrue(state.showsTapToResume, "保存再試行の通知は猫の再開を妨げない")
         for memory in [ConversationMemoryState.forgetting, .forgetFailed(.deleteFailed), .restoreFailed(.readFailed)] {
             state.memoryState = memory
             XCTAssertEqual(state.statusChips, [], "\(memory)")
-            XCTAssertEqual(state.faceOpacity, 1, "\(memory)")
         }
         state.memoryState = .ready
         state.phase = .thinking
         XCTAssertFalse(state.showsTapToResume, "タップ停止後の文字への返答中は一時停止を表示しない")
-        XCTAssertEqual(state.faceOpacity, 1)
     }
 
     func testSleepingSuppressesPauseAndLookButKeepsWarnings() {
@@ -67,7 +63,6 @@ final class ConversationViewStateTests: XCTestCase {
         state.inactivity = .sleeping
         XCTAssertEqual(state.statusChips, [.sleeping, .robotReconnecting, .trackingPausedForHeat])
         XCTAssertEqual(state.statusChips.first?.title, "待機中・タップで起こす")
-        XCTAssertEqual(state.faceOpacity, 1)
     }
 
     func testStatusChipOrderAndCopy() {
@@ -90,7 +85,7 @@ final class ConversationViewStateTests: XCTestCase {
         state.phase = .listening
         XCTAssertEqual(state.faceExpression, .happy)
         state.heldExpression = nil
-        XCTAssertEqual(state.faceExpression, .listening)
+        XCTAssertEqual(state.faceExpression, .neutral)
     }
 
     func testListeningAsksTheUserToSpeak() {

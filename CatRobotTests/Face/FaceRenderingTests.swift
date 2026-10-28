@@ -4,7 +4,7 @@ import XCTest
 @testable import CatRobot
 
 /// 顔の静止画を XCTest 添付として残す。見た目の合否は採用画像との目視比較で判断し、
-/// ここでは「顔が描かれている」「画面の大部分は黒」だけを確認する。
+/// 顔の描画・中央位置・黒背景と、眠りの Z が sleeping だけに出ることを確認する。
 @MainActor
 final class FaceRenderingTests: XCTestCase {
     func testEveryExpressionRendersOnBlackScreen() async throws {
@@ -58,12 +58,20 @@ final class FaceRenderingTests: XCTestCase {
         add(geometryAttachment)
 
         XCTAssertEqual(captureBounds.size, CGSize(width: 852, height: 393), geometry)
-        let visible = try XCTUnwrap(nonBlackFraction(of: image))
+        let metrics = try XCTUnwrap(pixelMetrics(of: image))
+        let visible = metrics.nonBlackFraction
         XCTAssertGreaterThan(visible, 0.02, "\(expression) \(mouthPose): the face is missing")
         XCTAssertLessThan(visible, 0.40, "\(expression) \(mouthPose): the screen should stay mostly black")
         // 鼻はキャンバスの中心 x = 0.5 にある。顔が矩形の左右中央に置かれていること（Mac のモックと同じ）。
-        let noseCenter = try XCTUnwrap(noseCenterX(of: image), "\(expression) \(mouthPose): the nose is missing")
+        let noseCenter = try XCTUnwrap(metrics.noseCenterX, "\(expression) \(mouthPose): the nose is missing")
         XCTAssertEqual(noseCenter, 0.5, accuracy: 0.005, "\(expression) \(mouthPose): face is off center\n\(geometry)")
+        // 眠りの Z（青）は sleeping だけに出て、目のまぶたの黒に隠れない。
+        let sleepMarks = metrics.sleepMarkFraction
+        if expression == .sleeping {
+            XCTAssertGreaterThan(sleepMarks, 0.004, "sleeping \(mouthPose): the Zs are missing")
+        } else {
+            XCTAssertEqual(sleepMarks, 0, "\(expression) \(mouthPose): only sleeping shows the Zs")
+        }
     }
 
     /// 窓・画面・ホストの寸法と安全領域、キャプチャの矩形を記録する（Mac のモックとの食い違いの調査用）。
@@ -79,33 +87,31 @@ final class FaceRenderingTests: XCTestCase {
         ].joined(separator: "\n")
     }
 
-    /// 鼻（コーラル色）の画素の重心の x（画像の幅に対する比）。
-    private func noseCenterX(of image: UIImage) -> Double? {
-        guard let (pixels, width, height) = rgbaPixels(of: image) else { return nil }
-        var sum = 0.0
-        var count = 0
-        for y in 0..<height {
-            for x in 0..<width {
-                let index = (y * width + x) * 4
-                let r = Int(pixels[index]), g = Int(pixels[index + 1]), b = Int(pixels[index + 2])
-                if r > 200, (100...180).contains(g), (70...150).contains(b), r - g > 60 {
-                    sum += Double(x) + 0.5
-                    count += 1
-                }
-            }
-        }
-        return count > 0 ? sum / Double(count) / Double(width) : nil
-    }
-
-    /// 最大チャンネルが 24 を超える画素の割合。
-    private func nonBlackFraction(of image: UIImage) -> Double? {
+    /// 1 回のデコードと全画素の走査で、見えている割合・鼻の重心・眠りの Z の割合を測る。
+    private func pixelMetrics(of image: UIImage) -> (nonBlackFraction: Double, noseCenterX: Double?, sleepMarkFraction: Double)? {
         guard let (pixels, width, height) = rgbaPixels(of: image) else { return nil }
         var visible = 0
-        for index in stride(from: 0, to: pixels.count, by: 4)
-        where max(pixels[index], pixels[index + 1], pixels[index + 2]) > 24 {
-            visible += 1
+        var blue = 0
+        var noseSum = 0.0
+        var noseCount = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            let r = Int(pixels[index]), g = Int(pixels[index + 1]), b = Int(pixels[index + 2])
+            if max(r, g, b) > 24 {
+                visible += 1
+            }
+            // 眠りの Z の青（#76BBFD、縁のにじみを含む）。ほかの部品の色は含まない。
+            if b > 120, b - r > 60, b > g {
+                blue += 1
+            }
+            // 鼻（コーラル色）の画素の重心の x。画素の中心を足す。
+            if r > 200, (100...180).contains(g), (70...150).contains(b), r - g > 60 {
+                noseSum += Double((index / 4) % width) + 0.5
+                noseCount += 1
+            }
         }
-        return Double(visible) / Double(width * height)
+        let total = Double(width * height)
+        let noseCenter = noseCount > 0 ? noseSum / Double(noseCount) / Double(width) : nil
+        return (Double(visible) / total, noseCenter, Double(blue) / total)
     }
 
     /// sRGB の RGBA8 画素と幅・高さ。

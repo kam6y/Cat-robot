@@ -10,5 +10,5 @@ enum MouthPose: Equatable, Sendable {
 }
 
 enum FaceExpression: String, CaseIterable, Sendable {
-    case neutral, happy, curious, thinking, listening, speaking, sleepy, surprised, sorry, sleeping
+    case neutral, happy, curious, thinking, speaking, sleepy, surprised, sorry, sleeping
 }

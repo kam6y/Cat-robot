@@ -603,6 +603,83 @@ enum CatFaceGeometry {
         return CGPoint(x: origin.x + x / a, y: origin.y + y)
     }
 
+    // MARK: 眠りの Z（sleeping）
+
+    /// 右上の 3 つの Z（小 → 中 → 大で右上がり）。外接の左上（キャンバス単位）と高さ（キャンバス高さ単位）。
+    /// 大きさと縦の位置は参照 sleeping-zzz-reference.png の実測、横は実測からキャンバス幅の 3.5% 右
+    /// （「もう少し右へ」という要望に合わせた調整値。docs/design/sleeping-zzz-2026-10-28/visual-comparison.md）。
+    private static let sleepMarkBoxes: [(origin: CGPoint, height: CGFloat)] = [
+        (CGPoint(x: 0.7788, y: 0.2644), 0.0687),
+        (CGPoint(x: 0.8263, y: 0.1837), 0.0949),
+        (CGPoint(x: 0.8894, y: 0.0830), 0.1332),
+    ]
+
+    static func sleepMarks() -> [NormalizedPath] {
+        sleepMarkBoxes.map { sleepMark(origin: $0.origin, height: $0.height) }
+    }
+
+    /// 太い Z。字形の単位は Z の高さで、横も実寸（キャンバスの x へは aspectRatio で割って換算）。
+    /// 上下の横棒と斜めの棒はほぼ同じ太さで、外側の角を少し丸め、斜めの棒と横棒の内側の角は尖らせる。
+    private static func sleepMark(origin: CGPoint, height h: CGFloat) -> NormalizedPath {
+        let width: CGFloat = 0.877
+        let topBarBottom: CGFloat = 0.255
+        let bottomBarTop: CGFloat = 0.738
+        let topBarInset: CGFloat = 0.02
+        // 斜めの棒: 上の横棒の下端での中心 x、横幅、下へ 1 進むと左へ進む量。
+        let diagonalCenter: CGFloat = 0.649
+        let diagonalWidth: CGFloat = 0.366
+        let slope: CGFloat = 0.874
+        func diagonalX(_ y: CGFloat, _ offset: CGFloat) -> CGFloat {
+            diagonalCenter + offset - slope * (y - topBarBottom)
+        }
+        let right = diagonalWidth / 2
+        let left = -diagonalWidth / 2
+        // 角の丸め。横棒の斜めの棒と離れた側の端（上の棒の左下、下の棒の右上）は少し大きく丸める。
+        let corner: CGFloat = 0.05
+        let barEnd: CGFloat = 0.075
+        let corners: [(point: CGPoint, cut: CGFloat)] = [
+            (CGPoint(x: topBarInset, y: 0), corner),
+            (CGPoint(x: width, y: 0), corner),
+            (CGPoint(x: width, y: topBarBottom - (width - diagonalX(topBarBottom, right)) / slope), corner),
+            (CGPoint(x: diagonalX(bottomBarTop, right), y: bottomBarTop), 0),
+            (CGPoint(x: width, y: bottomBarTop), barEnd),
+            (CGPoint(x: width, y: 1), corner),
+            (CGPoint(x: 0, y: 1), corner),
+            (CGPoint(x: 0, y: topBarBottom + diagonalX(topBarBottom, left) / slope), corner),
+            (CGPoint(x: diagonalX(topBarBottom, left), y: topBarBottom), 0),
+            (CGPoint(x: topBarInset, y: topBarBottom), barEnd),
+        ]
+        return roundedPolygon(corners) { point in
+            CGPoint(x: origin.x + point.x * h / CGFloat(aspectRatio), y: origin.y + point.y * h)
+        }
+    }
+
+    /// 頂点ごとに辺を cut だけ戻して角を丸めた閉じた多角形（丸めは円弧に近い 3 次ベジェ。直角なら半径 cut の 4 分円）。
+    private static func roundedPolygon(_ corners: [(point: CGPoint, cut: CGFloat)],
+                                       transform: (CGPoint) -> CGPoint) -> NormalizedPath {
+        func mix(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+            CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+        }
+        var commands: [NormalizedPath.Command] = []
+        for (index, corner) in corners.enumerated() {
+            let previous = corners[(index + corners.count - 1) % corners.count].point
+            let next = corners[(index + 1) % corners.count].point
+            func toward(_ target: CGPoint) -> CGPoint {
+                let length = hypot(target.x - corner.point.x, target.y - corner.point.y)
+                return mix(corner.point, target, corner.cut / length)
+            }
+            let start = toward(previous)
+            commands.append(index == 0 ? .move(transform(start)) : .line(transform(start)))
+            if corner.cut > 0 {
+                let end = toward(next)
+                commands.append(.curve(to: transform(end), control1: transform(mix(start, corner.point, 0.5523)),
+                                       control2: transform(mix(end, corner.point, 0.5523))))
+            }
+        }
+        commands.append(.close)
+        return NormalizedPath(commands)
+    }
+
     // MARK: 検証用の公開ヘルパー（XCTest と scripts/face-render の check が共有する）
 
     /// 描画に使う全パスのアンカーと制御点。
@@ -612,6 +689,7 @@ enum CatFaceGeometry {
             + [nose()]
             + [mouth.neck] + mouth.lines + [mouth.lowerLip, mouth.cavity, mouth.round]
             + CatFaceSide.allCases.flatMap { whiskers(side: $0, appearance: appearance) }
+            + (appearance.sleepMarks > 0 ? sleepMarks() : [])
         return paths.flatMap(\.points)
     }
 

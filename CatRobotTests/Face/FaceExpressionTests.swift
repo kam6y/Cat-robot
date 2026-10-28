@@ -6,7 +6,7 @@ final class FaceExpressionTests: XCTestCase {
         let cases: [(ConversationPhase, FaceExpression)] = [
             (.idle, .neutral), (.paused, .neutral),
             (.preparing, .thinking), (.classifying, .thinking), (.thinking, .thinking),
-            (.listening, .listening), (.clarifying, .curious), (.speaking, .speaking),
+            (.listening, .neutral), (.clarifying, .curious), (.speaking, .speaking),
             (.failed(.modelBusy), .sorry), (.failed(.microphoneDenied), .sorry)
         ]
         for (phase, expected) in cases {
@@ -17,7 +17,7 @@ final class FaceExpressionTests: XCTestCase {
     func testExpressionNormalizationAcceptsKnownNamesAndDefaultsUnknownNames() {
         let cases: [(String, FaceExpression)] = [
             ("neutral", .neutral), (" HAPPY \n", .happy), ("CURIOUS", .curious),
-            (" thinking ", .thinking), ("LiStEnInG", .listening), ("speaking", .speaking),
+            (" thinking ", .thinking), ("LiStEnInG", .neutral), ("speaking", .speaking),
             ("sleepy", .sleepy), ("surprised", .surprised), ("sorry", .sorry),
             ("", .neutral), (" \n", .neutral), ("angry", .neutral), ("happy now", .neutral),
             ("sleeping", .neutral), (" SLEEPING ", .neutral)
@@ -31,7 +31,7 @@ final class FaceExpressionTests: XCTestCase {
     func testSleepingIsNotExpressibleByTheTool() {
         XCTAssertEqual(FaceExpression.expressible, FaceExpression.allCases.filter { $0 != .sleeping })
         XCTAssertFalse(FaceExpression.expressible.contains(.sleeping))
-        XCTAssertEqual(FaceExpression.expressible.count, 9)
+        XCTAssertEqual(FaceExpression.expressible.count, 8)
         XCTAssertTrue(FaceExpression.allCases.contains(.sleeping))
     }
 }

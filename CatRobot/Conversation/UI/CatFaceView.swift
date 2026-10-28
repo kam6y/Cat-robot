@@ -116,6 +116,12 @@ private struct CatFaceRenderer {
                 context.fill(whisker.path(in: rect), with: .color(Palette.cream))
             }
         }
+        // 眠りの Z は右目の黒いまぶたと重なる位置にあるので、目より後に描く。
+        if appearance.sleepMarks > 0.001 {
+            for mark in CatFaceGeometry.sleepMarks() {
+                context.fill(mark.path(in: rect), with: .color(Palette.sleepMark.opacity(appearance.sleepMarks)))
+            }
+        }
     }
 
     private func drawEye(side: CatFaceSide, iris: Palette.Iris, in context: inout GraphicsContext, rect: CGRect) {
@@ -206,6 +212,8 @@ private enum Palette {
     /// 閉じた目の弧（sleeping）。下書き sleeping-draft.png の弧の内側（縁から 2px 以上）の中央値 #FDCA44 / #FDCA43 の実測。
     /// 虹彩の明るい黄 #FDCA40 より青が 3 段階強い。
     static let closedLid = rgb(0xFD, 0xCA, 0x43)
+    /// 眠りの Z（sleeping）。参照 sleeping-zzz-reference.png の Z の内側（縁から 2px 以上）の中央値 #76BBFC〜#78BCFD の実測。
+    static let sleepMark = rgb(0x76, 0xBB, 0xFD)
 
     /// 虹彩の色と縁の光。brightness 0 が neutral-b、1 が happy-b。
     struct Iris {

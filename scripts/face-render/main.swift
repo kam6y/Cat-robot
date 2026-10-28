@@ -30,8 +30,8 @@ MainActor.assumeIsolated {
         case "check":
             let failures = GeometryCheck.run()
             if failures.isEmpty {
-                print("check: OK (10 presets x 4 mouth poses: points in 0...1, mouth opening order, mirror symmetry, "
-                      + "happy eye size, sleeping closed eyes and gold arc, pupils and highlights visible, "
+                print("check: OK (\(FaceExpression.allCases.count) presets x 4 mouth poses: points in 0...1, mouth opening order, mirror symmetry, "
+                      + "happy eye size, sleeping closed eyes, gold arc and Zs (sleeping only), pupils and highlights visible, "
                       + "no unintended path intersections at line scale 1 and 1.35)")
             } else {
                 failures.forEach { print("check: FAIL \($0)") }

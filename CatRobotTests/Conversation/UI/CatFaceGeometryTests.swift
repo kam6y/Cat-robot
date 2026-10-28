@@ -113,12 +113,33 @@ final class CatFaceGeometryTests: XCTestCase {
         }
     }
 
-    /// 既存の 9 表情は目を閉じない（閉じた目の弧は sleeping だけが見せる）。
+    /// sleeping 以外の表情は目を閉じない（閉じた目の弧は sleeping だけが見せる）。
     func testOnlySleepingClosesTheEyes() {
         for expression in FaceExpression.allCases where expression != .sleeping {
             for side in CatFaceSide.allCases {
                 XCTAssertEqual(CatFaceAppearance.preset(expression).eye(side).closed, 0, "\(expression) \(side)")
             }
+        }
+    }
+
+    /// 眠りの Z は sleeping だけが見せる。3 つは小 → 大で右上がりに並び、画面の右半分で閉じた目の弧より上にある
+    /// （参照 docs/design/sleeping-zzz-2026-10-28/sleeping-zzz-reference.png）。
+    func testOnlySleepingShowsSleepMarksAboveTheClosedEyes() {
+        for expression in FaceExpression.allCases {
+            XCTAssertEqual(CatFaceAppearance.preset(expression).sleepMarks, expression == .sleeping ? 1 : 0, "\(expression)")
+        }
+        let sleeping = CatFaceAppearance.preset(.sleeping)
+        let marks = CatFaceGeometry.sleepMarks().map(\.bounds)
+        XCTAssertEqual(marks.count, 3)
+        for (smaller, larger) in zip(marks, marks.dropFirst()) {
+            XCTAssertLessThan(smaller.maxX, larger.minX, "Zs overlap horizontally")
+            XCTAssertLessThan(larger.minY, smaller.minY, "Zs do not rise to the right")
+            XCTAssertLessThan(smaller.height, larger.height, "Zs do not grow to the right")
+        }
+        let arcTop = CatFaceSide.allCases.map { CatFaceGeometry.eye(side: $0, appearance: sleeping).closedLid.bounds.minY }.min()!
+        for mark in marks {
+            XCTAssertGreaterThan(mark.minX, 0.5, "\(mark) is not on the right half")
+            XCTAssertLessThan(mark.maxY, arcTop, "\(mark) is not above the closed eyes")
         }
     }
 

@@ -50,6 +50,8 @@ struct CatFaceAppearance: Equatable, Sendable {
     var mouthSmile: CGFloat = 1
     /// 0 で ω の口、1 で小さい丸い口。
     var mouthRoundness: CGFloat = 0
+    /// 右上の眠りの Z（sleeping）の見え方。0 で無し、1 で 3 つの Z が見える。
+    var sleepMarks: CGFloat = 0
     var leftWhiskers = Whiskers()
     var rightWhiskers = Whiskers()
 
@@ -67,7 +69,6 @@ struct CatFaceAppearance: Equatable, Sendable {
         case .happy: happy
         case .curious: curious
         case .thinking: thinking
-        case .listening: listening
         case .speaking: speaking
         case .sleepy: sleepy
         case .surprised: surprised
@@ -153,21 +154,6 @@ extension CatFaceAppearance {
         return value
     }()
 
-    static let listening: CatFaceAppearance = {
-        var value = neutral
-        value.updateEyes { eye in
-            eye.widthScale = 1.06
-            eye.heightScale = 1.06
-            // 瞳は中央（鼻側への寄りを目幅の 1% に）。
-            eye.pupilCenter = CGPoint(x: 0.02, y: -0.004)
-        }
-        value.updateWhiskers { whiskers in
-            whiskers.lift = 1
-            whiskers.spread = -1
-        }
-        return value
-    }()
-
     static let speaking: CatFaceAppearance = {
         var value = neutral
         value.updateEyes { eye in
@@ -227,6 +213,8 @@ extension CatFaceAppearance {
             eye.lid = 1
             eye.closed = 1
         }
+        // 右上に小・中・大の青い Z（docs/design/sleeping-zzz-2026-10-28/sleeping-zzz-reference.png）。
+        value.sleepMarks = 1
         return value
     }()
 
@@ -289,6 +277,7 @@ extension CatFaceAppearance {
         \.rightWhiskers.lift, \.rightWhiskers.spread, \.irisBrightness,
         \.glow, \.mouthWidth, \.mouthSmile,
         \.mouthRoundness, \.leftEye.closed, \.rightEye.closed,
+        \.sleepMarks,
     ]
 
     var animationVector: AnimationVector {

@@ -15,7 +15,6 @@ final class ConversationViewModelTests: XCTestCase {
         await h.sut.toggleListening()
         XCTAssertEqual(h.sut.viewState.phase, .listening)
         XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
-        XCTAssertEqual(h.sut.viewState.faceOpacity, 1)
         let starts = await h.recognizer.startCount
         XCTAssertEqual(starts, 2)
         await h.sut.shutdown()
@@ -29,13 +28,11 @@ final class ConversationViewModelTests: XCTestCase {
             XCTAssertEqual(h.sut.viewState.phase, .paused)
             XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
             XCTAssertEqual(h.sut.viewState.statusChips, [.paused])
-            XCTAssertEqual(h.sut.viewState.faceOpacity, 0.5)
             await h.sut.handleAudioSessionEvent(.interruptionEnded(shouldResume: true))
             XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
             await h.sut.toggleListening()
             XCTAssertEqual(h.sut.viewState.phase, .listening)
             XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
-            XCTAssertEqual(h.sut.viewState.faceOpacity, 1)
             await h.sut.shutdown()
         }
     }
@@ -84,7 +81,6 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(h.sut.viewState.caption, "わかったよ")
         XCTAssertEqual(h.sut.viewState.phase, .paused)
         XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
-        XCTAssertEqual(h.sut.viewState.faceOpacity, 0.5)
         let starts = await h.recognizer.startCount
         XCTAssertEqual(starts, 1, "文字だけの返答ではマイクを勝手に再開しない")
         await h.sut.shutdown()

@@ -1,0 +1,11 @@
+blue IoU ref(1280x720) vs rendered: 0.9877  (ref px 10202, rendered px 10220, xor 126)
+rendered blue px outside Z region: 0
+Z1: IoU 0.9765 px ref 1570 rendered 1545 | bbox diff (rendered - ref, px@1280x720) x +0/+0 y +0/+0
+Z2: IoU 0.9898 px ref 2936 rendered 2940 | bbox diff (rendered - ref, px@1280x720) x +0/+0 y +0/+0
+Z3: IoU 0.9897 px ref 5696 rendered 5735 | bbox diff (rendered - ref, px@1280x720) x +0/+0 y +0/+0
+rendered Z core color median #76BBFD
+sleeping canvas vs baseline: changed px total 10615, outside Z region 0 (max diff outside 0)
+baseline vs round: 36/39 images pixel-identical; changed:
+  canvas-sleeping-closed.png: 10615 px, bbox x 952..1177 y 59..239 of 1280x720
+  gallery.png: 3272 px, bbox x 1464..1587 y 1243..1341 of 2588x1612
+  screen-sleeping.png: 12538 px, bbox x 1192..1439 y 65..261 of 1704x786

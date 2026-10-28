@@ -53,7 +53,6 @@ final class ConversationAutoResumeTests: XCTestCase {
         await coordinator.waitForOperations()
         XCTAssertEqual(harness.sut.viewState.phase, .listening, "前面復帰はタップの一時停止より優先する")
         XCTAssertFalse(harness.sut.viewState.isAwaitingTapToResume)
-        XCTAssertEqual(harness.sut.viewState.faceOpacity, 1)
         await harness.sut.shutdown()
     }
 

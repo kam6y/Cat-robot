@@ -3,7 +3,7 @@ import UIKit
 
 struct FaceSizeTunerView: View {
     @ObservedObject var model: FaceSizeTuningModel
-    @State private var expression: FaceExpression = .listening
+    @State private var expression: FaceExpression = .neutral
     @State private var showsControls = true
     @State private var copied = false
 
@@ -123,7 +123,6 @@ private extension FaceExpression {
         case .happy: "うれしい"
         case .curious: "興味"
         case .thinking: "考え中"
-        case .listening: "聞き取り"
         case .speaking: "お話し"
         case .sleepy: "眠そう"
         case .surprised: "びっくり"
