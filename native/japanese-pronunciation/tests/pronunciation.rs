@@ -165,3 +165,39 @@ fn known_english_word_is_recovered_when_context_selects_unknown_token() {
         "アイフォーンケーストブルートゥースヲツカウ。"
     );
 }
+
+#[test]
+fn service_and_expression_suffix_plus_is_not_read_as_tasu() {
+    for (input, expected) in [
+        ("Disney+を見よう。", "ディズニープラスヲミヨー。"),
+        ("Apple TV+", "アップル テレビプラス"),
+        ("A+", "エイプラス"),
+        ("A+B", "エイプラスビー"),
+        ("x+1", "エックスプラスイチ"),
+        ("g++", "ジープラスプラス"),
+        ("i++", "アイプラスプラス"),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+}
+
+#[test]
+fn known_punctuation_keeps_neighboring_corrections_active() {
+    for (input, expected) in [
+        ("+ボタンを押してね♪", "プラスボタンヲオシテネ♪"),
+        ("+ボタンを押してね〜", "プラスボタンヲオシテネ〜"),
+        ("YouTubeを見よう…", "ユーチューブヲミヨー…"),
+        ("YouTube・Netflix", "ユーチューブ・ネットフリックス"),
+        ("1+2=3", "イチプラスニ=サン"),
+        ("3〜5個", "サン〜ゴコ"),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+    for mark in [
+        '…', '‥', '・', '･', '〜', '～', '♪', '♫', '＝', '=', '※', '→', '←', '☆', '★', '♡', '♥',
+    ] {
+        let input = format!("+{mark}YouTube");
+        let expected = format!("プラス{mark}ユーチューブ");
+        assert_eq!(frontend().pronounce(&input).unwrap(), expected, "{input}");
+    }
+}

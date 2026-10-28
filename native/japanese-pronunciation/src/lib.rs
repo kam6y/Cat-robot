@@ -87,6 +87,36 @@ impl Pronouncer {
         Ok(())
     }
 
+    fn verbalize_plus(&self, text: &str) -> Result<String, Error> {
+        let mut output = String::with_capacity(text.len());
+        let mut cursor = 0;
+        for term in IDENTIFIERS.find_iter(text) {
+            output.push_str(&text[cursor..term.start()].replace(['+', '＋'], "プラス"));
+            let word = term.as_str();
+            // Preserve dictionary lexemes such as C++; other suffix/operator plus
+            // signs must not fall through to the dictionary's arithmetic タス entry.
+            let keep_word = if word.contains('+') {
+                let njd = self
+                    .frontend
+                    .text_to_njd(word)
+                    .map_err(|_| Error::Conversion)?;
+                njd.nodes.len() == 1
+                    && njd.nodes[0].get_string() == normalize_text_for_naist_jdic(word)
+                    && njd.nodes[0].get_pron().mora_size() > 0
+            } else {
+                true
+            };
+            if keep_word {
+                output.push_str(word);
+            } else {
+                output.push_str(&word.replace('+', "プラス"));
+            }
+            cursor = term.end();
+        }
+        output.push_str(&text[cursor..].replace(['+', '＋'], "プラス"));
+        Ok(output)
+    }
+
     fn convert_run(&self, original: &str) -> Result<String, Error> {
         if original.is_empty() {
             return Ok(String::new());
@@ -108,7 +138,7 @@ impl Pronouncer {
                 _ => "Bluetooth",
             }
         });
-        let prepared = verbalize_plus(&canonical);
+        let prepared = self.verbalize_plus(&canonical)?;
         let normalized = normalize_text_for_naist_jdic(&prepared);
         let mut njd = self
             .frontend
@@ -218,19 +248,24 @@ fn is_separator(c: char) -> bool {
                 | ';'
                 | '：'
                 | '；'
+                | '…'
+                | '‥'
+                | '・'
+                | '･'
+                | '〜'
+                | '～'
+                | '♪'
+                | '♫'
+                | '＝'
+                | '='
+                | '※'
+                | '→'
+                | '←'
+                | '☆'
+                | '★'
+                | '♡'
+                | '♥'
         )
-}
-
-fn verbalize_plus(text: &str) -> String {
-    let mut output = String::with_capacity(text.len());
-    let mut cursor = 0;
-    for term in IDENTIFIERS.find_iter(text) {
-        output.push_str(&text[cursor..term.start()].replace(['+', '＋'], "プラス"));
-        output.push_str(term.as_str()); // C++ and unknown ASCII identifiers remain one term.
-        cursor = term.end();
-    }
-    output.push_str(&text[cursor..].replace(['+', '＋'], "プラス"));
-    output
 }
 
 fn protected_ranges(text: &str) -> Vec<Range<usize>> {

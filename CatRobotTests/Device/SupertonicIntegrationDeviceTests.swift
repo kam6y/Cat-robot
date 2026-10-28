@@ -8,6 +8,7 @@ import XCTest
 @MainActor
 final class SupertonicIntegrationDeviceTests: XCTestCase {
     private var records: [[String: Any]] = []
+    private var pronunciationPreparation: [String: Any] = [:]
     private var runID = ""
     private var stage = ""
     private var directory: URL!
@@ -23,6 +24,9 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             throw XCTSkip("Use the dedicated device runner")
         }
         runID = id; stage = selectedStage; executionTimeAllowance = 3600
+        let wasIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = wasIdleTimerDisabled }
         directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SupertonicIntegration/\(id)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -33,9 +37,11 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         defer { try? session.setActive(false, options: .notifyOthersOnDeactivation) }
         let root = Bundle.main.resourceURL!
         let engine = SupertonicEngine(root: root.appendingPathComponent("Supertonic"), manifest: root.appendingPathComponent("supertonic-manifest.json"))
-        let preparation = ProcessInfo.processInfo.systemUptime
-        try await engine.prepare()
-        print("SUPER_PREPARED \(ProcessInfo.processInfo.systemUptime - preparation)")
+        if stage != "pronunciation" {
+            let preparation = ProcessInfo.processInfo.systemUptime
+            try await engine.prepare()
+            print("SUPER_PREPARED \(ProcessInfo.processInfo.systemUptime - preparation)")
+        }
         if stage == "voices" {
             for voice in SpeechVoicePreset.allCases {
                 let fixture = SupertonicLatencyFixture(id: voice.rawValue, text: "こんにちは。今日も一緒に遊ぼうね。", prompt: "")
@@ -78,6 +84,10 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         var synthesis: [[String: Any]] = []
         speaker.onInput = { original, spoken in inputs.append(["original": original, "spoken": spoken, "processedChunks": SpeechTextAudit(input: spoken).processedChunks]) }
         speaker.onSynthesis = { ordinal, point in synthesis.append(["at": ProcessInfo.processInfo.systemUptime, "point": point, "sentenceOrdinal": ordinal]) }
+        let session = AVAudioSession.sharedInstance()
+        print("SUPER_AUDIO beforeActivation state=\(UIApplication.shared.applicationState.rawValue) category=\(session.category.rawValue) rate=\(session.sampleRate)")
+        try session.setCategory(.playback, mode: .default)
+        try session.setActive(true)
         let sink = RecordingReplyTraceSink()
         let trace = ReplyTrace(sink: sink, now: { ProcessInfo.processInfo.systemUptime })
         let sut = ReplyPlaybackCoordinator(reply: reply ?? FixedIntegrationReply(text: fixture.text), speaker: speaker)
@@ -97,6 +107,8 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         let events = try JSONSerialization.jsonObject(with: JSONEncoder().encode(sink.events))
         records.append(["runID": runID, "sourceRevision": revision, "stage": stage, "mode": "sentencePrefetch",
                         "fixture": fixture.id, "repetition": repetition, "voice": voice.rawValue,
+                        "applicationStateRawValue": UIApplication.shared.applicationState.rawValue,
+                        "audioCategory": session.category.rawValue, "audioSampleRate": session.sampleRate,
                         "thermalBefore": before, "thermalAfter": String(describing: ProcessInfo.processInfo.thermalState),
                         "cooldownSeconds": cooldown, "footprintSamples": samples, "events": events,
                         "synthesis": synthesis, "inputs": inputs, "response": final, "outcome": outcome, "error": failure])
@@ -113,11 +125,21 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         try await frontend.prepare()
         let coldSeconds = ProcessInfo.processInfo.systemUptime - coldStart
         let after = sample()
+        pronunciationPreparation = ["seconds": coldSeconds, "before": before, "after": after,
+                                    "measuredBeforeModelPreparation": true]
+        try save()
+        let modelStart = ProcessInfo.processInfo.systemUptime
+        try await engine.prepare()
+        print("SUPER_PREPARED \(ProcessInfo.processInfo.systemUptime - modelStart)")
         let fixtures = [
             ("plus", "+ボタンを押してね。"),
             ("youtube", "YouTubeを見よう。"),
             ("counter", "3人で25個を分けるよ。"),
             ("greeting", "こんにちは。今日も一緒に遊ぼうね。"),
+            ("service-plus", "Disney+を見よう。"),
+            ("ambiguous", "辛いカレーが好きだよ。"),
+            ("temperature", "今日は25℃だよ。"),
+            ("clock", "7:30に起こしてね。"),
         ]
         for (id, original) in fixtures {
             let cooldown = try await coolDown()
@@ -209,7 +231,8 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         let payload: [String: Any] = ["schemaVersion": 1, "runID": runID, "sourceRevision": revision, "stage": stage,
             "device": hardware, "OS": UIDevice.current.systemVersion,
             "route": session.currentRoute.outputs.map { $0.portType.rawValue }, "volume": session.outputVolume,
-            "connection": ProcessInfo.processInfo.environment["SUPER_CONNECTION"] ?? "unknown", "records": records]
+            "connection": ProcessInfo.processInfo.environment["SUPER_CONNECTION"] ?? "unknown",
+            "pronunciationPreparation": pronunciationPreparation, "records": records]
         try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
             .write(to: directory.appendingPathComponent("results.json"), options: .atomic)
     }

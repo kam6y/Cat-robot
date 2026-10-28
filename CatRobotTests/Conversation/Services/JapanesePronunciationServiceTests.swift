@@ -12,6 +12,8 @@ final class JapanesePronunciationServiceTests: XCTestCase {
             ("+ボタンを押してね。", "プラスボタンヲオシテネ。"),
             ("iPhoneとBluetooth。", "アイフォーントブルートゥース。"),
             ("3人と25%。", "サンニントニジューゴパーセント。"),
+            ("Disney+を見よう。", "ディズニープラスヲミヨー。"),
+            ("+ボタンを押してね♪", "プラスボタンヲオシテネ♪"),
         ] {
             let output = try await service.normalize(input)
             XCTAssertEqual(output, expected, input)
