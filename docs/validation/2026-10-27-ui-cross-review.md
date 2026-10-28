@@ -46,13 +46,13 @@ Claude に `/simplify`、Codex の独立したサブエージェントに `reque
 - 全体 XCTest: **832件、成功830件、スキップ2件、失敗0件**。
 - スキップは操作する人が必要な実機試験 `RobotMotionIntegrationDeviceTests.testSelectedStage` と `SupertonicIntegrationDeviceTests.testSelectedStage`。
 - Simulator: iPhone 18 Pro / iOS 27.0。試験中およびコミット後に223ファイルの検証対象が同じ内容であることをハッシュで確認した。
-- [テスト概要](ui-cross-review-2026-10-27/full-test-summary.json)、[実行条件](ui-cross-review-2026-10-27/verification.json)、[検証対象のハッシュ](ui-cross-review-2026-10-27/final-source.json)、[確認画像とハッシュの一覧](ui-cross-review-2026-10-27/image-manifest.json)。
+- [テスト概要](ui-cross-review-2026-10-27/full-test-summary.json)、[実行条件](ui-cross-review-2026-10-27/verification.json)、[検証対象のハッシュ](ui-cross-review-2026-10-27/final-source.json)、[確認画像とハッシュの一覧](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-cross-review-2026-10-27/image-manifest.json)。
 
 | 確認対象 | 画像 |
 |---|---|
-| エラー表示中も選択範囲を維持 | [エラーと入力欄](ui-cross-review-2026-10-27/images/typed-card-error-appears.png) |
-| 記憶警告が出ても選択範囲を維持 | [記憶カードと入力欄](ui-cross-review-2026-10-27/images/typed-card-memory-warning-appears.png) |
-| 送信後の下書き消去とフォーカス解除 | [送信後](ui-cross-review-2026-10-27/images/typed-error-send-focus.png) |
-| 文字サイズを変えても校正を維持 | [最大文字の校正](ui-cross-review-2026-10-27/images/settings-calibration-text-size-accessibility5.png) |
+| エラー表示中も選択範囲を維持 | [エラーと入力欄](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-cross-review-2026-10-27/images/typed-card-error-appears.png) |
+| 記憶警告が出ても選択範囲を維持 | [記憶カードと入力欄](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-cross-review-2026-10-27/images/typed-card-memory-warning-appears.png) |
+| 送信後の下書き消去とフォーカス解除 | [送信後](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-cross-review-2026-10-27/images/typed-error-send-focus.png) |
+| 文字サイズを変えても校正を維持 | [最大文字の校正](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-cross-review-2026-10-27/images/settings-calibration-text-size-accessibility5.png) |
 
 2026-10-27、ユーザーの依頼でレビュー後の `b11b1e2` の版を iPhone 16 Pro へ更新インストールした。実機向けビルド、コード署名、埋め込んだソース版、端末上のインストール先の一致を確認した。223ファイルの検証対象も最終試験時から変わっていない。[今回の配布記録](ui-cross-review-2026-10-27/device-deployment.json)。通常起動や動作確認は行っていない。実機の音声・カメラ・首の併用、VoiceOver の実音声、日本語キーボードの変換は今回も未確認。

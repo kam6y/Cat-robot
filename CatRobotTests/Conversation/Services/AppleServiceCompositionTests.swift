@@ -16,7 +16,6 @@ final class AppleServiceCompositionTests: XCTestCase {
         let shutdown: @Sendable () async -> Void = {
             await concreteRecognizer.shutdown()
         }
-        let speaker: any SpeechSpeaking = AppleSpeechSynthesizer()
         let audio: any AudioSessionControlling = AppleAudioSessionController()
 
         _ = (
@@ -25,7 +24,6 @@ final class AppleServiceCompositionTests: XCTestCase {
             replies,
             recognizer,
             shutdown,
-            speaker,
             audio
         )
     }

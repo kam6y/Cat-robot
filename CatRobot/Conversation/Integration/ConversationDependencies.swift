@@ -13,10 +13,9 @@ struct ConversationDependencies: Sendable {
     let recognizer: any SpeechRecognizing
     let classifier: any AddressClassifying
     let reply: any ReplyGenerating
-    let speaker: any SpeechSpeaking
+    let speaker: any SentenceSpeechSpeaking
     let audioSession: any AudioSessionControlling
     let memory: any ConversationMemoryManaging
-    let replyPlaybackMode: ReplyPlaybackMode
     let motion: any RobotMotionControlling
     let faceExpressions: any FaceExpressionControlling
     let look: any LookControlling
@@ -37,11 +36,10 @@ struct ConversationDependencies: Sendable {
         recognizer: any SpeechRecognizing,
         classifier: any AddressClassifying,
         reply: any ReplyGenerating,
-        speaker: any SpeechSpeaking,
+        speaker: any SentenceSpeechSpeaking,
         audioSession: any AudioSessionControlling,
         latency: any ConversationLatencyTracking,
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
-        replyPlaybackMode: ReplyPlaybackMode = .completeResponse,
         motion: any RobotMotionControlling = NoopRobotMotionController(),
         faceExpressions: any FaceExpressionControlling = NoopFaceExpressionController(),
         look: any LookControlling = NoopLookController(),
@@ -70,7 +68,6 @@ struct ConversationDependencies: Sendable {
         self.memory = memory
         self.latency = latency
         self.replyTraceSink = replyTraceSink
-        self.replyPlaybackMode = replyPlaybackMode
         self.motion = motion
         self.faceExpressions = faceExpressions
         self.look = look

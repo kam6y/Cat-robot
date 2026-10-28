@@ -3,6 +3,34 @@ import XCTest
 
 @MainActor
 final class SupertonicSentenceSpeakerTests: XCTestCase {
+    func testPreprocessingAuditKeepsJapaneseAndReportsRemovedSymbols() {
+        let input = "「がき\u{3099}12/3」😀 @iPhone。"
+        let audit = SpeechTextAudit(input: input)
+        XCTAssertEqual(audit.original, input)
+        XCTAssertTrue(audit.processedChunks.joined().precomposedStringWithCanonicalMapping.contains("がぎ12 3"))
+        XCTAssertTrue(audit.removedOrReplaced.contains("😀"))
+        XCTAssertTrue(audit.removedOrReplaced.contains("/"))
+        XCTAssertTrue(audit.removedOrReplaced.contains("@"))
+        XCTAssertFalse(audit.removedOrReplaced.contains("\u{3099}"))
+        XCTAssertTrue(audit.processedChunks.joined().contains("「"))
+    }
+    func testSynthesisFailureDoesNotStartPlayback() async throws {
+        let player = TestPCMPlayer()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in throw SupertonicError.inferenceFailed })
+        let stream = try await speaker.speak("fail")
+        do { for try await _ in stream {}; XCTFail("Expected failure") } catch {}
+        XCTAssertEqual(player.playCount, 0)
+    }
+    func testInvalidPCMNeverReachesPlayer() async throws {
+        let player = TestPCMPlayer()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in
+            SpeechPCM(samples: [.nan], sampleRate: 24000)
+        })
+        let stream = try await speaker.speak("invalid")
+        do { for try await _ in stream {}; XCTFail("Expected invalid PCM") } catch {}
+        XCTAssertEqual(player.playCount, 0)
+    }
+
     func testSingleInputUsesCorrection() async throws {
         let speaker = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 }, synthesize: { text, voice in
             XCTAssertEqual(text, "アイフォーンを使う。")
@@ -63,7 +91,12 @@ final class SupertonicSentenceSpeakerTests: XCTestCase {
         do { _ = try await speaker.speak("too early"); XCTFail("accepted before inference drained") } catch {}
         await synth.release(1)
         await stopping.value
-        _ = await consume.result
+        do {
+            try await consume.value
+            XCTFail("stopped speech completed successfully")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .cancelled)
+        }
         XCTAssertEqual(player.played, [1])
         let next = try await speaker.speak("新しい返答。")
         let drain = Task { for try await _ in next {} }
@@ -139,4 +172,14 @@ final class ControlledPCMPlayer: PCMPlaying {
         let ready = stopWaiters; stopWaiters = []; ready.forEach { $0.resume() }
     }
     func waitForStop() async { if stops == 0 { await withCheckedContinuation { stopWaiters.append($0) } } }
+}
+
+@MainActor
+final class TestPCMPlayer: PCMPlaying {
+    var playCount = 0
+    func play(_ pcm: SpeechPCM) async throws -> AsyncThrowingStream<SpeechEvent, Error> {
+        playCount += 1
+        return AsyncThrowingStream { $0.yield(.started); $0.yield(.finished); $0.finish() }
+    }
+    func stop() async {}
 }

@@ -8,10 +8,9 @@ final class ReplySentenceBufferTests: XCTestCase {
         XCTAssertNil(try buffer.receive("「こんにちは。」"))
         XCTAssertEqual(try buffer.receive("「こんにちは。」元"), "「こんにちは。」")
         XCTAssertNil(try buffer.receive("「こんにちは。」元"))
-        XCTAssertEqual(try buffer.remainder(in: "「こんにちは。」元気です。"), "元気です。")
     }
 
-    func testLiteralBoundariesPreserveEveryCharacterEvenWithCharacterByCharacterDelivery() throws {
+    func testLiteralBoundariesWithCharacterByCharacterDelivery() throws {
         let cases: [(String, String?)] = [
             ("こんにちは。元気です。", "こんにちは。"),
             ("  はい！？ 次です。", "  はい！？ "),
@@ -38,7 +37,6 @@ final class ReplySentenceBufferTests: XCTestCase {
                 if let first = try buffer.receive(accumulated) { emitted.append(first) }
             }
             XCTAssertEqual(emitted, expected.map { [$0] } ?? [], text)
-            XCTAssertEqual((emitted.first ?? "") + (try buffer.remainder(in: text)), text)
         }
     }
 
@@ -58,7 +56,6 @@ final class ReplySentenceBufferTests: XCTestCase {
                     if let first = try buffer.receive(snapshot) { emitted.append(first) }
                 }
                 XCTAssertEqual(emitted, [firstSentence], text)
-                XCTAssertEqual((emitted.first ?? "") + (try buffer.remainder(in: text)), text)
             }
         }
     }
@@ -69,7 +66,7 @@ final class ReplySentenceBufferTests: XCTestCase {
             (#""はい。" "次です。""#, #""はい。" "#, #""次です。""#),
             (#"「はい。」"次です。""#, "「はい。」", #""次です。""#)
         ]
-        for (text, expectedFirst, expectedRemainder) in cases {
+        for (text, expectedFirst, _) in cases {
             for incremental in [false, true] {
                 var buffer = ReplySentenceBuffer()
                 var emitted: [String] = []
@@ -78,7 +75,6 @@ final class ReplySentenceBufferTests: XCTestCase {
                     if let first = try buffer.receive(snapshot) { emitted.append(first) }
                 }
                 XCTAssertEqual(emitted, [expectedFirst], text)
-                XCTAssertEqual(try buffer.remainder(in: text), expectedRemainder, text)
             }
         }
     }
@@ -88,10 +84,8 @@ final class ReplySentenceBufferTests: XCTestCase {
         XCTAssertNil(try buffer.receive("途中の仮文"))
         XCTAssertEqual(try buffer.receive("確定。次"), "確定。")
         XCTAssertNil(try buffer.receive("確定。別の結末"))
-        XCTAssertEqual(try buffer.remainder(in: "確定。終わり"), "終わり")
         XCTAssertThrowsError(try buffer.receive("改訂。終わり")) {
             XCTAssertEqual($0 as? ConversationServiceError, .modelGenerationFailed)
         }
-        XCTAssertThrowsError(try buffer.remainder(in: "確定"))
     }
 }

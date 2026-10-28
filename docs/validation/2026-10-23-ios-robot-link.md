@@ -3,7 +3,7 @@
 - 日付: 2026-10-23（JST）
 - 対象実装SHA: ホストレビュー修正 `a2b09d8e8dcebb669a864b95ae4c48a85d42a671`、操作方向の修正 `42898401c5fee2dbd2cbed802401dbc3cd20cff7`、待機微動・自動復帰の低速化 `2ce83c57436f5a2d0d0f51da8d367452638bd083`、PWM維持 `178e3a6e83eb043197a16baefa7b50ae6586461f`、送信直前の設定再確認を含む実装 `34b05f7b01dad3f86f4edaac65ae1e56461c40fd`。文書だけの追記コミットは対象実装を変更しない。
 - 承認済み設計: [iOSロボット接続設計](../superpowers/specs/2026-10-23-ios-robot-link-design.md)
-- 実装計画: [10タスクの計画](../superpowers/plans/2026-10-23-ios-robot-link.md)
+- 実装計画: [10タスクの計画](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/superpowers/plans/2026-10-23-ios-robot-link.md)
 - 環境: macOS 26.6.2、Xcode 27.1（27A9275）、iPhoneOS/iPhoneSimulator SDK 27.1、iOS 27.0 Simulator（iPhone 17 Pro）、Swift 6、Ruby `xcodeproj` 1.27.0。SPMは`Package.resolved`の固定版を使用。
 - ホスト検証では実機操作・実API生成を行わず、BLEはFakeTransport、音声・生成はテスト実装を使用した。後続の利用者在席での実機確認は末尾に記録する。CoreBluetoothテストは遅延生成・利用理由・エラー分類を確認し、本物のcentralを起動していない。
 

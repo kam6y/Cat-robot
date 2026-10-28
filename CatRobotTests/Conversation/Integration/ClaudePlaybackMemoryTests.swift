@@ -9,7 +9,7 @@ final class ClaudePlaybackMemoryTests: XCTestCase {
         let store = InMemoryConversationMemoryStore()
         let sut = makeClaudeService(StubSessionFactory(scripts: [held, ScriptedSessionClient(chunks: ["次の返事。"])]), store: store)
         let speaker = FakeSpeechSpeaker(automaticallyFinishes: true, prepareError: nil, speakError: nil, log: ConversationTestCallLog())
-        let coordinator = ReplyPlaybackCoordinator(reply: sut, speaker: speaker, mode: .sentencePrefetch)
+        let coordinator = ReplyPlaybackCoordinator(reply: sut, speaker: speaker)
         let run = Task { try await coordinator.run(prompt: "長い話", trace: nil, onUpdate: { _ in }) }
         await held.waitUntilStarted()
         held.yield("一文目。")
@@ -26,7 +26,7 @@ final class ClaudePlaybackMemoryTests: XCTestCase {
         await store.setSaveFailure(true)
         let sut = makeClaudeService(store: store)
         let speaker = FakeSpeechSpeaker(automaticallyFinishes: true, prepareError: nil, speakError: nil, log: ConversationTestCallLog())
-        let coordinator = ReplyPlaybackCoordinator(reply: sut, speaker: speaker, mode: .completeResponse)
+        let coordinator = ReplyPlaybackCoordinator(reply: sut, speaker: speaker)
         let text = try await coordinator.run(prompt: "保存できない", trace: nil, onUpdate: { _ in })
         XCTAssertEqual(text, "にゃん。")
         let state = await sut.memoryState()

@@ -5,22 +5,28 @@ final class SentenceReplyPlayback {
     private struct Failure: Error { let error: Error; let outcome: ReplyTraceOutcome }
     private let reply: any ReplyGenerating
     private let speaker: any SentenceSpeechSpeaking
-    private let prefetch: Bool
-    init(reply: any ReplyGenerating, speaker: any SentenceSpeechSpeaking, prefetch: Bool) {
-        self.reply = reply; self.speaker = speaker; self.prefetch = prefetch
+    init(reply: any ReplyGenerating, speaker: any SentenceSpeechSpeaking) {
+        self.reply = reply; self.speaker = speaker
     }
     func run(prompt: String, trace: ReplyTrace?, onUpdate: @escaping @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
         let channel = SpeechSentenceChannel()
         // These are cumulative snapshots, not sentences: replacing an unread
         // snapshot retains its text in the newer one. Observe upstream failure
         // independently of the bounded sentence queue's playback backpressure.
-        let snapshots = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let snapshots = AsyncThrowingStream<String, Error>.makeStream(bufferingPolicy: .bufferingNewest(1))
         trace?.mark(.request)
         do {
             let final = try await withThrowingTaskGroup(of: String?.self) { group in
                 group.addTask {
-                    do { return try await self.produce(prompt, snapshots.continuation, trace, onUpdate) }
-                    catch { throw Failure(error: error, outcome: .generationFailure) }
+                    do {
+                        let final = try await self.produce(prompt, snapshots.continuation, trace, onUpdate)
+                        snapshots.continuation.finish()
+                        return final
+                    } catch {
+                        // A failed stream has no final tail to flush into speech.
+                        snapshots.continuation.finish(throwing: error)
+                        throw Failure(error: error, outcome: .generationFailure)
+                    }
                 }
                 group.addTask {
                     do { try await self.enqueue(snapshots.stream, channel, trace); return nil }
@@ -56,9 +62,8 @@ final class SentenceReplyPlayback {
             throw failure?.outcome == .speechFailure ? ConversationServiceError.speechSynthesisFailed : .modelGenerationFailed
         }
     }
-    private func produce(_ prompt: String, _ snapshots: AsyncStream<String>.Continuation, _ trace: ReplyTrace?,
+    private func produce(_ prompt: String, _ snapshots: AsyncThrowingStream<String, Error>.Continuation, _ trace: ReplyTrace?,
                          _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
-        defer { snapshots.finish() }
         let stream = try await reply.streamReply(to: prompt)
         var final = ""
         for try await snapshot in stream {
@@ -75,10 +80,10 @@ final class SentenceReplyPlayback {
         trace?.mark(.streamFinished, outcome: .success)
         return final
     }
-    private func enqueue(_ snapshots: AsyncStream<String>, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?) async throws {
+    private func enqueue(_ snapshots: AsyncThrowingStream<String, Error>, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?) async throws {
         var buffer = ReplySentenceStreamBuffer()
         var final = ""
-        for await snapshot in snapshots {
+        for try await snapshot in snapshots {
             try Task.checkCancellation()
             final = snapshot
             if reply.supportsStableReplyPrefix {
@@ -98,7 +103,7 @@ final class SentenceReplyPlayback {
     }
     private func play(_ channel: SpeechSentenceChannel, _ trace: ReplyTrace?,
                       _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws {
-        let events = try await speaker.speakSentences(from: channel, prefetch: prefetch)
+        let events = try await speaker.speakSentences(from: channel, prefetch: true)
         // The deduplication sets also answer "has anything started / finished yet".
         var startedOrdinals: Set<Int> = []
         var finishedOrdinals: Set<Int> = []

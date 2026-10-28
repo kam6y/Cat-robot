@@ -93,15 +93,13 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(state.faceExpression, .listening)
     }
 
-    func testListeningCopySeparatesMicrophoneFromAssistantActivity() {
+    func testListeningAsksTheUserToSpeak() {
         let state = ConversationViewState.listening
-        XCTAssertEqual(state.microphoneStatus, "端末上で聞き取り中")
         XCTAssertEqual(state.activityStatus, "話しかけてください")
     }
 
-    func testSpeakingStillReportsCaptureAsTemporarilyPaused() {
+    func testSpeakingReportsTheReplyActivity() {
         let state = ConversationViewState.speaking(caption: "こんにちは")
-        XCTAssertEqual(state.microphoneStatus, "返事の間は聞き取りを休止")
         XCTAssertEqual(state.activityStatus, "話しています")
     }
 
@@ -109,8 +107,25 @@ final class ConversationViewStateTests: XCTestCase {
         let state = ConversationViewState.clarifying
 
         XCTAssertEqual(state.caption, "今の、ぼくに言った？")
-        XCTAssertEqual(state.microphoneStatus, "聞き返しの間は聞き取りを休止")
         XCTAssertEqual(state.activityStatus, "聞き返しています")
+    }
+
+    func testEnteringAPhaseKeepsTheCaptionAndUnsentInput() {
+        var state = ConversationViewState.listening
+        state.caption = "前の返事"
+        state.typedText = "下書き"
+        state.provisionalTranscript = "聞き取り中の文"
+        state.errorMessage = "失敗"
+        state.recoveries = [ConversationRecovery(title: "もう一度", action: .retry)]
+
+        state.enter(.thinking)
+
+        XCTAssertEqual(state.caption, "前の返事")
+        XCTAssertEqual(state.typedText, "下書き")
+        XCTAssertEqual(state.provisionalTranscript, "聞き取り中の文")
+        XCTAssertNil(state.errorMessage)
+        XCTAssertEqual(state.recoveries, [])
+        XCTAssertEqual(state.activityStatus, "考えています")
     }
 
     func testTypedSubmissionAvailabilityMatchesConversationPhase() {

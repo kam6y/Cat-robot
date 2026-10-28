@@ -8,7 +8,6 @@ enum ClaudeAuthConfiguration: Equatable, Sendable {
 
     static let clientIDInfoKey = "CatRobotClaudeClientID"
     static let apiKeyEnvironmentKey = "ANTHROPIC_API_KEY"
-    static let apiKeyBundleFile = "claude-api-key.txt"
 
     static func resolve(environment: [String: String], infoDictionary: [String: Any],
                         bundledKey: String?, isDebugBuild: Bool) -> Self {

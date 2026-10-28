@@ -53,17 +53,17 @@ xcodebuild test -project CatRobot.xcodeproj -scheme CatRobot \
 
 ## 保存した画像
 
-最終テストから109点の画像を保存した。[一覧とハッシュ](ui-reorganization-2026-10-27/image-manifest.json)には、画像ごとのテスト名とピクセル寸法を記録した。会話・初回説明は1倍、UIKitの校正画像には端末スケールの画像が含まれるため、ピクセル数をそのままptとは扱わない。
+最終テストから109点の画像を保存した。[一覧とハッシュ](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/image-manifest.json)には、画像ごとのテスト名とピクセル寸法を記録した。会話・初回説明は1倍、UIKitの校正画像には端末スケールの画像が含まれるため、ピクセル数をそのままptとは扱わない。
 
 | 画面 | 画像 |
 |---|---|
-| 通常の会話 | [顔とメニュー](ui-reorganization-2026-10-27/images/normal.png) |
-| 初回説明 | [標準文字](ui-reorganization-2026-10-27/images/onboarding-standard.png) |
-| 設定 | [会話カテゴリ](ui-reorganization-2026-10-27/images/settings-conversation.png) |
-| 説明の見直し | [閉じるボタンのあるシート](ui-reorganization-2026-10-27/images/settings-onboarding-review.png) |
-| 文字入力 | [通常の顔の大きさ](ui-reorganization-2026-10-27/images/typed-face-size.png) |
-| 狭い文字入力 | [警告3件と入力カード](ui-reorganization-2026-10-27/images/typed-paused-chips-largest-standard-type-short-viewport.png) |
-| 校正 | [設定全体を覆う校正画面](ui-reorganization-2026-10-27/images/settings-calibration.png) |
+| 通常の会話 | [顔とメニュー](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/normal.png) |
+| 初回説明 | [標準文字](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/onboarding-standard.png) |
+| 設定 | [会話カテゴリ](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/settings-conversation.png) |
+| 説明の見直し | [閉じるボタンのあるシート](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/settings-onboarding-review.png) |
+| 文字入力 | [通常の顔の大きさ](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/typed-face-size.png) |
+| 狭い文字入力 | [警告3件と入力カード](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/typed-paused-chips-largest-standard-type-short-viewport.png) |
+| 校正 | [設定全体を覆う校正画面](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/validation/ui-reorganization-2026-10-27/images/settings-calibration.png) |
 
 ## 実機への更新インストール（2026-10-27）
 

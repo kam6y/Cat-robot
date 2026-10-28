@@ -91,12 +91,6 @@ struct ReplySentenceBuffer {
         return nil
     }
 
-    func remainder(in finalSnapshot: String) throws -> String {
-        guard let sent else { return finalSnapshot }
-        guard finalSnapshot.hasPrefix(sent) else { throw ConversationServiceError.modelGenerationFailed }
-        return String(finalSnapshot.dropFirst(sent.count))
-    }
-
     static func isContent(_ character: Character) -> Bool {
         character.isLetter || character.isNumber || character.unicodeScalars.contains {
             $0.properties.isEmojiPresentation

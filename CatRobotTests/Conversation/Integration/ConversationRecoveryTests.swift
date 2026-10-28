@@ -30,7 +30,6 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.faceExpression, .curious)
         XCTAssertEqual(harness.sut.viewState.caption, "今の、ぼくに言った？")
         XCTAssertEqual(harness.sut.viewState.activityStatus, "聞き返しています")
-        XCTAssertEqual(harness.sut.viewState.microphoneStatus, "聞き返しの間は聞き取りを休止")
 
         await harness.speaker.yield(.started)
         XCTAssertEqual(harness.sut.viewState.phase, .clarifying)
@@ -993,7 +992,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 
-    func testShortTypedReplyOpensWideOnFirstWordAndClosesAfterFinish() async {
+    func testShortTypedReplyOpensWideOnSentenceStartAndClosesAfterFinish() async {
         let harness = ConversationHarness(
             microphoneAllowed: false,
             speakerAutomaticallyFinishes: false
@@ -1003,11 +1002,6 @@ final class ConversationRecoveryTests: XCTestCase {
         await harness.speaker.waitUntilTextCount(1)
 
         await harness.speaker.yield(.started)
-        let didShowSmall = await harness.waitUntil {
-            harness.sut.viewState.mouthPose == .small
-        }
-        XCTAssertTrue(didShowSmall)
-        await harness.speaker.yield(.willSpeak(range: 0..<5))
         let didShowWide = await harness.waitUntil {
             harness.sut.viewState.mouthPose == .wide
         }

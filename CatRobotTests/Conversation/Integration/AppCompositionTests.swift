@@ -48,7 +48,6 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertTrue(composition.dependencies.modelAvailability is OnDeviceFallbackReplyGenerator)
         XCTAssertTrue(composition.dependencies.memory is ClaudeConversationService)
         XCTAssertTrue(composition.dependencies.classifier is RoutedAddressClassifier)
-        XCTAssertEqual(composition.dependencies.replyPlaybackMode, .sentencePrefetch)
         // 構築だけではネットワークにも端末内モデルにも触れない。認証なしの availability は設定ミスとして報告される。
         let availability = await composition.dependencies.modelAvailability.availability()
         XCTAssertEqual(availability, .claudeCredentialMissing)

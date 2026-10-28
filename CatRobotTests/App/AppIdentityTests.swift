@@ -4,7 +4,7 @@ import XCTest
 
 final class AppIdentityTests: XCTestCase {
     func testIdentityPrivacyCopyAndFixedLeftCameraMetadata() {
-        XCTAssertEqual(AppIdentity.displayName, "Cat Robot")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "Cat Robot")
         XCTAssertEqual(Bundle.main.bundleIdentifier, "com.kamby.CatRobot")
         XCTAssertEqual(
             Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String,

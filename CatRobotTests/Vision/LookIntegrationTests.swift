@@ -32,7 +32,7 @@ final class LookIntegrationTests: XCTestCase {
             usage: ConversationUsageSpy(), configuration: { .init() }, motion: observer)
         let speaker = ControlledSpeaker()
         let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: fallback, motion: observer),
-            speaker: speaker, mode: .completeResponse, motion: observer)
+            speaker: speaker, motion: observer)
         let run = Task { try await sut.run(prompt: "見て", trace: nil, onUpdate: { _ in }) }
         await speaker.waitUntilCallCount(1)
         let receivedImage = await client.receivedImage
@@ -40,6 +40,8 @@ final class LookIntegrationTests: XCTestCase {
         XCTAssertFalse(look.isLooking)
         XCTAssertEqual(motion.cancellations.count, 1)
         await speaker.emit(.started)
+        await speaker.complete()
+        await speaker.waitUntilCallCount(2)
         await speaker.complete()
         _ = try await run.value
         XCTAssertFalse(look.isLooking)

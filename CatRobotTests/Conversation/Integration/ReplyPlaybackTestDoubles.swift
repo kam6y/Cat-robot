@@ -33,7 +33,7 @@ actor ControlledReply: ReplyGenerating {
     func finish(throwing error: Error? = nil) { continuation?.finish(throwing: error) }
 }
 
-actor ControlledSpeaker: SpeechSpeaking {
+actor ControlledSpeaker: TestSentenceSpeaker {
     private(set) var texts: [String] = []
     private(set) var stopCount = 0
     private var continuations: [AsyncThrowingStream<SpeechEvent, Error>.Continuation] = []
@@ -90,14 +90,13 @@ final class PlaybackUpdates {
         case .speechFinished(let part): finishes.append(part)
         case .sentenceStarted(let ordinal): sentenceStarts.append(ordinal)
         case .sentenceFinished(let ordinal): sentenceFinishes.append(ordinal)
-        case .willSpeak: break
         }
         let ready = waiters.filter { $0.predicate() }
         waiters.removeAll { $0.predicate() }
         ready.forEach { $0.continuation.resume() }
     }
     func waitForCaption(_ text: String) async { await wait { self.captions.last == text } }
-    func waitForFinishes(_ count: Int) async { await wait { self.finishes.count >= count } }
+    func waitForSentenceFinishes(_ count: Int) async { await wait { self.sentenceFinishes.count >= count } }
     private func wait(_ predicate: @escaping @MainActor () -> Bool) async {
         if predicate() { return }
         await withCheckedContinuation { waiters.append((predicate, $0)) }

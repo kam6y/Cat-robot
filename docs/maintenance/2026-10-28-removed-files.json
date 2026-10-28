@@ -1,0 +1,3607 @@
+{
+  "baseline": "69c2a229ac10f410d3101de468e198ad2fa60944",
+  "files": [
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-0-report.md",
+      "bytes": 3276,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-1-report.md",
+      "bytes": 4119,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-2-report.md",
+      "bytes": 3919,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-3-report.md",
+      "bytes": 3799,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-4-report.md",
+      "bytes": 7210,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-5-report.md",
+      "bytes": 8272,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-6-report.md",
+      "bytes": 4294,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-12-apple-services/task-7-report.md",
+      "bytes": 4278,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-cat-interface/task-1-report.md",
+      "bytes": 4023,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-cat-interface/task-2-report.md",
+      "bytes": 4424,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-conversation-domain/final-review-fixes.md",
+      "bytes": 2156,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-conversation-domain/task-1-report.md",
+      "bytes": 3296,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-conversation-domain/task-3-report.md",
+      "bytes": 6126,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-conversation-domain/task-3.1-report.md",
+      "bytes": 2179,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": ".superpowers/sdd/2026-08-13-conversation-domain/task-3.2-report.md",
+      "bytes": 4929,
+      "reason": "completed-agent-ledger"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-curious-closed.png",
+      "bytes": 336889,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-happy-closed.png",
+      "bytes": 611031,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-happy-medium.png",
+      "bytes": 616318,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-happy-small.png",
+      "bytes": 613947,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-happy-wide.png",
+      "bytes": 618610,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-listening-closed.png",
+      "bytes": 339467,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-neutral-closed.png",
+      "bytes": 314684,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sleepy-closed.png",
+      "bytes": 214210,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sleepy-medium.png",
+      "bytes": 219131,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sleepy-small.png",
+      "bytes": 216529,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sleepy-wide.png",
+      "bytes": 221900,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sorry-closed.png",
+      "bytes": 274620,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sorry-medium.png",
+      "bytes": 279578,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sorry-small.png",
+      "bytes": 277027,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-sorry-wide.png",
+      "bytes": 281938,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-speaking-closed.png",
+      "bytes": 320581,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-surprised-closed.png",
+      "bytes": 350957,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/face-thinking-closed.png",
+      "bytes": 293154,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-largest-standard-type-status.png",
+      "bytes": 178833,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-long.png",
+      "bytes": 152801,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-maximum-type-error-scrolled.png",
+      "bytes": 695960,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-maximum-type-scrolled.png",
+      "bytes": 156383,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-maximum-type-typed-scrolled.png",
+      "bytes": 168551,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-short.png",
+      "bytes": 136079,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-status-notice.png",
+      "bytes": 166101,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/layout-typed-short-viewport.png",
+      "bytes": 64027,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-3/provenance.json",
+      "bytes": 3544,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-curious-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-curious-closed.png",
+      "bytes": 349199,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-closed.png",
+      "bytes": 621727,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-medium.png",
+      "bytes": 627191,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-small.png",
+      "bytes": 624689,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-happy-wide.png",
+      "bytes": 630001,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-listening-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-listening-closed.png",
+      "bytes": 354119,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-neutral-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-neutral-closed.png",
+      "bytes": 326986,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-closed.png",
+      "bytes": 217982,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-medium.png",
+      "bytes": 222836,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-small.png",
+      "bytes": 220454,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sleepy-wide.png",
+      "bytes": 225737,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-closed.png",
+      "bytes": 284504,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-medium.png",
+      "bytes": 289275,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-small.png",
+      "bytes": 286754,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-sorry-wide.png",
+      "bytes": 292385,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-speaking-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-speaking-closed.png",
+      "bytes": 332343,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-surprised-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-surprised-closed.png",
+      "bytes": 363388,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-thinking-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/face-thinking-closed.png",
+      "bytes": 303865,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-empty.png",
+      "bytes": 116445,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-curious.png",
+      "bytes": 134705,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-happy.png",
+      "bytes": 286908,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-listening.png",
+      "bytes": 129557,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-neutral.png",
+      "bytes": 121053,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-sleepy.png",
+      "bytes": 92741,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-sorry.png",
+      "bytes": 108692,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-speaking.png",
+      "bytes": 122274,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-surprised.png",
+      "bytes": 128482,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-expression-thinking.png",
+      "bytes": 115546,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-failed.png",
+      "bytes": 327893,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-high-contrast.png",
+      "bytes": 143204,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-largest-standard-type-status.png",
+      "bytes": 169489,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-long.png",
+      "bytes": 142673,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-maximum-type-error-scrolled.png",
+      "bytes": 688411,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-maximum-type-error.png",
+      "bytes": 257175,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-maximum-type-scrolled.png",
+      "bytes": 156328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-maximum-type-typed-scrolled.png",
+      "bytes": 168340,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-maximum-type-typed.png",
+      "bytes": 135770,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-maximum-type.png",
+      "bytes": 104118,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-provisional.png",
+      "bytes": 132135,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-restore.png",
+      "bytes": 89483,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-short.png",
+      "bytes": 124834,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-status-notice.png",
+      "bytes": 156169,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-typed-scrolled.png",
+      "bytes": 140593,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-typed-short-viewport-scrolled.png",
+      "bytes": 88728,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-typed-short-viewport.png",
+      "bytes": 64047,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-typed.png",
+      "bytes": 116682,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/layout-unsaved.png",
+      "bytes": 147974,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-6/provenance.json",
+      "bytes": 25079,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-curious-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-curious-closed.png",
+      "bytes": 349199,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-closed.png",
+      "bytes": 620793,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-medium.png",
+      "bytes": 626257,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-small.png",
+      "bytes": 623723,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-happy-wide.png",
+      "bytes": 629029,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-listening-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-listening-closed.png",
+      "bytes": 354119,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-neutral-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-neutral-closed.png",
+      "bytes": 326595,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-closed.png",
+      "bytes": 217982,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-medium.png",
+      "bytes": 222836,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-small.png",
+      "bytes": 220454,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sleepy-wide.png",
+      "bytes": 225737,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-closed.png",
+      "bytes": 284504,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-medium.png",
+      "bytes": 289275,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-small.png",
+      "bytes": 286754,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-sorry-wide.png",
+      "bytes": 292385,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-speaking-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-speaking-closed.png",
+      "bytes": 332343,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-surprised-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-surprised-closed.png",
+      "bytes": 363388,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-thinking-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/face-thinking-closed.png",
+      "bytes": 303865,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-empty.png",
+      "bytes": 116361,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-curious.png",
+      "bytes": 134705,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-happy.png",
+      "bytes": 286855,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-listening.png",
+      "bytes": 129557,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-neutral.png",
+      "bytes": 121065,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-sleepy.png",
+      "bytes": 92741,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-sorry.png",
+      "bytes": 108692,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-speaking.png",
+      "bytes": 122274,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-surprised.png",
+      "bytes": 128482,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-expression-thinking.png",
+      "bytes": 115546,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-failed.png",
+      "bytes": 327893,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-high-contrast.png",
+      "bytes": 143204,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-largest-standard-type-status.png",
+      "bytes": 169489,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-long.png",
+      "bytes": 142673,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-maximum-type-error-scrolled.png",
+      "bytes": 688411,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-maximum-type-error.png",
+      "bytes": 257175,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-maximum-type-scrolled.png",
+      "bytes": 156328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-maximum-type-typed-scrolled.png",
+      "bytes": 168340,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-maximum-type-typed.png",
+      "bytes": 135770,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-maximum-type.png",
+      "bytes": 104118,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-provisional.png",
+      "bytes": 132135,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-restore.png",
+      "bytes": 89434,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-short.png",
+      "bytes": 124834,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-status-notice.png",
+      "bytes": 156169,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-typed-scrolled.png",
+      "bytes": 140593,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-typed-short-viewport-scrolled.png",
+      "bytes": 88728,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-typed-short-viewport.png",
+      "bytes": 64047,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-typed.png",
+      "bytes": 116682,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/layout-unsaved.png",
+      "bytes": 147974,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/ios/round-7/provenance.json",
+      "bytes": 25071,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-curious-closed.png",
+      "bytes": 84780,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-happy-closed.png",
+      "bytes": 144228,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-happy-medium.png",
+      "bytes": 146051,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-happy-small.png",
+      "bytes": 145072,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-happy-wide.png",
+      "bytes": 147253,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-listening-closed.png",
+      "bytes": 88358,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-neutral-closed.png",
+      "bytes": 81392,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sleepy-closed.png",
+      "bytes": 50683,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sleepy-medium.png",
+      "bytes": 52327,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sleepy-small.png",
+      "bytes": 51522,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sleepy-wide.png",
+      "bytes": 53419,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sorry-closed.png",
+      "bytes": 70810,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sorry-medium.png",
+      "bytes": 72582,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sorry-small.png",
+      "bytes": 71683,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-sorry-wide.png",
+      "bytes": 73429,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-speaking-closed.png",
+      "bytes": 82707,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-speaking-medium.png",
+      "bytes": 84540,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-speaking-small.png",
+      "bytes": 83717,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-speaking-wide.png",
+      "bytes": 85820,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-surprised-closed.png",
+      "bytes": 94239,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/canvas-thinking-closed.png",
+      "bytes": 61159,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/compare-happy.png",
+      "bytes": 1329095,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/compare-neutral.png",
+      "bytes": 1225382,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/gallery.png",
+      "bytes": 365087,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/overlay-happy.png",
+      "bytes": 894118,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/overlay-neutral.png",
+      "bytes": 806658,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-curious.png",
+      "bytes": 100500,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-happy.png",
+      "bytes": 168197,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-listening.png",
+      "bytes": 105626,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-neutral.png",
+      "bytes": 96920,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-sleepy.png",
+      "bytes": 59894,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-sorry.png",
+      "bytes": 83525,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-speaking.png",
+      "bytes": 99181,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-surprised.png",
+      "bytes": 111826,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-1/screen-thinking.png",
+      "bytes": 74023,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-curious-closed.png",
+      "bytes": 90681,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-happy-closed.png",
+      "bytes": 173261,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-happy-medium.png",
+      "bytes": 175153,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-happy-small.png",
+      "bytes": 174171,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-happy-wide.png",
+      "bytes": 176193,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-listening-closed.png",
+      "bytes": 91760,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-neutral-closed.png",
+      "bytes": 85081,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sleepy-closed.png",
+      "bytes": 54066,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sleepy-medium.png",
+      "bytes": 55722,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sleepy-small.png",
+      "bytes": 54848,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sleepy-wide.png",
+      "bytes": 56841,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sorry-closed.png",
+      "bytes": 72908,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sorry-medium.png",
+      "bytes": 74493,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sorry-small.png",
+      "bytes": 73777,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-sorry-wide.png",
+      "bytes": 75524,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-speaking-closed.png",
+      "bytes": 86365,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-speaking-medium.png",
+      "bytes": 88326,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-speaking-small.png",
+      "bytes": 87423,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-speaking-wide.png",
+      "bytes": 89389,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-surprised-closed.png",
+      "bytes": 94250,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/canvas-thinking-closed.png",
+      "bytes": 77043,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/compare-happy.png",
+      "bytes": 1359810,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/compare-neutral.png",
+      "bytes": 1228366,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/gallery.png",
+      "bytes": 387115,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/overlay-happy.png",
+      "bytes": 906290,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/overlay-neutral.png",
+      "bytes": 805520,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-curious.png",
+      "bytes": 106845,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-happy.png",
+      "bytes": 198927,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-listening.png",
+      "bytes": 108959,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-neutral.png",
+      "bytes": 100153,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-sleepy.png",
+      "bytes": 65772,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-sorry.png",
+      "bytes": 86897,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-speaking.png",
+      "bytes": 102171,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-surprised.png",
+      "bytes": 111108,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/screen-thinking.png",
+      "bytes": 92223,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-2/source.txt",
+      "bytes": 331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-curious-closed.png",
+      "bytes": 90681,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-happy-closed.png",
+      "bytes": 173261,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-happy-medium.png",
+      "bytes": 175153,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-happy-small.png",
+      "bytes": 174171,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-happy-wide.png",
+      "bytes": 176193,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-listening-closed.png",
+      "bytes": 91760,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-neutral-closed.png",
+      "bytes": 85081,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sleepy-closed.png",
+      "bytes": 54066,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sleepy-medium.png",
+      "bytes": 55722,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sleepy-small.png",
+      "bytes": 54848,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sleepy-wide.png",
+      "bytes": 56841,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sorry-closed.png",
+      "bytes": 72908,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sorry-medium.png",
+      "bytes": 74493,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sorry-small.png",
+      "bytes": 73777,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-sorry-wide.png",
+      "bytes": 75524,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-speaking-closed.png",
+      "bytes": 86365,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-speaking-medium.png",
+      "bytes": 88326,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-speaking-small.png",
+      "bytes": 87423,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-speaking-wide.png",
+      "bytes": 89389,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-surprised-closed.png",
+      "bytes": 94250,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/canvas-thinking-closed.png",
+      "bytes": 77043,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/compare-happy.png",
+      "bytes": 1359810,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/compare-neutral.png",
+      "bytes": 1228366,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/gallery.png",
+      "bytes": 387115,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/overlay-happy.png",
+      "bytes": 906290,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/overlay-neutral.png",
+      "bytes": 805520,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-curious.png",
+      "bytes": 106845,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-happy.png",
+      "bytes": 198927,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-listening.png",
+      "bytes": 108959,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-neutral.png",
+      "bytes": 100153,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-sleepy.png",
+      "bytes": 65772,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-sorry.png",
+      "bytes": 86897,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-speaking.png",
+      "bytes": 102171,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-surprised.png",
+      "bytes": 111108,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/screen-thinking.png",
+      "bytes": 92223,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-3/source.txt",
+      "bytes": 331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-curious-closed.png",
+      "bytes": 90836,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-happy-closed.png",
+      "bytes": 173362,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-happy-medium.png",
+      "bytes": 175238,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-happy-small.png",
+      "bytes": 174271,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-happy-wide.png",
+      "bytes": 176272,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-listening-closed.png",
+      "bytes": 91995,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-neutral-closed.png",
+      "bytes": 85283,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sleepy-closed.png",
+      "bytes": 54232,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sleepy-medium.png",
+      "bytes": 55889,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sleepy-small.png",
+      "bytes": 55009,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sleepy-wide.png",
+      "bytes": 57009,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sorry-closed.png",
+      "bytes": 73083,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sorry-medium.png",
+      "bytes": 74669,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sorry-small.png",
+      "bytes": 73955,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-sorry-wide.png",
+      "bytes": 75701,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-speaking-closed.png",
+      "bytes": 86535,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-speaking-medium.png",
+      "bytes": 88498,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-speaking-small.png",
+      "bytes": 87590,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-speaking-wide.png",
+      "bytes": 89552,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-surprised-closed.png",
+      "bytes": 94248,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/canvas-thinking-closed.png",
+      "bytes": 77187,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/compare-happy.png",
+      "bytes": 1360100,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/compare-neutral.png",
+      "bytes": 1228611,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/gallery.png",
+      "bytes": 387756,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/overlay-happy.png",
+      "bytes": 906605,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/overlay-neutral.png",
+      "bytes": 805477,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-curious.png",
+      "bytes": 107108,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-happy.png",
+      "bytes": 199226,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-listening.png",
+      "bytes": 109213,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-neutral.png",
+      "bytes": 100426,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-sleepy.png",
+      "bytes": 66023,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-sorry.png",
+      "bytes": 87159,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-speaking.png",
+      "bytes": 102452,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-surprised.png",
+      "bytes": 111142,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/screen-thinking.png",
+      "bytes": 92437,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-4/source.txt",
+      "bytes": 331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-curious-closed.png",
+      "bytes": 91889,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-happy-closed.png",
+      "bytes": 172682,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-happy-medium.png",
+      "bytes": 174536,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-happy-small.png",
+      "bytes": 173616,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-happy-wide.png",
+      "bytes": 175581,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-listening-closed.png",
+      "bytes": 93079,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-neutral-closed.png",
+      "bytes": 86232,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sleepy-closed.png",
+      "bytes": 54237,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sleepy-medium.png",
+      "bytes": 55894,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sleepy-small.png",
+      "bytes": 55012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sleepy-wide.png",
+      "bytes": 57012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sorry-closed.png",
+      "bytes": 73711,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sorry-medium.png",
+      "bytes": 75295,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sorry-small.png",
+      "bytes": 74577,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-sorry-wide.png",
+      "bytes": 76328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-speaking-closed.png",
+      "bytes": 87502,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-speaking-medium.png",
+      "bytes": 89486,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-speaking-small.png",
+      "bytes": 88574,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-speaking-wide.png",
+      "bytes": 90522,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-surprised-closed.png",
+      "bytes": 94769,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/canvas-thinking-closed.png",
+      "bytes": 78199,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/compare-happy.png",
+      "bytes": 1359574,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/compare-neutral.png",
+      "bytes": 1229510,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/gallery.png",
+      "bytes": 389456,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-curious-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-curious-closed.png",
+      "bytes": 349199,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-closed.png",
+      "bytes": 621916,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-medium.png",
+      "bytes": 627388,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-small.png",
+      "bytes": 624883,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-happy-wide.png",
+      "bytes": 630212,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-listening-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-listening-closed.png",
+      "bytes": 354119,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-neutral-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-neutral-closed.png",
+      "bytes": 326986,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-closed.png",
+      "bytes": 217982,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-medium.png",
+      "bytes": 222836,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-small.png",
+      "bytes": 220454,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sleepy-wide.png",
+      "bytes": 225737,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-closed.png",
+      "bytes": 284504,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-medium-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-medium.png",
+      "bytes": 289275,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-small-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-small.png",
+      "bytes": 286754,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-wide-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-sorry-wide.png",
+      "bytes": 292385,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-speaking-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-speaking-closed.png",
+      "bytes": 332343,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-surprised-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-surprised-closed.png",
+      "bytes": 363388,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-thinking-closed-geometry.txt",
+      "bytes": 404,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/face-thinking-closed.png",
+      "bytes": 303865,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/ios/provenance.json",
+      "bytes": 12552,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/overlay-happy.png",
+      "bytes": 906892,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/overlay-neutral.png",
+      "bytes": 805370,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-curious.png",
+      "bytes": 108125,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-happy.png",
+      "bytes": 198740,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-listening.png",
+      "bytes": 110458,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-neutral.png",
+      "bytes": 101417,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-sleepy.png",
+      "bytes": 66010,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-sorry.png",
+      "bytes": 87842,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-speaking.png",
+      "bytes": 103390,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-surprised.png",
+      "bytes": 111901,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/screen-thinking.png",
+      "bytes": 93538,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-5/source.txt",
+      "bytes": 331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-curious-closed.png",
+      "bytes": 91889,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-happy-closed.png",
+      "bytes": 172555,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-happy-medium.png",
+      "bytes": 174392,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-happy-small.png",
+      "bytes": 173422,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-happy-wide.png",
+      "bytes": 175442,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-listening-closed.png",
+      "bytes": 93079,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-neutral-closed.png",
+      "bytes": 86232,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sleepy-closed.png",
+      "bytes": 54237,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sleepy-medium.png",
+      "bytes": 55894,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sleepy-small.png",
+      "bytes": 55012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sleepy-wide.png",
+      "bytes": 57012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sorry-closed.png",
+      "bytes": 73711,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sorry-medium.png",
+      "bytes": 75295,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sorry-small.png",
+      "bytes": 74577,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-sorry-wide.png",
+      "bytes": 76328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-speaking-closed.png",
+      "bytes": 87502,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-speaking-medium.png",
+      "bytes": 89486,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-speaking-small.png",
+      "bytes": 88574,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-speaking-wide.png",
+      "bytes": 90522,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-surprised-closed.png",
+      "bytes": 94769,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/canvas-thinking-closed.png",
+      "bytes": 78199,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/compare-happy.png",
+      "bytes": 1359801,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/compare-neutral.png",
+      "bytes": 1229510,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/gallery.png",
+      "bytes": 389407,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/overlay-happy.png",
+      "bytes": 906430,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/overlay-neutral.png",
+      "bytes": 805370,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-curious.png",
+      "bytes": 108125,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-happy.png",
+      "bytes": 198967,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-listening.png",
+      "bytes": 110458,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-neutral.png",
+      "bytes": 101417,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-sleepy.png",
+      "bytes": 66010,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-sorry.png",
+      "bytes": 87842,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-speaking.png",
+      "bytes": 103390,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-surprised.png",
+      "bytes": 111901,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/screen-thinking.png",
+      "bytes": 93538,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-6/source.txt",
+      "bytes": 331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-curious-closed.png",
+      "bytes": 91889,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-happy-closed.png",
+      "bytes": 172428,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-happy-medium.png",
+      "bytes": 174282,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-happy-small.png",
+      "bytes": 173331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-happy-wide.png",
+      "bytes": 175333,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-listening-closed.png",
+      "bytes": 93079,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-neutral-closed.png",
+      "bytes": 86190,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sleepy-closed.png",
+      "bytes": 54237,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sleepy-medium.png",
+      "bytes": 55894,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sleepy-small.png",
+      "bytes": 55012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sleepy-wide.png",
+      "bytes": 57012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sorry-closed.png",
+      "bytes": 73711,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sorry-medium.png",
+      "bytes": 75295,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sorry-small.png",
+      "bytes": 74577,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-sorry-wide.png",
+      "bytes": 76328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-speaking-closed.png",
+      "bytes": 87502,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-speaking-medium.png",
+      "bytes": 89486,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-speaking-small.png",
+      "bytes": 88574,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-speaking-wide.png",
+      "bytes": 90522,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-surprised-closed.png",
+      "bytes": 94769,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/canvas-thinking-closed.png",
+      "bytes": 78199,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/compare-happy.png",
+      "bytes": 1359599,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/compare-neutral.png",
+      "bytes": 1229454,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/gallery.png",
+      "bytes": 389293,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/overlay-happy.png",
+      "bytes": 906348,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/overlay-neutral.png",
+      "bytes": 805326,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-curious.png",
+      "bytes": 108125,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-happy.png",
+      "bytes": 198757,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-listening.png",
+      "bytes": 110458,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-neutral.png",
+      "bytes": 101350,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-sleepy.png",
+      "bytes": 66010,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-sorry.png",
+      "bytes": 87842,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-speaking.png",
+      "bytes": 103390,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-surprised.png",
+      "bytes": 111901,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen-thinking.png",
+      "bytes": 93538,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen3x-happy.png",
+      "bytes": 348269,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/screen3x-neutral.png",
+      "bytes": 176667,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-7/source.txt",
+      "bytes": 517,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-curious-closed.png",
+      "bytes": 91892,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-happy-closed.png",
+      "bytes": 172428,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-happy-medium.png",
+      "bytes": 174282,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-happy-small.png",
+      "bytes": 173331,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-happy-wide.png",
+      "bytes": 175333,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-listening-closed.png",
+      "bytes": 92994,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-neutral-closed.png",
+      "bytes": 86190,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sleepy-closed.png",
+      "bytes": 54237,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sleepy-medium.png",
+      "bytes": 55894,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sleepy-small.png",
+      "bytes": 55012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sleepy-wide.png",
+      "bytes": 57012,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sorry-closed.png",
+      "bytes": 73686,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sorry-medium.png",
+      "bytes": 75270,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sorry-small.png",
+      "bytes": 74551,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-sorry-wide.png",
+      "bytes": 76302,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-speaking-closed.png",
+      "bytes": 87420,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-speaking-medium.png",
+      "bytes": 89407,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-speaking-small.png",
+      "bytes": 88492,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-speaking-wide.png",
+      "bytes": 90441,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-surprised-closed.png",
+      "bytes": 94637,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/canvas-thinking-closed.png",
+      "bytes": 78154,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/compare-happy.png",
+      "bytes": 1359599,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/compare-neutral.png",
+      "bytes": 1229454,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/gallery.png",
+      "bytes": 389004,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/overlay-happy.png",
+      "bytes": 906348,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/overlay-neutral.png",
+      "bytes": 805326,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-curious.png",
+      "bytes": 108079,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-happy.png",
+      "bytes": 198757,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-listening.png",
+      "bytes": 110346,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-neutral.png",
+      "bytes": 101350,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-sleepy.png",
+      "bytes": 66010,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-sorry.png",
+      "bytes": 87855,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-speaking.png",
+      "bytes": 103351,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-surprised.png",
+      "bytes": 111609,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen-thinking.png",
+      "bytes": 93469,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen3x-happy.png",
+      "bytes": 348269,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/screen3x-neutral.png",
+      "bytes": 176667,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/face-expression-2026-10-26/renders/round-8/source.txt",
+      "bytes": 525,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interp-sleepy-to-sleeping-strip.png",
+      "bytes": 257607,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interp-sleepy-to-sleeping-t0.00.png",
+      "bytes": 54328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interp-sleepy-to-sleeping-t0.25.png",
+      "bytes": 56893,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interp-sleepy-to-sleeping-t0.50.png",
+      "bytes": 51684,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interp-sleepy-to-sleeping-t0.75.png",
+      "bytes": 45960,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interp-sleepy-to-sleeping-t1.00.png",
+      "bytes": 46053,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/interpolation/interpolation.txt",
+      "bytes": 2183,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/canvas-sleeping-closed.png",
+      "bytes": 46041,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/canvas-sleepy-closed.png",
+      "bytes": 54328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/compare-sleeping.png",
+      "bytes": 382734,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/diff-sleeping.png",
+      "bytes": 339654,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/draft-1280x720.png",
+      "bytes": 336476,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/gallery.png",
+      "bytes": 430340,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/measure.txt",
+      "bytes": 21399,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/overlay-sleeping.png",
+      "bytes": 120305,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/screen-sleeping.png",
+      "bytes": 56897,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/screen3x-sleeping.png",
+      "bytes": 102322,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-1/source.txt",
+      "bytes": 519,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/canvas-sleeping-closed.png",
+      "bytes": 46110,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/canvas-sleepy-closed.png",
+      "bytes": 54328,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/compare-sleeping.png",
+      "bytes": 382808,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/diff-sleeping.png",
+      "bytes": 339192,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/draft-1280x720.png",
+      "bytes": 336476,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/gallery.png",
+      "bytes": 430353,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/measure.txt",
+      "bytes": 22507,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/overlay-sleeping.png",
+      "bytes": 120300,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/screen-sleeping.png",
+      "bytes": 56816,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/screen3x-sleeping.png",
+      "bytes": 102218,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/design/sleeping-2026-10-26/renders/round-2/source.txt",
+      "bytes": 519,
+      "reason": "historical-render-round"
+    },
+    {
+      "path": "docs/maintenance/2026-09-26-main-history-simplify.md",
+      "bytes": 12857,
+      "reason": "historical-maintenance"
+    },
+    {
+      "path": "docs/maintenance/2026-09-26-voice-settings-menu-validation.md",
+      "bytes": 1598,
+      "reason": "historical-maintenance"
+    },
+    {
+      "path": "docs/maintenance/evidence/2026-09-26-main-history-simplify-device.json",
+      "bytes": 9777,
+      "reason": "historical-maintenance"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-12-apple-services.md",
+      "bytes": 70150,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-12-project-foundation.md",
+      "bytes": 30525,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-13-app-integration.md",
+      "bytes": 37493,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-13-cat-interface.md",
+      "bytes": 15868,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-13-conversation-domain.md",
+      "bytes": 15118,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-16-cat-mouth-expression.md",
+      "bytes": 13109,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-23-conversation-memory-persistence.md",
+      "bytes": 34867,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-23-conversation-response-latency.md",
+      "bytes": 33164,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-26-supertonic-voice-integration.md",
+      "bytes": 25849,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-11-claude-conversation-engine.md",
+      "bytes": 302203,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-23-ios-robot-link.md",
+      "bytes": 43994,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-23-xiao-firmware.md",
+      "bytes": 47028,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-24-face-aim-setting.md",
+      "bytes": 4361,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-24-face-expression.md",
+      "bytes": 29710,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-24-face-tracking.md",
+      "bytes": 24763,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-fixed-left-camera.md",
+      "bytes": 4293,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-idle-sleeping.md",
+      "bytes": 4892,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-look.md",
+      "bytes": 16076,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-27-face-size-tuner.md",
+      "bytes": 2918,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-27-ui-polish.md",
+      "bytes": 3766,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-27-ui-reorganization.md",
+      "bytes": 25638,
+      "reason": "completed-plan"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-12-cat-robot-mvp-design.md",
+      "bytes": 24626,
+      "reason": "superseded-specification"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-16-cat-mouth-expression-design.md",
+      "bytes": 3193,
+      "reason": "superseded-specification"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-conversation-memory-persistence-design.md",
+      "bytes": 18872,
+      "reason": "superseded-specification"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-conversation-response-latency-design.md",
+      "bytes": 19885,
+      "reason": "superseded-specification"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-26-supertonic-voice-integration-design.md",
+      "bytes": 12393,
+      "reason": "superseded-specification"
+    },
+    {
+      "path": "docs/validation/2026-08-16-iphone16pro-smoke-test.md",
+      "bytes": 6145,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-08-17-foundation-model-concurrency.md",
+      "bytes": 14528,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-09-21-gemma-auto-compaction.md",
+      "bytes": 5799,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-09-21-gemma4-app-integration.md",
+      "bytes": 5785,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-09-21-gemma4-e2b-device-test.md",
+      "bytes": 8608,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-09-21-speech-audio-test-fix.md",
+      "bytes": 3138,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-09-23-conversation-memory-persistence.md",
+      "bytes": 7959,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/2026-09-23-conversation-response-latency.md",
+      "bytes": 13575,
+      "reason": "superseded-validation"
+    },
+    {
+      "path": "docs/validation/data/2026-09-23-response-latency/audio-preparation-failures.json",
+      "bytes": 31283,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/data/2026-09-23-response-latency/compaction.json",
+      "bytes": 8388,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/data/2026-09-24-response-latency/measurements.json",
+      "bytes": 494176,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/data/2026-09-24-response-latency/summary.json",
+      "bytes": 22111,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-app-2026-09-21/app-results.json",
+      "bytes": 2072,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-app-2026-09-21/app-test-summary.json",
+      "bytes": 867,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-app-2026-09-21/regression-test-summary.json",
+      "bytes": 6130,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-e2b-2026-09-21/gemma-test-summary.json",
+      "bytes": 862,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-e2b-2026-09-21/main-test-summary.json",
+      "bytes": 6128,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-e2b-2026-09-21/regression-test-summary.json",
+      "bytes": 6128,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-e2b-2026-09-21/results.json",
+      "bytes": 29770,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-e2b-2026-09-21/runner-results.json",
+      "bytes": 29769,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/gemma4-e2b-2026-09-21/runner-test-summary.json",
+      "bytes": 862,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/camera-authorized-bottom.png",
+      "bytes": 274277,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/camera-denied-bottom.png",
+      "bytes": 269263,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/camera-denied-maximum-type-page-7.png",
+      "bytes": 225395,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/camera-denied-maximum-type-page-8.png",
+      "bytes": 291596,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/camera-denied-maximum-type-page-9.png",
+      "bytes": 287335,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/camera-not-determined-page-3.png",
+      "bytes": 259797,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/look-maximum-type.png",
+      "bytes": 100103,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/look-restored.png",
+      "bytes": 280374,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/look-2026-10-26/look-visible.png",
+      "bytes": 120853,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/speech-audio-fix-2026-09-21/full-test-summary.json",
+      "bytes": 1043,
+      "reason": "superseded-validation-data"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/image-manifest.json",
+      "bytes": 5650,
+      "reason": "manifest-for-superseded-ui-fixtures"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/failed.png",
+      "bytes": 373244,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/maximum-type-typed.png",
+      "bytes": 109779,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/maximum-type.png",
+      "bytes": 50239,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/normal.png",
+      "bytes": 125498,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/restore.png",
+      "bytes": 76371,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/settings-calibration-returned.png",
+      "bytes": 472710,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/settings-calibration-text-size-accessibility5.png",
+      "bytes": 301513,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/settings-calibration-text-size-large.png",
+      "bytes": 366238,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-card-error-appears.png",
+      "bytes": 158013,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-card-error-clears.png",
+      "bytes": 129817,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-card-memory-warning-appears.png",
+      "bytes": 126446,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-card-memory-warning-clears.png",
+      "bytes": 129817,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-error-send-focus.png",
+      "bytes": 116834,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-face-size.png",
+      "bytes": 115887,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed-paused-chips-largest-standard-type-short-viewport.png",
+      "bytes": 83884,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/typed.png",
+      "bytes": 111283,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-cross-review-2026-10-27/images/unsaved.png",
+      "bytes": 80893,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/image-manifest.json",
+      "bytes": 30525,
+      "reason": "manifest-for-superseded-ui-fixtures"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-bottom.png",
+      "bytes": 319381,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-page-0.png",
+      "bytes": 244279,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-page-1.png",
+      "bytes": 402835,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-page-2.png",
+      "bytes": 249563,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-page-3.png",
+      "bytes": 318101,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-page-4.png",
+      "bytes": 279999,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-page-5.png",
+      "bytes": 317025,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-accessibility5-top.png",
+      "bytes": 265401,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-large-bottom.png",
+      "bytes": 363872,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-large-page-0.png",
+      "bytes": 415159,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/calibration-large-top.png",
+      "bytes": 323465,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/chips-all.png",
+      "bytes": 151346,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/connection-accessibility5-bottom.png",
+      "bytes": 409996,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/connection-accessibility5-page-0.png",
+      "bytes": 372075,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/connection-accessibility5-page-1.png",
+      "bytes": 428721,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/connection-accessibility5-top.png",
+      "bytes": 372075,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/connection-large-bottom.png",
+      "bytes": 358774,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/connection-large-top.png",
+      "bytes": 322590,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-curious.png",
+      "bytes": 116520,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-happy.png",
+      "bytes": 276259,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-listening.png",
+      "bytes": 125498,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-neutral.png",
+      "bytes": 114155,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-sleeping.png",
+      "bytes": 67747,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-sleepy.png",
+      "bytes": 80993,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-sorry.png",
+      "bytes": 100315,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-speaking.png",
+      "bytes": 116708,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-surprised.png",
+      "bytes": 123930,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/expression-thinking.png",
+      "bytes": 104134,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/failed.png",
+      "bytes": 373244,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/high-contrast.png",
+      "bytes": 118117,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/inactivity-sleeping-maximum-type.png",
+      "bytes": 84761,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/inactivity-sleeping-typed-maximum-type.png",
+      "bytes": 84761,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/inactivity-sleeping-typed.png",
+      "bytes": 82293,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/inactivity-sleepy-listening.png",
+      "bytes": 80993,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/largest-standard-type-chips.png",
+      "bytes": 165562,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/look-maximum-type.png",
+      "bytes": 79521,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/look-restored.png",
+      "bytes": 276259,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/look-visible.png",
+      "bytes": 125751,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/maximum-type-error-scrolled.png",
+      "bytes": 833328,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/maximum-type-error.png",
+      "bytes": 409888,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/maximum-type-typed.png",
+      "bytes": 109779,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/maximum-type.png",
+      "bytes": 50239,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/normal-flipped.png",
+      "bytes": 125594,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/normal.png",
+      "bytes": 125498,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/notice.png",
+      "bytes": 140300,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/onboarding-maximum-type-scrolled.png",
+      "bytes": 150764,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/onboarding-maximum-type.png",
+      "bytes": 124215,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/onboarding-standard.png",
+      "bytes": 169875,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/pending-connection-accessibility5-bottom.png",
+      "bytes": 380445,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/pending-connection-accessibility5-top.png",
+      "bytes": 475849,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/pending-connection-large-bottom.png",
+      "bytes": 365452,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/pending-connection-large-top.png",
+      "bytes": 348413,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/provisional.png",
+      "bytes": 125498,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/restore.png",
+      "bytes": 76371,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-about-bottom.png",
+      "bytes": 278483,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-about.png",
+      "bytes": 290883,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-calibration-returned.png",
+      "bytes": 353408,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-calibration.png",
+      "bytes": 416891,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-authorized-bottom.png",
+      "bytes": 205845,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-authorized-page-1.png",
+      "bytes": 210715,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-authorized.png",
+      "bytes": 175557,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-denied-bottom.png",
+      "bytes": 205902,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-denied-page-1.png",
+      "bytes": 206579,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-denied.png",
+      "bytes": 179367,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-not-determined-bottom.png",
+      "bytes": 206573,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-not-determined-page-1.png",
+      "bytes": 207405,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-camera-not-determined.png",
+      "bytes": 169151,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-cameraAndTracking-bottom.png",
+      "bytes": 205845,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-cameraAndTracking-page-1.png",
+      "bytes": 210715,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-cameraAndTracking.png",
+      "bytes": 175557,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-conversation-bottom.png",
+      "bytes": 184099,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-conversation-page-1.png",
+      "bytes": 195724,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-conversation.png",
+      "bytes": 165319,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-cameraAndTracking-bottom.png",
+      "bytes": 560803,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-cameraAndTracking-page-1.png",
+      "bytes": 577629,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-cameraAndTracking-page-2.png",
+      "bytes": 467238,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-cameraAndTracking.png",
+      "bytes": 173714,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-conversation-bottom.png",
+      "bytes": 575950,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-conversation-page-1.png",
+      "bytes": 488514,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-conversation-page-2.png",
+      "bytes": 511032,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-conversation.png",
+      "bytes": 94600,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-list.png",
+      "bytes": 134785,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-robot-bottom.png",
+      "bytes": 509208,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-robot-page-1.png",
+      "bytes": 520939,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-robot-page-2.png",
+      "bytes": 528756,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-maximum-type-robot.png",
+      "bytes": 175087,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-memory-bottom.png",
+      "bytes": 196570,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-memory.png",
+      "bytes": 197153,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-onboarding-review.png",
+      "bytes": 165829,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-robot-bottom.png",
+      "bytes": 164842,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-robot-page-1.png",
+      "bytes": 170078,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-robot.png",
+      "bytes": 150725,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-selected-memory.png",
+      "bytes": 197153,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-usage-bottom.png",
+      "bytes": 149861,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/settings-usage.png",
+      "bytes": 149844,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/sleeping.png",
+      "bytes": 82293,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/speaking-long.png",
+      "bytes": 116708,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/system-paused.png",
+      "bytes": 114155,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-editing-before.png",
+      "bytes": 220256,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-editing-height-240.png",
+      "bytes": 83988,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-editing-height-393.png",
+      "bytes": 137743,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-face-size.png",
+      "bytes": 115887,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-paused-chips-largest-standard-type-short-viewport-scrolled.png",
+      "bytes": 76799,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-paused-chips-largest-standard-type-short-viewport.png",
+      "bytes": 83884,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-short-viewport-scrolled.png",
+      "bytes": 59140,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed-short-viewport.png",
+      "bytes": 59234,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/typed.png",
+      "bytes": 111283,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/unsaved.png",
+      "bytes": 80893,
+      "reason": "superseded-ui-fixture"
+    },
+    {
+      "path": "docs/validation/ui-reorganization-2026-10-27/images/user-paused.png",
+      "bytes": 129672,
+      "reason": "superseded-ui-fixture"
+    }
+  ],
+  "retainedVisualAcceptance": [
+    "docs/design/face-expression-2026-10-26/ios/round-8/",
+    "docs/design/sleeping-2026-10-26/ios/final/"
+  ],
+  "historicalURL": "https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/",
+  "totalBytes": 135741533,
+  "count": 719
+}

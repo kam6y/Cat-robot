@@ -31,7 +31,7 @@ xcodebuild -project CatRobot.xcodeproj -scheme CatRobot \
 
 ## 画像とレビュー
 [image_gen 下書き](../design/sleeping-2026-10-26/sleeping-draft.png) → Claude の SwiftUI ベクター → Mac / iOS 描画比較の順に確認した。
-[上下比較](../design/sleeping-2026-10-26/renders/round-2/compare-sleeping.png)と[詳細な視覚比較](../design/sleeping-2026-10-26/visual-comparison.md)に測定結果を残した。下書きの目の曲線との差は中央部で約 1px（1280×720）。先端の丸みと、画像生成による鼻・口・ひげの小差は記録済みで、画素完全一致とはしていない。
+[上下比較](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/design/sleeping-2026-10-26/renders/round-2/compare-sleeping.png)と[詳細な視覚比較](../design/sleeping-2026-10-26/visual-comparison.md)に測定結果を残した。下書きの目の曲線との差は中央部で約 1px（1280×720）。先端の丸みと、画像生成による鼻・口・ひげの小差は記録済みで、画素完全一致とはしていない。
 
 最終 iOS キャプチャと Mac の寝顔は、弧・鼻・口/ひげの分類 IoU が各 1.0、配置・主要色も一致。root が待機画面、文字入力からの待機、最大文字サイズ、設定画面を目視確認した。補間は製品の描画を使った Mac 診断で 5 コマを確認し、顔の消失や鼻・口・ひげの移動はない。
 

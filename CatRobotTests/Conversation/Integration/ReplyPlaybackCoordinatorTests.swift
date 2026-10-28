@@ -8,7 +8,7 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
             let reply = ControlledReply()
             let speaker = ControlledSpeaker()
             let updates = PlaybackUpdates()
-            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
             let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
             await reply.waitUntilRequested()
             await reply.yield("こんにちは。元")
@@ -21,9 +21,10 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
             await reply.yield("こんにちは。元気です。")
             if speechFinishesFirst {
                 await speaker.complete()
-                await updates.waitForFinishes(1)
+                await updates.waitForSentenceFinishes(1)
                 let texts = await speaker.texts
                 XCTAssertEqual(texts.count, 1)
+                XCTAssertTrue(updates.finishes.isEmpty, "Generation is still open")
                 await reply.finish()
             } else {
                 await reply.finish()
@@ -35,36 +36,36 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
             await speaker.complete()
             let result = try await run.value
             XCTAssertEqual(result, "こんにちは。元気です。")
-            XCTAssertEqual(updates.finishes, [.first, .remainder])
+            XCTAssertEqual(updates.finishes, [.full])
+            XCTAssertEqual(updates.sentenceStarts, [0, 1])
+            XCTAssertEqual(updates.sentenceFinishes, [0, 1])
         }
     }
 
-    func testUnsupportedOrBaselineWaitsForFinalReplacementSnapshot() async throws {
-        for (stable, mode) in [(false, ReplyPlaybackMode.firstSentence), (true, .completeResponse)] {
-            let reply = ControlledReply(stablePrefix: stable)
-            let speaker = ControlledSpeaker()
-            let updates = PlaybackUpdates()
-            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: mode)
-            let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
-            await reply.waitUntilRequested()
-            await reply.yield("仮の一文。続き")
-            await updates.waitForCaption("仮の一文。続き")
-            let early = await speaker.texts
-            XCTAssertTrue(early.isEmpty)
-            await reply.yield("完全に置換した回答")
-            await reply.finish()
-            await speaker.waitUntilCallCount(1)
-            let texts = await speaker.texts
-            XCTAssertEqual(texts, ["完全に置換した回答"])
-            await speaker.complete()
-            _ = try await run.value
-        }
+    func testUnstablePrefixWaitsForFinalReplacementSnapshot() async throws {
+        let reply = ControlledReply(stablePrefix: false)
+        let speaker = ControlledSpeaker()
+        let updates = PlaybackUpdates()
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
+        await reply.waitUntilRequested()
+        await reply.yield("仮の一文。続き")
+        await updates.waitForCaption("仮の一文。続き")
+        let early = await speaker.texts
+        XCTAssertTrue(early.isEmpty)
+        await reply.yield("完全に置換した回答")
+        await reply.finish()
+        await speaker.waitUntilCallCount(1)
+        let texts = await speaker.texts
+        XCTAssertEqual(texts, ["完全に置換した回答"])
+        await speaker.complete()
+        _ = try await run.value
     }
 
     func testRewrittenSpokenPrefixStopsWithoutRepeating() async {
         let reply = ControlledReply()
         let speaker = ControlledSpeaker()
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await reply.waitUntilRequested()
         await reply.yield("確定。次")
@@ -82,14 +83,14 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
             let reply = ControlledReply()
             let speaker = ControlledSpeaker()
             let updates = PlaybackUpdates()
-            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
             let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
             await reply.waitUntilRequested()
             if stage > 0 {
                 await reply.yield("最初。次")
                 await speaker.waitUntilCallCount(1)
             }
-            if stage == 2 { await speaker.complete(); await updates.waitForFinishes(1) }
+            if stage == 2 { await speaker.complete(); await updates.waitForSentenceFinishes(1) }
             await reply.finish(throwing: ConversationServiceError.modelGenerationFailed)
             await assertFailure(run, .modelGenerationFailed)
             let texts = await speaker.texts
@@ -103,7 +104,7 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
             let speaker = ControlledSpeaker(startError: startFails ? .speechSynthesisFailed : nil)
             let sink = RecordingReplyTraceSink()
             let trace = ReplyTrace(sink: sink, now: { 0 })
-            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
             let run = Task { try await sut.run(prompt: "質問", trace: trace, onUpdate: { _ in }) }
             await reply.waitUntilRequested()
             await reply.yield("最初。次")
@@ -123,7 +124,7 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
         for empty in [true, false] {
             let reply = ControlledReply()
             let speaker = ControlledSpeaker()
-            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
             let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
             await reply.waitUntilRequested()
             await reply.yield(empty ? "  " : "一文です。")
@@ -133,12 +134,12 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
         }
     }
 
-    func testFallbackStartsOnlyOnceAndRemainderIsExact() async throws {
+    func testDuplicateStartsAreIgnoredAndWillSpeakDoesNotStartSentencePlayback() async throws {
         let reply = ControlledReply()
         let speaker = ControlledSpeaker()
         let sink = RecordingReplyTraceSink()
         let trace = ReplyTrace(sink: sink, now: { 0 })
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let run = Task { try await sut.run(prompt: "質問", trace: trace, onUpdate: { _ in }) }
         await reply.waitUntilRequested()
         await reply.yield("一文だけ。")
@@ -151,14 +152,14 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
         _ = try await run.value
         let starts = sink.events.filter { $0.point == .speechStarted }
         XCTAssertEqual(starts.count, 1)
-        XCTAssertEqual(starts.first?.source, .willSpeakFallback)
+        XCTAssertEqual(starts.first?.source, .started)
     }
 
     func testCancellationJoinsCleanupBeforeAllowingNewRun() async throws {
         let stopGate = ConversationTestGate()
         let reply = ControlledReply()
         let speaker = ControlledSpeaker(stopGate: stopGate)
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let run = Task { try await sut.run(prompt: "古い", trace: nil, onUpdate: { _ in }) }
         await reply.waitUntilRequested()
         await reply.yield("最初。次")
@@ -188,7 +189,7 @@ final class ReplyPlaybackCoordinatorTests: XCTestCase {
             let speaker = ControlledSpeaker()
             let updates = PlaybackUpdates()
             let sink = RecordingReplyTraceSink()
-            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .firstSentence)
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
             let trace = ReplyTrace(sink: sink, now: { 0 })
             let run = Task { try await sut.run(prompt: "質問", trace: trace, onUpdate: updates.record) }
             await reply.waitUntilRequested()

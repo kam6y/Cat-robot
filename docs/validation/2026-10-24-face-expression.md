@@ -38,7 +38,7 @@ Xcode 27.1、iOS 27.0 Simulator（iPhone 18 Pro）。`CODE_SIGNING_ALLOWED=NO`�
 
 Claudeが実装subagentと独立した視覚レビューsubagentを使って反復した。[描画比較記録](../design/face-expression-2026-10-26/visual-comparison.md)に計測値と各回の修正を残す。MacのレンダーとiOSの静止レンダーは分けて確認する。Round 7で通常顔・happyの未解消の相違0件（RESOLVED）。9表情への共通化を確認するRound 8も、Macと実際のiOS Simulator画像の両方で未解消の相違0件（RESOLVED）。[独立レビュー報告](../design/face-expression-2026-10-26/visual-review-final.md)に対象ソースと画像の照合結果を残す。
 
-最終版は [Mac Round 8](../design/face-expression-2026-10-26/renders/round-8/source.txt) と [iOS Simulator Round 8](../design/face-expression-2026-10-26/ios/round-8/provenance.json)。iOSは18種類の顔・口画像、18個の寸法記録、29枚の会話画面画像を元のまま保存した。ファイルごとのSHA-256、描画とfixtureのGit blob、xcresultをprovenanceに記録している。画像のICCプロファイル（Mac sRGB / iOS Display P3）を区別し、色の数値比較ではsRGBへそろえる。
+最終版は [Mac Round 8](https://github.com/kam6y/Cat-robot/blob/69c2a229ac10f410d3101de468e198ad2fa60944/docs/design/face-expression-2026-10-26/renders/round-8/source.txt) と [iOS Simulator Round 8](../design/face-expression-2026-10-26/ios/round-8/provenance.json)。iOSは18種類の顔・口画像、18個の寸法記録、29枚の会話画面画像を元のまま保存した。ファイルごとのSHA-256、描画とfixtureのGit blob、xcresultをprovenanceに記録している。画像のICCプロファイル（Mac sRGB / iOS Display P3）を区別し、色の数値比較ではsRGBへそろえる。
 
 親エージェントもRound 8の9表情一覧、iOSの通常顔・happyの発話中・listeningの会話画面・最大アクセシビリティ文字での入力画面末尾を確認した。Round 6でもhappyの会話画面・最大の通常文字サイズでの状態表示を確認しており、欠け・重なり・入力への到達不能は見つからなかった。初期のiOS fixtureには不均等なsafe areaが入り、顔が約97%・右へ約11ptずれていたため、固定比較用fixtureで継承safe areaを無視し、鼻の中心を画面幅50%で検証するよう修正した。実際の画面サイズはSimulatorの874×402 pt、比較用の要求サイズは852×393 ptで、実機サイズとは呼ばない。
 

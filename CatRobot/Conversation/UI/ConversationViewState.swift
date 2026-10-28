@@ -114,7 +114,6 @@ struct ConversationViewState: Equatable, Sendable {
     var displayedActivityStatus: String { isSleeping ? Self.standbyStatus : activityStatus }
     var phase: ConversationPhase
     var mouthPose: MouthPose
-    var microphoneStatus: String
     var activityStatus: String
     var provisionalTranscript: String = ""
     var caption: String = ""
@@ -152,50 +151,59 @@ extension ConversationViewState {
         !isSleeping && phase.allowsTypedSubmission && !ConversationMemoryPresentation(state: memoryState).blocksConversation
     }
 
-    static let idle = Self(
-        phase: .idle,
-        mouthPose: .closed,
-        microphoneStatus: "マイクは待機中",
-        activityStatus: "会話を始める準備ができました"
-    )
-
-    static let preparing = Self(
-        phase: .preparing,
-        mouthPose: .closed,
-        microphoneStatus: "会話の準備中",
-        activityStatus: "準備しています"
-    )
-
-    static let listening = Self(
-        phase: .listening,
-        mouthPose: .closed,
-        microphoneStatus: "端末上で聞き取り中",
-        activityStatus: "話しかけてください"
-    )
-
-    static let thinking = Self(
-        phase: .thinking,
-        mouthPose: .closed,
-        microphoneStatus: "聞き取りを休止",
-        activityStatus: "考えています"
-    )
-
-    static let clarifying = Self(
-        phase: .clarifying,
-        mouthPose: .small,
-        microphoneStatus: "聞き返しの間は聞き取りを休止",
-        activityStatus: "聞き返しています",
-        caption: "今の、ぼくに言った？"
-    )
+    static let idle = entering(.idle)
+    static let preparing = entering(.preparing)
+    static let listening = entering(.listening)
+    static let thinking = entering(.thinking)
+    static let clarifying = entering(.clarifying, caption: "今の、ぼくに言った？")
 
     static func speaking(caption: String) -> Self {
-        Self(
-            phase: .speaking,
-            mouthPose: .medium,
-            microphoneStatus: "返事の間は聞き取りを休止",
-            activityStatus: "話しています",
-            caption: caption
-        )
+        entering(.speaking, caption: caption)
+    }
+
+    private static func entering(_ phase: ConversationPhase, caption: String? = nil) -> Self {
+        var state = Self(phase: phase, mouthPose: .closed, activityStatus: "")
+        state.enter(phase, caption: caption)
+        return state
+    }
+
+    /// phase に入ったときの表示。口の形と状態文言の表はここだけに置き、会話の遷移と上の各状態が共有する。
+    /// 失敗の表示は presentFailure が持つので、.failed では phase の設定と前のエラー表示の消去だけを行う。
+    mutating func enter(_ phase: ConversationPhase, caption: String? = nil) {
+        self.phase = phase
+        errorMessage = nil
+        recoveries = []
+        if let caption { self.caption = caption }
+
+        switch phase {
+        case .idle:
+            mouthPose = .closed
+            activityStatus = "会話を始める準備ができました"
+        case .preparing:
+            mouthPose = .closed
+            activityStatus = "準備しています"
+        case .listening:
+            mouthPose = .closed
+            activityStatus = "話しかけてください"
+        case .classifying:
+            mouthPose = .closed
+            activityStatus = "呼びかけを確認しています"
+        case .clarifying:
+            mouthPose = .small
+            activityStatus = "聞き返しています"
+        case .thinking:
+            mouthPose = .closed
+            activityStatus = "考えています"
+        case .speaking:
+            mouthPose = .medium
+            activityStatus = "話しています"
+        case .paused:
+            mouthPose = .closed
+            activityStatus = "再開するまで待っています"
+            provisionalTranscript = ""
+        case .failed:
+            break
+        }
     }
 
     static func failed(
@@ -215,7 +223,6 @@ extension ConversationViewState {
     ) {
         phase = .failed(error)
         mouthPose = .closed
-        microphoneStatus = "マイクは待機中"
         activityStatus = "会話を続けられません"
         provisionalTranscript = ""
         errorMessage = message

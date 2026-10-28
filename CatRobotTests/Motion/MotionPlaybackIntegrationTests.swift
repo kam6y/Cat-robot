@@ -98,7 +98,7 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
                                                synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
-        let sut = ReplyPlaybackCoordinator(reply: wrapped, speaker: speaker, mode: .sentencePrefetch, motion: h.motion)
+        let sut = ReplyPlaybackCoordinator(reply: wrapped, speaker: speaker, motion: h.motion)
         let run = Task { try await sut.run(prompt: "三文", trace: nil, onUpdate: { _ in }) }
         await base.waitUntilRequested()
         await base.yield("一文目。二文目。三文目。")
@@ -127,7 +127,7 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
             usage: ConversationUsageSpy(), configuration: { .init() }, motion: h.motion)
         let speaker = ControlledSpeaker()
         let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: fallback, motion: h.motion),
-                                           speaker: speaker, mode: .firstSentence, motion: h.motion)
+                                           speaker: speaker, motion: h.motion)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await speaker.waitUntilCallCount(1)
         let reserved = await client.reservation
@@ -147,7 +147,7 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
         let source = ReservingMotionReply(base: base, motion: h.motion)
         let speaker = ControlledSpeaker()
         let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: source, motion: h.motion),
-                                           speaker: speaker, mode: .firstSentence, motion: h.motion)
+                                           speaker: speaker, motion: h.motion)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await base.waitUntilRequested()
         await base.yield("最初。続き")
@@ -168,7 +168,7 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
         await h.drain()
         let base = ControlledReply()
         let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: base, motion: h.motion),
-                                           speaker: ControlledSpeaker(), mode: .firstSentence, motion: h.motion)
+                                           speaker: ControlledSpeaker(), motion: h.motion)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await base.waitUntilRequested()
         await base.finish(throwing: ConversationServiceError.modelGenerationFailed)

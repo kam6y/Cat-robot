@@ -41,7 +41,7 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
         for speaking in [false, true] {
             let player = ControlledPCMPlayer()
             let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
-            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker, mode: .sentencePrefetch)
+            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker)
             let coordinator = ConversationAppCoordinator(viewModel: harness.viewModel, wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
             let run = Task { await harness.viewModel.submitTypedText("質問") }
             await harness.reply.waitUntilRequested()
@@ -64,6 +64,5 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "LiveComposition.\(UUID())")!
         let dependencies = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults)).dependencies
         XCTAssertTrue(dependencies.speaker is SupertonicSentenceSpeaker)
-        XCTAssertEqual(dependencies.replyPlaybackMode, .sentencePrefetch)
     }
 }

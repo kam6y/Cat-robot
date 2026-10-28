@@ -26,28 +26,31 @@ struct ConversationOperationOwnership {
 @MainActor
 @Observable
 final class ConversationViewModel {
-    private enum VoiceFailureOwner {
-        case lifecycle(generation: UInt64)
-        case turn(generation: UInt64, turnID: UInt64)
-        case capture(generation: UInt64, captureID: UInt64)
-    }
-
     private enum EngagementUpdate {
         case arm
         case refresh
         case none
     }
 
-    private struct ActiveVoiceLatency {
-        let generation: UInt64
-        let captureID: UInt64
-        let turnID: UInt64
-        let token: ConversationLatencyToken
-        let trace: ReplyTrace
+    /// How a failed reply turn ends; typed and voice turns share the decision.
+    private struct ReplyFailurePolicy {
+        let error: ConversationServiceError
+        /// A synthesis failure would fail a typed reply as well.
+        var includesTypedFallback: Bool { error != .speechSynthesisFailed && error != .speechVoiceUnavailable }
+        /// An exceeded context cannot recover within the same reply session.
+        var resetsReplySession: Bool { error == .contextExceeded }
+    }
+
+    private struct DetachedLifecycleTasks: Sendable {
+        let preflight: Task<Void, Never>?
+        let turn: Task<Void, Never>?
+        let capture: Task<Void, Never>?
+        let closing: Task<Void, Never>?
     }
 
     private let dependencies: ConversationDependencies
     private let replyPlayback: ReplyPlaybackCoordinator
+    private let voiceLatency: VoiceTurnLatencyRecorder
     @ObservationIgnored private var playbackMouthSequence = SpeechMouthPoseSequence()
     private(set) var viewState: ConversationViewState = .idle
 
@@ -69,7 +72,6 @@ final class ConversationViewModel {
     @ObservationIgnored private var activeFailureID: UInt64?
     @ObservationIgnored private var activeCaptureID: UInt64?
     @ObservationIgnored private var activeTurnID: UInt64?
-    @ObservationIgnored private var activeVoiceLatency: ActiveVoiceLatency?
     @ObservationIgnored private var captureIsClosing = false
     @ObservationIgnored private var closingTailSegments: [String] = []
     @ObservationIgnored private var segmenter = UtteranceSegmenter()
@@ -100,7 +102,8 @@ final class ConversationViewModel {
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
-        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode, motion: dependencies.replyTurnObserver)
+        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, motion: dependencies.replyTurnObserver)
+        self.voiceLatency = VoiceTurnLatencyRecorder(latency: dependencies.latency, traceSink: dependencies.replyTraceSink, now: dependencies.now)
         announcePhase(.idle)
     }
 
@@ -131,22 +134,11 @@ final class ConversationViewModel {
         ensureAudioEventConsumer()
 
         if let failureCleanupTask {
-            actionIntentCounter &+= 1
-            let resumeIntent = actionIntentCounter
-            await dependencies.lifecycleCheckpoint(.waitingForFailureCleanup)
-            await failureCleanupTask.value
-            await Task.yield()
-            guard actionIntentCounter == resumeIntent else { return }
+            guard await awaitTaskKeepingIntent(failureCleanupTask, checkpoint: .waitingForFailureCleanup) else { return }
         }
 
         if let lifecycleTransitionTask {
-            actionIntentCounter &+= 1
-            let resumeIntent = actionIntentCounter
-            await lifecycleTransitionTask.value
-            // Let an already-enqueued later lifecycle intent publish before
-            // this queued resume decides whether it still owns the action.
-            await Task.yield()
-            guard actionIntentCounter == resumeIntent else { return }
+            guard await awaitTaskKeepingIntent(lifecycleTransitionTask) else { return }
         }
         guard !isShutdown, !isShuttingDown else { return }
 
@@ -227,21 +219,13 @@ final class ConversationViewModel {
               viewState.allowsTypedSubmission else { return }
 
         if let failureCleanupTask {
-            actionIntentCounter &+= 1
-            let typedIntent = actionIntentCounter
-            await failureCleanupTask.value
-            await Task.yield()
-            guard actionIntentCounter == typedIntent,
+            guard await awaitTaskKeepingIntent(failureCleanupTask),
                   !isShutdown,
                   !isShuttingDown else { return }
         }
 
         if let lifecycleTransitionTask {
-            actionIntentCounter &+= 1
-            let typedIntent = actionIntentCounter
-            await lifecycleTransitionTask.value
-            await Task.yield()
-            guard actionIntentCounter == typedIntent,
+            guard await awaitTaskKeepingIntent(lifecycleTransitionTask),
                   !isShutdown,
                   !isShuttingDown else { return }
         }
@@ -250,7 +234,7 @@ final class ConversationViewModel {
         onAddressedActivity()
         ensureMemoryEventConsumer()
 
-        cancelActiveVoiceLatency(reason: .typedReplacement)
+        voiceLatency.cancel(reason: .typedReplacement)
         ensureAudioEventConsumer()
         let shouldResumeVoice = wantsListening
             && microphoneWasAllowed
@@ -305,7 +289,7 @@ final class ConversationViewModel {
         lifecycleGeneration &+= 1
         wantsListening = false
         clearPendingClarification()
-        cancelActiveVoiceLatency(reason: .lifecycle)
+        voiceLatency.cancel(reason: .lifecycle)
         activeMicrophonePermissionAwaitID = nil
         releaseMicrophonePermissionCompletion()
     }
@@ -341,7 +325,7 @@ final class ConversationViewModel {
         dependencies.motion.setControlMode(.background)
         noticeExpiryTask?.cancel()
         noticeExpiryTask = nil
-        cancelActiveVoiceLatency(reason: .shutdown)
+        voiceLatency.cancel(reason: .shutdown)
         await pauseConversation(force: true)
 
         let eventTask = audioEventTask
@@ -667,11 +651,11 @@ final class ConversationViewModel {
             }
         } catch {
             guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            let serviceError = Self.serviceError(from: error)
+            let policy = ReplyFailurePolicy(error: Self.serviceError(from: error))
             await finishTypedTurn(
-                with: serviceError,
-                includesTypedFallback: serviceError != .speechSynthesisFailed && serviceError != .speechVoiceUnavailable,
-                resetsReplySession: serviceError == .contextExceeded,
+                with: policy.error,
+                includesTypedFallback: policy.includesTypedFallback,
+                resetsReplySession: policy.resetsReplySession,
                 speakerAlreadyStopped: true,
                 generation: generation,
                 turnID: turnID
@@ -685,7 +669,7 @@ final class ConversationViewModel {
         case .speechStarted:
             transition(to: .speaking)
             viewState.mouthPose = .small
-        case .willSpeak, .sentenceStarted:
+        case .sentenceStarted:
             viewState.mouthPose = playbackMouthSequence.nextWordPose()
         case .sentenceFinished:
             viewState.mouthPose = .closed
@@ -703,15 +687,32 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
+        await stopTurnAudio(
+            speakerAlreadyStopped: speakerAlreadyStopped,
+            stopRecognizer: false,
+            resetsReplySession: resetsReplySession
+        )
+        guard isTypedTurnCurrent(generation, turnID: turnID),
+              !Task.isCancelled else { return }
+        publish(error, includesTypedFallback: includesTypedFallback)
+    }
+
+    /// Stops a turn's audio in a fixed order: join playback, then the speaker,
+    /// the recognizer, the audio session and finally the reply session.
+    private func stopTurnAudio(
+        speakerAlreadyStopped: Bool,
+        stopRecognizer: Bool,
+        resetsReplySession: Bool
+    ) async {
         await replyPlayback.cancelAndWait()
         if !speakerAlreadyStopped { await dependencies.speaker.stop() }
+        if stopRecognizer {
+            await dependencies.recognizer.stop()
+        }
         await dependencies.audioSession.deactivate()
         if resetsReplySession {
             await dependencies.reply.reset()
         }
-        guard isTypedTurnCurrent(generation, turnID: turnID),
-              !Task.isCancelled else { return }
-        publish(error, includesTypedFallback: includesTypedFallback)
     }
 
     private func startCapture(
@@ -771,14 +772,7 @@ final class ConversationViewModel {
 
         if captureIsClosing {
             if !text.isEmpty {
-                if let latency = activeVoiceLatency,
-                   latency.generation == generation,
-                   latency.captureID == captureID {
-                    dependencies.latency.noteASRActivity(
-                        at: dependencies.now(),
-                        for: latency.token
-                    )
-                }
+                voiceLatency.noteASRActivity(generation: generation, captureID: captureID)
                 if event.isFinal {
                     closingTailSegments.append(text)
                 }
@@ -874,20 +868,13 @@ final class ConversationViewModel {
         turnCounter &+= 1
         let turnID = turnCounter
         activeTurnID = turnID
-        let latencyToken = dependencies.latency.beginVoiceTurn(
+        voiceLatency.begin(
+            generation: generation,
+            captureID: captureID,
             turnID: turnID,
             boundaryAt: boundaryAt,
             lastASRActivityAt: latestCaptureActivityAt,
             segmentationInterval: segmenter.silenceInterval
-        )
-        let trace = ReplyTrace(id: latencyToken.rawValue, sink: dependencies.replyTraceSink, now: dependencies.now)
-        trace.mark(.captureBoundary)
-        activeVoiceLatency = ActiveVoiceLatency(
-            generation: generation,
-            captureID: captureID,
-            turnID: turnID,
-            token: latencyToken,
-            trace: trace
         )
         let consumer = captureTask
         closingTask = Task { @MainActor [weak self] in
@@ -912,7 +899,7 @@ final class ConversationViewModel {
         guard isCurrent(generation),
               activeCaptureID == captureID,
               activeTurnID == turnID else { return }
-        activeVoiceLatency?.trace.mark(.captureClosed)
+        voiceLatency.trace?.mark(.captureClosed)
         let completedUtterance = ([utterance] + closingTailSegments).joined()
         activeCaptureID = nil
         captureTask = nil
@@ -974,7 +961,7 @@ final class ConversationViewModel {
         case .wakeOnly:
             onAddressedActivity()
             clearPendingClarification()
-            selectVoiceLatency(.fast, generation: generation, turnID: turnID)
+            voiceLatency.selectPath(.fast, generation: generation, turnID: turnID)
             await speakAndResume(
                 "なあに？",
                 engagementUpdate: .arm,
@@ -984,7 +971,7 @@ final class ConversationViewModel {
         case .accept(let accepted):
             onAddressedActivity()
             clearPendingClarification()
-            selectVoiceLatency(.fast, generation: generation, turnID: turnID)
+            voiceLatency.selectPath(.fast, generation: generation, turnID: turnID)
             await generateReply(
                 to: accepted,
                 engagementUpdate: isExplicitWake || !wasEngaged ? .arm : .refresh,
@@ -993,10 +980,10 @@ final class ConversationViewModel {
             )
         case .classify(let candidate):
             clearPendingClarification()
-            selectVoiceLatency(.classified, generation: generation, turnID: turnID)
+            voiceLatency.selectPath(.classified, generation: generation, turnID: turnID)
             transition(to: .classifying)
             do {
-                let trace = activeVoiceLatency?.trace
+                let trace = voiceLatency.trace
                 trace?.mark(.classificationStarted)
                 var classificationOutcome = ReplyTraceOutcome.generationFailure
                 let target = try await ReplyTraceContext.$current.withValue(trace) {
@@ -1017,18 +1004,10 @@ final class ConversationViewModel {
                         turnID: turnID
                     )
                 case .notAddressed:
-                    cancelVoiceLatency(
-                        reason: .noResponse,
-                        generation: generation,
-                        turnID: turnID
-                    )
+                    voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
                     await resumeCapture(generation: generation, turnID: turnID)
                 case .ambiguous:
-                    cancelVoiceLatency(
-                        reason: .ambiguous,
-                        generation: generation,
-                        turnID: turnID
-                    )
+                    voiceLatency.cancel(reason: .ambiguous, ifOwnedBy: .turn(generation: generation, turnID: turnID))
                     if isCorrectingPending {
                         await resumeCapture(generation: generation, turnID: turnID)
                     } else {
@@ -1056,18 +1035,10 @@ final class ConversationViewModel {
             }
         case .dismissPending:
             clearPendingClarification()
-            cancelVoiceLatency(
-                reason: .noResponse,
-                generation: generation,
-                turnID: turnID
-            )
+            voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
             await resumeCapture(generation: generation, turnID: turnID)
         case .ignore:
-            cancelVoiceLatency(
-                reason: .noResponse,
-                generation: generation,
-                turnID: turnID
-            )
+            voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
             await resumeCapture(generation: generation, turnID: turnID)
         }
     }
@@ -1112,7 +1083,7 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
-        let trace = activeVoiceLatency?.trace
+        let trace = voiceLatency.trace
         transition(to: .thinking)
         playbackMouthSequence = SpeechMouthPoseSequence()
         do {
@@ -1121,9 +1092,9 @@ final class ConversationViewModel {
                 self.applyPlaybackUpdate(update)
                 switch update {
                 case .caption(let text) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
-                    self.recordFirstVoiceCaption(generation: generation, turnID: turnID)
+                    self.voiceLatency.recordFirstCaption(generation: generation, turnID: turnID)
                 case .speechStarted:
-                    self.recordVoiceSpeechStarted(generation: generation, turnID: turnID)
+                    self.voiceLatency.recordSpeechStarted(generation: generation, turnID: turnID)
                 default: break
                 }
             }
@@ -1135,12 +1106,12 @@ final class ConversationViewModel {
             }
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
-            let serviceError = Self.serviceError(from: error)
+            let policy = ReplyFailurePolicy(error: Self.serviceError(from: error))
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             await finishVoiceFailure(
-                with: serviceError,
-                includesTypedFallback: serviceError != .speechSynthesisFailed && serviceError != .speechVoiceUnavailable,
-                resetsReplySession: serviceError == .contextExceeded,
+                with: policy.error,
+                includesTypedFallback: policy.includesTypedFallback,
+                resetsReplySession: policy.resetsReplySession,
                 speakerAlreadyStopped: true,
                 stopRecognizer: false,
                 owner: .turn(generation: generation, turnID: turnID)
@@ -1155,10 +1126,10 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
-        let trace = activeVoiceLatency?.trace
+        let trace = voiceLatency.trace
         trace?.mark(.speechEnqueued, part: .full)
         transition(to: presentationPhase, caption: text)
-        recordFirstVoiceCaption(generation: generation, turnID: turnID)
+        voiceLatency.recordFirstCaption(generation: generation, turnID: turnID)
         do {
             let stream = try await dependencies.speaker.speak(text)
             var finishedNormally = false
@@ -1168,17 +1139,11 @@ final class ConversationViewModel {
                 switch event {
                 case .started:
                     trace?.mark(.speechStarted, part: .full, source: .started)
-                    recordVoiceSpeechStarted(
-                        generation: generation,
-                        turnID: turnID
-                    )
+                    voiceLatency.recordSpeechStarted(generation: generation, turnID: turnID)
                     viewState.mouthPose = .small
                 case .willSpeak:
                     trace?.mark(.speechStarted, part: .full, source: .willSpeakFallback)
-                    recordVoiceSpeechStarted(
-                        generation: generation,
-                        turnID: turnID
-                    )
+                    voiceLatency.recordSpeechStarted(generation: generation, turnID: turnID)
                     viewState.mouthPose = mouthSequence.nextWordPose()
                 case .finished:
                     trace?.mark(.speechFinished, part: .full)
@@ -1219,11 +1184,7 @@ final class ConversationViewModel {
         guard isCurrent(generation, turnID: turnID), wantsListening else { return }
         // A conforming speaker may finish without reporting a start event.
         // Cancel any still-open measurement before releasing the turn token.
-        cancelVoiceLatency(
-            reason: .failure,
-            generation: generation,
-            turnID: turnID
-        )
+        voiceLatency.cancel(reason: .failure, ifOwnedBy: .turn(generation: generation, turnID: turnID))
         activeTurnID = nil
         do {
             try await startCapture(generation: generation, recognizerIsPrepared: false)
@@ -1258,10 +1219,10 @@ final class ConversationViewModel {
         resetsReplySession: Bool = false,
         speakerAlreadyStopped: Bool = false,
         stopRecognizer: Bool,
-        owner: VoiceFailureOwner
+        owner: ConversationTurnOwner
     ) async {
         guard ownsVoiceFailure(owner), !Task.isCancelled else { return }
-        cancelVoiceLatency(reason: .failure, owner: owner)
+        voiceLatency.cancel(reason: .failure, ifOwnedBy: owner)
         wantsListening = false
         clearPendingClarification()
         engagement.clear()
@@ -1293,18 +1254,14 @@ final class ConversationViewModel {
         resetsReplySession: Bool,
         speakerAlreadyStopped: Bool,
         stopRecognizer: Bool,
-        owner: VoiceFailureOwner,
+        owner: ConversationTurnOwner,
         failureID: UInt64
     ) async {
-        await replyPlayback.cancelAndWait()
-        if !speakerAlreadyStopped { await dependencies.speaker.stop() }
-        if stopRecognizer {
-            await dependencies.recognizer.stop()
-        }
-        await dependencies.audioSession.deactivate()
-        if resetsReplySession {
-            await dependencies.reply.reset()
-        }
+        await stopTurnAudio(
+            speakerAlreadyStopped: speakerAlreadyStopped,
+            stopRecognizer: stopRecognizer,
+            resetsReplySession: resetsReplySession
+        )
 
         if activeFailureID == failureID, ownsVoiceFailure(owner) {
             if case .lifecycle = owner {
@@ -1332,43 +1289,22 @@ final class ConversationViewModel {
     private func pauseConversation(force: Bool = false, awaitsTapResume: Bool = false) async {
         viewState.isAwaitingTapToResume = awaitsTapResume
         actionIntentCounter &+= 1
-        cancelActiveVoiceLatency(reason: .lifecycle)
+        voiceLatency.cancel(reason: .lifecycle)
         activeMicrophonePermissionAwaitID = nil
         releaseMicrophonePermissionCompletion()
         if let failureCleanupTask {
             lifecycleGeneration &+= 1
             let transitionID = transitionOwnership.begin()
-            wantsListening = false
-            engagement.clear()
-            clearPendingClarification()
-            transition(to: .paused)
-
-            segmentationTask?.cancel()
-            segmentationTask = nil
-            let oldPreflight = preflightTask
-            preflightTask = nil
-            preflightOwnership.invalidate()
-            oldPreflight?.cancel()
-            let oldTurn = turnTask
-            turnTask = nil
-            oldTurn?.cancel()
-            let oldCapture = captureTask
-            captureTask = nil
-            oldCapture?.cancel()
-            let oldClosing = closingTask
-            closingTask = nil
-            oldClosing?.cancel()
-            activeCaptureID = nil
-            activeTurnID = nil
-            captureIsClosing = false
-            closingTailSegments.removeAll(keepingCapacity: true)
+            invalidateForPause()
+            // The failure cleanup owns the audio teardown, so capture work is cancelled rather than stopped.
+            let detached = detachInFlightTasks(cancelsCapture: true)
 
             let cleanup = Task { @MainActor in
                 await failureCleanupTask.value
-                await oldPreflight?.value
-                await oldCapture?.value
-                await oldClosing?.value
-                await oldTurn?.value
+                await detached.preflight?.value
+                await detached.capture?.value
+                await detached.closing?.value
+                await detached.turn?.value
             }
             lifecycleTransitionTask = cleanup
             await cleanup.value
@@ -1379,10 +1315,7 @@ final class ConversationViewModel {
         }
         if let lifecycleTransitionTask {
             lifecycleGeneration &+= 1
-            wantsListening = false
-            engagement.clear()
-            clearPendingClarification()
-            transition(to: .paused)
+            invalidateForPause()
             await lifecycleTransitionTask.value
             return
         }
@@ -1392,37 +1325,17 @@ final class ConversationViewModel {
 
         lifecycleGeneration &+= 1
         let transitionID = transitionOwnership.begin()
-        wantsListening = false
-        engagement.clear()
-        clearPendingClarification()
-        transition(to: .paused)
-
-        segmentationTask?.cancel()
-        segmentationTask = nil
-        let oldPreflight = preflightTask
-        preflightTask = nil
-        preflightOwnership.invalidate()
-        oldPreflight?.cancel()
-        let oldTurn = turnTask
-        turnTask = nil
-        oldTurn?.cancel()
-        let oldCapture = captureTask
-        captureTask = nil
-        let oldClosing = closingTask
-        closingTask = nil
-        activeCaptureID = nil
-        activeTurnID = nil
-        captureIsClosing = false
-        closingTailSegments.removeAll(keepingCapacity: true)
+        invalidateForPause()
+        let detached = detachInFlightTasks(cancelsCapture: false)
 
         let cleanup = Task { @MainActor [dependencies, replyPlayback] in
-            await oldPreflight?.value
+            await detached.preflight?.value
             await replyPlayback.cancelAndWait()
             await dependencies.speaker.stop()
             await dependencies.recognizer.stop()
-            await oldCapture?.value
-            await oldClosing?.value
-            await oldTurn?.value
+            await detached.capture?.value
+            await detached.closing?.value
+            await detached.turn?.value
             await dependencies.audioSession.deactivate()
         }
         lifecycleTransitionTask = cleanup
@@ -1432,94 +1345,53 @@ final class ConversationViewModel {
         }
     }
 
-    private func selectVoiceLatency(
-        _ path: ConversationLatencyPath,
-        generation: UInt64,
-        turnID: UInt64
-    ) {
-        guard let latency = activeVoiceLatency,
-              latency.generation == generation,
-              latency.turnID == turnID else { return }
-        dependencies.latency.selectPath(
-            path,
-            for: latency.token,
-            at: dependencies.now()
-        )
+    /// The synchronous part of a pause once the generation has advanced:
+    /// drop the listening intent, engagement and clarification, then show paused.
+    private func invalidateForPause() {
+        wantsListening = false
+        engagement.clear()
+        clearPendingClarification()
+        transition(to: .paused)
     }
 
-    private func recordFirstVoiceCaption(
-        generation: UInt64,
-        turnID: UInt64
-    ) {
-        guard let latency = activeVoiceLatency,
-              latency.generation == generation,
-              latency.turnID == turnID else { return }
-        latency.trace.mark(.firstCaption)
-        dependencies.latency.firstCaptionVisible(
-            for: latency.token,
-            at: dependencies.now()
-        )
+    /// Detaches in-flight work from the view model. Preflight and turn are cancelled;
+    /// capture and closing are cancelled only when `cancelsCapture`, otherwise the
+    /// caller ends them by stopping the recognizer.
+    private func detachInFlightTasks(cancelsCapture: Bool) -> DetachedLifecycleTasks {
+        segmentationTask?.cancel()
+        segmentationTask = nil
+        let preflight = preflightTask
+        preflightTask = nil
+        preflightOwnership.invalidate()
+        preflight?.cancel()
+        let turn = turnTask
+        turnTask = nil
+        turn?.cancel()
+        let capture = captureTask
+        captureTask = nil
+        if cancelsCapture { capture?.cancel() }
+        let closing = closingTask
+        closingTask = nil
+        if cancelsCapture { closing?.cancel() }
+        activeCaptureID = nil
+        activeTurnID = nil
+        captureIsClosing = false
+        closingTailSegments.removeAll(keepingCapacity: true)
+        return DetachedLifecycleTasks(preflight: preflight, turn: turn, capture: capture, closing: closing)
     }
 
-    private func recordVoiceSpeechStarted(
-        generation: UInt64,
-        turnID: UInt64
-    ) {
-        guard let latency = activeVoiceLatency,
-              latency.generation == generation,
-              latency.turnID == turnID else { return }
-        dependencies.latency.speechStarted(
-            for: latency.token,
-            at: dependencies.now()
-        )
-    }
-
-    private func cancelActiveVoiceLatency(
-        reason: ConversationLatencyCancellation
-    ) {
-        guard let latency = activeVoiceLatency else { return }
-        activeVoiceLatency = nil
-        let outcome: ReplyTraceOutcome
-        switch reason {
-        case .noResponse, .unselectedPath: outcome = .noResponse
-        case .ambiguous: outcome = .ambiguous
-        case .failure: outcome = .generationFailure
-        default: outcome = .cancelled
-        }
-        latency.trace.finish(outcome)
-        dependencies.latency.cancel(
-            latency.token,
-            reason: reason,
-            at: dependencies.now()
-        )
-    }
-
-    private func cancelVoiceLatency(
-        reason: ConversationLatencyCancellation,
-        generation: UInt64,
-        turnID: UInt64
-    ) {
-        cancelVoiceLatency(reason: reason, owner: .turn(generation: generation, turnID: turnID))
-    }
-
-    private func cancelVoiceLatency(
-        reason: ConversationLatencyCancellation,
-        owner: VoiceFailureOwner
-    ) {
-        guard let latency = activeVoiceLatency else { return }
-        let isOwner: Bool
-        switch owner {
-        case .lifecycle(let generation):
-            isOwner = latency.generation == generation
-        case .turn(let generation, let turnID):
-            isOwner = latency.generation == generation
-                && latency.turnID == turnID
-        case .capture(let generation, let captureID):
-            isOwner = latency.generation == generation
-                && latency.captureID == captureID
-        }
-        guard isOwner else { return }
-        cancelActiveVoiceLatency(reason: reason)
+    /// Waits for `task`; false when a later start, typed or pause intent arrived meanwhile.
+    /// The yield lets an already-enqueued later intent publish before this one decides it still owns the action.
+    private func awaitTaskKeepingIntent(
+        _ task: Task<Void, Never>,
+        checkpoint: ConversationLifecycleCheckpoint? = nil
+    ) async -> Bool {
+        actionIntentCounter &+= 1
+        let intent = actionIntentCounter
+        if let checkpoint { await dependencies.lifecycleCheckpoint(checkpoint) }
+        await task.value
+        await Task.yield()
+        return actionIntentCounter == intent
     }
 
     private func isCurrent(_ generation: UInt64) -> Bool {
@@ -1551,7 +1423,7 @@ final class ConversationViewModel {
             && !isShuttingDown
     }
 
-    private func ownsVoiceFailure(_ owner: VoiceFailureOwner) -> Bool {
+    private func ownsVoiceFailure(_ owner: ConversationTurnOwner) -> Bool {
         guard !isShutdown, !isShuttingDown else { return false }
         switch owner {
         case .lifecycle(let generation):
@@ -1574,48 +1446,7 @@ final class ConversationViewModel {
         default:
             break
         }
-        viewState.phase = phase
-        viewState.errorMessage = nil
-        viewState.recoveries = []
-        if let caption { viewState.caption = caption }
-
-        switch phase {
-        case .idle:
-            viewState.mouthPose = .closed
-            viewState.microphoneStatus = "マイクは待機中"
-            viewState.activityStatus = "会話を始める準備ができました"
-        case .preparing:
-            viewState.mouthPose = .closed
-            viewState.microphoneStatus = "会話の準備中"
-            viewState.activityStatus = "準備しています"
-        case .listening:
-            viewState.mouthPose = .closed
-            viewState.microphoneStatus = "端末上で聞き取り中"
-            viewState.activityStatus = "話しかけてください"
-        case .classifying:
-            viewState.mouthPose = .closed
-            viewState.microphoneStatus = "聞き取りを休止"
-            viewState.activityStatus = "呼びかけを確認しています"
-        case .clarifying:
-            viewState.mouthPose = .small
-            viewState.microphoneStatus = "聞き返しの間は聞き取りを休止"
-            viewState.activityStatus = "聞き返しています"
-        case .thinking:
-            viewState.mouthPose = .closed
-            viewState.microphoneStatus = "聞き取りを休止"
-            viewState.activityStatus = "考えています"
-        case .speaking:
-            viewState.mouthPose = .medium
-            viewState.microphoneStatus = "返事の間は聞き取りを休止"
-            viewState.activityStatus = "話しています"
-        case .paused:
-            viewState.mouthPose = .closed
-            viewState.microphoneStatus = "マイクは一時停止中"
-            viewState.activityStatus = "再開するまで待っています"
-            viewState.provisionalTranscript = ""
-        case .failed:
-            break
-        }
+        viewState.enter(phase, caption: caption)
         onPhaseChange(phase)
     }
 

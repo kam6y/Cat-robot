@@ -80,7 +80,6 @@ struct ConversationComposition {
             audioSession: AppleAudioSessionController(),
             latency: ConversationLatencyTracker.live(),
             replyTraceSink: OSReplyTraceSink(),
-            replyPlaybackMode: .sentencePrefetch,
             motion: motion,
             faceExpressions: expressions,
             look: look,

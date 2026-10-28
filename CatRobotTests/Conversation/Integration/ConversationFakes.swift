@@ -494,7 +494,7 @@ actor FakeReplyService: ReplyGenerating {
     }
 }
 
-actor FakeSpeechSpeaker: SpeechSpeaking {
+actor FakeSpeechSpeaker: TestSentenceSpeaker {
     typealias Continuation = AsyncThrowingStream<SpeechEvent, Error>.Continuation
 
     private let automaticallyFinishes: Bool
@@ -656,7 +656,6 @@ final class ConversationHarness {
 
     init(
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
-        replyPlaybackMode: ReplyPlaybackMode = .completeResponse,
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
         microphoneAllowed: Bool = true,
@@ -742,7 +741,6 @@ final class ConversationHarness {
             audioSession: audio,
             latency: latency,
             replyTraceSink: replyTraceSink,
-            replyPlaybackMode: replyPlaybackMode,
             memory: memory,
             now: { now.value },
             clarificationDelay: clarificationDelay,

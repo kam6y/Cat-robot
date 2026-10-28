@@ -13,7 +13,7 @@ final class PlaybackIntegrationHarness {
     var recognizer: FakeSpeechRecognizer { infrastructure.recognizer }
     init(service: (any ReplyGenerating)? = nil,
          memory: (any ConversationMemoryManaging)? = nil,
-         speaker: ControlledSpeaker = ControlledSpeaker(), sentenceSpeaker: (any SpeechSpeaking)? = nil, mode: ReplyPlaybackMode = .firstSentence,
+         speaker: ControlledSpeaker = ControlledSpeaker(), sentenceSpeaker: (any SentenceSpeechSpeaking)? = nil,
          motion: any RobotMotionControlling = NoopRobotMotionController(),
          expressions: any FaceExpressionControlling = NoopFaceExpressionController(),
          replyTurnObserver: (any ReplyTurnObserving)? = nil,
@@ -24,7 +24,7 @@ final class PlaybackIntegrationHarness {
             microphonePermission: base.microphone, modelAvailability: base.modelAvailability,
             recognizer: base.recognizer, classifier: base.classifier,
             reply: service ?? reply, speaker: sentenceSpeaker ?? speaker, audioSession: base.audio,
-            latency: base.latency, replyTraceSink: traces, replyPlaybackMode: mode, motion: motion,
+            latency: base.latency, replyTraceSink: traces, motion: motion,
             faceExpressions: expressions, look: look, replyTurnObserver: replyTurnObserver,
             memory: memory ?? UnsupportedConversationMemoryManager(), now: { base.now.value }))
     }
@@ -51,7 +51,7 @@ final class PlaybackIntegrationHarness {
 
 @MainActor
 final class ReplyPlaybackIntegrationTests: XCTestCase {
-    func testTypedAndVoiceWaitForGenerationAndBothSpeechParts() async {
+    func testTypedAndVoiceWaitForGenerationAndAllSentences() async {
         for voice in [false, true] {
             let harness = PlaybackIntegrationHarness()
             let run: Task<Void, Never>
@@ -68,8 +68,8 @@ final class ReplyPlaybackIntegrationTests: XCTestCase {
             await harness.reply.yield("こんにちは。元気です。")
             await harness.waitForState { $0.caption == "こんにちは。元気です。" }
             await harness.speaker.complete()
-            await harness.waitForPhase(.thinking)
-            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .closed)
+            await harness.waitForState { $0.mouthPose == .closed }
+            XCTAssertEqual(harness.viewModel.viewState.phase, .speaking)
             let startsDuringGeneration = await harness.recognizer.startCount
             XCTAssertEqual(startsDuringGeneration, startsDuringFirst)
             await harness.reply.finish()

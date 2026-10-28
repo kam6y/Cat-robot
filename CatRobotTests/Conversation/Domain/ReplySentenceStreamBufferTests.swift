@@ -29,6 +29,9 @@ final class ReplySentenceStreamBufferTests: XCTestCase {
         XCTAssertEqual(try buffer.receive("前。`iPhone。Bluetooth。`次。後").map(\.original), ["前。", "`iPhone。Bluetooth。`次。"])
         XCTAssertEqual(try buffer.receive("前。`iPhone。Bluetooth。`次。別", final: true).map(\.original), ["別"])
         XCTAssertThrowsError(try buffer.receive("改変。", final: true))
+        XCTAssertThrowsError(try buffer.receive("前", final: true)) {
+            XCTAssertEqual($0 as? ConversationServiceError, .modelGenerationFailed)
+        }
         var unclosed = ReplySentenceStreamBuffer()
         XCTAssertTrue(try unclosed.receive("`iPhone。Bluetooth。次").isEmpty)
         var long = ReplySentenceStreamBuffer()

@@ -67,7 +67,8 @@ final class FaceExpressionIntegrationTests: XCTestCase {
             await h.clock.advance(by: 7.99)
             XCTAssertEqual(h.sut.heldExpression, .happy)
             await playback.speaker.complete()
-            await playback.waitForPhase(.thinking)
+            await playback.waitForState { $0.mouthPose == .closed }
+            XCTAssertEqual(playback.viewModel.viewState.phase, .speaking)
             await base.finish()
             await playback.speaker.waitUntilCallCount(2)
             await playback.speaker.emit(.started)
@@ -93,7 +94,7 @@ final class FaceExpressionIntegrationTests: XCTestCase {
             let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
                 synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
             let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: reserving, motion: observer),
-                sentenceSpeaker: speaker, mode: .sentencePrefetch, motion: motion,
+                sentenceSpeaker: speaker, motion: motion,
                 expressions: h.sut, replyTurnObserver: observer)
             let run: Task<Void, Never>
             if voice { run = await playback.beginVoiceTurn() }
@@ -144,7 +145,7 @@ final class FaceExpressionIntegrationTests: XCTestCase {
             usage: ConversationUsageSpy(), configuration: { .init() }, motion: observer)
         let speaker = ControlledSpeaker()
         let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: fallback, motion: observer),
-                                           speaker: speaker, mode: .completeResponse, motion: observer)
+                                           speaker: speaker, motion: observer)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await speaker.waitUntilCallCount(1)
         let reservation = await client.reservation
@@ -152,6 +153,8 @@ final class FaceExpressionIntegrationTests: XCTestCase {
         await speaker.emit(.started)
         await robotDrain()
         XCTAssertNil(h.sut.heldExpression)
+        await speaker.complete()
+        await speaker.waitUntilCallCount(2)
         await speaker.complete()
         _ = try await run.value
         XCTAssertNil(h.sut.heldExpression)
@@ -167,7 +170,7 @@ final class FaceExpressionIntegrationTests: XCTestCase {
             let observer = ReplyTurnMulticaster([motion, expressions])
             let source = FaceReservingReply(base: base, expressions: expressions, motion: motion, holdSeconds: 10)
             let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: source, motion: observer),
-                mode: .completeResponse, motion: motion, expressions: expressions, replyTurnObserver: observer)
+                motion: motion, expressions: expressions, replyTurnObserver: observer)
             let app = ConversationAppCoordinator(viewModel: playback.viewModel,
                 wakeLock: TestIdleTimerStorage(initialValue: false).makeWakeLock(), expressions: expressions)
             app.beginConversation()

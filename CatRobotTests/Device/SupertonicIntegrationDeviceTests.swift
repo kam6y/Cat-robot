@@ -39,18 +39,16 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         if stage == "voices" {
             for voice in SpeechVoicePreset.allCases {
                 let fixture = SupertonicLatencyFixture(id: voice.rawValue, text: "こんにちは。今日も一緒に遊ぼうね。", prompt: "")
-                try await trial(fixture, mode: .firstSentence, repetition: 0, voice: voice, engine: engine)
+                try await trial(fixture, repetition: 0, voice: voice, engine: engine)
             }
         } else if stage == "fixed" {
             // Separate warmup; excluded from recorded timings.
             let warmup = SupertonicSentenceSpeaker(engine: engine, voice: { .f1 })
             let stream = try await warmup.speak("こんにちは。")
             for try await _ in stream {}
-            let modes: [ReplyPlaybackMode] = [.firstSentence, .sentenceSerial, .sentencePrefetch]
             for repetition in 0..<3 {
-                let rotated = Array(modes[repetition...] + modes[..<repetition])
                 for fixture in SupertonicLatencyFixture.all {
-                    for mode in rotated { try await trial(fixture, mode: mode, repetition: repetition, voice: .f1, engine: engine) }
+                    try await trial(fixture, repetition: repetition, voice: .f1, engine: engine)
                 }
             }
         } else if stage == "lifecycle" {
@@ -69,7 +67,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         }
         return ProcessInfo.processInfo.systemUptime - start
     }
-    private func trial(_ fixture: SupertonicLatencyFixture, mode: ReplyPlaybackMode, repetition: Int,
+    private func trial(_ fixture: SupertonicLatencyFixture, repetition: Int,
                        voice: SpeechVoicePreset, engine: SupertonicEngine, reply: (any ReplyGenerating)? = nil) async throws {
         let cooldown = try await coolDown()
         let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voice })
@@ -80,7 +78,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         speaker.onSynthesis = { ordinal, point in synthesis.append(["at": ProcessInfo.processInfo.systemUptime, "point": point, "sentenceOrdinal": ordinal]) }
         let sink = RecordingReplyTraceSink()
         let trace = ReplyTrace(sink: sink, now: { ProcessInfo.processInfo.systemUptime })
-        let sut = ReplyPlaybackCoordinator(reply: reply ?? FixedIntegrationReply(text: fixture.text), speaker: speaker, mode: mode)
+        let sut = ReplyPlaybackCoordinator(reply: reply ?? FixedIntegrationReply(text: fixture.text), speaker: speaker)
         let before = String(describing: ProcessInfo.processInfo.thermalState)
         var samples: [[String: Any]] = [sample()]
         let sampler = Task { while !Task.isCancelled { do { try await Task.sleep(for: .milliseconds(100)) } catch { break }; samples.append(sample()) } }
@@ -95,20 +93,20 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         sampler.cancel(); await sampler.value; samples.append(sample())
         await speaker.stop()
         let events = try JSONSerialization.jsonObject(with: JSONEncoder().encode(sink.events))
-        records.append(["runID": runID, "sourceRevision": revision, "stage": stage, "mode": mode.rawValue,
+        records.append(["runID": runID, "sourceRevision": revision, "stage": stage, "mode": "sentencePrefetch",
                         "fixture": fixture.id, "repetition": repetition, "voice": voice.rawValue,
                         "thermalBefore": before, "thermalAfter": String(describing: ProcessInfo.processInfo.thermalState),
                         "cooldownSeconds": cooldown, "footprintSamples": samples, "events": events,
                         "synthesis": synthesis, "inputs": inputs, "response": final, "outcome": outcome, "error": failure])
         try save()
-        print("SUPER_TRIAL \(stage) \(fixture.id) \(mode.rawValue) \(repetition) \(outcome)")
+        print("SUPER_TRIAL \(stage) \(fixture.id) sentencePrefetch \(repetition) \(outcome)")
         if outcome != "success" { XCTFail("\(fixture.id): \(failure)") }
     }
     private func lifecycle(_ engine: SupertonicEngine) async throws {
         for action in ["generating", "stop", "background", "interruption", "routeChange"] {
             _ = try await coolDown()
             let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { .f1 })
-            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker, mode: .sentencePrefetch)
+            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker)
             let run = Task { await harness.viewModel.submitTypedText("試験用") }
             await harness.reply.waitUntilRequested()
             if action != "generating" {

@@ -6,7 +6,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
     func testVoiceCaptureWaitsForLastSentenceAndCaptionStaysOriginal() async throws {
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [0.1], sampleRate: 24_000) })
-        let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker, mode: .sentencePrefetch)
+        let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker)
         let run = await harness.beginVoiceTurn()
         await harness.reply.waitUntilRequested()
         await harness.reply.yield("iPhoneです。Bluetoothです。最後。")
@@ -28,7 +28,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
             let player = ControlledPCMPlayer()
             let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
                 synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
-            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker, mode: .sentencePrefetch)
+            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker)
             let run = Task { await harness.viewModel.submitTypedText("質問") }
             await harness.reply.waitUntilRequested()
             await harness.reply.yield("最初。続き")
@@ -65,7 +65,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let reply = ControlledReply()
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .sentencePrefetch)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await reply.waitUntilRequested(); await reply.yield("一文目。続き")
         await player.waitForCalls(1)
@@ -74,11 +74,38 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
         XCTAssertGreaterThan(player.stops, 0)
     }
+    func testGenerationFailureNeverSynthesizesUnfinishedTailAfterFirstSentence() async throws {
+        for failure in [ConversationServiceError.modelGenerationFailed, .inputTooLong] {
+            let reply = ControlledReply()
+            let firstFinished = expectation(description: "First sentence has finished")
+            var synthesized: [String] = []
+            let speaker = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 },
+                synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+            speaker.onInput = { _, spoken in synthesized.append(spoken) }
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+            let run = Task {
+                try await sut.run(prompt: "質問", trace: nil) { update in
+                    if case .sentenceFinished(ordinal: 0) = update { firstFinished.fulfill() }
+                }
+            }
+            await reply.waitUntilRequested()
+            await reply.yield("最初。未確定の末尾")
+            await fulfillment(of: [firstFinished], timeout: 1)
+            if failure == .inputTooLong {
+                await reply.yield("最初。" + String(repeating: "未", count: 2001))
+            } else {
+                await reply.finish(throwing: failure)
+            }
+            do { _ = try await run.value; XCTFail("Expected generation failure") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, failure) }
+            XCTAssertEqual(synthesized, ["最初。"], "A failed generation cannot finalize its unfinished tail")
+        }
+    }
     func testGenerationFailureStopsPlaybackWhileSentenceQueueIsFull() async throws {
         let reply = ControlledReply()
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .sentencePrefetch)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let stopped = expectation(description: "Generation failure ends playback without draining queued audio")
         var received: ConversationServiceError?
         let run = Task {
@@ -103,7 +130,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let reply = ControlledReply(stablePrefix: false)
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .sentencePrefetch)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let updates = PlaybackUpdates()
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
         await reply.waitUntilRequested(); await reply.yield("仮の文。続き")
@@ -122,7 +149,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
             XCTAssertFalse(text.contains("iPhone")); XCTAssertFalse(text.contains("Bluetooth"))
             return SpeechPCM(samples: [1], sampleRate: 24_000)
         })
-        let actual = ReplyPlaybackCoordinator(reply: claude, speaker: immediate, mode: .sentencePrefetch)
+        let actual = ReplyPlaybackCoordinator(reply: claude, speaker: immediate)
         let original = try await actual.run(prompt: "説明して", trace: nil, onUpdate: { _ in })
         let saved = await store.load()
         XCTAssertEqual(original, "iPhoneです。Bluetoothです。")
@@ -134,7 +161,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
         var spoken: [String] = []
         speaker.onInput = { original, _ in spoken.append(original) }
-        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker, mode: .sentencePrefetch)
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
         let updates = PlaybackUpdates()
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
         await reply.waitUntilRequested()

@@ -399,7 +399,7 @@ final class RobotLifecycleIntegrationTests: XCTestCase {
         let source = ReservingMotionReply(base: base, motion: h.motion)
         let speaker = ControlledSpeaker()
         let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: source, motion: h.motion),
-                                           speaker: speaker, mode: .firstSentence, motion: h.motion)
+                                           speaker: speaker, motion: h.motion)
         let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
         await base.waitUntilRequested()
         await base.yield("最初。続き")

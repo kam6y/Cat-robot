@@ -4,7 +4,7 @@ Cat Robot は、Claude Opus 5.5（ClaudeForFoundationModels）で日本語の会
 
 公開リポジトリ: [kam6y/Cat-robot](https://github.com/kam6y/Cat-robot)
 
-## MVPの機能
+## 主な機能
 
 - 初回は「会話を始める」を押した後にマイク権限を求め、次回からは会話画面で自動開始します。会話画面が前面にある間だけ聞き取ります。AI が考えている間と話している間は聞き取りを止め、返答後に再開します。
 - `ねこ`、`猫ちゃん`、`Cat Robot`、`キャットロボット` から始まる発話や、直前から続いている会話は高速経路で処理します。
@@ -68,7 +68,7 @@ scripts/run_robot_motion_device_test.sh --attended '<iPhone UDID>' small '<保�
 
 ## ロボット側ファームウェア（`firmware/`）
 
-ハード（XIAO ESP32C3 + 2 軸サーボ）のファームウェアは `firmware/` にあり、iPhone アプリとは別にビルド・書き込みする（PlatformIO、Arduino-ESP32 3.3.12、NimBLE）。BLE のプロトコル版 1（要件 §7.5.2）、安全状態機械、ホスト単体テスト、Mac 用の試験ツール（`tools/ble_client.py`、`tools/serial_cli.py`）を含む。導入・書き込み・校正の手順は [firmware/README.md](firmware/README.md)、設計は [設計書](docs/superpowers/specs/2026-10-23-xiao-firmware-ble-design.md)、実測は [検証記録](docs/validation/2026-10-23-xiao-firmware.md)。
+ハード（XIAO ESP32C3 + 2 軸サーボ）のファームウェアは `firmware/` にあり、iPhone アプリとは別にビルド・書き込みする（PlatformIO、Arduino-ESP32 3.3.12、NimBLE）。BLE のプロトコル版 1（要件 §7.5.2）、安全状態機械、ホスト単体テスト、Mac 用の試験ツール（`firmware/tools/ble_client.py`、`firmware/tools/serial_cli.py`）を含む。導入・書き込み・校正の手順は [firmware/README.md](firmware/README.md)、設計は [設計書](docs/superpowers/specs/2026-10-23-xiao-firmware-ble-design.md)、実測は [検証記録](docs/validation/2026-10-23-xiao-firmware.md)。
 
 ## 動作要件
 
@@ -134,7 +134,7 @@ python3 scripts/prepare_supertonic_assets.py \
   --manifest CatRobot/Resources/supertonic-manifest.json
 ```
 
-合成条件は日本語、8 steps、CPU 2 threads、speed 1.05。モデルと MIT / OpenRAIL-M のライセンスを同梱します。固定版と移植元は[出典](CatRobot/Vendor/Supertonic/PROVENANCE.md)に記録しています。Apple 読み上げの実装は保全していますが、エンジン選択画面や失敗時の自動切り替えはありません。
+合成条件は日本語、8 steps、CPU 2 threads、speed 1.05。モデルと MIT / OpenRAIL-M のライセンスを同梱します。固定版と移植元は[出典](CatRobot/Vendor/Supertonic/PROVENANCE.md)に記録しています。読み上げは Supertonic に統一し、エンジン選択や読み上げ失敗時の自動切り替えはありません。
 
 音声へ渡す直前だけ、`iPhone` を「アイフォーン」、`Bluetooth` を「ブルートゥース」に補正します。VoiceOverへ渡す返答と保存する会話は原文のままです。URL・メール・バッククォート内のコード・`iPhone16` など識別子の一部は置換しません。
 
@@ -250,7 +250,7 @@ xcrun devicectl device process launch \
 5. バックグラウンドへ移動して戻ると自動で聞き取りが再開すること、猫をタップすると一時停止し、もう一度タップで再開することを確認する。
 6. 「…」→「文字で話しかける」で文字でも返答でき、送信後も入力欄が残ることを確認する。
 
-## MVPの制約
+## 制約
 
 - 会話は画面がアクティブな間だけです。バックグラウンド録音、ロック画面の StandBy 拡張、常駐ウェイクワード検出は実装していません。
 - 宛先判定には誤検知や見逃しがあり、生成モデルの返答も事実とは限りません。二重判定や返答の事実検証は行いません。
@@ -271,7 +271,7 @@ xcrun devicectl device process launch \
 - `CatRobot/Conversation/UI/`: 横向き会話画面、ベクター猫、文字入力、アクセシビリティ。
 - `CatRobotTests/`: 各機能の単体・統合テスト。
 - `scripts/`: Xcode プロジェクト生成、契約テスト、音声資産の準備と検証。
-- `docs/`: 設計、実装計画、検証記録。
+- `docs/`: [文書の入口](docs/README.md)、[現行アーキテクチャ](docs/architecture.md)、仕様と検証記録。
 
 deployment target は iOS 27.0、iPhone 専用、Swift 6 strict concurrency（complete）、前面カメラが画面の左・充電端子が右の横向き固定です。
 
@@ -293,4 +293,4 @@ git commit
 git push origin main "feature/<scope>"
 ```
 
-squash後も、履歴確認のためローカル・リモートのfeature branchを削除しません。関係のない変更を同じbranchへ混ぜず、source、test、再生成したprojectを同じ粒度でまとめます。
+統合と検証が済んだブランチは整理します。squashで本流から到達できない履歴を残す場合は、削除前に参照一覧と検証済みGit bundleを保存します。未コミット変更やローカル専用の音声資産・認証設定を含むworktreeは残し、強制削除しません。関係のない変更を同じbranchへ混ぜず、source、test、再生成したprojectを同じ粒度でまとめます。
