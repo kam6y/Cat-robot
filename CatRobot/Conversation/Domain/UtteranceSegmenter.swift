@@ -34,6 +34,9 @@ struct UtteranceSegmenter: Sendable {
             0,
             configuration.maximumDuration - (timestamp - (firstActivityAt ?? timestamp))
         )
+        // Provisional-only speech cannot close on silence. Schedule its hard expiry;
+        // an early no-op flush would otherwise leave it pending with no future timer.
+        if finalizedSegments.isEmpty { return hardRemaining }
         return min(configuration.silenceInterval, hardRemaining)
     }
 

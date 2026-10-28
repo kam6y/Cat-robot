@@ -1,0 +1,38 @@
+{
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "sourceRevision": "7ac5bea",
+  "sourceCommit": "7ac5bea73b88be9f28558c7b03b67edb3dd6582c",
+  "version": "1.0",
+  "build": "1",
+  "executableSHA256": "bdf87fdc62b41bc2ffeecb4f168bed23c103ca641afb9a52a4c238d75ae03c98",
+  "implementationSHA256": "ed75c803d8565d88176a99bffcc61eb9814ea73212ba4877cb7ba3115ef5cb66",
+  "signatureVerified": true,
+  "recordedAt": "2026-10-27T14:51:41.626742+00:00",
+  "userSelectedScale": 0.8,
+  "previousScale": 0.85,
+  "physicalDevice": "iPhone 16 Pro",
+  "installed": true,
+  "installedAppConfirmed": true,
+  "uninstallPerformed": false,
+  "applicationLaunched": false,
+  "hardwareCommandsPerformed": false,
+  "firmwareChanged": false,
+  "physicalDisplayObserved": false,
+  "verifiedInputs": 223,
+  "changedInputsSincePreviousFullSuite": [
+    "CatRobot/Conversation/UI/ConversationView.swift",
+    "CatRobotTests/Face/FaceConversationPresentationTests.swift"
+  ],
+  "testSuite": "FaceConversationPresentationTests",
+  "passedTests": 15,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "fullSuiteRerun": false,
+  "rawEvidenceDirectory": "/private/tmp/cat-face-size-80-20261027",
+  "simulatorImage": {
+    "path": "images/main-app-80.png",
+    "sha256": "738dbac449c30f05095433cabc3eb9e625a286721d61a5f64b8d56463ffcd30c",
+    "inspected": true,
+    "testIdentifier": "FaceConversationPresentationTests/testListeningChipSitsAtTopLeadingAndClearsWhenSpeaking()"
+  }
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "file": "images/listening-chip-left.png",
+    "test": "FaceConversationPresentationTests/testListeningChipSitsAtTopLeadingAndClearsWhenSpeaking()",
+    "originalAttachment": "listening-chip-left-62_0_B1DAC01D-B224-452D-AA35-D0B6A3268456.png",
+    "exportedFileName": "AF5A7570-C5C9-4445-8AE8-8EB8D7AAABDB.png",
+    "timestamp": 1793108014.015,
+    "sha256": "2e1f2c47f1e7b77b888487c518a6b804114ffda045acdb5eb298711e1e3e21a7",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/listening-with-typed-input.png",
+    "test": "FaceConversationPresentationTests/testTypedInputUsesTheRemainingHeightForTheFaceAtStandardSize()",
+    "originalAttachment": "typed-face-size-493_0_AFFF1387-2E28-41CB-B3A9-F109BDCD644A.png",
+    "exportedFileName": "02670F74-8EE5-46F1-885F-AE7474D45AD2.png",
+    "timestamp": 1793108053.541,
+    "sha256": "ee04b77f7972f74c7e8875dd67dc24010fdaec0416c062e8c025d89a62e0d0ca",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/calibration-standard-offsets.png",
+    "test": "RobotPresentationTests/testCalibrationCategoriesUseSettingsColumnAndKeepDraft()",
+    "originalAttachment": "calibration-category-calibrationCategory_0_5FF0A1A2-DFE5-40C6-AF8E-BEF59FDEDED8.offsets",
+    "exportedFileName": "3CEABEE0-4D3D-4CD1-BAC1-3BC10D917272.png",
+    "timestamp": 1793108092.402,
+    "sha256": "f4420c6c7f6724b9a4b6470d25be77eb4999bd481712d5702029d9ede30f4010",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/calibration-accessibility-list.png",
+    "test": "RobotPresentationTests/testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns()",
+    "originalAttachment": "settings-calibration-text-size-accessibility5_0_78737F74-4589-4D62-AC15-6112606D1C91.png",
+    "exportedFileName": "ECDB9960-0225-4D45-A97C-70D181CE1065.png",
+    "timestamp": 1793108096.333,
+    "sha256": "1570145a9daf2a705332bddbad15dee557f2b782abcd7d5022c2934a1ab6bfc3",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/calibration-xxxLarge-disconnected.png",
+    "test": "RobotPresentationTests/testLargestStandardTypeKeepsCalibrationFormAndSaveControlsOnScreen()",
+    "originalAttachment": "calibration-xxxLarge-disconnected-calibrationCategory_0_A6A32AB8-77C6-4084-B69C-7BD0D58CFBCF.offsets",
+    "exportedFileName": "7371F9FF-D039-4DD2-B2B5-629A534D30C5.png",
+    "timestamp": 1793108127.457,
+    "sha256": "ae65f3225eac15f3586142bddad818186a0456a740d9f18b139d70042ff7654f",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/calibration-accessibility-detail-scrolled.png",
+    "test": "RobotPresentationTests/testLargeTypeCalibrationDetailKeepsStopAndGuardedExit()",
+    "originalAttachment": "calibration-large-type-detail_0_F9EEB1C5-C820-4581-840E-8BBFDA22B95A.png",
+    "exportedFileName": "BDEB6746-1787-448B-8687-BC51864975DC.png",
+    "timestamp": 1793108133.943,
+    "sha256": "bc053e82b835239114c0715aa21a8f85f1e127d47a985220394858c0fc9efb69",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/calibration-returned-to-robot-settings.png",
+    "test": "RobotPresentationTests/testLargeTypeSettingsOpenCalibrationDetailAndKeepGuardedExit()",
+    "originalAttachment": "calibration-large-type-start-returned_0_F8816C77-14D2-4AFB-87B7-E6513CF1A738.png",
+    "exportedFileName": "4B2BC0FC-D1D3-4582-8243-0333193317D9.png",
+    "timestamp": 1793108158.975,
+    "sha256": "5ac8e643485c38dd87dddba94f171c01fd115c9df2fa61f19287592cabd9b188",
+    "visuallyInspected": true
+  }
+]

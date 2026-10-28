@@ -131,6 +131,8 @@ final class ControlledPCMPlayer: PCMPlaying {
     }
     func waitForCalls(_ count: Int) async { if played.count < count { await withCheckedContinuation { waiters.append((count, $0)) } } }
     func complete(_ index: Int) { continuations[index].yield(.finished); continuations[index].finish() }
+    func emit(_ event: SpeechEvent, index: Int) { continuations[index].yield(event) }
+    func fail(_ index: Int) { continuations[index].finish(throwing: ConversationServiceError.speechSynthesisFailed) }
     func stop() async {
         stops += 1
         continuations.forEach { $0.yield(.cancelled); $0.finish() }

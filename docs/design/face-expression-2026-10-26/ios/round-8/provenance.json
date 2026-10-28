@@ -1,0 +1,394 @@
+{
+  "captureKind": "iOS Simulator XCTest captures, not physical-device captures",
+  "xcresult": "/private/tmp/cat-face-expression/simulator/Logs/Test/Test-CatRobot-2026.10.26_05-50-39-+0900.xcresult",
+  "device": "iPhone 18 Pro",
+  "deviceID": "40C29D25-C8EC-42C7-8145-65AB37A2BB7D",
+  "os": "iOS 27.0 Simulator",
+  "xcode": "27.1",
+  "testResult": {
+    "executed": 12,
+    "failures": 0,
+    "skipped": 0
+  },
+  "requestedCaptureSizePoints": [
+    852,
+    393
+  ],
+  "simulatorNativeScreenSizePoints": [
+    874,
+    402
+  ],
+  "layoutNotes": "Fixtures explicitly use simulated horizontal 60 pt / bottom 21 pt padding and ignore inherited platform safe areas. These are comparison fixtures, not measured physical-device safe areas; the short typed viewport is 852×240 pt. Geometry text preserves actual host diagnostics.",
+  "sourceGitBlobs": {
+    "CatRobot/Conversation/UI/CatFaceShapes.swift": "de644a97b0b6792a67f0ee91320281d6fcf70081",
+    "CatRobot/Conversation/UI/CatFaceAppearance.swift": "4946714eebf97638f7a7f61f42907305febfe311",
+    "CatRobot/Conversation/UI/CatFaceView.swift": "a1207dd1aa4b17f15a1326a0ba82b106b09e6b9e",
+    "CatRobot/Conversation/UI/ConversationView.swift": "8250b7ddb738c7a627588118da288a3bed94c411",
+    "CatRobotTests/Face/FaceRenderingTests.swift": "1a7b07f2071dc2e588368e6ebecd3a174e841a69",
+    "CatRobotTests/Face/FaceConversationPresentationTests.swift": "2fda1c6ab4dd04ee750da753f7109d342c7c99c4",
+    "CatRobotTests/Conversation/UI/CatFaceGeometryTests.swift": "8c0a555ed92e736f0bda979c3d5ff12b0a078f66"
+  },
+  "files": [
+    {
+      "file": "face-sorry-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/53F2BAC1-57CF-484B-A66D-0F96F4953B76.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sorry-closed-geometry_0_5C24F2ED-ACD2-4FCC-A1C4-FFE290F7DE9C.txt"
+    },
+    {
+      "file": "face-sorry-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/0007A6E5-9258-4EAB-9F31-60C3435D9444.png",
+      "sha256": "0160da028fab009711ed5cb6639a81caa0a9a22e5c640219aa050f7cfa7fef3f",
+      "attachmentName": "face-sorry-closed_0_9639818A-75AB-44AA-9FB8-A5CB067B004C.png"
+    },
+    {
+      "file": "face-surprised-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/7ED1DA01-E988-421F-B832-83D1FE7F17EC.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-surprised-closed-geometry_0_48884B59-9FEB-4137-8BC9-D6436DBA055B.txt"
+    },
+    {
+      "file": "face-surprised-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/D83433FD-E549-4334-8539-C72D799BB35C.png",
+      "sha256": "2007d90e4da9cb64d59955c59177bbdb1e8dbfae70a73ba737bd003ccb852e3b",
+      "attachmentName": "face-surprised-closed_0_B4A054A6-D57F-4196-B34E-8033C6F2383E.png"
+    },
+    {
+      "file": "face-sleepy-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/82D3B17A-C68D-4001-8F13-7491CABB4298.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sleepy-closed-geometry_0_253ED5CB-0A42-4D85-9E1D-A1A95751DE4F.txt"
+    },
+    {
+      "file": "face-sleepy-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/F576928B-459D-4319-AD7E-77669511B771.png",
+      "sha256": "109a8ae1312a3e8884bdec0b22db537b1ac1d31bda5f5ef430942720de1b6cb8",
+      "attachmentName": "face-sleepy-closed_0_ADD83068-AF55-4E37-A4C7-6BCB2E740B9C.png"
+    },
+    {
+      "file": "face-speaking-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/6AE42136-1D56-4D58-973F-EC2718C86331.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-speaking-closed-geometry_0_7E3A694C-6E96-4AA9-A4EB-01FCCCE03256.txt"
+    },
+    {
+      "file": "face-speaking-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/578FF64B-C6F2-41F7-9932-9A03FBC164C7.png",
+      "sha256": "2a53240c6b22bea5c11924e7f09c9f8aafa14155763e3781e0b17a0365f30bff",
+      "attachmentName": "face-speaking-closed_0_7B578773-BDCD-4E00-AF9C-4EA4BBC261D3.png"
+    },
+    {
+      "file": "face-listening-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/19BA0517-7DB7-4392-9ED2-DC0A6E51B122.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-listening-closed-geometry_0_5AA3FFEB-4C5C-4DA7-A22F-D02D88F164B0.txt"
+    },
+    {
+      "file": "face-listening-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/3D087E33-0CFA-42F7-B53F-A712DEFBAB52.png",
+      "sha256": "6fc7f90125dd9c04d67c7d825453ae9d6a2159641dbaf1d0d0777779f1dc6d07",
+      "attachmentName": "face-listening-closed_0_F7E00E26-ECA6-4E57-B2C7-A7AC4C7ACA99.png"
+    },
+    {
+      "file": "face-thinking-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/C2ABBD5B-1A7B-4F9E-8B97-A4960C7D168A.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-thinking-closed-geometry_0_4F015811-2FCA-4EDE-944E-048D2715F1E0.txt"
+    },
+    {
+      "file": "face-thinking-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/99BF4837-BE6C-4882-9065-42A24AA4E03E.png",
+      "sha256": "79433576bf987e68b56766d3267b487b3a66e0ce6177dbbf3fa946e1c63cd097",
+      "attachmentName": "face-thinking-closed_0_E6BDD0C2-8860-4A95-9584-B6F97AA78ADA.png"
+    },
+    {
+      "file": "face-curious-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/7DBCD202-05F8-4487-ADEF-EDB9B7A9F99B.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-curious-closed-geometry_0_43494FF9-8155-460B-BD09-2BBFA0308AB3.txt"
+    },
+    {
+      "file": "face-curious-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/7535EF21-9C14-435B-B157-54143E6AA1B0.png",
+      "sha256": "d58c0a8689bdcdd4fc9f7bd3a9d5af57da611d54aebbdb295e5be6da63d3608c",
+      "attachmentName": "face-curious-closed_0_85891D21-E657-491E-B937-3D9B218D48BC.png"
+    },
+    {
+      "file": "face-happy-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/6FD1F5C3-5376-49CA-B248-B5071672FD2A.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-happy-closed-geometry_0_6032627B-46B1-4D30-8191-91D4E8E6B58D.txt"
+    },
+    {
+      "file": "face-happy-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/5A4F1F85-BD0B-4C69-896C-1DD9E4EF3D2B.png",
+      "sha256": "9daee6a14287b0957dd2f04590f2b7c4ed7cc1d6cd83cd5db65a4ca8e71ae6d2",
+      "attachmentName": "face-happy-closed_0_0B0A5A5D-E396-42F7-B341-84BC21809C09.png"
+    },
+    {
+      "file": "face-neutral-closed-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/23A30315-CC70-4C75-BC7F-15CC1F4B86F0.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-neutral-closed-geometry_0_5D5D5428-CBA4-4DF1-8F6D-F6C5D6D24CD1.txt"
+    },
+    {
+      "file": "face-neutral-closed.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/F76E2987-81B5-4137-A497-76E813BFDD63.png",
+      "sha256": "a3e2cc05e693537c3377baf9a98bbe758db6ff36d73dc627bb19c75bef8f5704",
+      "attachmentName": "face-neutral-closed_0_30776750-AFDE-4B77-9B92-8D94514408BF.png"
+    },
+    {
+      "file": "face-sleepy-wide-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/B3518B45-F192-4C37-94AC-CF2CBD177E8E.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sleepy-wide-geometry_0_324241FA-85FF-47B4-B469-CCB3206A6F77.txt"
+    },
+    {
+      "file": "face-sleepy-wide.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/8E69A382-EBCF-4C00-8630-ACB9C8308713.png",
+      "sha256": "f55afda9fa0d22fbdb565fcb38943b36b8f1955e56b2fb22e11c0ff750aac092",
+      "attachmentName": "face-sleepy-wide_0_B00AAC71-DD0B-4B32-9D47-64E33FF6E5E8.png"
+    },
+    {
+      "file": "face-sleepy-medium-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/A88C476A-FF60-4D28-881D-96F551B5C2CB.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sleepy-medium-geometry_0_6ABE0E69-CCD0-42B7-99EE-D02DB9B06683.txt"
+    },
+    {
+      "file": "face-sleepy-medium.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/B120EC6D-3083-4407-BF72-8F1A3D03845A.png",
+      "sha256": "3806705d9a79c80b8d3cf685fc78e14c06850a31447e38452ffd60cad125c4a6",
+      "attachmentName": "face-sleepy-medium_0_3063CD8E-320D-41CD-AB63-B0CC33494596.png"
+    },
+    {
+      "file": "face-sleepy-small-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/05B16F95-6E28-42EA-8E33-B54922121060.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sleepy-small-geometry_0_9D443C86-DD34-480D-BD00-4EC7725CD5B2.txt"
+    },
+    {
+      "file": "face-sleepy-small.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/DBC53C77-5CBA-460B-8078-C73756BFAF1D.png",
+      "sha256": "c90c091ebd6ff9c59ae0e8248ccc22aa0845367a708e4dca082234b5b8fbd335",
+      "attachmentName": "face-sleepy-small_0_0C597C33-1160-4AD0-B183-69F1C61B4952.png"
+    },
+    {
+      "file": "face-sorry-wide-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/315DC1FF-06CB-4CAF-8209-97CA012FD6C0.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sorry-wide-geometry_0_3D8C027E-2FEF-4B13-A478-BBD741E8F8CA.txt"
+    },
+    {
+      "file": "face-sorry-wide.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/5DD6A508-5398-4F3B-86C6-392B06E284BC.png",
+      "sha256": "381e79dcf6fc1e45a3804da8bdfdfd62bc07576fcf5e0f300a2c87705a0668b2",
+      "attachmentName": "face-sorry-wide_0_58D4E724-41C4-429B-AA4A-D4F48765AFE3.png"
+    },
+    {
+      "file": "face-sorry-medium-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/3E3312E3-8C17-4C4F-AABC-CD6B43579FDF.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sorry-medium-geometry_0_3AE75D4B-1DA1-4A98-B52B-407B20C61605.txt"
+    },
+    {
+      "file": "face-sorry-medium.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/5EA36BF5-F403-454D-AEE6-6AF2CD9AA6F9.png",
+      "sha256": "51249318dc81de32398e2d517e1ea2bceec0caec34ebcbef095f32abf16b07d9",
+      "attachmentName": "face-sorry-medium_0_E83BCA15-6686-4E3C-8943-E083166EAB00.png"
+    },
+    {
+      "file": "face-sorry-small-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/604CE4CE-DBF8-4F9F-8BBC-9C12A1F50EF6.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-sorry-small-geometry_0_7D280E41-CA91-4D9E-91D9-F09672C93D41.txt"
+    },
+    {
+      "file": "face-sorry-small.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/FAA56A64-ED43-462E-9F0D-CF9A792E7F96.png",
+      "sha256": "d08538dc1679279b3a08d9e74776292326f84e6b4f37ac9e93644f8c5268a8c9",
+      "attachmentName": "face-sorry-small_0_3AE0A439-C292-4F4B-B133-E186E8903D2C.png"
+    },
+    {
+      "file": "face-happy-wide-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/15C467E3-63A6-4953-A506-137E243EDD44.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-happy-wide-geometry_0_BB3C1CF8-499F-429D-A993-D9B6FAE73E49.txt"
+    },
+    {
+      "file": "face-happy-wide.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/2E8D83A9-757B-4D68-8304-5B72AA400C3F.png",
+      "sha256": "7ee3eb27d8d2347a002609182fc2e1f96192d62a0c2dc897699cdb2ccd4dd275",
+      "attachmentName": "face-happy-wide_0_06A02481-900A-4DA2-A6A6-2C2E5572EE4D.png"
+    },
+    {
+      "file": "face-happy-medium-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/9C329002-0AB9-4E53-9B2D-1B6974E83EFB.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-happy-medium-geometry_0_46221913-D54E-4DB0-A8F5-FCB6DC1A6748.txt"
+    },
+    {
+      "file": "face-happy-medium.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/D0CF9DF3-30A9-4453-A090-6F30FACA4AB5.png",
+      "sha256": "1467dd03110acc561c889f5e3116f9dc405bbf77b1d257be776179d90b350005",
+      "attachmentName": "face-happy-medium_0_966C518F-FD8D-4671-8F74-7F1E43F24C7C.png"
+    },
+    {
+      "file": "face-happy-small-geometry.txt",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/D62B4A6E-13B0-45CA-BBED-CB2F03E76B05.txt",
+      "sha256": "b1f56219b712a84ee3a9671f2940e56ba6da8694cb1b76451c294e9e0f4a5af4",
+      "attachmentName": "face-happy-small-geometry_0_30226D61-BDCD-4263-A071-9EC3C82C2DB7.txt"
+    },
+    {
+      "file": "face-happy-small.png",
+      "source": "/private/tmp/cat-face-expression/round-8-ios-attachments/6FFA113F-38D1-45B9-92CA-6D238CED119B.png",
+      "sha256": "e43c86482341724931777cacb822ff2032d410d9a5d0c8094ca463bc161fac73",
+      "attachmentName": "face-happy-small_0_FC8F3AD4-1170-43C7-810C-9202530A8402.png"
+    },
+    {
+      "file": "layout-empty.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/empty.png",
+      "sha256": "751be90ad232ec080869300305ae1708ec7828c59fc1b9bc1684336e961bdc85"
+    },
+    {
+      "file": "layout-expression-curious.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-curious.png",
+      "sha256": "ce441779c3de3f063cbd47b17a454c619a7303fe3c4ddd446769fc9b0bb84a0f"
+    },
+    {
+      "file": "layout-expression-happy.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-happy.png",
+      "sha256": "bb2ee45894bd93b500f44b3bb1f656af6e69999c3a9e0cbfaade494587707524"
+    },
+    {
+      "file": "layout-expression-listening.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-listening.png",
+      "sha256": "25ec8983e8c531015118ec974726ecadb896ab7ba4398e9beb3e703a29a24ca8"
+    },
+    {
+      "file": "layout-expression-neutral.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-neutral.png",
+      "sha256": "327678e8d78c060e536cd29fd127bae71b3a1d7daae19b90c15be80d88f18e15"
+    },
+    {
+      "file": "layout-expression-sleepy.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-sleepy.png",
+      "sha256": "3b2db2923004c998328de3314d96fc9d7ab5ea9551bf5ff6bd9cb90cb7d92630"
+    },
+    {
+      "file": "layout-expression-sorry.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-sorry.png",
+      "sha256": "bdc46f8dc085c4e138bfafe395c04cfcfe634100bec6dbe02a1548ccfb4da7fa"
+    },
+    {
+      "file": "layout-expression-speaking.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-speaking.png",
+      "sha256": "1005103f3e3768b958cf942bc6f8469ad1f3fa58569cdc9f2a020e97223988ee"
+    },
+    {
+      "file": "layout-expression-surprised.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-surprised.png",
+      "sha256": "b7119d0d517461fa31b23760a9c69357db94a808232829f88bd7c8ba03879219"
+    },
+    {
+      "file": "layout-expression-thinking.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/expression-thinking.png",
+      "sha256": "22bee3f04ba769c1eb58233fd2a6f365a80d531cf7c31e4d31e63a5b906bc5c9"
+    },
+    {
+      "file": "layout-failed.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/failed.png",
+      "sha256": "f1127b6664ec607f3c771ea37aa3ce9d06dccf7f86cf01497fd9e482ba0750a1"
+    },
+    {
+      "file": "layout-high-contrast.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/high-contrast.png",
+      "sha256": "d4685a579ae1688f102cb61f43902c9731cea5157708005c41919883f9a9a35d"
+    },
+    {
+      "file": "layout-largest-standard-type-status.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/largest-standard-type-status.png",
+      "sha256": "9b76e637b92236defe64896b4279993c7b4c1c8e8963701b23e49079d06c0af0"
+    },
+    {
+      "file": "layout-long.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/long.png",
+      "sha256": "343bcec85172e8ffedcb63c445de845a5aca1c969b26e3888e09f795de7d5fc4"
+    },
+    {
+      "file": "layout-maximum-type-error-scrolled.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/maximum-type-error-scrolled.png",
+      "sha256": "940abd7e612cce988437700fec0802924b996f015e2acf217111453a365e96d7"
+    },
+    {
+      "file": "layout-maximum-type-error.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/maximum-type-error.png",
+      "sha256": "e0d4d3ca88c3c973115ec34d663dd6f5872ee5b1c4c722a44ff1801fa566f4e7"
+    },
+    {
+      "file": "layout-maximum-type-scrolled.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/maximum-type-scrolled.png",
+      "sha256": "730ac5c66b9dc17f9ef7deae741dc7d87b0e428e08026697de3af0b9900dd111"
+    },
+    {
+      "file": "layout-maximum-type-typed-scrolled.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/maximum-type-typed-scrolled.png",
+      "sha256": "d8d9c3d97195c329aaa9120b8dfbffbc548622d7aeaf81d869b2f4c4a1d8440d"
+    },
+    {
+      "file": "layout-maximum-type-typed.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/maximum-type-typed.png",
+      "sha256": "44231767a5fb22eeb21c6b22d6f3d69e40060f962be00515c6920482e4fc38fc"
+    },
+    {
+      "file": "layout-maximum-type.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/maximum-type.png",
+      "sha256": "418d69c8cdf471398c4ef5e4ef94968e9fb16d989c4bd81a07540137e73a8ba1"
+    },
+    {
+      "file": "layout-provisional.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/provisional.png",
+      "sha256": "948d781f20e36471082ea9cbdc4f6132cfca5b533521c666f57191a6c4266578"
+    },
+    {
+      "file": "layout-restore.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/restore.png",
+      "sha256": "4bb27c883d2893205aa300188a062800626216cea43a772b448fcc6fd6826096"
+    },
+    {
+      "file": "layout-short.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/short.png",
+      "sha256": "a8414d0e0eaa68c6ef720b94172aad158ae081af4c1cd8ef222a5b3c10ad89ec"
+    },
+    {
+      "file": "layout-status-notice.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/status-notice.png",
+      "sha256": "842685464bdfd10588f8586823842fe8b46af9b0c1dd8c5f8d4b3ed986bd7828"
+    },
+    {
+      "file": "layout-typed-scrolled.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/typed-scrolled.png",
+      "sha256": "ff892f22f2b66ca0c5f02d4cbef0269c8180fd20ad56a466e82f805dcf69f1aa"
+    },
+    {
+      "file": "layout-typed-short-viewport-scrolled.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/typed-short-viewport-scrolled.png",
+      "sha256": "cb8fa874c091f7313cf0403c067339482ac552dc13c63835d9362eff681ae72f"
+    },
+    {
+      "file": "layout-typed-short-viewport.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/typed-short-viewport.png",
+      "sha256": "f921b050a9721164ed65a7df7b3656069f1a5dbe93dcf4c5f3f0413b22128811"
+    },
+    {
+      "file": "layout-typed.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/typed.png",
+      "sha256": "c3d3c7e5473f547a7ea03f3aae444dbb27037e01ac853493f353b2ad6e6f0b74"
+    },
+    {
+      "file": "layout-unsaved.png",
+      "source": "/Users/goodapple/Library/Developer/CoreSimulator/Devices/40C29D25-C8EC-42C7-8145-65AB37A2BB7D/data/Containers/Data/Application/22EDCAAC-AE4E-428C-B2CE-36228E42DFEB/tmp/face-presentation-fixtures/unsaved.png",
+      "sha256": "dad43de5134b2af1865e22a30b4365f73b109a60fdafcc077d2b2f8fa97a16e1"
+    }
+  ]
+}

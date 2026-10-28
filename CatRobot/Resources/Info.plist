@@ -20,8 +20,14 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Cat Robotは、ハードに接続して動かすためにBluetoothを使用します。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>顔の方向にハードを向けるためと、見る必要があるときに前面カメラの静止画像を1枚Claudeへ送るために使います。画像はアプリに保存しません。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。音声は端末上で処理されます。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
@@ -37,10 +43,11 @@
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>CatRobotSourceRevision</key>
 	<string>$(CATROBOT_SOURCE_REVISION)</string>
+	<key>CatRobotClaudeClientID</key>
+	<string>$(CATROBOT_CLAUDE_CLIENT_ID)</string>
 </dict>
 </plist>

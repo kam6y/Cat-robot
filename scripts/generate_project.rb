@@ -15,7 +15,7 @@ ROOT = Pathname.new(__dir__).join("..").expand_path
 PROJECT_PATH = ROOT.join("CatRobot.xcodeproj")
 APP_NAME = "CatRobot"
 TEST_TARGET_NAME = "CatRobotTests"
-DEPLOYMENT_TARGET = "26.0"
+DEPLOYMENT_TARGET = "27.0"
 DEVELOPMENT_TEAM = "VUB4VP6453"
 
 def swift_references(group, directory)
@@ -79,20 +79,6 @@ app_target.add_resources([assets_reference, preview_assets_reference])
 test_target.add_dependency(app_target)
 test_target.add_system_framework("XCTest")
 
-package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
-package.repositoryURL = "https://github.com/google-ai-edge/LiteRT-LM"
-package.requirement = { "kind" => "exactVersion", "version" => "0.17.1" }
-project.root_object.package_references << package
-[app_target, test_target].each do |target|
-  product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
-  product.package = package
-  product.product_name = "LiteRTLM"
-  target.package_product_dependencies << product
-  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
-  build_file.product_ref = product
-  target.frameworks_build_phase.files << build_file
-end
-
 ort_package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
 ort_package.repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager"
 ort_package.requirement = { "kind" => "exactVersion", "version" => "1.24.2" }
@@ -106,6 +92,28 @@ project.root_object.package_references << ort_package
   build_file.product_ref = product
   target.frameworks_build_phase.files << build_file
 end
+
+claude_package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
+claude_package.repositoryURL = "https://github.com/anthropics/ClaudeForFoundationModels.git"
+claude_package.requirement = { "kind" => "exactVersion", "version" => "0.2.3" }
+project.root_object.package_references << claude_package
+[app_target, test_target].each do |target|
+  product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
+  product.package = claude_package
+  product.product_name = "ClaudeForFoundationModels"
+  target.package_product_dependencies << product
+  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+  build_file.product_ref = product
+  target.frameworks_build_phase.files << build_file
+end
+
+# 開発用キーは Debug に同梱し、Release では下記の設定で除外する。
+dev_key_path = ROOT.join("CatRobot/LocalAssets/claude-api-key.txt")
+FileUtils.mkdir_p(dev_key_path.dirname)
+FileUtils.touch(dev_key_path) unless dev_key_path.file?
+app_target.add_resources([app_group.new_file("LocalAssets/claude-api-key.txt")])
+claude_client_id = JSON.parse(ROOT.join("CatRobot/Resources/claude-integration.json").read).fetch("clientID", "")
+
 app_target.add_resources([resources_group.new_file("supertonic-manifest.json")])
 asset = app_group.new_file("LocalAssets/Supertonic")
 asset.last_known_file_type = "folder"
@@ -122,6 +130,43 @@ validation.always_out_of_date = "1"
 app_target.build_phases.delete(validation)
 app_target.build_phases.insert(0, validation)
 
+# Xcode 15.3 以降は、静的リンクする onnxruntime.framework の「中身のないスタブ」を Frameworks に埋め込む
+# （ビルドログの "Injecting stub binary into codeless framework"）。スタブはアプリの deployment target で
+# 作られる一方、Info.plist の MinimumOSVersion は 15.1 のままなので、App Store Connect が ITMS-90208 で
+# 却下する。コードはアプリ本体に静的リンク済みなので、最後の段階でスタブを取り除く。
+# ENABLE_USER_SCRIPT_SANDBOXING の sandbox は SYMROOT / DSTROOT 以下を deny し、宣言した出力しか読み書きを許さない。
+# framework や Frameworks ディレクトリを出力に宣言すると、埋め込み段階や MkDir と "Multiple commands produce" で
+# 衝突するため、アプリターゲットだけ sandbox を切る（下の build settings）。スタブ以外（記号を公開する本物の dylib）は
+# 残し、検査や削除の失敗は非 0 で止める。
+cleanup = app_target.new_shell_script_build_phase("Remove codeless onnxruntime framework")
+cleanup.shell_script = <<~'SH'
+  set -u
+  fw="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework"
+  bin="${fw}/onnxruntime"
+  if [ ! -d "$fw" ]; then
+    echo "note: onnxruntime.framework is not embedded; nothing to remove"
+    exit 0
+  fi
+  if [ -f "$bin" ]; then
+    if ! exported="$(xcrun nm -gUj "$bin" 2>&1)"; then
+      echo "error: could not inspect ${bin}: ${exported}"
+      exit 1
+    fi
+    # nm prints "<file>: no symbols" instead of an empty list for a stub
+    exported="$(printf '%s\n' "$exported" | grep -v -e ': no symbols$' -e '^$' || true)"
+    if [ -n "$exported" ]; then
+      echo "warning: onnxruntime.framework exports symbols, so it is not a codeless stub; leaving it in place"
+      exit 0
+    fi
+  fi
+  if ! rm -rf "$fw" || [ -e "$fw" ]; then
+    echo "error: could not remove ${fw}"
+    exit 1
+  fi
+  echo "Removed codeless onnxruntime.framework stub"
+SH
+cleanup.always_out_of_date = "1"
+
 apply_common_settings(app_target)
 apply_common_settings(test_target)
 
@@ -131,8 +176,14 @@ app_target.build_configurations.each do |configuration|
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" => "AccentColor",
     "CURRENT_PROJECT_VERSION" => "1",
     "CATROBOT_SOURCE_REVISION" => "unversioned",
+    "CATROBOT_CLAUDE_CLIENT_ID" => claude_client_id,
+    "CODE_SIGN_ENTITLEMENTS" => "CatRobot/Resources/CatRobot.entitlements",
+    "CATROBOT_APP_ATTEST_ENVIRONMENT" => (configuration.name == "Release" ? "production" : "development"),
     "DEVELOPMENT_ASSET_PATHS" => '"CatRobot/Preview Content"',
     "ENABLE_PREVIEWS" => "YES",
+    # 「Remove codeless onnxruntime framework」が成果物を検査・削除できるよう、アプリターゲットだけ切る。
+    # プロジェクト既定とテストターゲットは YES のまま。
+    "ENABLE_USER_SCRIPT_SANDBOXING" => "NO",
     "GENERATE_INFOPLIST_FILE" => "NO",
     "INFOPLIST_FILE" => "CatRobot/Resources/Info.plist",
     "LD_RUNPATH_SEARCH_PATHS" => "$(inherited) @executable_path/Frameworks",
@@ -143,7 +194,7 @@ app_target.build_configurations.each do |configuration|
   )
   configuration.build_settings["ENABLE_TESTABILITY"] = "YES" if configuration.name == "Debug"
   if configuration.name == "Release"
-    configuration.build_settings["EXCLUDED_SOURCE_FILE_NAMES"] = ["$(inherited)", '"Preview Assets.xcassets"']
+    configuration.build_settings["EXCLUDED_SOURCE_FILE_NAMES"] = ["$(inherited)", '"Preview Assets.xcassets"', '"claude-api-key.txt"']
   end
 end
 
@@ -177,9 +228,6 @@ puts "Generated #{PROJECT_PATH.relative_path_from(ROOT)} with xcodeproj #{Xcodep
 
 # Device-only experiments; ordinary unit tests never start the models.
 [
-  ["GemmaDeviceTests", "GEMMA_DEVICE_TESTS"],
-  ["GemmaAppDeviceTests", "GEMMA_APP_DEVICE_TESTS"],
-  ["ReplyLatencyDeviceTests", "CATROBOT_REPLY_LATENCY_TESTS"],
   ["SupertonicIntegrationDeviceTests", "SUPER_INTEGRATION_TESTS"]
 ].each do |identifier, environment_key|
   device_scheme = Xcodeproj::XCScheme.new

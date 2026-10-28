@@ -92,11 +92,33 @@ final class ConversationViewModel {
     @ObservationIgnored private var memoryEventTask: Task<Void, Never>?
     @ObservationIgnored private var memoryActionInProgress = false
     @ObservationIgnored private var forgettingMemory = false
+    @ObservationIgnored private var noticeExpiryTask: Task<Void, Never>?
+    @ObservationIgnored var onAddressedActivity: @MainActor () -> Void = {}
+    @ObservationIgnored var onPhaseChange: @MainActor (ConversationPhase) -> Void = { _ in }
+    @ObservationIgnored var onPendingSpeechChange: @MainActor () -> Void = {}
+    private static let noticeLifetime: Duration = .seconds(5)
 
     init(dependencies: ConversationDependencies) {
         self.dependencies = dependencies
-        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode)
+        self.replyPlayback = ReplyPlaybackCoordinator(reply: dependencies.reply, speaker: dependencies.speaker, mode: dependencies.replyPlaybackMode, motion: dependencies.replyTurnObserver)
+        announcePhase(.idle)
     }
+
+    /// The head and the expression follow the phase; look only observes turns.
+    private func announcePhase(_ phase: ConversationPhase) {
+        dependencies.motion.setConversationPhase(phase)
+        dependencies.faceExpressions.setConversationPhase(phase)
+    }
+
+    /// Clears what the current turn put on screen and, when a reason is given, stops the head.
+    /// Order is fixed: head, then expression, then look. Runs synchronously before any suspension.
+    private func resetTurnPresentation(stopping reason: MotionCancellationReason?) {
+        if let reason { dependencies.motion.stopAll(reason: reason) }
+        dependencies.faceExpressions.reset()
+        dependencies.look.reset()
+    }
+
+    var hasPendingSpeech: Bool { segmenter.hasActivity || captureIsClosing }
 
     var isAwaitingMicrophonePermission: Bool {
         activeMicrophonePermissionAwaitID != nil
@@ -140,6 +162,7 @@ final class ConversationViewModel {
             break
         }
 
+        viewState.isAwaitingTapToResume = false
         wantsListening = true
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
@@ -163,7 +186,8 @@ final class ConversationViewModel {
         case .idle, .paused, .failed:
             await startConversation()
         case .preparing, .listening, .classifying, .clarifying, .thinking, .speaking:
-            await pauseConversation()
+            resetTurnPresentation(stopping: .userStop)
+            await pauseConversation(awaitsTapResume: true)
         }
     }
 
@@ -176,6 +200,10 @@ final class ConversationViewModel {
         default:
             break
         }
+    }
+
+    func clearCaptionForStandby() {
+        viewState.caption = ""
     }
 
     func showTypedInput() {
@@ -219,8 +247,8 @@ final class ConversationViewModel {
         }
 
         guard viewState.allowsTypedSubmission, !memoryActionInProgress else { return }
+        onAddressedActivity()
         ensureMemoryEventConsumer()
-        viewState.showsTypedInput = false
 
         cancelActiveVoiceLatency(reason: .typedReplacement)
         ensureAudioEventConsumer()
@@ -271,6 +299,8 @@ final class ConversationViewModel {
     }
 
     func invalidateForSceneInactivity() {
+        viewState.isAwaitingTapToResume = false
+        resetTurnPresentation(stopping: nil)
         actionIntentCounter &+= 1
         lifecycleGeneration &+= 1
         wantsListening = false
@@ -283,7 +313,8 @@ final class ConversationViewModel {
     func handleAudioSessionEvent(_ event: AudioSessionEvent) async {
         switch event {
         case .interruptionBegan, .routeChanged:
-            await pauseConversation()
+            resetTurnPresentation(stopping: .playbackFailed)
+            await pauseConversation(awaitsTapResume: true)
         case .interruptionEnded:
             break
         }
@@ -296,6 +327,8 @@ final class ConversationViewModel {
         }
         guard !isShutdown else { return }
         isShuttingDown = true
+        viewState.isAwaitingTapToResume = false
+        resetTurnPresentation(stopping: nil)
         let task = Task<Void, Never> { @MainActor [weak self] in
             guard let self else { return }
             await self.performShutdown()
@@ -305,6 +338,9 @@ final class ConversationViewModel {
     }
 
     private func performShutdown() async {
+        dependencies.motion.setControlMode(.background)
+        noticeExpiryTask?.cancel()
+        noticeExpiryTask = nil
         cancelActiveVoiceLatency(reason: .shutdown)
         await pauseConversation(force: true)
 
@@ -355,17 +391,10 @@ final class ConversationViewModel {
         }
     }
 
-    func requestForgetConversation() {
+    /// 設定の「すべて削除」。確認ダイアログは設定画面側で済ませてから呼ぶ。覚えていることと会話の要約の両方を消す。
+    func forgetConversation() async {
         guard !memoryActionInProgress,
               ConversationMemoryPresentation(state: viewState.memoryState).supportsForget else { return }
-        viewState.showsForgetConfirmation = true
-    }
-
-    func cancelForgetConversation() { viewState.showsForgetConfirmation = false }
-
-    func confirmForgetConversation(confirmationAccepted: Bool = false) async {
-        guard (confirmationAccepted || viewState.showsForgetConfirmation), !memoryActionInProgress else { return }
-        viewState.showsForgetConfirmation = false
         await performForgetConversation()
     }
 
@@ -373,8 +402,9 @@ final class ConversationViewModel {
         guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
         memoryActionInProgress = true
         forgettingMemory = true
+        resetTurnPresentation(stopping: .newConversation)
         viewState.memoryState = .forgetting
-        viewState.memoryNotice = nil
+        clearNotice()
         defer { memoryActionInProgress = false; forgettingMemory = false }
         await pauseConversation(force: true)
         do {
@@ -383,12 +413,47 @@ final class ConversationViewModel {
             viewState.provisionalTranscript = ""
             viewState.typedText = ""
             viewState.showsTypedInput = false
-            viewState.memoryNotice = "会話の記憶を削除しました"
+            showNotice("会話の記憶を削除しました")
         } catch {
             // The service retains a blocking failure state. Never announce deletion.
         }
         viewState.memoryState = await dependencies.memory.memoryState()
         transition(to: .paused)
+    }
+
+    /// 短期の会話内容だけを捨てる。長期メモは残る。モデル設定の変更はこのあとの会話から効く。
+    func startNewConversation() async {
+        guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
+        memoryActionInProgress = true
+        defer { memoryActionInProgress = false }
+        resetTurnPresentation(stopping: .newConversation)
+        clearNotice()
+        await pauseConversation(force: true)
+        await dependencies.reply.reset()
+        viewState.caption = ""
+        viewState.provisionalTranscript = ""
+        showNotice("新しい会話を始めました")
+        viewState.memoryState = await dependencies.memory.memoryState()
+        transition(to: .paused)
+    }
+
+    /// 通知は数秒で消す。次に話しかけた時点（transition で classifying / thinking に入る）でも消す。
+    private func showNotice(_ text: String) {
+        noticeExpiryTask?.cancel()
+        viewState.memoryNotice = text
+        let delay = dependencies.noticeDelay
+        noticeExpiryTask = Task { @MainActor [weak self] in
+            await delay(Self.noticeLifetime)
+            guard !Task.isCancelled, let self, self.viewState.memoryNotice == text else { return }
+            self.viewState.memoryNotice = nil
+            self.noticeExpiryTask = nil
+        }
+    }
+
+    private func clearNotice() {
+        noticeExpiryTask?.cancel()
+        noticeExpiryTask = nil
+        viewState.memoryNotice = nil
     }
 
     func retryMemoryOperation() async {
@@ -620,8 +685,10 @@ final class ConversationViewModel {
         case .speechStarted:
             transition(to: .speaking)
             viewState.mouthPose = .small
-        case .willSpeak:
+        case .willSpeak, .sentenceStarted:
             viewState.mouthPose = playbackMouthSequence.nextWordPose()
+        case .sentenceFinished:
+            viewState.mouthPose = .closed
         case .speechFinished:
             transition(to: .thinking)
             viewState.mouthPose = .closed
@@ -745,7 +812,9 @@ final class ConversationViewModel {
             )
         } else {
             synchronizeCaptureTimingWithSegmenter()
+            return
         }
+        onPendingSpeechChange()
     }
 
     private func synchronizeCaptureTimingWithSegmenter() {
@@ -753,6 +822,7 @@ final class ConversationViewModel {
         segmentationTask?.cancel()
         segmentationTask = nil
         latestCaptureActivityAt = nil
+        onPendingSpeechChange()
     }
 
     private func presentUnrecognizedSpeechWhileListening() {
@@ -764,6 +834,7 @@ final class ConversationViewModel {
         let presentation = ConversationErrorPresentation(.speechUnrecognized)
         viewState.errorMessage = presentation.message
         viewState.recoveries = presentation.recoveries
+        onPendingSpeechChange()
     }
 
     private func scheduleSegmentationFlush(
@@ -796,6 +867,7 @@ final class ConversationViewModel {
               activeCaptureID == captureID,
               !captureIsClosing else { return }
 
+        dependencies.motion.utteranceConfirmed()
         captureIsClosing = true
         segmentationTask?.cancel()
         segmentationTask = nil
@@ -900,6 +972,7 @@ final class ConversationViewModel {
 
         switch route {
         case .wakeOnly:
+            onAddressedActivity()
             clearPendingClarification()
             selectVoiceLatency(.fast, generation: generation, turnID: turnID)
             await speakAndResume(
@@ -909,6 +982,7 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         case .accept(let accepted):
+            onAddressedActivity()
             clearPendingClarification()
             selectVoiceLatency(.fast, generation: generation, turnID: turnID)
             await generateReply(
@@ -934,6 +1008,7 @@ final class ConversationViewModel {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch target {
                 case .addressed:
+                    onAddressedActivity()
                     clearPendingClarification()
                     await generateReply(
                         to: candidate,
@@ -1254,7 +1329,8 @@ final class ConversationViewModel {
         }
     }
 
-    private func pauseConversation(force: Bool = false) async {
+    private func pauseConversation(force: Bool = false, awaitsTapResume: Bool = false) async {
+        viewState.isAwaitingTapToResume = awaitsTapResume
         actionIntentCounter &+= 1
         cancelActiveVoiceLatency(reason: .lifecycle)
         activeMicrophonePermissionAwaitID = nil
@@ -1491,6 +1567,13 @@ final class ConversationViewModel {
         to phase: ConversationPhase,
         caption: String? = nil
     ) {
+        announcePhase(phase)
+        switch phase {
+        case .classifying, .thinking, .clarifying:
+            clearNotice()   // 次に話しかけたら通知は役目を終える
+        default:
+            break
+        }
         viewState.phase = phase
         viewState.errorMessage = nil
         viewState.recoveries = []
@@ -1498,42 +1581,34 @@ final class ConversationViewModel {
 
         switch phase {
         case .idle:
-            viewState.catState = .idle
             viewState.mouthPose = .closed
             viewState.microphoneStatus = "マイクは待機中"
             viewState.activityStatus = "会話を始める準備ができました"
         case .preparing:
-            viewState.catState = .thinking
             viewState.mouthPose = .closed
             viewState.microphoneStatus = "会話の準備中"
             viewState.activityStatus = "準備しています"
         case .listening:
-            viewState.catState = .listening
             viewState.mouthPose = .closed
             viewState.microphoneStatus = "端末上で聞き取り中"
             viewState.activityStatus = "話しかけてください"
         case .classifying:
-            viewState.catState = .thinking
             viewState.mouthPose = .closed
             viewState.microphoneStatus = "聞き取りを休止"
             viewState.activityStatus = "呼びかけを確認しています"
         case .clarifying:
-            viewState.catState = .clarifying
             viewState.mouthPose = .small
             viewState.microphoneStatus = "聞き返しの間は聞き取りを休止"
             viewState.activityStatus = "聞き返しています"
         case .thinking:
-            viewState.catState = .thinking
             viewState.mouthPose = .closed
             viewState.microphoneStatus = "聞き取りを休止"
             viewState.activityStatus = "考えています"
         case .speaking:
-            viewState.catState = .speaking
             viewState.mouthPose = .medium
             viewState.microphoneStatus = "返事の間は聞き取りを休止"
             viewState.activityStatus = "話しています"
         case .paused:
-            viewState.catState = .idle
             viewState.mouthPose = .closed
             viewState.microphoneStatus = "マイクは一時停止中"
             viewState.activityStatus = "再開するまで待っています"
@@ -1541,23 +1616,28 @@ final class ConversationViewModel {
         case .failed:
             break
         }
+        onPhaseChange(phase)
     }
 
     private func publish(
         _ error: ConversationServiceError,
         includesTypedFallback: Bool = false
     ) {
+        viewState.isAwaitingTapToResume = false
         let presentation = ConversationErrorPresentation(error)
         var recoveries = presentation.recoveries
         if includesTypedFallback,
            !presentation.offersTypedInput {
             recoveries.append(.typedInput)
         }
+        resetTurnPresentation(stopping: .playbackFailed)
+        announcePhase(.failed(error))
         viewState.presentFailure(
             error: error,
             message: presentation.message,
             recoveries: recoveries
         )
+        onPhaseChange(viewState.phase)
     }
 
     private static func serviceError(from error: any Error) -> ConversationServiceError {

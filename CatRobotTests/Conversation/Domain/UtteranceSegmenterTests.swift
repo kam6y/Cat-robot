@@ -39,4 +39,23 @@ final class UtteranceSegmenterTests: XCTestCase {
         XCTAssertNil(sut.utteranceIfReady(at: 27.19))
         XCTAssertEqual(sut.utteranceIfReady(at: 27.200_001), "新しい発話")
     }
+    func testProvisionalOnlyFlushWaitsForHardExpiryInsteadOfStoppingAfterAnEarlyNoOp() {
+        var sut = UtteranceSegmenter()
+        sut.receive(.provisional("途中の声"), at: 5)
+        XCTAssertEqual(sut.flushDelay(at: 5), 20)
+        sut.receive(.provisional("まだ途中の声"), at: 10)
+        XCTAssertEqual(sut.flushDelay(at: 10), 15)
+        XCTAssertEqual(sut.flushDelay(at: 24.9), 0.1, accuracy: 0.000_001)
+        XCTAssertNil(sut.utteranceIfReady(at: 25))
+        XCTAssertFalse(sut.hasActivity)
+    }
+
+    func testFinalizedSpeechReplacesTheHardExpiryWithTheSilenceDeadline() {
+        var sut = UtteranceSegmenter()
+        sut.receive(.provisional("猫ちゃん"), at: 5)
+        sut.receive(.finalized("猫ちゃん、こんにちは"), at: 6)
+        XCTAssertEqual(sut.flushDelay(at: 6), 1.2)
+        XCTAssertEqual(sut.utteranceIfReady(at: 7.2), "猫ちゃん、こんにちは")
+    }
+
 }

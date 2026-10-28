@@ -1,0 +1,35 @@
+{
+  "source_commit": "94eef6308f73cdda8932a71819700402b17ed9a9",
+  "review_base_commit": "9ee8dacbe31e2bc3295eaa8f623049cc771bfb64",
+  "review_head_commit": "90e98c2f011c027eeb88f2d6f29d080411515cb7",
+  "branch": "feature/ui-reorganization",
+  "test_command": "xcodebuild test -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=40C29D25-C8EC-42C7-8145-65AB37A2BB7D' -derivedDataPath /tmp/CatRobotIdleSleepDerived -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO",
+  "result_bundle": "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_21-18-47-+0900.xcresult",
+  "total": 832,
+  "passed": 830,
+  "skipped": 2,
+  "failed": 0,
+  "skipped_tests": [
+    "RobotMotionIntegrationDeviceTests.testSelectedStage",
+    "SupertonicIntegrationDeviceTests.testSelectedStage"
+  ],
+  "unchanged_verification_inputs": 223,
+  "curated_image_count": 17,
+  "excluded_visual_evidence": "Two isolated confirmation-dialog attachments rendered black; behavior verified with activation, controller/window presence, escape dismissal, and model/navigation assertions.",
+  "critical_findings": 0,
+  "important_findings": 1,
+  "important_findings_resolved": 1,
+  "accepted_cleanup_ids": [
+    "C2 (partial)",
+    "C3",
+    "C4",
+    "C5",
+    "T1",
+    "T2 (partial)"
+  ],
+  "physical_device_reinstalled": true,
+  "physical_device_behavior_verified": false,
+  "previous_device_source_revision": "0e3489edba477fe823c6119359ce43222cf2daf8",
+  "physical_device_source_revision": "b11b1e2033f134a1af1d518c9f9f552962e12b13",
+  "physical_device_deployment_record": "device-deployment.json"
+}

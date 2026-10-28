@@ -39,15 +39,6 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             recoveries = [.retry, .settings]
         case .modelUnavailable(let availability):
             switch availability {
-            case .gemmaModelMissing:
-                message = "Gemmaの会話モデルがまだ入っていません。セットアップ手順に沿ってモデルを転送してください。"
-                recoveries = [.checkAgain]
-            case .gemmaModelInvalid:
-                message = "Gemmaの会話モデルを確認できませんでした。モデルファイルを転送し直してください。"
-                recoveries = [.checkAgain]
-            case .gemmaUnavailable:
-                message = "Gemmaを起動できませんでした。対応するiPhone実機で、アプリを開き直してお試しください。"
-                recoveries = [.checkAgain]
             case .available:
                 message = "会話モデルの状態を確認できませんでした。"
                 recoveries = [.checkAgain]
@@ -63,6 +54,18 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             case .unsupportedLocale:
                 message = "Apple Intelligenceの言語設定が日本語に対応していません。"
                 recoveries = [.settings]
+            case .claudeCredentialMissing:
+                message = "Claudeの接続設定がありません。開発ビルドではAPIキー、配布ビルドではApp Attestの登録が必要です。"
+                recoveries = [.checkAgain]
+            case .claudeAttestationUnsupported:
+                message = "この端末ではApp Attestを使えないため、Claudeに接続できません。実機で実行してください。"
+                recoveries = [.checkAgain]
+            case .claudeAttestationFailed:
+                message = "Claudeの認証に失敗しました。ネットワークを確認して、もう一度お試しください。続く場合はアプリの登録が無効になっている可能性があります。"
+                recoveries = [.checkAgain]
+            case .claudeUnreachable:
+                message = "Claudeに接続できません。ネットワークを確認してください。"
+                recoveries = [.checkAgain]
             }
         case .modelLocaleUnsupported:
             message = "この言語では会話モデルを利用できません。設定を確認してください。"
@@ -88,6 +91,12 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .modelGenerationFailed:
             message = "返事を作れませんでした。もう一度話しかけてください。"
             recoveries = [.retry]
+        case .modelUnreachable:
+            message = "通信が不安定で返事を受け取れませんでした。もう一度話しかけてください。"
+            recoveries = [.retry, .typedInput]
+        case .dailyLimitReached:
+            message = "今日のClaudeとの会話が上限に達しました。設定で上限を変えるか、明日また話しかけてください。"
+            recoveries = [.settings]
         case .cancelled:
             message = "会話を一時停止しました。"
             recoveries = [.retry]

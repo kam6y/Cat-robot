@@ -1,0 +1,54 @@
+[
+  {
+    "log": "red.log",
+    "sha256": "532e55274ddbf9e410c00fc388015a7253ec524991ad1265f2a18923ef8f859a",
+    "summary": "Executed 16 tests, with 14 failures (0 unexpected) in 2.058 (2.071) seconds",
+    "failedCases": [
+      "Test Case '-[CatRobotTests.ConversationIdleIntegrationTests testDeniedMicrophoneWithoutTypedInputStillSleepsAfterExplicitStart]' failed (1.818 seconds).",
+      "Test Case '-[CatRobotTests.ConversationIdleIntegrationTests testExpiredDeadlineDuringFailureCleanupSleepsAndWakesOnce]' failed (0.011 seconds).",
+      "Test Case '-[CatRobotTests.ConversationIdleIntegrationTests testIgnoredSpeechAtDeadlineReleasesPendingWithoutResettingActivity]' failed (0.007 seconds).",
+      "Test Case '-[CatRobotTests.ConversationIdleIntegrationTests testStandbyClearsOldCaptionButKeepsTypedDraftAfterWake]' failed (0.006 seconds).",
+      "Test Case '-[CatRobotTests.ConversationIdleIntegrationTests testTerminalSpeechFailureStillReachesStandby]' failed (0.019 seconds).",
+      "Test Case '-[CatRobotTests.ConversationIdleIntegrationTests testTypedOnlyConversationSleepsAfterMicrophoneDenial]' failed (0.010 seconds)."
+    ],
+    "xcresult": [
+      "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.26_21-35-01-+0900.xcresult"
+    ]
+  },
+  {
+    "log": "r1-green.log",
+    "sha256": "9d39dcc197649ac276c693d2cd7968bf14abe016a349770951763a83e4cfa888",
+    "summary": "Executed 2 tests, with 0 failures (0 unexpected) in 0.068 (0.079) seconds",
+    "failedCases": [],
+    "xcresult": [
+      "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.26_21-38-17-+0900.xcresult"
+    ]
+  },
+  {
+    "log": "r2-green.log",
+    "sha256": "a7660018aaa771d0809d4e868194b9b6adeec60294bde503ef71b0e513965edf",
+    "summary": "Executed 9 tests, with 0 failures (0 unexpected) in 0.298 (0.549) seconds",
+    "failedCases": [],
+    "xcresult": [
+      "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.26_21-40-34-+0900.xcresult"
+    ]
+  },
+  {
+    "log": "r4-green.log",
+    "sha256": "42e3cab256af348767bae132f112af9f86f5cb8c7ca5e87d294ef02680556d57",
+    "summary": "Executed 19 tests, with 0 failures (0 unexpected) in 0.474 (0.496) seconds",
+    "failedCases": [],
+    "xcresult": [
+      "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.26_21-42-48-+0900.xcresult"
+    ]
+  },
+  {
+    "log": "full.log",
+    "sha256": "a11957c91a95e20b5161f249520aca3bf3d8df6d807bf044c32a132e9269d699",
+    "summary": "Executed 797 tests, with 2 tests skipped and 0 failures (0 unexpected) in 122.104 (122.543) seconds",
+    "failedCases": [],
+    "xcresult": [
+      "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.26_21-48-31-+0900.xcresult"
+    ]
+  }
+]

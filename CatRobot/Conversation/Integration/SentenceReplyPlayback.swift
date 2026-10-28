@@ -99,24 +99,29 @@ final class SentenceReplyPlayback {
     private func play(_ channel: SpeechSentenceChannel, _ trace: ReplyTrace?,
                       _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws {
         let events = try await speaker.speakSentences(from: channel, prefetch: prefetch)
-        var started = false
-        var finished = false
+        // The deduplication sets also answer "has anything started / finished yet".
+        var startedOrdinals: Set<Int> = []
+        var finishedOrdinals: Set<Int> = []
         for try await event in events {
             try Task.checkCancellation()
             let part: ReplySpeechPart = event.ordinal == 0 ? .first : .remainder
             switch event.event {
             case .started:
+                guard !finishedOrdinals.contains(event.ordinal),
+                      startedOrdinals.insert(event.ordinal).inserted else { continue }
                 trace?.mark(.speechStarted, part: part, source: .started, sentenceOrdinal: event.ordinal)
-                if !started { started = true; onUpdate(.speechStarted(.full, .started)) }
+                if startedOrdinals.count == 1 { onUpdate(.speechStarted(.full, .started)) }
+                onUpdate(.sentenceStarted(ordinal: event.ordinal))
             case .finished:
-                finished = true
+                guard finishedOrdinals.insert(event.ordinal).inserted else { continue }
                 trace?.mark(.speechFinished, part: part, sentenceOrdinal: event.ordinal)
+                onUpdate(.sentenceFinished(ordinal: event.ordinal))
             case .cancelled: throw ConversationServiceError.speechSynthesisFailed
             case .willSpeak: break
             }
         }
         try Task.checkCancellation()
-        guard finished else { throw ConversationServiceError.speechSynthesisFailed }
+        guard !finishedOrdinals.isEmpty else { throw ConversationServiceError.speechSynthesisFailed }
         onUpdate(.speechFinished(.full))
     }
 }

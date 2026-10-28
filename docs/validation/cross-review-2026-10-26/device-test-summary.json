@@ -1,0 +1,217 @@
+{
+  "recordedAt": "2026-10-26T10:16:49.432897+00:00",
+  "source": {
+    "sourceHead": "dbd04589ed780822b66720691f92131784012029",
+    "sourceDiffSHA256": "6d6f70f66de40410ff4cf4436d775dcc4ddf4032e4343e2e2b9e1de7083ea67c",
+    "appSourceRevision": "dbd04589-cross-review-working",
+    "appExecutableSHA256": "72ddf68763077ac83dfbc0a7880d09aaa74335a426d9f96b39cb9a851e392bcb",
+    "firmwareImageSHA256": "ae98d13166eb1408c2965f707f6aa234b112e4321817d206b5251bc66a3274ea"
+  },
+  "device": {
+    "modelName": "iPhone 16 Pro",
+    "osVersion": "27.2",
+    "osBuildNumber": "24B115"
+  },
+  "deployment": {
+    "signedDeviceBuild": "passed",
+    "signatureVerification": "passed",
+    "appUpdateInstallation": "passed",
+    "normalAppLaunch": "passed",
+    "firmwareUpload": "passed, written hashes verified"
+  },
+  "motion": {
+    "runID": "1142E27A-1A74-4761-B1B9-0BA9EE6CA230",
+    "intensity": "small",
+    "outcome": "success",
+    "testCount": 1,
+    "passedTests": 1,
+    "failedTests": 0,
+    "gestures": [
+      {
+        "gesture": "nod",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      },
+      {
+        "gesture": "shake",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      },
+      {
+        "gesture": "tilt",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      },
+      {
+        "gesture": "look_up",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      },
+      {
+        "gesture": "look_down",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      },
+      {
+        "gesture": "look_at_user",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      },
+      {
+        "gesture": "center",
+        "outcome": "success",
+        "tracePoints": [
+          "reserved",
+          "speechStarted",
+          "eligible",
+          "sent",
+          "startObserved",
+          "completed"
+        ]
+      }
+    ],
+    "calibrationBefore": {
+      "invert": 2,
+      "pitchOffsetDeci": 0,
+      "saved": true,
+      "yawOffsetDeci": 65
+    },
+    "calibrationAfter": {
+      "invert": 2,
+      "pitchOffsetDeci": 0,
+      "saved": true,
+      "yawOffsetDeci": 65
+    }
+  },
+  "calibrationHandoff": {
+    "outcome": "success",
+    "gestureDegrees": 5,
+    "temporaryPitchOffsetDegrees": 1,
+    "saveCommandIssued": false,
+    "successfulRuns": 2,
+    "heldPose": {
+      "yaw": "0.0",
+      "pitch": "4.9",
+      "flags": "0x0046",
+      "seq": "32",
+      "state": "3",
+      "err": "0",
+      "save": "0"
+    },
+    "handoffRest": {
+      "yaw": "0.0",
+      "pitch": "5.0",
+      "flags": "0x0022",
+      "seq": "32",
+      "state": "3",
+      "err": "0",
+      "save": "0"
+    },
+    "finalStatus": {
+      "yaw": "0.0",
+      "pitch": "0.0",
+      "flags": "0x0000",
+      "seq": "32",
+      "state": "2",
+      "err": "0",
+      "save": "0"
+    }
+  },
+  "finalSavedCalibration": {
+    "yawOffsetDegrees": 6.5,
+    "pitchOffsetDegrees": 0,
+    "yawInvert": false,
+    "pitchInvert": true,
+    "yawGain": 11.11,
+    "pitchGain": 11.11,
+    "saved": true,
+    "brownout": false
+  },
+  "observations": {
+    "conversationReset": {
+      "source": "user observation",
+      "result": "passed",
+      "details": "Typed conversation, New Conversation, second typed message: reply, speech and expression normal; no unsaved/error notice."
+    },
+    "servoPowerDuringUpdate": "off, confirmed by user",
+    "calibrationPreservedAfterFirmwareUpload": {
+      "yawOffset": 6.5,
+      "pitchOffset": 0.0,
+      "yawInvert": false,
+      "pitchInvert": true,
+      "yawGain": 11.11,
+      "pitchGain": 11.11,
+      "saved": true
+    },
+    "smallMotion": {
+      "source": "user observation",
+      "result": "passed",
+      "details": "All seven small motions were smooth, without jerks, catching or cable interference."
+    },
+    "calibrationHandoff": {
+      "source": "user observation",
+      "result": "passed",
+      "details": "On the repeated run with a short pause, the 5-degree look-up, temporary 1-degree pitch calibration change, restoration and recentering were smooth."
+    },
+    "calibrationUIRestore": {
+      "source": "user observation",
+      "result": "passed",
+      "details": "User changed and restored calibration values and confirmed the original position and no error. User also confirmed pressing Save during the sequence; final robot readback matches the original saved calibration.",
+      "savePressedDuringSequence": true,
+      "saveAcknowledgementBefore": 0,
+      "saveAcknowledgementAfter": 2
+    },
+    "reconnect": {
+      "source": "user observation",
+      "result": "passed",
+      "details": "Disconnect and reconnect in settings, return to conversation, face tracking left/right, one small nod and reply all normal."
+    }
+  },
+  "limits": [
+    "STATUS values are commanded logical angles, not external angle or PWM measurements.",
+    "Physical calibration handoff used a held small look-up and a 1-degree offset; inversion and moving-waveform continuity are covered by host tests.",
+    "The manual calibration UI sequence included Save; the unsaved A-to-B-to-A close race is covered by automated regression tests."
+  ]
+}

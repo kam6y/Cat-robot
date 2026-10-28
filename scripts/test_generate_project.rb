@@ -78,6 +78,11 @@ run_generator!
 assert(PBXPROJ_PATH.file?, "generated project.pbxproj is missing")
 assert(SCHEME_PATH.file?, "generated shared scheme is missing")
 
+info = Xcodeproj::Plist.read_from_path(ROOT.join("CatRobot/Resources/Info.plist").to_s)
+reason = info["NSBluetoothAlwaysUsageDescription"]
+assert(reason.is_a?(String) && !reason.strip.empty?, "Bluetooth usage description is missing")
+assert(!info.key?("UIBackgroundModes"), "the robot link must remain foreground-only")
+
 project = Xcodeproj::Project.open(PROJECT_PATH.to_s)
 targets = project.targets.to_h { |target| [target.name, target] }
 assert(targets.keys.sort == %w[CatRobot CatRobotTests], "expected exactly CatRobot and CatRobotTests targets")
@@ -95,7 +100,7 @@ assert(
 common_settings = {
   "CODE_SIGN_STYLE" => "Automatic",
   "DEVELOPMENT_TEAM" => "VUB4VP6453",
-  "IPHONEOS_DEPLOYMENT_TARGET" => "26.0",
+  "IPHONEOS_DEPLOYMENT_TARGET" => "27.0",
   "SUPPORTED_PLATFORMS" => "iphoneos iphonesimulator",
   "SUPPORTS_MACCATALYST" => "NO",
   "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" => "NO",
@@ -129,17 +134,27 @@ end
 
 package_objects = project.objects.select { |object| object.isa == "XCRemoteSwiftPackageReference" }
 assert(package_objects.length == 2, "expected exactly two runtime dependencies")
-assert(tests.package_product_dependencies.map(&:product_name) == ["LiteRTLM"], "device tests must link LiteRTLM")
-assert(app.package_product_dependencies.map(&:product_name) == ["LiteRTLM", "onnxruntime"], "app must link the Gemma runtime")
-device_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/GemmaDeviceTests.xcscheme").read)
-opt_in = REXML::XPath.first(device_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='GEMMA_DEVICE_TESTS']")
-assert(opt_in && opt_in.attributes["value"] == "1", "device scheme must opt in to real inference")
-assert(REXML::XPath.match(device_scheme, "//SelectedTests/Test").map { |node| node.attributes["Identifier"] } == ["GemmaDeviceTests"], "device scheme must select only the device experiment")
-
-latency_scheme = REXML::Document.new(PROJECT_PATH.join("xcshareddata/xcschemes/ReplyLatencyDeviceTests.xcscheme").read)
-latency_opt_in = REXML::XPath.first(latency_scheme, "//TestAction/EnvironmentVariables/EnvironmentVariable[@key='CATROBOT_REPLY_LATENCY_TESTS']")
-assert(latency_opt_in && latency_opt_in.attributes["value"] == "1", "latency scheme must opt in explicitly")
-assert(REXML::XPath.match(latency_scheme, "//SelectedTests/Test").map { |node| node.attributes["Identifier"] } == ["ReplyLatencyDeviceTests"], "latency scheme must select only its comparison")
+assert(app.package_product_dependencies.map(&:product_name).sort == ["ClaudeForFoundationModels", "onnxruntime"], "app must link Claude and ONNX Runtime")
+assert(tests.package_product_dependencies.map(&:product_name) == ["ClaudeForFoundationModels"], "tests must link Claude for error-type tests")
+claude = project.root_object.package_references.find { |p| p.repositoryURL.end_with?("ClaudeForFoundationModels.git") }
+assert(claude && claude.requirement == { "kind" => "exactVersion", "version" => "0.2.3" }, "pinned ClaudeForFoundationModels missing")
+app.build_configurations.each do |configuration|
+  settings = configuration.build_settings
+  assert(settings["CODE_SIGN_ENTITLEMENTS"] == "CatRobot/Resources/CatRobot.entitlements", "entitlements missing")
+  expected_env = configuration.name == "Release" ? "production" : "development"
+  assert(settings["CATROBOT_APP_ATTEST_ENVIRONMENT"] == expected_env, "App Attest environment for #{configuration.name}")
+  assert(settings.key?("CATROBOT_CLAUDE_CLIENT_ID"), "client id build setting missing")
+end
+dev_key = app.resources_build_phase.files.find { |f| f.file_ref&.path == "LocalAssets/claude-api-key.txt" }
+assert(dev_key, "development key must be a bundled resource reference")
+release = app.build_configurations.find { |c| c.name == "Release" }
+debug = app.build_configurations.find { |c| c.name == "Debug" }
+assert(Array(release.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Release must exclude the development key")
+assert(!Array(debug.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Debug must bundle the development key")
+assert(project.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "YES" }, "script sandboxing must stay on")
+%w[GemmaDeviceTests GemmaAppDeviceTests ReplyLatencyDeviceTests].each do |name|
+  assert(!PROJECT_PATH.join("xcshareddata/xcschemes/#{name}.xcscheme").file?, "#{name} scheme must be gone")
+end
 
 scheme = REXML::Document.new(SCHEME_PATH.read)
 testable_names = REXML::XPath.match(scheme, "//TestableReference/BuildableReference").map do |node|
@@ -177,5 +192,58 @@ ort = project.root_object.package_references.find { |p| p.repositoryURL.end_with
 assert(ort && ort.requirement == { "kind" => "exactVersion", "version" => "1.24.2" }, "pinned ONNX runtime missing")
 assert(app.resources_build_phase.files_references.any? { |r| r.path == "LocalAssets/Supertonic" }, "Supertonic bundle missing")
 assert(app.shell_script_build_phases.any? { |p| p.name == "Validate Supertonic assets" }, "asset validation missing")
+cleanup = app.shell_script_build_phases.find { |p| p.name == "Remove codeless onnxruntime framework" }
+assert(cleanup && cleanup.shell_script.include?("onnxruntime.framework"), "codeless framework cleanup missing")
+assert(app.build_phases.last.equal?(cleanup), "codeless framework cleanup must be the last build phase")
+assert(cleanup.output_paths.empty? && cleanup.input_paths.empty?,
+       "codeless framework cleanup must not declare the framework or Frameworks directory as an output: both collide with the embed and MkDir steps (Multiple commands produce)")
+assert(app.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "NO" },
+       "the app target must run its script phases unsandboxed so the cleanup can inspect and delete the stub under SYMROOT / DSTROOT")
+assert(targets.fetch("CatRobotTests").build_configurations.none? { |c| c.build_settings.key?("ENABLE_USER_SCRIPT_SANDBOXING") },
+       "the test target must keep the project-level script sandboxing")
+
+# スタブ除去スクリプトの振る舞い: 記号を公開しないスタブだけを消し、検査や削除の失敗は非 0 で止める。
+require "tmpdir"
+require "open3"
+def run_cleanup(script, products, framework: true, with_binary: nil, mode: nil)
+  app_dir = File.join(products, "CatRobot.app")
+  fw = File.join(app_dir, "Frameworks", "onnxruntime.framework")
+  FileUtils.mkdir_p(framework ? fw : File.join(app_dir, "Frameworks"))
+  FileUtils.cp(with_binary, File.join(fw, "onnxruntime")) if with_binary
+  File.chmod(mode, File.join(app_dir, "Frameworks")) if mode
+  out, status = Open3.capture2e({ "TARGET_BUILD_DIR" => products, "FRAMEWORKS_FOLDER_PATH" => "CatRobot.app/Frameworks" }, "/bin/sh", "-c", script)
+  [out, status.exitstatus, File.exist?(fw)]
+ensure
+  File.chmod(0o755, File.join(app_dir, "Frameworks")) if mode && File.directory?(File.join(app_dir, "Frameworks"))
+end
+
+Dir.mktmpdir("cat-onnx-cleanup") do |dir|
+  stub = File.join(dir, "stub.dylib")
+  real = File.join(dir, "real.dylib")
+  src = File.join(dir, "real.c")
+  File.write(src, "int OrtGetApiBase(void) { return 0; }\n")
+  system("xcrun", "clang", "-dynamiclib", "-x", "c", "/dev/null", "-o", stub, exception: true)
+  system("xcrun", "clang", "-dynamiclib", src, "-o", real, exception: true)
+  script = cleanup.shell_script
+
+  out, code, remains = run_cleanup(script, File.join(dir, "stub"), with_binary: stub)
+  assert(code == 0 && !remains && out.include?("Removed codeless"), "stub must be removed: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "real"), with_binary: real)
+  assert(code == 0 && remains && out.include?("not a codeless stub"), "a real dylib must be kept: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "absent"), framework: false)
+  assert(code == 0 && !remains && out.include?("nothing to remove"), "missing framework must be a no-op: #{out}")
+
+  unreadable = File.join(dir, "unreadable")
+  FileUtils.mkdir_p(File.join(unreadable, "CatRobot.app", "Frameworks", "onnxruntime.framework"))
+  FileUtils.cp(stub, File.join(unreadable, "CatRobot.app", "Frameworks", "onnxruntime.framework", "onnxruntime"))
+  File.chmod(0o000, File.join(unreadable, "CatRobot.app", "Frameworks", "onnxruntime.framework", "onnxruntime"))
+  out, code, remains = run_cleanup(script, unreadable)
+  assert(code == 1 && remains && out.include?("could not inspect"), "unreadable binary must fail loudly: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "locked"), with_binary: stub, mode: 0o555)
+  assert(code == 1 && remains && out.include?("could not remove"), "removal failure must fail loudly: #{out}")
+end
 
 assert(PROJECT_PATH.join("xcshareddata/xcschemes/SupertonicIntegrationDeviceTests.xcscheme").file?, "integration device scheme missing")

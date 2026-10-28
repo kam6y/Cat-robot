@@ -1,0 +1,16 @@
+[
+  "CatRobot/App/ConversationAppCoordinator.swift",
+  "CatRobot/App/ConversationSettingsView.swift",
+  "CatRobot/Conversation/Integration/ConversationViewModel.swift",
+  "CatRobot/Conversation/UI/ConversationAccessibility.swift",
+  "CatRobot/Conversation/UI/ConversationView.swift",
+  "CatRobot/Conversation/UI/ConversationViewState.swift",
+  "CatRobotTests/Face/FaceConversationPresentationTests.swift",
+  "README.md",
+  "scripts/face-render/Measure.swift",
+  "scripts/face-render/Render.swift",
+  "CatRobot/Conversation/Inactivity/ConversationIdleSettings.swift",
+  "CatRobot/Conversation/Inactivity/ConversationInactivity.swift",
+  "CatRobotTests/Conversation/Inactivity/ConversationIdleIntegrationTests.swift",
+  "CatRobotTests/Conversation/Inactivity/ConversationInactivityTests.swift"
+]

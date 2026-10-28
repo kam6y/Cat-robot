@@ -100,13 +100,11 @@ private final class LiveReplyModelClient: ReplyModelClient, @unchecked Sendable 
 
     init() {
         let model = SystemLanguageModel(useCase: .general, guardrails: .default)
-        session = LanguageModelSession(model: model) {
-            """
+        session = LanguageModelSession(model: model, instructions: """
             あなたは親しみやすいAIの猫「Cat Robot」です。日本語で自然に話します。
             通常は音声で聞きやすい一文か二文で簡潔に答え、詳しく求められた時だけ広げます。
             訂正されたら短く認めて会話を続けます。自分を人間だと偽りません。
-            """
-        }
+            """)
     }
 
     func prewarm() async {
@@ -114,30 +112,32 @@ private final class LiveReplyModelClient: ReplyModelClient, @unchecked Sendable 
     }
 
     func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
+        session.contentSnapshots(to: prompt,
+                                 options: GenerationOptions(temperature: 0.5, maximumResponseTokens: 160),
+                                 mapError: { FoundationModelErrorMapper.map($0) })
+    }
+}
+
+extension LanguageModelSession {
+    /// Cumulative response text as a stream. The generating task inherits the caller's
+    /// task-local context, checks cancellation per element, is cancelled by every
+    /// termination of the stream, and maps a failure through `mapError` before finishing.
+    func contentSnapshots(to prompt: String, options: GenerationOptions,
+                          mapError: @escaping @Sendable (any Swift.Error) -> any Swift.Error) -> AsyncThrowingStream<String, Swift.Error> {
         AsyncThrowingStream { continuation in
             let task = Task { [self] in
                 do {
-                    let response = session.streamResponse(
-                        to: prompt,
-                        options: GenerationOptions(
-                            temperature: 0.5,
-                            maximumResponseTokens: 160
-                        )
-                    )
+                    let response = streamResponse(to: prompt, options: options)
                     for try await snapshot in response {
                         try Task.checkCancellation()
                         continuation.yield(snapshot.content)
                     }
                     continuation.finish()
                 } catch {
-                    continuation.finish(
-                        throwing: FoundationModelErrorMapper.map(error)
-                    )
+                    continuation.finish(throwing: mapError(error))
                 }
             }
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }

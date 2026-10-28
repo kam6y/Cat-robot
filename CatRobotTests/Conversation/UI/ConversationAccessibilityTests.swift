@@ -3,6 +3,29 @@ import SwiftUI
 @testable import CatRobot
 
 final class ConversationAccessibilityTests: XCTestCase {
+    func testCompletedReplyRemainsAvailableOnDemandAfterVoiceAndTypedTurns() {
+        // 音声・文字とも speaking → thinking → listening/paused で完了する。
+        // speaking → listening の自動アナウンスだけに頼らず、全文を後から読めること。
+        for phase: ConversationPhase in [.idle, .listening, .paused, .failed(.cancelled)] {
+            var state = ConversationViewState.speaking(caption: "最後まで読める猫の返事。")
+            state.phase = phase
+            XCTAssertEqual(state.accessibleReply, "最後まで読める猫の返事。", "\(phase)")
+        }
+    }
+
+    func testReplyIsNotExposedWhileStreamingSleepingOrEmpty() {
+        for phase: ConversationPhase in [.preparing, .classifying, .thinking, .speaking, .clarifying] {
+            var state = ConversationViewState.speaking(caption: "まだ途中の返事")
+            state.phase = phase
+            XCTAssertNil(state.accessibleReply, "\(phase)")
+        }
+        var state = ConversationViewState.listening
+        XCTAssertNil(state.accessibleReply)
+        state.caption = "前の返事"
+        state.inactivity = .sleeping
+        XCTAssertNil(state.accessibleReply)
+    }
+
     func testConversationPresentationRequestsVisibleSystemStatus() {
         XCTAssertFalse(ConversationPresentationPolicy.isStatusBarHidden)
     }
@@ -18,7 +41,6 @@ final class ConversationAccessibilityTests: XCTestCase {
         let labels = ConversationAccessibility(phase: .clarifying)
 
         XCTAssertEqual(labels.microphoneValue, "一時休止中")
-        XCTAssertEqual(labels.assistantStatus, "聞き返しています")
     }
 
     func testProvisionalTranscriptChangeDoesNotAnnounce() {
@@ -118,7 +140,6 @@ final class ConversationAccessibilityTests: XCTestCase {
 
             XCTAssertEqual(labels.listeningSemantic, .resume)
             XCTAssertEqual(labels.listeningAction, "聞き取りを再開")
-            XCTAssertEqual(labels.listeningSymbol, "mic.fill")
             XCTAssertEqual(labels.listeningHint, "マイクの聞き取りを再開します")
         }
     }
@@ -128,35 +149,7 @@ final class ConversationAccessibilityTests: XCTestCase {
 
         XCTAssertEqual(labels.listeningSemantic, .pause)
         XCTAssertEqual(labels.listeningAction, "聞き取りを一時停止")
-        XCTAssertEqual(labels.listeningSymbol, "pause.fill")
         XCTAssertEqual(labels.listeningHint, "マイクの聞き取りを停止します")
-    }
-
-    func testAccessibilityDynamicTypePrefersStackedLowerControls() {
-        XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(
-                for: .accessibility1,
-                showsTypedInput: false
-            ),
-            .stacked
-        )
-        XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(
-                for: .large,
-                showsTypedInput: false
-            ),
-            .horizontalFirst
-        )
-    }
-
-    func testAccessibilityTypedInputUsesCompactFixedControls() {
-        XCTAssertEqual(
-            ConversationLowerControlsLayout.preferred(
-                for: .accessibility1,
-                showsTypedInput: true
-            ),
-            .compactHorizontal
-        )
     }
 
     func testAccessibilityTypedPanelUsesCompactHorizontalLayout() {
@@ -170,27 +163,8 @@ final class ConversationAccessibilityTests: XCTestCase {
         )
     }
 
-    func testKeyboardOrAccessibilityOverflowKeepsPrimaryControlsFixed() {
-        XCTAssertEqual(
-            ConversationVerticalLayout.preferred(
-                for: .large,
-                showsTypedInput: true
-            ),
-            .scrollableContentWithFixedControls
-        )
-        XCTAssertEqual(
-            ConversationVerticalLayout.preferred(
-                for: .accessibility1,
-                showsTypedInput: false
-            ),
-            .scrollableContentWithFixedControls
-        )
-        XCTAssertEqual(
-            ConversationVerticalLayout.preferred(
-                for: .large,
-                showsTypedInput: false
-            ),
-            .standard
-        )
+    func testSettingsSheetDeclaresItsControls() {
+        XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
+                       ["sleepyMinutesStepper", "sleepingMinutesStepper", "cameraPermissionButton", "modelPicker", "effortPicker", "voicePresetPicker", "dailyTurnLimitStepper", "memoryFactsList", "deleteAllMemoryButton"])
     }
 }

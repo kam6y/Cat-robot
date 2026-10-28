@@ -1,0 +1,4 @@
+8a290f0103329d2263d9c7131d88e52d95c809ef  CatRobot/Conversation/UI/CatFaceShapes.swift
+4d4235ee79629a668e2aea231fcbe06d6d67701d  CatRobot/Conversation/UI/CatFaceAppearance.swift
+9ba9878cff7b8a61076479f49c90c28e08884747  CatRobot/Conversation/UI/CatFaceView.swift
+3f8ce6b3103f  git diff HEAD -- <3 files> | shasum -a 256 (first 12)

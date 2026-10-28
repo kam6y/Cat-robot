@@ -3,6 +3,107 @@ import XCTest
 
 @MainActor
 final class ConversationViewModelTests: XCTestCase {
+
+    func testTapPauseMarksUserPausedAndVoiceResumeClearsIt() async {
+        let h = ConversationHarness()
+        await h.sut.startConversation()
+        XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
+        await h.sut.toggleListening()
+        XCTAssertEqual(h.sut.viewState.phase, .paused)
+        XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
+        XCTAssertEqual(h.sut.viewState.statusChips, [.paused])
+        await h.sut.toggleListening()
+        XCTAssertEqual(h.sut.viewState.phase, .listening)
+        XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
+        XCTAssertEqual(h.sut.viewState.faceOpacity, 1)
+        let starts = await h.recognizer.startCount
+        XCTAssertEqual(starts, 2)
+        await h.sut.shutdown()
+    }
+
+    func testAudioPauseIndicatesThatTappingResumesConversation() async {
+        for event in [AudioSessionEvent.interruptionBegan, .routeChanged] {
+            let h = ConversationHarness()
+            await h.sut.startConversation()
+            await h.sut.handleAudioSessionEvent(event)
+            XCTAssertEqual(h.sut.viewState.phase, .paused)
+            XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
+            XCTAssertEqual(h.sut.viewState.statusChips, [.paused])
+            XCTAssertEqual(h.sut.viewState.faceOpacity, 0.5)
+            await h.sut.handleAudioSessionEvent(.interruptionEnded(shouldResume: true))
+            XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
+            await h.sut.toggleListening()
+            XCTAssertEqual(h.sut.viewState.phase, .listening)
+            XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
+            XCTAssertEqual(h.sut.viewState.faceOpacity, 1)
+            await h.sut.shutdown()
+        }
+    }
+
+    func testSystemPausesClearTheUserPausePresentation() async {
+        for operation in ["scene", "newConversation", "forgetAll", "shutdown"] {
+            let h = ConversationHarness(memory: FakeConversationMemoryManager())
+            await h.sut.startConversation()
+            await h.sut.toggleListening()
+            XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume, operation)
+            switch operation {
+            case "scene": await h.sut.sceneBecameInactive()
+            case "newConversation": await h.sut.startNewConversation()
+            case "forgetAll": await h.sut.forgetConversation()
+            default: await h.sut.shutdown()
+            }
+            XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume, operation)
+            XCTAssertFalse(h.sut.viewState.showsTapToResume, operation)
+            await h.sut.shutdown()
+        }
+    }
+
+    func testSceneInvalidationClearsUserPauseSynchronously() async {
+        let h = ConversationHarness()
+        await h.sut.startConversation()
+        await h.sut.toggleListening()
+        XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
+        h.sut.invalidateForSceneInactivity()
+        XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
+        await h.sut.sceneBecameInactive()
+        await h.sut.shutdown()
+    }
+
+    func testTypedTurnDuringUserPauseReturnsToUserPause() async {
+        let h = ConversationHarness(replySnapshots: nil)
+        await h.sut.startConversation()
+        await h.sut.toggleListening()
+        let turn = Task { await h.sut.submitTypedText("文字で質問するよ") }
+        await h.reply.waitUntilPromptCount(1)
+        XCTAssertEqual(h.sut.viewState.phase, .thinking)
+        XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
+        XCTAssertFalse(h.sut.viewState.showsTapToResume)
+        await h.reply.yield("わかったよ")
+        await h.reply.finish()
+        await turn.value
+        XCTAssertEqual(h.sut.viewState.caption, "わかったよ")
+        XCTAssertEqual(h.sut.viewState.phase, .paused)
+        XCTAssertTrue(h.sut.viewState.isAwaitingTapToResume)
+        XCTAssertEqual(h.sut.viewState.faceOpacity, 0.5)
+        let starts = await h.recognizer.startCount
+        XCTAssertEqual(starts, 1, "文字だけの返答ではマイクを勝手に再開しない")
+        await h.sut.shutdown()
+    }
+
+    func testTypedFailureClearsUserPauseReason() async {
+        let h = ConversationHarness(replySnapshots: nil)
+        await h.sut.startConversation()
+        await h.sut.toggleListening()
+        let turn = Task { await h.sut.submitTypedText("文字で質問するよ") }
+        await h.reply.waitUntilPromptCount(1)
+        await h.reply.fail(.modelGenerationFailed)
+        await turn.value
+        XCTAssertEqual(h.sut.viewState.phase, .failed(.modelGenerationFailed))
+        XCTAssertFalse(h.sut.viewState.isAwaitingTapToResume)
+        XCTAssertFalse(h.sut.viewState.showsTapToResume)
+        await h.sut.shutdown()
+    }
+
     func testWakeTurnSkipsClassifierReplacesCumulativeCaptionSpeaksFinalAndResumesOnce() async {
         let harness = ConversationHarness(replySnapshots: ["やあ", "やあ、元気だよ"])
         await harness.sut.startConversation()

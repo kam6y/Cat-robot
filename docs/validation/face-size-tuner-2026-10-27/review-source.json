@@ -1,0 +1,16 @@
+{
+  "CatRobot/Conversation/UI/CatFaceAppearance.swift": "e349d106048cd1f67f0849b37dc9183f6b6d9947b888d90288deb05780013c6d",
+  "CatRobot/Conversation/UI/CatFaceShapes.swift": "20bf534b86f07c9b03565fc666b86303fe85799c9305613f33e2be69462bee1f",
+  "CatRobot/Conversation/UI/CatFaceView.swift": "e6e579815f50eb6b254f712aae0cd2381cd95b20f8084fdf890446e0e0b329c0",
+  "CatRobotTests/App/AccessibilityActivationSupport.swift": "492566267bf5635ab843e1f848568f5c4fc12501eec3bd5334dda91528c63fae",
+  "scripts/face-render/Stubs.swift": "916fc71f8565fcac4e02d5584ea00932236a8b851925b5bb71ab0fe3a749c501",
+  "scripts/generate_face_size_tuner_project.rb": "d98abac745e0e3248d094851d9eb2781090b8a4803db3d032105a12cde436d5c",
+  "tools/face-size-tuner/FaceSizeTuner.xcodeproj/project.pbxproj": "a89d37f97a2deb3d3939a15e66baf44038b9b821c3002d4068c1e0853e0ada49",
+  "tools/face-size-tuner/FaceSizeTuner.xcodeproj/xcshareddata/xcschemes/FaceSizeTuner.xcscheme": "ecb6a05f1ea1849adf82c3cb0f4eab6b96991ed5785d19320ae044a9e4507831",
+  "tools/face-size-tuner/Resources/Info.plist": "c02b914926e2cc11e6c3d8df7571440883ed9e0be2fa0cf556ee5c375dd18351",
+  "tools/face-size-tuner/Sources/FaceSizePreview.swift": "1f4f63b57feee84c99b75c522f87835ce521cfb0e3c17eeeb5e08f2faf69ae6d",
+  "tools/face-size-tuner/Sources/FaceSizeTunerApp.swift": "d5db6f9da9e4b76b64872502705b9d25692d00e342d767715dabaf13bf6dee10",
+  "tools/face-size-tuner/Sources/FaceSizeTunerView.swift": "591e1adf038c8fbb6e536880bfcdba0645ec065d545f1b566d93ed1a240e7577",
+  "tools/face-size-tuner/Sources/FaceSizeTuningModel.swift": "4ba1aa79c8e2f2c1bfe873d53d4f479d410aa99f5faab50e3c8c12c3daba5b9a",
+  "tools/face-size-tuner/Tests/FaceSizeTunerTests.swift": "9c832352c72c9de5315afca9bad4a5a3198445d48ce80c1f95b84b00aab3708c"
+}

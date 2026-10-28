@@ -1,0 +1,23 @@
+{
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "sourceRevision": "fd28aa7",
+  "sourceCommit": "fd28aa784d5fa9ee8877f395e05f605938123e83",
+  "version": "1.0",
+  "build": "1",
+  "executableSHA256": "d7bfcb402f262f70fe07668df30747d516d8d3a7e6f8e96de8850a950b57d01f",
+  "implementationSHA256": "0437c4b59d6dbbfef2009ece277e65028eb11a1c597ad29fe4237608ac27494b",
+  "signatureVerified": true,
+  "recordedAt": "2026-10-27T13:53:56.747969+00:00",
+  "physicalDevice": "iPhone 16 Pro",
+  "installed": true,
+  "installedAppConfirmed": true,
+  "uninstallPerformed": false,
+  "dataContainerIdentifierUnchanged": false,
+  "dataContentsInspected": false,
+  "normalLaunch": false,
+  "manualBehaviorObservation": "not performed; installation-only request",
+  "firmwareChanged": false,
+  "hardwareCommandsPerformed": false,
+  "verifiedInputsUnchanged": 223,
+  "rawEvidenceDirectory": "/private/tmp/cat-ui-polish-device-20261027"
+}

@@ -1,0 +1,24 @@
+{
+  "sourceCommit": "c2e2c4bd435b84c372d0cdbe91298d02a46d0b0f",
+  "appBuildSourceRevision": "be3d780",
+  "baselineCommit": "1868b1e",
+  "command": "xcodebuild test -project tools/face-size-tuner/FaceSizeTuner.xcodeproj -scheme FaceSizeTuner -destination 'platform=iOS Simulator,id=40C29D25-C8EC-42C7-8145-65AB37A2BB7D' -derivedDataPath /private/tmp/CatFaceSizeTunerDerived -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO",
+  "exitCode": 0,
+  "passedTests": 5,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "resultBundle": "/tmp/CatFaceSizeTunerDerived/Logs/Test/Test-FaceSizeTuner-2026.10.27_23-29-24-+0900.xcresult",
+  "originalAppInputsUnchanged": 223,
+  "toolAndSharedInputsHashed": 14,
+  "changesAfterReview": "Only the test attachment helper captures the whole window. App sources unchanged. Full tool suite rerun passed.",
+  "independentReview": {
+    "critical": 0,
+    "important": 0,
+    "minorDeferred": 1
+  },
+  "deviceDeploymentRecord": "device-deployment.json",
+  "userSelectedScale": null,
+  "mainAppScaleChanged": false,
+  "finalLogSHA256": "bbdda6823d04b9bb2276f3b04458b46a9e94cdfe7dd43140df239a05bca4a31f",
+  "visualLimitations": "The standard-text full-screen hierarchy image omits the face; root cause not established. It is excluded as visual proof. Largest-text full-screen image includes the face. Device launch verified, screen not observed."
+}

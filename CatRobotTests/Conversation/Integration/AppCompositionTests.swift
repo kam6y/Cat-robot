@@ -3,6 +3,57 @@ import XCTest
 
 @MainActor
 final class AppCompositionTests: XCTestCase {
+    func testLiveCompositionIsInertAndUsesOneExpressionCoordinator() async {
+        let clock = ManualRobotClock(), transport = FakeRobotTransport()
+        let source = FakeFaceCaptureSource(authorization: .notDetermined)
+        let composition = ConversationComposition.live(auth: .missing, robotTransport: transport,
+                                                       robotClock: clock, faceCaptureSource: source)
+        let dependencies = composition.dependencies
+        XCTAssertTrue(dependencies.faceExpressions is FaceExpressionCoordinator)
+        let reply = dependencies.reply as? MotionReplyGenerator
+        XCTAssertTrue(reply?.motion === dependencies.replyTurnObserver)
+        XCTAssertNil(dependencies.faceExpressions.heldExpression)
+        await robotDrain()
+        XCTAssertEqual(transport.starts, 0)
+        XCTAssertEqual(source.requests, 0)
+        XCTAssertTrue(source.starts.isEmpty)
+        dependencies.faceExpressions.setVisible(true)
+        dependencies.faceExpressions.setConversationPhase(.thinking)
+        let turn = MotionTurnID()
+        dependencies.replyTurnObserver.beginTurn(turn)
+        XCTAssertEqual(dependencies.faceExpressions.reserve(.init(expression: .happy), for: turn), .reserved)
+        dependencies.replyTurnObserver.speechStarted(turn)
+        XCTAssertEqual(dependencies.faceExpressions.heldExpression, .happy)
+        await dependencies.serviceTeardown()
+        XCTAssertNil(dependencies.faceExpressions.heldExpression)
+    }
+
+    func testLiveCompositionLeavesInjectedCameraInert() async {
+        let source = FakeFaceCaptureSource(authorization: .notDetermined)
+        let composition = ConversationComposition.live(auth: .missing, faceCaptureSource: source)
+        await robotDrain()
+        XCTAssertNotNil(composition.faceTracking)
+        XCTAssertEqual(source.requests, 0)
+        XCTAssertTrue(source.starts.isEmpty)
+        await composition.dependencies.serviceTeardown()
+    }
+
+    func testLiveCompositionIsLazyAndWiresClaudeRoles() async {
+        let defaults = UserDefaults(suiteName: "composition-\(UUID().uuidString)")!
+        let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults),
+                                                       modelSettings: ConversationModelSettings(defaults: defaults),
+                                                       auth: .missing)
+        XCTAssertTrue(composition.dependencies.reply is MotionReplyGenerator)
+        XCTAssertTrue(composition.dependencies.motion is MotionCoordinator)
+        XCTAssertTrue(composition.dependencies.modelAvailability is OnDeviceFallbackReplyGenerator)
+        XCTAssertTrue(composition.dependencies.memory is ClaudeConversationService)
+        XCTAssertTrue(composition.dependencies.classifier is RoutedAddressClassifier)
+        XCTAssertEqual(composition.dependencies.replyPlaybackMode, .sentencePrefetch)
+        // 構築だけではネットワークにも端末内モデルにも触れない。認証なしの availability は設定ミスとして報告される。
+        let availability = await composition.dependencies.modelAvailability.availability()
+        XCTAssertEqual(availability, .claudeCredentialMissing)
+    }
+
     func testRootConstructionLeavesAllConversationServicesLazy() async {
         let harness = ConversationHarness()
         let idleTimer = TestIdleTimerStorage(initialValue: false)
@@ -97,7 +148,7 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 
-    func testBackgroundDuringPermissionPromptInvalidatesLateGrantAndDoesNotResumeOnActive() async {
+    func testBackgroundDuringPermissionPromptInvalidatesLateGrantAndResumesOnActive() async {
         let permissionGate = ConversationTestGate()
         let harness = ConversationHarness(permissionGate: permissionGate)
         let idleTimer = TestIdleTimerStorage(initialValue: false)
@@ -125,11 +176,14 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertFalse(idleTimer.value)
 
         coordinator.scenePhaseDidChange(.active)
-        await Task.yield()
+        await coordinator.waitForOperations()
 
+        // 遅れて届いた許可は古い開始を進めない。前面復帰で新しく開始する。許可の問い合わせは開始ごとに行い、OS は保存済みの決定を返す。
         let recognizerStartsAfterActive = await harness.recognizer.startCount
-        XCTAssertEqual(recognizerStartsAfterActive, 0)
-        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        let microphoneRequestsAfterActive = await harness.microphone.requestCount
+        XCTAssertEqual(recognizerStartsAfterActive, 1)
+        XCTAssertEqual(microphoneRequestsAfterActive, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
         XCTAssertTrue(idleTimer.value)
     }
 
@@ -226,9 +280,10 @@ final class AppCompositionTests: XCTestCase {
         await actionGate.open()
         await coordinator.waitForOperations()
 
+        // 前面復帰で再開する。非アクティブ中のタップが再生されていれば、再開の後に一時停止へ戻ってしまう。
         let recognizerStarts = await harness.recognizer.startCount
-        XCTAssertEqual(recognizerStarts, 1)
-        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertEqual(recognizerStarts, 2)
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
 
     func testSendActionSnapshotsTextBeforeLaunchingAsyncTurnAndPreservesNewDraft() async {
@@ -319,7 +374,7 @@ final class AppCompositionTests: XCTestCase {
 }
 
 @MainActor
-private final class TestIdleTimerStorage {
+final class TestIdleTimerStorage {
     var value: Bool
     private(set) var writes: [Bool] = []
 

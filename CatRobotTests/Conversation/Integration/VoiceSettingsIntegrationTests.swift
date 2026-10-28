@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class VoiceSettingsIntegrationTests: XCTestCase {
-    func testOpeningStopsConversationAndClosingDoesNotRestart() async {
+    func testOpeningStopsConversationAndClosingRestartsIt() async {
         let harness = ConversationHarness()
         let coordinator = ConversationAppCoordinator(viewModel: harness.sut, wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
         coordinator.beginConversation(); await coordinator.waitForOperations()
@@ -12,10 +12,13 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         coordinator.makeActions(openSettings: {}).toggleListening()
         await coordinator.waitForOperations()
+        let startsWhileOpen = await harness.recognizer.startCount
+        XCTAssertEqual(startsWhileOpen, 1, "シートが開いている間の操作は無視する")
+        XCTAssertEqual(harness.sut.viewState.phase, .paused)
         coordinator.closeVoiceSettings(); await coordinator.waitForOperations()
         let starts = await harness.recognizer.startCount
-        XCTAssertEqual(starts, 1)
-        XCTAssertEqual(harness.sut.viewState.phase, .paused)
+        XCTAssertEqual(starts, 2, "閉じたら自動で再開する")
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
         await harness.sut.shutdown()
     }
     func testSettingsSupersedePermissionAndBackgroundDoesNotOpenLateSheet() async {
@@ -59,7 +62,7 @@ final class VoiceSettingsIntegrationTests: XCTestCase {
     }
     func testLiveCompositionUsesSupertonicWithMeasuredSentencePrefetch() {
         let defaults = UserDefaults(suiteName: "LiveComposition.\(UUID())")!
-        let dependencies = ConversationDependencies.live(voiceSettings: SpeechVoiceSettings(defaults: defaults))
+        let dependencies = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults)).dependencies
         XCTAssertTrue(dependencies.speaker is SupertonicSentenceSpeaker)
         XCTAssertEqual(dependencies.replyPlaybackMode, .sentencePrefetch)
     }

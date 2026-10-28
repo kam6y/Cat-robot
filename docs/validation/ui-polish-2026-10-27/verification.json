@@ -1,0 +1,46 @@
+{
+  "sourceCommit": "f85f74e744ba0a8d762f612064a84600bf78f502",
+  "baselineCommit": "1d9e1d022bac18a32b2ddd5b045079cad767a887",
+  "branch": "feature/ui-reorganization",
+  "command": "xcodebuild test -project CatRobot.xcodeproj -scheme CatRobot -destination platform=iOS\\ Simulator,id=40C29D25-C8EC-42C7-8145-65AB37A2BB7D -derivedDataPath /tmp/CatRobotIdleSleepDerived -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO",
+  "workingDirectory": "/Users/goodapple/.codex/worktrees/b200/Cat_robot",
+  "exitCode": 0,
+  "resultBundle": "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_22-30-29-+0900.xcresult",
+  "startTimeUTC": "2026-10-27T13:30:29.634000+00:00",
+  "finishTimeUTC": "2026-10-27T13:36:02.806000+00:00",
+  "totalTests": 839,
+  "passedTests": 837,
+  "skippedTests": 2,
+  "failedTests": 0,
+  "skipped": [
+    {
+      "test": "RobotMotionIntegrationDeviceTests.testSelectedStage",
+      "reason": "Attended iPhone hardware test required"
+    },
+    {
+      "test": "SupertonicIntegrationDeviceTests.testSelectedStage",
+      "reason": "Explicit iPhone integration test required"
+    }
+  ],
+  "sourceFilesHashed": 223,
+  "sourceMatchesBeforeAfterReviewAndCommit": true,
+  "sourceManifest": "final-source.json",
+  "logSHA256": "a6e8e4c4212f1acc520262da5363f3a710b15c9478a8d472ad9205c30875ac57",
+  "review": {
+    "critical": 0,
+    "important": 0,
+    "minorDeferred": 1
+  },
+  "physicalDeviceReinstalled": true,
+  "physicalDeviceOperationsPerformed": true,
+  "merged": false,
+  "pushed": false,
+  "visualEvidence": {
+    "inspectedImages": 7,
+    "manifest": "image-manifest.json",
+    "limitations": "Some hierarchy capture attachments omit static elements, and the confirmation-dialog attachment is black. Those captures are excluded as visual evidence; their exact rendering cause is not established. Navigation and geometry claims rely on the corresponding passing UI assertions."
+  },
+  "hardwareCommandsPerformed": false,
+  "applicationLaunched": false,
+  "physicalDeviceDeploymentRecord": "device-deployment.json"
+}

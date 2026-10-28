@@ -1,0 +1,168 @@
+--- /private/tmp/claude-501/-Users-goodapple-workspace-Cat-robot/c423cf90-c3e9-4caf-a914-891263e3f26d/scratchpad/c9/pre/scripts/face-render/Measure.swift	2026-10-26 21:39:00
++++ scripts/face-render/Measure.swift	2026-10-26 21:36:33
+@@ -9,6 +9,8 @@
+ @MainActor
+ enum Measurement {
+     static let sleepingDirectory = "docs/design/sleeping-2026-10-26"
++    /// sleeping の下書き（16:9 の全面がキャンバス）。計測と描画の比較で同じ画像を読む。
++    static let sleepingDraftPath = "\(sleepingDirectory)/sleeping-draft.png"
+ 
+     static func run(root: String, rendered: Bool) throws {
+         let directory = "\(root)/docs/design/face-expression-2026-10-26"
+@@ -144,11 +146,9 @@
+                   + zip(offsets, sums).map { String(format: "+%d:%.0f", $0, $1 / Double(rays)) }.joined(separator: " "))
+         }
+ 
+-        // 鼻
+-        let corals = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
+-            tones[$0, $1] == .coral
+-        }
+-        if let nose = corals.first {
++        // 鼻・口・ひげ（目の外のクリーム色）
++        let features = faceFeatures(bitmap: bitmap, tones: tones, screen: screen, excluding: eyeBounds)
++        if let nose = features.nose {
+             describe("nose", nose.bounds)
+             print("  nose color \(meanColor(nose.pixels))")
+             let widths = stride(from: 0.1, through: 0.91, by: 0.2).map { f -> String in
+@@ -158,27 +158,42 @@
+             }
+             print("  nose width by height fraction px " + widths.joined(separator: " "))
+         }
++        if let mouth = features.mouth {
++            describe("mouth", mouth.bounds)
++            print("  mouth color \(meanColor(mouth.pixels))")
++            print("  mouth columns (cv x: y ranges in cv) " + columnProfile(mouth, reference: reference, samples: 15))
++        }
++        for (name, whisker) in features.whiskers {
++            describe(name, whisker.bounds)
++            print("  centerline (cv x, cv y, thickness px) " + columnProfile(whisker, reference: reference, samples: 9))
++        }
++    }
+ 
+-        // 口とひげ（目の外のクリーム色）
++    /// 鼻（珊瑚色の最大の成分）、口（中央の幅 ±10% にかかるクリーム色をまとめたもの。縦線の合流部で分かれることがある）、
++    /// ひげ（残りのクリーム色。左→右、上→下の順に "left whisker 1" … と名付ける）。採用画像と sleeping の下書きで同じ計測。
++    /// `excluding` は目（または閉じた目の弧）の外接で、2px 外側まで含めてクリーム色の候補から除く。
++    private struct FaceFeatures {
++        var nose: Component?
++        var mouth: Component?
++        var whiskers: [(name: String, component: Component)]
++    }
++
++    private static func faceFeatures(bitmap: Bitmap, tones: ToneMap, screen: CGRect, excluding boxes: [CGRect]) -> FaceFeatures {
++        let corals = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
++            tones[$0, $1] == .coral
++        }
+         let creams = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 150) { x, y in
+-            tones[x, y] == .cream && !eyeBounds.contains { $0.insetBy(dx: -2, dy: -2).contains(CGPoint(x: x, y: y)) }
++            tones[x, y] == .cream && !boxes.contains { $0.insetBy(dx: -2, dy: -2).contains(CGPoint(x: x, y: y)) }
+         }
+-        // 口は中央の幅 ±10% にかかる成分をまとめる（縦線の合流部で分かれることがある）
+         let isMouth = { (c: Component) in abs(c.bounds.midX - screen.midX) < screen.width * 0.1 }
+         var mouth = Component()
+         creams.filter(isMouth).forEach { part in part.pixels.forEach { mouth.add($0.0, $0.1) } }
+-        if mouth.count > 0 {
+-            describe("mouth", mouth.bounds)
+-            print("  mouth color \(meanColor(mouth.pixels))")
+-            print("  mouth columns (cv x: y ranges in cv) " + columnProfile(mouth, reference: reference, samples: 15))
+-        }
+         let whiskers = creams.filter { !isMouth($0) }
+             .sorted { ($0.bounds.midX < screen.midX ? 0 : 1, $0.bounds.minY) < ($1.bounds.midX < screen.midX ? 0 : 1, $1.bounds.minY) }
+-        for (index, whisker) in whiskers.enumerated() {
+-            let side = whisker.bounds.midX < screen.midX ? "left" : "right"
+-            describe("\(side) whisker \(index % 3 + 1)", whisker.bounds)
+-            print("  centerline (cv x, cv y, thickness px) " + columnProfile(whisker, reference: reference, samples: 9))
+-        }
++            .enumerated().map { index, whisker in
++                (name: "\(whisker.bounds.midX < screen.midX ? "left" : "right") whisker \(index % 3 + 1)", component: whisker)
++            }
++        return FaceFeatures(nose: corals.first, mouth: mouth.count > 0 ? mouth : nil, whiskers: whiskers)
+     }
+ 
+     private static func describe(_ label: String, _ rect: CGRect, reference: ReferenceImage) {
+@@ -210,7 +225,7 @@
+     /// sleeping の下書き（docs/design/sleeping-2026-10-26/sleeping-draft.png。16:9 の全面がキャンバス）と現在の描画
+     /// （1280×720 のキャンバス）を同じ計測にかけ、最後に下書きを 1280×720 に縮めて色の分類ごとの IoU を出す。
+     static func runSleeping(root: String) throws {
+-        let draft = try ReferenceImage(name: "sleeping-draft.png", path: "\(root)/\(sleepingDirectory)/sleeping-draft.png")
++        let draft = try ReferenceImage(name: "sleeping-draft.png", path: "\(root)/\(sleepingDraftPath)")
+         let draftProfile = reportSleeping(draft)
+         let rendered = FaceRender.canvasImage(.sleeping, .closed)
+         let renderedProfile = reportSleeping(ReferenceImage(name: "rendered sleeping (canvas 1280x720)", rendered: rendered))
+@@ -253,13 +268,9 @@
+                          (r.bounds.minY - d.bounds.minY) * 720, (r.bounds.maxY - d.bounds.maxY) * 720,
+                          shared.count, mean, maxAbs))
+         }
+-        let scaled = compose(width: rendered.width, height: rendered.height) { context in
+-            drawImage(draft.bitmap.makeImage(), in: CGRect(x: 0, y: 0, width: rendered.width, height: rendered.height),
+-                      context: context)
+-        }
+-        let agreement = toneAgreement(reference: scaled, rendered: rendered)
+-            .map { String(format: "%@ %.3f", $0.0.rawValue, $0.1) }.joined(separator: ", ")
+-        print("sleeping: color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): \(agreement)")
++        let scaled = FaceRender.scaled(draft.bitmap.makeImage(), width: rendered.width, height: rendered.height)
++        print("sleeping: color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): "
++              + FaceRender.agreementSummary(reference: scaled, rendered: rendered))
+     }
+ 
+     struct ArcProfile {
+@@ -283,7 +294,6 @@
+ 
+     /// 閉じた目の弧（虹彩の色の連結成分 2 つ）を列ごとに走査し、目の局所座標（sleeping の目の枠。neutral と同じ）で
+     /// 上縁・下縁・太さを固定の u で出す。鼻・口・ひげは採用画像と同じ計測。戻り値は弧の縁（差分の計算用）。
+-    @discardableResult
+     private static func reportSleeping(_ reference: ReferenceImage) -> SleepingProfile {
+         let bitmap = reference.bitmap
+         let screen = reference.screen
+@@ -297,7 +307,6 @@
+         let arcs = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
+             tones[$0, $1].isIris
+         }.prefix(2).sorted { $0.minX < $1.minX }
+-        var arcBounds: [CGRect] = []
+         var result = SleepingProfile()
+         func canvasBounds(_ rect: CGRect) -> CGRect {
+             CGRect(origin: reference.canvasNormalized(rect.origin),
+@@ -317,7 +326,6 @@
+         for (index, arc) in arcs.enumerated() {
+             let side: CatFaceSide = index == 0 ? .left : .right
+             let frame = CatFaceGeometry.eyeFrame(side: side, eye: appearance.eye(side))
+-            arcBounds.append(arc.bounds)
+             var profile = ArcProfile()
+             profile.bounds = canvasBounds(arc.bounds)
+             describe("\(side) closed lid", arc.bounds, reference: reference)
+@@ -385,31 +393,19 @@
+             result.arcs[side] = profile
+         }
+ 
+-        let corals = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
+-            tones[$0, $1] == .coral
+-        }
+-        if let nose = corals.first {
++        let features = faceFeatures(bitmap: bitmap, tones: tones, screen: screen, excluding: arcs.map(\.bounds))
++        if let nose = features.nose {
+             describe("nose", nose.bounds, reference: reference)
+             print("  nose color \(meanColor(nose.pixels, bitmap: bitmap))")
+             result.features["nose"] = featureProfile(nose)
+         }
+-        let creams = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 150) { x, y in
+-            tones[x, y] == .cream && !arcBounds.contains { $0.insetBy(dx: -2, dy: -2).contains(CGPoint(x: x, y: y)) }
+-        }
+-        let isMouth = { (c: Component) in abs(c.bounds.midX - screen.midX) < screen.width * 0.1 }
+-        var mouth = Component()
+-        creams.filter(isMouth).forEach { part in part.pixels.forEach { mouth.add($0.0, $0.1) } }
+-        if mouth.count > 0 {
++        if let mouth = features.mouth {
+             describe("mouth", mouth.bounds, reference: reference)
+             print("  mouth color \(meanColor(mouth.pixels, bitmap: bitmap))")
+             print("  mouth columns (cv x: y ranges in cv) " + columnProfile(mouth, reference: reference, samples: 15))
+             result.features["mouth"] = featureProfile(mouth)
+         }
+-        let whiskers = creams.filter { !isMouth($0) }
+-            .sorted { ($0.bounds.midX < screen.midX ? 0 : 1, $0.bounds.minY) < ($1.bounds.midX < screen.midX ? 0 : 1, $1.bounds.minY) }
+-        for (index, whisker) in whiskers.enumerated() {
+-            let side = whisker.bounds.midX < screen.midX ? "left" : "right"
+-            let name = "\(side) whisker \(index % 3 + 1)"
++        for (name, whisker) in features.whiskers {
+             describe(name, whisker.bounds, reference: reference)
+             print("  centerline (cv x, cv y, thickness px) " + columnProfile(whisker, reference: reference, samples: 9))
+             result.features[name] = featureProfile(whisker)

@@ -23,6 +23,44 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         XCTAssertEqual(harness.traces.events.filter { $0.point == .speechStarted }.compactMap(\.sentenceOrdinal), [0, 1, 2])
         await harness.viewModel.shutdown()
     }
+    func testSentenceFailureAndCancellationCloseMouthAndRejectOldPlayerEvents() async {
+        for failure in [false, true] {
+            let player = ControlledPCMPlayer()
+            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, voice: { .f1 },
+                synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
+            let harness = PlaybackIntegrationHarness(sentenceSpeaker: speaker, mode: .sentencePrefetch)
+            let run = Task { await harness.viewModel.submitTypedText("質問") }
+            await harness.reply.waitUntilRequested()
+            await harness.reply.yield("最初。続き")
+            await player.waitForCalls(1)
+            await robotDrain()
+            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .wide)
+            if failure { player.fail(0) }
+            else { await harness.viewModel.toggleListening() }
+            await run.value
+            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .closed)
+            XCTAssertEqual(harness.viewModel.viewState.phase, failure ? .failed(.speechSynthesisFailed) : .paused)
+            let next = Task { await harness.viewModel.submitTypedText("次の質問") }
+            await harness.reply.waitUntilRequested(2)
+            player.emit(.started, index: 0)
+            player.complete(0)
+            await robotDrain()
+            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .closed)
+            await harness.reply.yield("新しい返答。")
+            await harness.reply.finish()
+            await player.waitForCalls(2)
+            await robotDrain()
+            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .wide, "New replies restart their own mouth sequence")
+            player.emit(.finished, index: 0)
+            await robotDrain()
+            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .wide)
+            player.complete(1)
+            await next.value
+            XCTAssertEqual(harness.viewModel.viewState.mouthPose, .closed)
+            await harness.viewModel.shutdown()
+        }
+    }
+
     func testGenerationFailureStopsPlaybackAndKeepsError() async throws {
         let reply = ControlledReply()
         let player = ControlledPCMPlayer()
@@ -78,12 +116,13 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         XCTAssertEqual(result, "確定。最後。")
 
         let store = InMemoryConversationMemoryStore()
-        let gemma = GemmaConversationService(runtime: StubGemmaRuntime(reply: StubGemmaSession(chunks: ["iPhoneです。Bluetoothです。"])), memoryStore: store)
+        let claude = makeClaudeService(
+            StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["iPhoneです。", "Bluetoothです。"])]), store: store)
         let immediate = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, voice: { .f1 }, synthesize: { text, _ in
             XCTAssertFalse(text.contains("iPhone")); XCTAssertFalse(text.contains("Bluetooth"))
             return SpeechPCM(samples: [1], sampleRate: 24_000)
         })
-        let actual = ReplyPlaybackCoordinator(reply: gemma, speaker: immediate, mode: .sentencePrefetch)
+        let actual = ReplyPlaybackCoordinator(reply: claude, speaker: immediate, mode: .sentencePrefetch)
         let original = try await actual.run(prompt: "説明して", trace: nil, onUpdate: { _ in })
         let saved = await store.load()
         XCTAssertEqual(original, "iPhoneです。Bluetoothです。")
@@ -115,6 +154,10 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let result = try await run.value
         XCTAssertEqual(result, final)
         XCTAssertEqual(spoken, sentences)
+        XCTAssertEqual(updates.starts, [.full])
+        XCTAssertEqual(updates.finishes, [.full])
+        XCTAssertEqual(updates.sentenceStarts, Array(sentences.indices))
+        XCTAssertEqual(updates.sentenceFinishes, Array(sentences.indices))
     }
     func testOldTraceDecodesWithoutSentenceOrdinal() throws {
         let data = Data(#"{"id":"00000000-0000-0000-0000-000000000001","point":"speechStarted","at":1,"part":"first"}"#.utf8)

@@ -1,0 +1,16 @@
+{
+  "changedInputs": [
+    "CatRobot/Conversation/UI/ConversationView.swift",
+    "CatRobotTests/App/AccessibilityActivationSupport.swift",
+    "CatRobotTests/Conversation/Services/Claude/ConversationInstructionsTests.swift",
+    "CatRobotTests/RobotLink/RobotPresentationTests.swift",
+    "tools/face-size-tuner/README.md",
+    "tools/face-size-tuner/Sources/FaceSizePreview.swift",
+    "tools/face-size-tuner/Tests/FaceSizeTunerTests.swift"
+  ],
+  "productChangesAreCommentsOnly": [
+    "CatRobot/Conversation/UI/ConversationView.swift",
+    "tools/face-size-tuner/Sources/FaceSizePreview.swift"
+  ],
+  "verifiedInputs": 246
+}

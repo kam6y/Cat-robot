@@ -1,0 +1,47 @@
+## r1-red.log
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards]' started.
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:370: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertTrue failed - error-appears must preserve the active editor
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:371: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("2") - error-appears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:372: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("4") - error-appears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:370: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertTrue failed - error-clears must preserve the active editor
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:371: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("2") - error-clears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:372: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("4") - error-clears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:370: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertTrue failed - memory-warning-appears must preserve the active editor
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:371: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("2") - memory-warning-appears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:372: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("4") - memory-warning-appears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:370: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertTrue failed - memory-warning-clears must preserve the active editor
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:371: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("2") - memory-warning-clears
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:372: error: -[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards] : XCTAssertEqual failed: ("7") is not equal to ("4") - memory-warning-clears
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards]' failed (4.421 seconds).
+	 Executed 1 test, with 12 failures (0 unexpected) in 4.421 (4.430) seconds
+	 Executed 1 test, with 12 failures (0 unexpected) in 4.421 (4.432) seconds
+	 Executed 1 test, with 12 failures (0 unexpected) in 4.421 (4.433) seconds
+	/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_20-37-24-+0900.xcresult
+** TEST FAILED **
+## r1-focus-red.log
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears]' started.
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:401: error: -[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears] : XCTAssertTrue failed - Clearing the error on Send must keep the same editor
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:402: error: -[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears] : XCTAssertFalse failed - Send must dismiss focus without a replacement input taking it back
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift:403: error: -[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears] : XCTAssertEqual failed: ("送信前の下書き") is not equal to ("")
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears]' failed (20.451 seconds).
+	 Executed 1 test, with 3 failures (0 unexpected) in 20.451 (20.467) seconds
+	 Executed 1 test, with 3 failures (0 unexpected) in 20.451 (20.470) seconds
+	 Executed 1 test, with 3 failures (0 unexpected) in 20.451 (20.472) seconds
+	/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_20-53-56-+0900.xcresult
+** TEST FAILED **
+## r1-green.log
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears]' started.
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears]' passed (20.065 seconds).
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsIdentityWhenViewportAndWarningsChange]' started.
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsIdentityWhenViewportAndWarningsChange]' passed (3.428 seconds).
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards]' started.
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards]' passed (3.783 seconds).
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedInputKeepsChipsClearOfTheEditorInAShortViewport]' started.
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedInputKeepsChipsClearOfTheEditorInAShortViewport]' passed (0.887 seconds).
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedInputUsesTheRemainingHeightForTheFaceAtStandardSize]' started.
+Test Case '-[CatRobotTests.FaceConversationPresentationTests testTypedInputUsesTheRemainingHeightForTheFaceAtStandardSize]' passed (0.796 seconds).
+	 Executed 5 tests, with 0 failures (0 unexpected) in 28.958 (28.972) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 28.958 (28.975) seconds
+	 Executed 5 tests, with 0 failures (0 unexpected) in 28.958 (28.980) seconds
+	/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_20-59-29-+0900.xcresult
+** TEST SUCCEEDED **

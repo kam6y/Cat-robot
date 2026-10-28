@@ -1,0 +1,22 @@
+{
+  "bundleIdentifier": "com.kamby.CatFaceSizeTuner",
+  "sourceRevision": "be3d780",
+  "version": "1.0",
+  "build": "1",
+  "signatureVerified": true,
+  "executableSHA256": "67ecaa75a22f1b787924a6fdc5911e8ca251f9910c145c1ca6ef37e88f6127fc",
+  "implementationSHA256": "47e8515f71844c766a173987f2da1f5da4a481e4084d1046048edc351e680573",
+  "recordedAt": "2026-10-27T14:36:31.023710+00:00",
+  "physicalDevice": "iPhone 16 Pro",
+  "installed": true,
+  "installedAppConfirmed": true,
+  "launched": true,
+  "processIdentifier": 11346,
+  "mainAppInstallationRecordUnchanged": true,
+  "mainAppReinstalled": false,
+  "mainAppDataContentsInspected": false,
+  "hardwareCommandsPerformed": false,
+  "firmwareChanged": false,
+  "deviceScreenVisuallyObserved": false,
+  "rawEvidenceDirectory": "/private/tmp/cat-face-size-tuner-20261027"
+}

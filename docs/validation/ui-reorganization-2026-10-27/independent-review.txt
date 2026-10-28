@@ -1,0 +1,7 @@
+Independent fresh-context review, base 9ee8dac, working branch feature/ui-reorganization.
+Reviewer: ui_whole_branch_review (gpt-6-astra).
+Critical: none. Important: manual VoiceOver reply access lost when caption removed; actual voice/typed completion passes through thinking so old announcement policy does not guarantee final text. Fix: on-demand cat custom content for resting/paused/failed phases. Minor: none.
+Additional validation: xxxLarge + typed input + paused/reconnect/heat chips at 240pt viewport; possible overlap not confirmed by source alone.
+Declined: existing idle state-machine baseline; unchanged face/motion/BLE/calibration/capture/speech internals; iPad excluded by design. Physical keyboard, VoiceOver and dismiss gestures require attended device verification.
+
+Resolution by implementer (not a second independent review): source commit2431a29. VoiceOver state and actual custom-content regressions pass. Combined typed check confirmed card overlap; subsequent visual/visible-editor checks confirmed face shrink and caret loss. All corrected after failing regressions. Final suite:830 tests,828passed,2hardware skips,0failures. No deferred minors. Physical device interaction remains unverified.

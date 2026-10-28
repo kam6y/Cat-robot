@@ -1,0 +1,10 @@
+Tool: built-in image_gen.imagegen
+Output: happy-b.png
+Input reference: neutral-b.png
+transparent_background: false
+User requested larger, brighter eyes for happiness and approved this revision on 2026-10-26.
+
+Prompt:
+Edit the referenced user-approved cat robot design B into a happy expression. Preserve the physical black ears, landscape phone, bezel, camera island, black neck, gray background, composition, tiny coral nose, closed cream cat smile, and thin cream whiskers.
+Change the eyes only: keep them ROUND and fully OPEN, enlarge them about 18%, make the amber-gold irises brighter with a restrained warm glow around their edges, and add a small white sparkle and round catchlight inside each broad black pupil. Make the pupils slightly larger too, so the expression feels delighted and affectionate rather than surprised.
+No narrowed or crescent eyes. No open mouth. No extra eyebrows, floating stars, hearts, or text. Pure black screen with only facial features; no drawn ears or head outline inside the display. Clean simple vector-like graphics. Produce one image.

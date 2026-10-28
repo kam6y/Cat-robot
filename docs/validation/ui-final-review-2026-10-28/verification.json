@@ -1,0 +1,85 @@
+{
+  "recordedAt": "2026-10-27T15:45:04.604601+00:00",
+  "reviewBase": "9ee8dacbe31e2bc3295eaa8f623049cc771bfb64",
+  "reviewHead": "d3e2fb096179d64a62fc0a847bd723ad699a2af2",
+  "cleanupCommit": "b38dc118b16fac01fe81d121dee516cc13e483b5",
+  "codexReview": {
+    "critical": 0,
+    "important": 0,
+    "minor": 1
+  },
+  "claudeSimplify": {
+    "actualClaudeCodeSession": true,
+    "parallelAngles": [
+      "reuse",
+      "simplification",
+      "efficiency",
+      "altitude"
+    ],
+    "correctnessFindings": 0,
+    "important": 0,
+    "cleanupCandidates": 15
+  },
+  "mutualReceivingCompleted": true,
+  "adopted": [
+    "C1 option b (both-side comments)",
+    "C2 narrowed with fixed standard/a11y anchors",
+    "C3 exact-target rendering helper",
+    "C4 current three UI status messages",
+    "C7 shared test dependency notes"
+  ],
+  "notImplemented": [
+    "R1",
+    "C1 shared view abstraction",
+    "C5",
+    "C6",
+    "C8",
+    "C9",
+    "C10",
+    "C11",
+    "C12",
+    "C13",
+    "C14",
+    "C15"
+  ],
+  "productBehaviorChanged": false,
+  "mainFaceScale": 0.8,
+  "tunerBaselineScale": 0.85,
+  "verifiedInputs": 246,
+  "verifiedInputsMatchCleanupCommit": true,
+  "tests": {
+    "main": {
+      "totalTestCount": 14,
+      "passedTests": 14,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "startTime": 1793115361.026,
+      "finishTime": 1793115525.256
+    },
+    "tuner": {
+      "totalTestCount": 5,
+      "passedTests": 5,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "startTime": 1793115549.554,
+      "finishTime": 1793115660.329
+    }
+  },
+  "fullMainSuiteRerun": false,
+  "initialMainTestAttempt": {
+    "exitCode": 74,
+    "testsStarted": false,
+    "reason": "Package.swift missing in old /private/tmp/cat-ios-link/packages checkouts",
+    "recovery": "Used existing clean DerivedData/SourcePackages at the exact Package.resolved revisions; no dependency version or project change"
+  },
+  "captureReliabilityFixed": false,
+  "captureObservation": "Current standard-text fullscreen includes the face; current maximum-text fullscreen omits it. Previous evidence showed the reverse. Cause remains undetermined; no pixel-equivalence or reliable-render claim.",
+  "physicalDeviceOperations": false,
+  "applicationInstalled": false,
+  "hardwareCommandsPerformed": false,
+  "merged": false,
+  "pushed": false,
+  "rawEvidenceDirectory": "/private/tmp/cat-ui-final-review-20261028"
+}

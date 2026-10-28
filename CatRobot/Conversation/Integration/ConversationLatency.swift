@@ -270,13 +270,13 @@ private final class OSConversationLatencySignposter: ConversationLatencySignpost
     }
 
     private let signposter: OSSignposter
+    private let logger: Logger
     private var activeIntervals: [ConversationLatencySignpostHandle: ActiveInterval] = [:]
 
     init() {
-        signposter = OSSignposter(
-            subsystem: Bundle.main.bundleIdentifier ?? "com.kamby.CatRobot",
-            category: "ConversationLatency"
-        )
+        let subsystem = Bundle.main.bundleIdentifier ?? "com.kamby.CatRobot"
+        signposter = OSSignposter(subsystem: subsystem, category: "ConversationLatency")
+        logger = Logger(subsystem: subsystem, category: "ConversationLatency")
     }
 
     func begin(
@@ -359,6 +359,29 @@ private final class OSConversationLatencySignposter: ConversationLatencySignpost
                 interval.state,
                 "turnID=\(context.turnID) at=\(timestamp) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval) elapsedFromBoundary=\(elapsedFromBoundary) elapsedFromASR=\(elapsedFromASR) outcome=\(outcomeCode)"
             )
+        }
+
+        // Signposts only live in the device's in-memory ring buffer (about the last
+        // 30 seconds), so a whole session cannot be recovered with `log collect`.
+        // This default-level entry is persisted to the log store and carries the
+        // same numbers; it contains no conversation text.
+        logger.notice(
+            "latency metric=\(metric.logName, privacy: .public) turnID=\(context.turnID, privacy: .public) elapsedFromBoundary=\(elapsedFromBoundary, privacy: .public) elapsedFromASR=\(elapsedFromASR, privacy: .public) outcome=\(outcomeCode, privacy: .public)"
+        )
+    }
+}
+
+private extension ConversationLatencyMetric {
+    var logName: String {
+        switch self {
+        case .fastFirstCaption:
+            "FastPathFirstCaption"
+        case .classifiedFirstCaption:
+            "ClassifiedFirstCaption"
+        case .fastSpeechStart:
+            "FastPathSpeechStart"
+        case .classifiedSpeechStart:
+            "ClassifiedSpeechStart"
         }
     }
 }

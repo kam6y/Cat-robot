@@ -3,7 +3,7 @@ import XCTest
 @testable import CatRobot
 
 final class AppIdentityTests: XCTestCase {
-    func testIdentityPrivacyCopyAndLandscapeOnlyMetadata() {
+    func testIdentityPrivacyCopyAndFixedLeftCameraMetadata() {
         XCTAssertEqual(AppIdentity.displayName, "Cat Robot")
         XCTAssertEqual(Bundle.main.bundleIdentifier, "com.kamby.CatRobot")
         XCTAssertEqual(
@@ -18,7 +18,6 @@ final class AppIdentityTests: XCTestCase {
         XCTAssertEqual(
             Set(orientations ?? []),
             Set([
-                "UIInterfaceOrientationLandscapeLeft",
                 "UIInterfaceOrientationLandscapeRight"
             ])
         )

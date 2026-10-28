@@ -1,0 +1,50 @@
+Initial probe assumptions were corrected: search child presenters; popovers omit a cancel button.
+Final coverage uses app labels, actual Back activation and accessibility escape to cancel.
+
+## calibration-controls-probe.log
+CALIBRATION_CONTROL label=停止 type=_UIModernBarButton frame=(798.0, 33.0, 32.0, 26.33333333333333) isElement=true
+CALIBRATION_CONTROL label=戻る type=_UIModernBarButton frame=(44.0, 32.333333333333336, 32.0, 27.666666666666664) isElement=true
+CALIBRATION_CONTROL label=首の動作を停止 type=_UIButtonBarButton frame=(796.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_CONTROL label=ロボットの設定へ戻る type=_UIButtonBarButton frame=(42.0, 28.0, 36.0, 36.0) isElement=true
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/RobotLink/RobotPresentationTests.swift:149: error: -[CatRobotTests.RobotPresentationTests testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns] : XCTUnwrap failed: expected non-nil value of type "UIViewController" - Back must ask before discarding unsaved changes
+	 Executed 1 test, with 1 failure (0 unexpected) in 14.519 (14.555) seconds
+	 Executed 1 test, with 1 failure (0 unexpected) in 14.519 (14.563) seconds
+	 Executed 1 test, with 1 failure (0 unexpected) in 14.519 (14.566) seconds
+	/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_21-06-00-+0900.xcresult
+** TEST FAILED **
+## calibration-controls-navigation.log
+CALIBRATION_CONTROL label=停止 type=_UIModernBarButton frame=(798.0, 33.0, 32.0, 26.33333333333333) isElement=true
+CALIBRATION_CONTROL label=戻る type=_UIModernBarButton frame=(44.0, 32.333333333333336, 32.0, 27.666666666666664) isElement=true
+CALIBRATION_CONTROL label=首の動作を停止 type=_UIButtonBarButton frame=(796.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_CONTROL label=ロボットの設定へ戻る type=_UIButtonBarButton frame=(42.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_BACK titleIsDescendantOfAppControl=true
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/RobotLink/RobotPresentationTests.swift:161: error: -[CatRobotTests.RobotPresentationTests testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns] : failed - そのまま編集 is not reachable through accessibility (runtime: _AXSApplicationAccessibilitySetEnabled+_AXSSetAutomationEnabled)
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/RobotLink/RobotPresentationTests.swift:163: error: -[CatRobotTests.RobotPresentationTests testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns] : XCTAssertTrue failed
+CALIBRATION_CONTROL label=停止 type=_UIModernBarButton frame=(798.0, 35.333333333333336, 32.0, 21.666666666666664) isElement=true
+CALIBRATION_CONTROL label=戻る type=_UIModernBarButton frame=(44.0, 35.0, 32.0, 22.66666666666667) isElement=true
+CALIBRATION_CONTROL label=首の動作を停止 type=_UIButtonBarButton frame=(796.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_CONTROL label=ロボットの設定へ戻る type=_UIButtonBarButton frame=(42.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_BACK titleIsDescendantOfAppControl=true
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/RobotLink/RobotPresentationTests.swift:161: error: -[CatRobotTests.RobotPresentationTests testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns] : failed - そのまま編集 is not reachable through accessibility (runtime: _AXSApplicationAccessibilitySetEnabled+_AXSSetAutomationEnabled)
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/RobotLink/RobotPresentationTests.swift:163: error: -[CatRobotTests.RobotPresentationTests testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns] : XCTAssertTrue failed
+	 Executed 1 test, with 4 failures (0 unexpected) in 45.164 (45.172) seconds
+	 Executed 1 test, with 4 failures (0 unexpected) in 45.164 (45.176) seconds
+	 Executed 1 test, with 4 failures (0 unexpected) in 45.164 (45.178) seconds
+	/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_21-10-07-+0900.xcresult
+** TEST FAILED **
+## calibration-controls-escape.log
+CALIBRATION_CONTROL label=停止 type=_UIModernBarButton frame=(798.0, 33.0, 32.0, 26.33333333333333) isElement=true
+CALIBRATION_CONTROL label=戻る type=_UIModernBarButton frame=(44.0, 32.333333333333336, 32.0, 27.666666666666664) isElement=true
+CALIBRATION_CONTROL label=首の動作を停止 type=_UIButtonBarButton frame=(796.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_CONTROL label=ロボットの設定へ戻る type=_UIButtonBarButton frame=(42.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_BACK titleIsDescendantOfAppControl=true
+CALIBRATION_CONTROL label=停止 type=_UIModernBarButton frame=(798.0, 35.333333333333336, 32.0, 21.666666666666664) isElement=true
+CALIBRATION_CONTROL label=戻る type=_UIModernBarButton frame=(44.0, 35.0, 32.0, 22.66666666666667) isElement=true
+CALIBRATION_CONTROL label=首の動作を停止 type=_UIButtonBarButton frame=(796.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_CONTROL label=ロボットの設定へ戻る type=_UIButtonBarButton frame=(42.0, 28.0, 36.0, 36.0) isElement=true
+CALIBRATION_BACK titleIsDescendantOfAppControl=true
+	 Executed 1 test, with 0 failures (0 unexpected) in 12.769 (12.847) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 12.769 (12.848) seconds
+	 Executed 1 test, with 0 failures (0 unexpected) in 12.769 (12.850) seconds
+	/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_21-15-21-+0900.xcresult
+** TEST SUCCEEDED **

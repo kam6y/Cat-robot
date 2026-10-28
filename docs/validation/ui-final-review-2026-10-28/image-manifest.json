@@ -1,0 +1,34 @@
+[
+  {
+    "path": "images/standard-75-controls.png",
+    "sourceAttachment": "B5A0FD98-AD0B-45B0-8C27-C3F7C59AA48B.png",
+    "sha256": "17cc0711af110b4294d81ab08756e238db0871b260f200cea8ccd13dd01ca140",
+    "inspected": true,
+    "usableDisplayEvidence": true,
+    "caption": "標準文字・75%の操作画面"
+  },
+  {
+    "path": "images/standard-75-fullscreen.png",
+    "sourceAttachment": "374854BC-B610-4C0E-A625-B2167C94B2B0.png",
+    "sha256": "50946cbb46d04e2785afa664f7410ceede99bcb685df5b73b6342befc8e1b41e",
+    "inspected": true,
+    "usableDisplayEvidence": true,
+    "caption": "標準文字・75%の全画面"
+  },
+  {
+    "path": "images/largest-text-75-controls.png",
+    "sourceAttachment": "96922A1E-01E5-457B-A788-9D6B13D7792C.png",
+    "sha256": "70961d1d77403549b2ba213a1adbd79db59dec1e3c82771505558b5ecec04ef3",
+    "inspected": true,
+    "usableDisplayEvidence": true,
+    "caption": "最大文字・75%の操作画面。任意改善R1は残る"
+  },
+  {
+    "path": "images/largest-text-fullscreen-incomplete.png",
+    "sourceAttachment": "C9121859-AE0F-49F0-A069-C8421AE31AE6.png",
+    "sha256": "93affda4a0963a77d6f37df6f454087d70a6b742c1f4e9e8cb9d8442ae8873d6",
+    "inspected": true,
+    "usableDisplayEvidence": false,
+    "caption": "最大文字の全画面キャプチャで顔が欠落。表示成功の証拠にはしない"
+  }
+]

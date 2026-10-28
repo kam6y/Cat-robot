@@ -2,6 +2,97 @@ import XCTest
 @testable import CatRobot
 
 final class ConversationViewStateTests: XCTestCase {
+
+    func testOnlyListeningShowsAMicrophoneChipDuringOrdinaryConversation() {
+        for phase in [ConversationPhase.idle, .preparing, .listening, .thinking, .speaking, .clarifying, .paused] {
+            var state = ConversationViewState.listening
+            state.phase = phase
+            state.caption = "前の返事"
+            state.provisionalTranscript = "ねこちゃん"
+            XCTAssertEqual(state.statusChips.map(\.title), phase == .listening ? ["聞き取り中"] : [], "\(phase)")
+            XCTAssertEqual(state.faceOpacity, 1, "\(phase)")
+        }
+    }
+
+    func testListeningChipFollowsCaptureAndSuppressesBlockedOrSleepingStates() {
+        var state = ConversationViewState.listening
+        state.inactivity = .sleepy
+        XCTAssertEqual(state.statusChips.map(\.title), ["聞き取り中"])
+        state.inactivity = .sleeping
+        XCTAssertEqual(state.statusChips.map(\.title), ["待機中・タップで起こす"])
+        state.inactivity = .awake
+        for memory in [ConversationMemoryState.forgetting, .forgetFailed(.deleteFailed), .restoreFailed(.readFailed)] {
+            state.memoryState = memory
+            XCTAssertEqual(state.statusChips, [])
+        }
+        state.memoryState = .unsaved
+        state.isRobotReconnecting = true
+        XCTAssertEqual(state.statusChips.map(\.title), ["聞き取り中", "ハードを再接続中"])
+        state.memoryState = .ready
+        state.isRobotReconnecting = false
+        for phase in [ConversationPhase.thinking, .speaking, .paused, .failed(.modelBusy), .listening] {
+            state.phase = phase
+            XCTAssertEqual(state.statusChips.map(\.title), phase == .listening ? ["聞き取り中"] : [])
+        }
+    }
+
+    func testUserPauseChipNeedsTapPauseThatCanResume() {
+        var state = ConversationViewState.idle
+        state.phase = .paused
+        XCTAssertEqual(state.statusChips, [])
+        state.isAwaitingTapToResume = true
+        XCTAssertEqual(state.statusChips, [.paused])
+        XCTAssertEqual(state.statusChips.map(\.title), ["一時停止中・猫をタップで再開"])
+        XCTAssertEqual(state.faceOpacity, 0.5)
+        state.memoryState = .unsaved
+        XCTAssertTrue(state.showsTapToResume, "保存再試行の通知は猫の再開を妨げない")
+        for memory in [ConversationMemoryState.forgetting, .forgetFailed(.deleteFailed), .restoreFailed(.readFailed)] {
+            state.memoryState = memory
+            XCTAssertEqual(state.statusChips, [], "\(memory)")
+            XCTAssertEqual(state.faceOpacity, 1, "\(memory)")
+        }
+        state.memoryState = .ready
+        state.phase = .thinking
+        XCTAssertFalse(state.showsTapToResume, "タップ停止後の文字への返答中は一時停止を表示しない")
+        XCTAssertEqual(state.faceOpacity, 1)
+    }
+
+    func testSleepingSuppressesPauseAndLookButKeepsWarnings() {
+        var state = ConversationViewState.idle
+        state.phase = .paused
+        state.isAwaitingTapToResume = true
+        state.isLooking = true
+        state.isRobotReconnecting = true
+        state.isFaceTrackingPausedForHeat = true
+        state.inactivity = .sleeping
+        XCTAssertEqual(state.statusChips, [.sleeping, .robotReconnecting, .trackingPausedForHeat])
+        XCTAssertEqual(state.statusChips.first?.title, "待機中・タップで起こす")
+        XCTAssertEqual(state.faceOpacity, 1)
+    }
+
+    func testStatusChipOrderAndCopy() {
+        var state = ConversationViewState.thinking
+        state.isLooking = true
+        state.isRobotReconnecting = true
+        state.isFaceTrackingPausedForHeat = true
+        XCTAssertEqual(state.statusChips, [.looking, .robotReconnecting, .trackingPausedForHeat])
+        XCTAssertEqual(state.statusChips.map(\.title), ["見ています", "ハードを再接続中", "熱のため顔追尾を一時停止"])
+        XCTAssertEqual(state.statusChips.map(\.isWarning), [false, true, true])
+        XCTAssertEqual(state.statusChips.map(\.accessibilityIdentifier),
+                       ["statusChip.looking", "statusChip.robotReconnecting", "statusChip.trackingPausedForHeat"])
+    }
+
+    func testHeldExpressionReturnsToLatestPhaseWhenCleared() {
+        var state = ConversationViewState.thinking
+        XCTAssertEqual(state.faceExpression, .thinking)
+        state.heldExpression = .happy
+        XCTAssertEqual(state.faceExpression, .happy)
+        state.phase = .listening
+        XCTAssertEqual(state.faceExpression, .happy)
+        state.heldExpression = nil
+        XCTAssertEqual(state.faceExpression, .listening)
+    }
+
     func testListeningCopySeparatesMicrophoneFromAssistantActivity() {
         let state = ConversationViewState.listening
         XCTAssertEqual(state.microphoneStatus, "端末上で聞き取り中")

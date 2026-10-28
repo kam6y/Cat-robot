@@ -1,0 +1,8 @@
+Tool: built-in image_gen.imagegen
+Input: ../face-expression-2026-10-26/renders/round-8/canvas-sleepy-closed.png
+Output: sleeping-draft.png
+
+Use case: precise-object-edit. Asset type: a clean flat vector-style draft for the new "sleeping" expression of an existing cat robot screen, to be manually reconstructed as SwiftUI vector paths.
+Input image: edit target, the current 1280×720 sleepy expression canvas.
+Change only the eyes so this cat is fully asleep. Replace both half-open yellow eyes, black pupils and white highlights with two completely closed relaxed eyelids: simple warm amber-gold gently bowed thin tapered arcs, each keeping the original eye's horizontal span and symmetrical placement, curving downward in the middle like a calm closed eye. No visible eyeball, pupil or catchlight. The closed eyelids should sit near the lower part of the existing eyes, around y=420px, with outer endpoints around y=390px, and thin tapered tips. Match the existing flat vector graphic language, graceful curves with a rounded 8–12px central stroke, no glow or texture.
+Preserve the exact solid black background, coral triangular nose, cream small W cat mouth, all six cream tapered whiskers, their positions, scale, geometry and colors; preserve overall spacing and the full 16:9 canvas. No drawn head outline, ears, fur, cheeks, body, Z letters, symbols, text, border, device, shadows or extra decorative objects. One single face, centered, not a grid. This is quiet deep sleeping, distinct from half-open sleepy.

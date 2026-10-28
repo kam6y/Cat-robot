@@ -1,0 +1,138 @@
+[
+  {
+    "name": "failed",
+    "file": "images/failed.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "57041490979418ed3d7a8ae017b1a6436d6b3d24354cdaaca554f21a8f6a6301"
+  },
+  {
+    "name": "maximum-type",
+    "file": "images/maximum-type.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "f23a8496a3000afc814253fe9ce5434635c302ec71757bad97bdc7eb72a3608a"
+  },
+  {
+    "name": "maximum-type-typed",
+    "file": "images/maximum-type-typed.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "dfae70f097fe830c6647a1bca3194a479c20b101fcda50f43c6bbb7a496f263a"
+  },
+  {
+    "name": "normal",
+    "file": "images/normal.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "b2c2d04ad4d5d3309a4b02a3d3614808248e7b590f3e35c85dc718517eac4af0"
+  },
+  {
+    "name": "restore",
+    "file": "images/restore.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "7aa4d748e9911e5d14bd1422cb190b2c605fbf77258f1467faedaa085a47b19e"
+  },
+  {
+    "name": "settings-calibration-returned",
+    "file": "images/settings-calibration-returned.png",
+    "test": "RobotPresentationTests/testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns()",
+    "width_pixels": 2622,
+    "height_pixels": 1206,
+    "sha256": "b6b7f16634228b5d343f5a4bcc04a00609c6e4d1499f6c504bb8c69789299462"
+  },
+  {
+    "name": "settings-calibration-text-size-accessibility5",
+    "file": "images/settings-calibration-text-size-accessibility5.png",
+    "test": "RobotPresentationTests/testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns()",
+    "width_pixels": 2622,
+    "height_pixels": 1206,
+    "sha256": "2b6350ca99b99b67e1922e301af5962d696c62e3ad00f4705fab7f8def8469f2"
+  },
+  {
+    "name": "settings-calibration-text-size-large",
+    "file": "images/settings-calibration-text-size-large.png",
+    "test": "RobotPresentationTests/testCalibrationCoversWholeSettingsSheetAndReturnsToTheColumns()",
+    "width_pixels": 2622,
+    "height_pixels": 1206,
+    "sha256": "216398aca7eb2aaf342e03e23cf4d16022de8f1bf27265ee6d058779e41473f0"
+  },
+  {
+    "name": "typed",
+    "file": "images/typed.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "480d907dc30c8f2377b643cf7f44d2b4371ba60519386124f23d7997b0119179"
+  },
+  {
+    "name": "typed-card-error-appears",
+    "file": "images/typed-card-error-appears.png",
+    "test": "FaceConversationPresentationTests/testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "1cb075826686f93a6637072d8860e2fe674ef97de5680030fdef1debe0beeee5"
+  },
+  {
+    "name": "typed-card-error-clears",
+    "file": "images/typed-card-error-clears.png",
+    "test": "FaceConversationPresentationTests/testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "8cb41551008e7e5068fbd8f1ef8a32539ff9d6c23ce9fd1ee4def151a3d5213e"
+  },
+  {
+    "name": "typed-card-memory-warning-appears",
+    "file": "images/typed-card-memory-warning-appears.png",
+    "test": "FaceConversationPresentationTests/testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "f70e4437338b34974dd18697aa26d4bfa7982768d22661e683be92c80f875bc0"
+  },
+  {
+    "name": "typed-card-memory-warning-clears",
+    "file": "images/typed-card-memory-warning-clears.png",
+    "test": "FaceConversationPresentationTests/testTypedEditorKeepsItsSelectionAcrossErrorAndMemoryCards()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "8cb41551008e7e5068fbd8f1ef8a32539ff9d6c23ce9fd1ee4def151a3d5213e"
+  },
+  {
+    "name": "typed-error-send-focus",
+    "file": "images/typed-error-send-focus.png",
+    "test": "FaceConversationPresentationTests/testSendingFromAnErrorKeepsTheEditorUnfocusedWhenTheErrorClears()",
+    "width_pixels": 874,
+    "height_pixels": 402,
+    "sha256": "285c8f8bfac53fc1287e8750bfcfd9bfc5c2678800c4b9806cabdf1ec8ef9d0c"
+  },
+  {
+    "name": "typed-face-size",
+    "file": "images/typed-face-size.png",
+    "test": "FaceConversationPresentationTests/testTypedInputUsesTheRemainingHeightForTheFaceAtStandardSize()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "a4b05dd4837eca3693f685685ee962246859fbdbc552dc0661fd240b47efe2d2"
+  },
+  {
+    "name": "typed-paused-chips-largest-standard-type-short-viewport",
+    "file": "images/typed-paused-chips-largest-standard-type-short-viewport.png",
+    "test": "FaceConversationPresentationTests/testTypedInputKeepsChipsClearOfTheEditorInAShortViewport()",
+    "width_pixels": 852,
+    "height_pixels": 240,
+    "sha256": "51443d4a3a7ccbc0ab843176df81f47cff96554aca001d6a176297c29d36f130"
+  },
+  {
+    "name": "unsaved",
+    "file": "images/unsaved.png",
+    "test": "FaceConversationPresentationTests/testConversationShowsOnlyTheFaceAndNeededChips()",
+    "width_pixels": 852,
+    "height_pixels": 393,
+    "sha256": "e16ccbb0d6461be92715d399b657587595cc1d7ab961dfc9644c9e218939276b"
+  }
+]

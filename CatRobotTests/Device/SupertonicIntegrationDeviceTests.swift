@@ -19,7 +19,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
 #else
         let env = ProcessInfo.processInfo.environment
         guard env["SUPER_INTEGRATION_TESTS"] == "1", let id = env["SUPER_RUN_ID"], UUID(uuidString: id) != nil,
-              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "gemma", "lifecycle", "offline"].contains(selectedStage) else {
+              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "lifecycle"].contains(selectedStage) else {
             throw XCTSkip("Use the dedicated device runner")
         }
         runID = id; stage = selectedStage; executionTimeAllowance = 3600
@@ -27,16 +27,6 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             .appendingPathComponent("SupertonicIntegration/\(id)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try save()
-        if stage == "offline" {
-            print("SUPER_OFFLINE_WAITING \(id)")
-            let gate = directory.appendingPathComponent("offline-confirmed.txt")
-            let deadline = Date().addingTimeInterval(600)
-            while Date() < deadline {
-                if (try? String(contentsOf: gate, encoding: .utf8)) == "offline-user-confirmed\n" { break }
-                try await Task.sleep(for: .seconds(1))
-            }
-            guard (try? String(contentsOf: gate, encoding: .utf8)) == "offline-user-confirmed\n" else { throw XCTSkip("Offline state not confirmed") }
-        }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
@@ -61,19 +51,6 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
                 let rotated = Array(modes[repetition...] + modes[..<repetition])
                 for fixture in SupertonicLatencyFixture.all {
                     for mode in rotated { try await trial(fixture, mode: mode, repetition: repetition, voice: .f1, engine: engine) }
-                }
-            }
-        } else if stage == "gemma" || stage == "offline" {
-            let runtime = LiteRTGemmaRuntime()
-            let warmup = GemmaConversationService(runtime: runtime, memoryStore: InMemoryConversationMemoryStore())
-            await warmup.prewarm()
-            let modes: [ReplyPlaybackMode] = [.firstSentence, .sentencePrefetch]
-            for repetition in 0..<(stage == "offline" ? 1 : 3) {
-                for fixture in (stage == "offline" ? [SupertonicLatencyFixture.all[4]] : SupertonicLatencyFixture.all) {
-                    for mode in (repetition.isMultiple(of: 2) ? modes : modes.reversed()) {
-                        let service = GemmaConversationService(runtime: runtime, memoryStore: InMemoryConversationMemoryStore())
-                        try await trial(fixture, mode: mode, repetition: repetition, voice: .f1, engine: engine, reply: service)
-                    }
                 }
             }
         } else if stage == "lifecycle" {

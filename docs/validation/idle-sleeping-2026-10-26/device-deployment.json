@@ -1,0 +1,16 @@
+{
+  "recordedAt": "2026-10-26T11:43:15.429880+00:00",
+  "sourceHead": "f6eeedadb96e9c13e7ec2c2656114b332ddcd4f2",
+  "appSourceRevision": "f6eeedad-idle-sleeping-working",
+  "appExecutableSHA256": "fd6b0c1531fc23eee44d68b856058d320db5f031f2cd3ac3a8856b0d268d6cc8",
+  "projectSHA256": "2c5b4551b55e873e73e77321a01792e6c889b6b8e87c63d89722ab5482dbd66f",
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "physicalDevice": "iPhone 16 Pro",
+  "installed": true,
+  "normalLaunch": true,
+  "runningProcessConfirmed": true,
+  "manualBehaviorObservation": "pending user observation",
+  "firmwareChanged": false,
+  "productSourceManifestSHA256": "dde3ac6f14444a194216cd0efb2df324f62f551277ad934225abaef91ae15e16",
+  "rawEvidenceDirectory": "/private/tmp/cat-idle-sleeping-device-20261026"
+}

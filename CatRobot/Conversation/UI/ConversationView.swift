@@ -1,7 +1,16 @@
 import Accessibility
 import SwiftUI
 
+/// 会話中は顔と左上の聞き取り状態を見せ、必要に応じて他のチップと下部のお知らせを出す。
+/// 返事の字幕や状態の文字は描かない（値は保存と VoiceOver の読み上げのために状態に残っている）。
 struct ConversationView: View {
+    /// 顔の枠は、会話画面（safe area を含む全画面）の幅・高さそれぞれの80%。
+    static let faceScale: CGFloat = 0.80
+    private static let contentInset: CGFloat = 16
+    private static let menuSize: CGFloat = 44
+    private static let menuTrailingInset: CGFloat = 12
+    private static var chipMenuClearance: CGFloat { menuTrailingInset + menuSize + 8 }
+
     let state: ConversationViewState
     let actions: ConversationActions
     var isOpeningVoiceSettings = false
@@ -9,128 +18,206 @@ struct ConversationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
 
     private var accessibility: ConversationAccessibility {
-        ConversationAccessibility(phase: state.phase)
+        ConversationAccessibility(phase: state.phase, inactivity: state.inactivity)
     }
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemBackground).ignoresSafeArea()
-
-            VStack(spacing: 12) {
-                statusHeader
-                conversationBody
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            Color.black.ignoresSafeArea()
+            conversationBody
         }
         .foregroundStyle(.primary)
         .preferredColorScheme(.dark)
         .statusBarHidden(ConversationPresentationPolicy.isStatusBarHidden)
-        .confirmationDialog("会話を忘れる", isPresented: Binding(
-            get: { state.showsForgetConfirmation },
-            set: { if !$0 { actions.cancelForget() } }
-        ), titleVisibility: .visible) {
-            Button("削除する", role: .destructive, action: actions.confirmForget)
-            Button("キャンセル", role: .cancel, action: actions.cancelForget)
-        } message: {
-            Text("このiPhoneに保存した会話の記憶を削除します。元には戻せません。")
-        }
         .onChange(of: state) { oldState, newState in
-            guard let announcement = ConversationAnnouncementPolicy.announcement(
-                from: oldState,
-                to: newState
-            ) else { return }
+            guard let announcement = ConversationAnnouncementPolicy.announcement(from: oldState, to: newState) else { return }
             AccessibilityNotification.Announcement(announcement).post()
         }
     }
 
-    private var statusHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 18) {
-            Label(state.microphoneStatus, systemImage: microphoneSymbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .accessibilityLabel("マイクの状態")
-                .accessibilityValue(accessibility.microphoneValue)
-
-            Text(state.activityStatus)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("AIの猫の状態")
-                .accessibilityValue(accessibility.assistantStatus)
-
-            Spacer(minLength: 0)
-            Menu {
-                Button("声を選ぶ", systemImage: "speaker.wave.2", action: actions.openVoiceSettings)
-                    .accessibilityIdentifier("openVoiceSettings")
-                if ConversationMemoryPresentation(state: state.memoryState).supportsForget {
-                    Button("会話を忘れる", role: .destructive, action: actions.requestForget)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel("会話の設定")
-            .accessibilityIdentifier("conversationSettings")
-            .disabled(state.memoryState == .forgetting || isOpeningVoiceSettings)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    /// 大きい文字・エラー・記憶カードでは、内容を縦に並べてスクロールさせる。
+    private var prioritizesContent: Bool {
+        dynamicTypeSize.isAccessibilitySize || state.errorMessage != nil
+            || ConversationMemoryPresentation(state: state.memoryState).message != nil
     }
 
-    private var conversationContent: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 18) {
-                catArtwork
-                    .frame(minWidth: 300, maxWidth: .infinity)
-                    .frame(height: 250)
-
-                transcriptContent
-                    .frame(minWidth: dynamicTypeSize.isAccessibilitySize ? 520 : 280,
-                           maxWidth: 520,
-                           alignment: .leading)
+    @ViewBuilder
+    private var conversationBody: some View {
+        if reduceTransparency {
+            layout(usesGlass: false)
+        } else {
+            GlassEffectContainer(spacing: 12) {
+                layout(usesGlass: true)
             }
+        }
+    }
 
+    @ViewBuilder
+    private func layout(usesGlass: Bool) -> some View {
+        if prioritizesContent || state.displaysTypedInput {
+            contentLayout(usesGlass: usesGlass)
+        } else {
+            faceLayout
+        }
+    }
+
+    /// 通常: 全画面の80%の枠に顔を描き、safe area の水平中央・画面の垂直中央に置く。
+    /// 顔サイズ調整ツールの FaceSizePreview も同じ配置式を使うため、式を変えるときは両方を更新する。
+    /// safe area の中で測り、全画面の寸法は大きさに safe area を足して求める（safe area を無視すると insets が 0 になる）。
+    private var faceLayout: some View {
+        GeometryReader { proxy in
+            let insets = proxy.safeAreaInsets
+            catArtwork
+                .frame(width: (proxy.size.width + insets.leading + insets.trailing) * Self.faceScale,
+                       height: (proxy.size.height + insets.top + insets.bottom) * Self.faceScale)
+                .position(x: proxy.size.width / 2, y: (proxy.size.height + insets.bottom - insets.top) / 2)
+        }
+        .overlay(alignment: .topLeading) { overlaidChips }
+        .overlay(alignment: .topTrailing) { topTrailingMenu }
+        .overlay(alignment: .bottom) {
+            if let notice = state.memoryNotice {
+                noticeView(notice).padding(.horizontal, Self.contentInset).padding(.bottom, 7)
+            }
+        }
+    }
+
+    /// 入力欄は同じ位置のビューとして保ち、カードや利用可能な高さに応じて上側だけを切り替える。
+    /// 非同期のエラー・記憶警告でも選択範囲を失わず、入力欄の自動フォーカスをやり直さない。
+    private func contentLayout(usesGlass: Bool) -> some View {
+        VStack(spacing: prioritizesContent ? 8 : 12) {
+            if prioritizesContent {
+                contentFirstUpperContent
+            } else {
+                ViewThatFits(in: .vertical) {
+                    typedUpperContent(scrolls: false)
+                    ScrollView {
+                        typedUpperContent(scrolls: true)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                }
+            }
+            if state.displaysTypedInput {
+                typedInput(usesGlass: usesGlass)
+            }
+        }
+        .padding(.horizontal, Self.contentInset)
+        .padding(.top, prioritizesContent ? 8 : 0)
+        .padding(.bottom, 8)
+        .overlay(alignment: .topTrailing) {
+            if !prioritizesContent {
+                topTrailingMenu
+            }
+        }
+    }
+
+    private func typedUpperContent(scrolls: Bool) -> some View {
+        VStack(spacing: 12) {
+            if !state.statusChips.isEmpty {
+                ConversationStatusChipsView(chips: state.statusChips)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, Self.chipMenuClearance - Self.contentInset)
+                    .padding(.top, 10)
+            }
+            if scrolls {
+                catArtwork.frame(height: 120)
+            } else {
+                catArtwork
+                    .frame(maxWidth: .infinity, minHeight: 44, idealHeight: 44, maxHeight: .infinity)
+                    .padding(.top, state.statusChips.isEmpty ? 18 : 0)
+            }
+            if let notice = state.memoryNotice { noticeView(notice) }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// 大きい文字・エラー・記憶カード: チップと「…」、お知らせ、顔、カードを上側でスクロールさせる。
+    private var contentFirstUpperContent: some View {
+        ScrollView {
             VStack(spacing: 12) {
-                catArtwork
-                    .frame(maxWidth: 420)
-                    .frame(height: 190)
-
-                transcriptContent
-                    .frame(maxWidth: 520, alignment: .leading)
-            }
-        }
-    }
-
-    private var catArtwork: some View {
-        CatFaceView(
-            state: state.catState,
-            mouthPose: state.mouthPose,
-            reduceMotion: reduceMotion
-        )
-    }
-
-    private var transcriptContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !state.caption.isEmpty {
-                Text(state.caption)
-                    .font(.title2.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("猫の返事")
-                    .accessibilityValue(state.caption)
-            }
-
-            if !state.provisionalTranscript.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("聞き取り中…")
-                        .font(.caption.weight(.semibold))
-                    Text(state.provisionalTranscript)
-                        .font(.body)
-                        .lineLimit(2)
+                HStack(alignment: .top, spacing: 12) {
+                    ConversationStatusChipsView(chips: state.statusChips)
+                    Spacer(minLength: 0)
+                    menuButton
                 }
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+                if let notice = state.memoryNotice { noticeView(notice) }
+                catArtwork.frame(height: 120)
+                cards
             }
+            .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+    }
 
+    /// 左上（safe area + 16pt、上10pt）。「…」ボタンに重ならない幅で、入りきらなければ縦に積む。
+    private var overlaidChips: some View {
+        ConversationStatusChipsView(chips: state.statusChips)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, Self.contentInset)
+            .padding(.trailing, Self.chipMenuClearance)
+            .padding(.top, 10)
+    }
+
+    private var topTrailingMenu: some View {
+        menuButton.padding(.trailing, Self.menuTrailingInset).padding(.top, 4)
+    }
+
+    private var menuButton: some View {
+        Menu {
+            Button("文字で話しかける", systemImage: "keyboard", action: actions.showTypedInput)
+                .accessibilityIdentifier("showTypedInput")
+                .disabled(state.isSleeping)
+            Button("設定", systemImage: "gearshape", action: actions.openVoiceSettings)
+                .accessibilityIdentifier("openVoiceSettings")
+            Button("新しい会話を始める", systemImage: "arrow.counterclockwise", action: actions.startNewConversation)
+                .accessibilityIdentifier("startNewConversation")
+                .disabled(state.isSleeping)
+        } label: {
+            Image(systemName: "ellipsis.circle").frame(minWidth: Self.menuSize, minHeight: Self.menuSize)
+        }
+        .accessibilityLabel("会話の設定")
+        .accessibilityIdentifier("conversationSettings")
+        .disabled(state.memoryState == .forgetting || isOpeningVoiceSettings)
+    }
+
+    /// 猫そのものが一時停止 / 再開のボタン。画面が前面にある間は聞き取っているので、止めたいときだけ触る。
+    private var catArtwork: some View {
+        Button(action: actions.toggleListening) {
+            CatFaceView(
+                expression: state.faceExpression,
+                mouthPose: state.mouthPose,
+                reduceMotion: reduceMotion,
+                isAnimating: state.phase == .idle && scenePhase == .active
+            )
+        }
+        .buttonStyle(.plain)
+        .opacity(state.faceOpacity)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.faceOpacity)
+        .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
+        .accessibilityLabel(accessibility.listeningAction)
+        .accessibilityValue(accessibility.microphoneValue)
+        .accessibilityHint(accessibility.listeningHint)
+        .accessibilityIdentifier("catListeningToggle")
+        .accessibilityCustomContent(AccessibilityCustomContentKey("猫の返事"), state.accessibleReply.map { Text($0) })
+    }
+
+    private func noticeView(_ notice: String) -> some View {
+        Text(notice)
+            .font(.subheadline)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Self.contentInset)
+            .padding(.vertical, 8)
+            .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+            .accessibilityIdentifier("memoryNotice")
+    }
+
+    private var cards: some View {
+        VStack(alignment: .leading, spacing: 12) {
             if let message = ConversationMemoryPresentation(state: state.memoryState).message {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(message).fixedSize(horizontal: false, vertical: true)
@@ -140,15 +227,13 @@ struct ConversationView: View {
                     }
                 }
                 .accessibilityElement(children: .contain)
-            } else if let notice = state.memoryNotice {
-                Text(notice).font(.subheadline)
             }
 
             if let errorMessage = state.errorMessage {
                 errorCard(message: errorMessage)
             }
         }
-        .frame(maxWidth: 520, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func errorCard(message: String) -> some View {
@@ -182,49 +267,6 @@ struct ConversationView: View {
         }
     }
 
-    @ViewBuilder
-    private var conversationBody: some View {
-        if reduceTransparency {
-            verticalBody(usesGlass: false)
-        } else {
-            GlassEffectContainer(spacing: 12) {
-                verticalBody(usesGlass: true)
-            }
-        }
-    }
-
-    private func verticalBody(usesGlass: Bool) -> some View {
-        VStack(spacing: 12) {
-            ScrollView {
-                scrollableContent(usesGlass: usesGlass)
-                    .frame(maxWidth: .infinity)
-            }
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-
-            fixedControls(usesGlass: usesGlass)
-        }
-    }
-
-    @ViewBuilder
-    private func scrollableContent(usesGlass: Bool) -> some View {
-        switch ConversationVerticalLayout.preferred(
-            for: dynamicTypeSize,
-            showsTypedInput: state.showsTypedInput
-        ) {
-        case .standard:
-            conversationContent
-        case .scrollableContentWithFixedControls:
-            VStack(spacing: 12) {
-                conversationContent
-
-                if state.showsTypedInput {
-                    typedInput(usesGlass: usesGlass)
-                }
-            }
-        }
-    }
-
     private func typedInput(usesGlass: Bool) -> some View {
         TypedInputView(
             text: Binding(
@@ -236,133 +278,8 @@ struct ConversationView: View {
             usesGlass: usesGlass,
             isSubmissionAllowed: state.allowsTypedSubmission,
             onSend: sendTypedText,
-            onDismiss: dismissTypedInput
+            onDismiss: actions.hideTypedInput
         )
-    }
-
-    @ViewBuilder
-    private func fixedControls(usesGlass: Bool) -> some View {
-        if usesGlass {
-            controlButtons(usesGlass: true)
-        } else {
-            controlButtons(usesGlass: false)
-                .padding(12)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
-        }
-    }
-
-    @ViewBuilder
-    private func controlButtons(usesGlass: Bool) -> some View {
-        switch ConversationLowerControlsLayout.preferred(
-            for: dynamicTypeSize,
-            showsTypedInput: state.showsTypedInput
-        ) {
-        case .horizontalFirst:
-            ViewThatFits(in: .horizontal) {
-                horizontalControlButtons(usesGlass: usesGlass)
-                stackedControlButtons(usesGlass: usesGlass)
-            }
-        case .stacked:
-            ViewThatFits(in: .horizontal) {
-                stackedControlButtons(usesGlass: usesGlass)
-            }
-        case .compactHorizontal:
-            compactControlButtons(usesGlass: usesGlass)
-        }
-    }
-
-    private func horizontalControlButtons(usesGlass: Bool) -> some View {
-        HStack(spacing: 12) {
-            listeningButton(usesGlass: usesGlass)
-            keyboardButton(usesGlass: usesGlass)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func stackedControlButtons(usesGlass: Bool) -> some View {
-        VStack(spacing: 8) {
-            listeningButton(usesGlass: usesGlass)
-            keyboardButton(usesGlass: usesGlass)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func compactControlButtons(usesGlass: Bool) -> some View {
-        HStack(spacing: 12) {
-            listeningButton(usesGlass: usesGlass, usesCompactLabel: true)
-            keyboardButton(usesGlass: usesGlass, usesCompactLabel: true)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func listeningButton(
-        usesGlass: Bool,
-        usesCompactLabel: Bool = false
-    ) -> some View {
-        ListeningControl(
-            phase: state.phase,
-            usesGlass: usesGlass,
-            usesCompactLabel: usesCompactLabel,
-            action: actions.toggleListening
-        )
-        .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
-    }
-
-    @ViewBuilder
-    private func keyboardButton(
-        usesGlass: Bool,
-        usesCompactLabel: Bool = false
-    ) -> some View {
-        if usesGlass {
-            keyboardButton(usesCompactLabel: usesCompactLabel).buttonStyle(.glass)
-        } else {
-            keyboardButton(usesCompactLabel: usesCompactLabel).buttonStyle(.bordered)
-        }
-    }
-
-    private func keyboardButton(usesCompactLabel: Bool) -> some View {
-        Button(action: toggleTypedInput) {
-            Label(
-                keyboardButtonTitle(usesCompactLabel: usesCompactLabel),
-                systemImage: state.showsTypedInput ? "keyboard.chevron.compact.down" : "keyboard"
-            )
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel(state.showsTypedInput ? "文字入力を閉じる" : "文字入力を開く")
-        .accessibilityValue(state.showsTypedInput ? "開いています" : "閉じています")
-    }
-
-    private func keyboardButtonTitle(usesCompactLabel: Bool) -> String {
-        if usesCompactLabel {
-            return state.showsTypedInput ? "閉じる" : "文字入力"
-        }
-        return state.showsTypedInput ? "文字入力を閉じる" : "文字で入力"
-    }
-
-    private var microphoneSymbol: String {
-        switch state.phase {
-        case .listening:
-            "mic.fill"
-        case .paused, .failed:
-            "mic.slash.fill"
-        default:
-            "mic.badge.xmark"
-        }
-    }
-
-    private func toggleTypedInput() {
-        if state.showsTypedInput {
-            dismissTypedInput()
-        } else {
-            actions.showTypedInput()
-        }
-    }
-
-    private func dismissTypedInput() {
-        actions.hideTypedInput()
     }
 
     private func sendTypedText() {

@@ -1,0 +1,21 @@
+{
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "sourceRevision": "0e3489edba477fe823c6119359ce43222cf2daf8",
+  "version": "1.0",
+  "build": "1",
+  "executableSHA256": "6f0db15635163626fe3823b70761c64c95d4f1ceb558fa60ab543ac361f61647",
+  "implementationSHA256": "d241eb1b19c89e58faf38bc2e3e7c8747c9d983ba497959f3f90f3b972cfcaa3",
+  "signatureVerified": true,
+  "recordedAt": "2026-10-27T11:21:59.893296+00:00",
+  "physicalDevice": "iPhone 16 Pro",
+  "installed": true,
+  "installedAppConfirmed": true,
+  "uninstallPerformed": false,
+  "dataContainerIdentifierUnchanged": false,
+  "dataContentsInspected": false,
+  "normalLaunch": false,
+  "manualBehaviorObservation": "not performed; installation-only request",
+  "firmwareChanged": false,
+  "verifiedInputsUnchanged": 223,
+  "rawEvidenceDirectory": "/private/tmp/cat-ui-reorganization-device-20261027"
+}

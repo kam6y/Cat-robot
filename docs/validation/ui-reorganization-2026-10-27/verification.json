@@ -1,0 +1,37 @@
+{
+  "source_commit": "2431a29c3811203955763809a421150fd38354bd",
+  "baseline_commit": "9ee8dac",
+  "branch": "feature/ui-reorganization",
+  "test_command": "xcodebuild test -project CatRobot.xcodeproj -scheme CatRobot -destination 'platform=iOS Simulator,id=40C29D25-C8EC-42C7-8145-65AB37A2BB7D' -derivedDataPath /tmp/CatRobotIdleSleepDerived -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO",
+  "result_bundle": "/tmp/CatRobotIdleSleepDerived/Logs/Test/Test-CatRobot-2026.10.27_19-46-19-+0900.xcresult",
+  "total": 830,
+  "passed": 828,
+  "skipped": 2,
+  "failed": 0,
+  "skipped_tests": [
+    "RobotMotionIntegrationDeviceTests.testSelectedStage",
+    "SupertonicIntegrationDeviceTests.testSelectedStage"
+  ],
+  "unchanged_verification_inputs": 223,
+  "generator_contract": "ruby scripts/test_generate_project.rb: PASS",
+  "ui_image_count": 109,
+  "simulated_conversation_viewport_points": [
+    852,
+    393
+  ],
+  "simulated_short_viewport_points": [
+    852,
+    240
+  ],
+  "scene_settings_viewport_points": [
+    874,
+    402
+  ],
+  "scene_settings_safe_area_points": {
+    "left": 62,
+    "right": 62,
+    "bottom": 20
+  },
+  "physical_device_verification": "Signed build and update installation verified; behavior not tested",
+  "physical_device_deployment_record": "device-deployment.json"
+}

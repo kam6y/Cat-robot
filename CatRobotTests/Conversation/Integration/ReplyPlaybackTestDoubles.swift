@@ -80,12 +80,16 @@ final class PlaybackUpdates {
     private(set) var captions: [String] = []
     private(set) var starts: [ReplySpeechPart] = []
     private(set) var finishes: [ReplySpeechPart] = []
+    private(set) var sentenceStarts: [Int] = []
+    private(set) var sentenceFinishes: [Int] = []
     private var waiters: [(predicate: @MainActor () -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
     func record(_ update: ReplyPlaybackUpdate) {
         switch update {
         case .caption(let text): captions.append(text)
         case .speechStarted(let part, _): starts.append(part)
         case .speechFinished(let part): finishes.append(part)
+        case .sentenceStarted(let ordinal): sentenceStarts.append(ordinal)
+        case .sentenceFinished(let ordinal): sentenceFinishes.append(ordinal)
         case .willSpeak: break
         }
         let ready = waiters.filter { $0.predicate() }

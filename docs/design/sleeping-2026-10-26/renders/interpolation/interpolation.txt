@@ -1,0 +1,23 @@
+animation vector components: sleepy 57, sleeping 57
+roundtrip neutral: restored
+roundtrip happy: restored
+roundtrip curious: restored
+roundtrip thinking: restored
+roundtrip listening: restored
+roundtrip speaking: restored
+roundtrip sleepy: restored
+roundtrip surprised: restored
+roundtrip sorry: restored
+roundtrip sleeping: restored
+t=0.00: lid 0.5500 closed 0.0000 pupil.y 0.1200 | mouthWidth 0.800 mouthSmile 0.750 whiskers lift -7.00 spread 0.00 | right == mirrored left: yes
+t=0.25: lid 0.6625 closed 0.2500 pupil.y 0.1200 | mouthWidth 0.800 mouthSmile 0.750 whiskers lift -7.00 spread 0.00 | right == mirrored left: yes
+t=0.50: lid 0.7750 closed 0.5000 pupil.y 0.1200 | mouthWidth 0.800 mouthSmile 0.750 whiskers lift -7.00 spread 0.00 | right == mirrored left: yes
+t=0.75: lid 0.8875 closed 0.7500 pupil.y 0.1200 | mouthWidth 0.800 mouthSmile 0.750 whiskers lift -7.00 spread 0.00 | right == mirrored left: yes
+t=1.00: lid 1.0000 closed 1.0000 pupil.y 0.1200 | mouthWidth 0.800 mouthSmile 0.750 whiskers lift -7.00 spread 0.00 | right == mirrored left: yes
+eye boxes (px): ["136..471 x 142..480", "808..1143 x 142..480"]
+t=0.00: pixels differing outside the eye boxes vs t=0: 0 (max delta 0) | first lit row at eye center column: 359 (local v 0.295) | arc center color #FCFBF9 (expected ≈ t × #FDCA43 = #000000)
+t=0.25: pixels differing outside the eye boxes vs t=0: 0 (max delta 0) | first lit row at eye center column: 403 (local v 0.569) | arc center color #FCEFCB (expected ≈ t × #FDCA43 = #3F3210)
+t=0.50: pixels differing outside the eye boxes vs t=0: 0 (max delta 0) | first lit row at eye center column: 403 (local v 0.569) | arc center color #7F6521 (expected ≈ t × #FDCA43 = #7E6521)
+t=0.75: pixels differing outside the eye boxes vs t=0: 113 (max delta 1) | first lit row at eye center column: 403 (local v 0.569) | arc center color #BE9732 (expected ≈ t × #FDCA43 = #BD9732)
+t=1.00: pixels differing outside the eye boxes vs t=0: 113 (max delta 1) | first lit row at eye center column: 403 (local v 0.569) | arc center color #FDCA43 (expected ≈ t × #FDCA43 = #FDCA43)
+wrote 5 frames + strip to docs/design/sleeping-2026-10-26/renders/interpolation/

@@ -1,0 +1,76 @@
+{
+  "colorSpace" : "sRGB; embedded ICC converted by CoreGraphics",
+  "eyelids" : {
+    "ios" : {
+      "bbox" : [
+        476,
+        581,
+        2079,
+        697
+      ],
+      "count" : 29926,
+      "dominantRGB" : "#FDCA43"
+    },
+    "iou" : 1,
+    "mac" : {
+      "bbox" : [
+        476,
+        581,
+        2079,
+        697
+      ],
+      "count" : 29926,
+      "dominantRGB" : "#FDCA43"
+    }
+  },
+  "height" : 1179,
+  "ios" : "docs\/design\/sleeping-2026-10-26\/ios\/final\/face-sleeping-closed.png",
+  "mac" : "docs\/design\/sleeping-2026-10-26\/renders\/round-2\/screen3x-sleeping.png",
+  "mouthWhiskers" : {
+    "ios" : {
+      "bbox" : [
+        315,
+        808,
+        2240,
+        1074
+      ],
+      "count" : 41551,
+      "dominantRGB" : "#F9E9CB"
+    },
+    "iou" : 1,
+    "mac" : {
+      "bbox" : [
+        315,
+        808,
+        2240,
+        1074
+      ],
+      "count" : 41551,
+      "dominantRGB" : "#F9E9CB"
+    }
+  },
+  "nose" : {
+    "ios" : {
+      "bbox" : [
+        1195,
+        727,
+        1360,
+        829
+      ],
+      "count" : 11962,
+      "dominantRGB" : "#FB8B6D"
+    },
+    "iou" : 1,
+    "mac" : {
+      "bbox" : [
+        1195,
+        727,
+        1360,
+        829
+      ],
+      "count" : 11962,
+      "dominantRGB" : "#FB8B6D"
+    }
+  },
+  "width" : 2556
+}

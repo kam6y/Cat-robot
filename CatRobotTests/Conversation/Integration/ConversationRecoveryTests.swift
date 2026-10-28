@@ -27,7 +27,7 @@ final class ConversationRecoveryTests: XCTestCase {
         await harness.speaker.waitUntilTextCount(1)
 
         XCTAssertEqual(harness.sut.viewState.phase, .clarifying)
-        XCTAssertEqual(harness.sut.viewState.catState, .clarifying)
+        XCTAssertEqual(harness.sut.viewState.faceExpression, .curious)
         XCTAssertEqual(harness.sut.viewState.caption, "今の、ぼくに言った？")
         XCTAssertEqual(harness.sut.viewState.activityStatus, "聞き返しています")
         XCTAssertEqual(harness.sut.viewState.microphoneStatus, "聞き返しの間は聞き取りを休止")
@@ -325,7 +325,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         XCTAssertEqual(harness.sut.viewState.caption, "こんにちは、会えてうれしいよ")
         XCTAssertEqual(harness.sut.viewState.typedText, "")
-        XCTAssertFalse(harness.sut.viewState.showsTypedInput)
+        XCTAssertTrue(harness.sut.viewState.showsTypedInput, "送信しても入力欄は閉じない")
     }
 
     func testTypedTurnClosesCaptureLosslesslyDiscardsTailAndResumesVoiceOnce() async {
@@ -961,10 +961,9 @@ final class ConversationRecoveryTests: XCTestCase {
         let failedTurn = Task(priority: .low) {
             await harness.emitCompletedUtterance("猫ちゃん、質問", at: 0)
         }
-        let didBeginCleanup = await harness.waitUntil {
-            await harness.audio.deactivateCount == 1
-        }
-        XCTAssertTrue(didBeginCleanup)
+        await deactivateGate.waitUntilEntered()
+        let deactivationsDuringCleanup = await harness.audio.deactivateCount
+        XCTAssertEqual(deactivationsDuringCleanup, 1)
 
         let pause = Task(priority: .low) {
             await harness.sut.sceneBecameInactive()

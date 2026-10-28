@@ -4,14 +4,13 @@ import Foundation
 /// A single instance owns a conversation directory. Synchronous I/O inside the
 /// actor prevents reentrancy between writing the temporary file and committing it.
 actor FileConversationMemoryStore: ConversationMemoryStore {
-    private let directory: URL
     private let compatibilityID: String
-    private let maximumBytes = 1_048_576
-    private var file: URL { directory.appendingPathComponent("current.json") }
+    private let file: ProtectedMemoryFile
 
     init(directory: URL, compatibilityID: String) {
-        self.directory = directory
         self.compatibilityID = compatibilityID
+        file = ProtectedMemoryFile(directory: directory, name: "current.json", temporaryPrefix: "memory-",
+                                   maximumBytes: 1_048_576)
     }
 
     static func defaultDirectory() throws -> URL {
@@ -22,6 +21,41 @@ actor FileConversationMemoryStore: ConversationMemoryStore {
     }
 
     func load() throws -> ConversationMemorySnapshot? {
+        guard let data = try file.read() else { return nil }
+        let snapshot: ConversationMemorySnapshot
+        do { snapshot = try JSONDecoder().decode(ConversationMemorySnapshot.self, from: data) }
+        catch { throw ConversationMemoryError.invalidData }
+        try snapshot.validate(expectedCompatibilityID: compatibilityID)
+        return snapshot
+    }
+
+    func save(_ snapshot: ConversationMemorySnapshot) throws {
+        try snapshot.validate(expectedCompatibilityID: compatibilityID)
+        let data: Data
+        do { data = try JSONEncoder().encode(snapshot) }
+        catch { throw ConversationMemoryError.invalidData }
+        try file.write(data)
+    }
+
+    func clear() throws {
+        try file.clear()
+    }
+}
+
+/// One protected, backup-excluded file plus its in-progress temporaries. Reads are
+/// bounded, and a save prepares a temporary file and then replaces the entry with a
+/// POSIX rename. Every method is synchronous so a store actor that calls it keeps the
+/// temporary write and its commit in one uninterrupted turn.
+struct ProtectedMemoryFile: Sendable {
+    let directory: URL
+    let name: String
+    let temporaryPrefix: String
+    let maximumBytes: Int
+
+    private var file: URL { directory.appendingPathComponent(name) }
+
+    /// nil when the file does not exist. Throws `.readFailed` or `.tooLarge`.
+    func read() throws -> Data? {
         let data: Data
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
@@ -36,20 +70,13 @@ actor FileConversationMemoryStore: ConversationMemoryStore {
             throw ConversationMemoryError.readFailed
         }
         guard data.count <= maximumBytes else { throw ConversationMemoryError.tooLarge }
-        let snapshot: ConversationMemorySnapshot
-        do { snapshot = try JSONDecoder().decode(ConversationMemorySnapshot.self, from: data) }
-        catch { throw ConversationMemoryError.invalidData }
-        try snapshot.validate(expectedCompatibilityID: compatibilityID)
-        return snapshot
+        return data
     }
 
-    func save(_ snapshot: ConversationMemorySnapshot) throws {
-        try snapshot.validate(expectedCompatibilityID: compatibilityID)
-        let data: Data
-        do { data = try JSONEncoder().encode(snapshot) }
-        catch { throw ConversationMemoryError.invalidData }
+    /// Throws `.tooLarge` before touching the disk, otherwise `.writeFailed`.
+    func write(_ data: Data) throws {
         guard data.count <= maximumBytes else { throw ConversationMemoryError.tooLarge }
-        let temporary = directory.appendingPathComponent("memory-\(UUID().uuidString).tmp")
+        let temporary = directory.appendingPathComponent("\(temporaryPrefix)\(UUID().uuidString).tmp")
         defer { try? FileManager.default.removeItem(at: temporary) }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
@@ -69,6 +96,8 @@ actor FileConversationMemoryStore: ConversationMemoryStore {
         } catch { throw ConversationMemoryError.writeFailed }
     }
 
+    /// Removes the file and any `<temporaryPrefix>*.tmp` left behind. A missing
+    /// directory has nothing to remove, so it succeeds. Other files are untouched.
     func clear() throws {
         let contents: [URL]
         do { contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) }
@@ -77,8 +106,8 @@ actor FileConversationMemoryStore: ConversationMemoryStore {
             throw ConversationMemoryError.deleteFailed
         }
         do {
-            for entry in contents where entry.lastPathComponent == "current.json"
-                || (entry.lastPathComponent.hasPrefix("memory-") && entry.pathExtension == "tmp") {
+            for entry in contents where entry.lastPathComponent == name
+                || (entry.lastPathComponent.hasPrefix(temporaryPrefix) && entry.pathExtension == "tmp") {
                 try FileManager.default.removeItem(at: entry)
             }
         } catch { throw ConversationMemoryError.deleteFailed }

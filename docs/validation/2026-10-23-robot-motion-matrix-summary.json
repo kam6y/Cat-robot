@@ -1,0 +1,456 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-23",
+  "testImplementationCommit": "fd6a3555a199ea0f1e0ff172fd2f8b8485accdb4",
+  "productCodeCommit": "34b05f7b01dad3f86f4edaac65ae1e56461c40fd",
+  "runs": [
+    {
+      "runID": "F2AA04CF-EFCB-41B2-AC65-6D4D7A70106E",
+      "sourceRevision": "c227e0364e0fe6269516e7a02c73ed31e03eaa3f-working",
+      "intensity": "small",
+      "strength": "standard",
+      "OS": "27.2",
+      "thermalBefore": "fair",
+      "thermalAfter": "fair",
+      "calibrationBefore": {
+        "invert": 2,
+        "pitchOffsetDeci": 0,
+        "saved": true,
+        "yawOffsetDeci": 65
+      },
+      "calibrationAfter": {
+        "invert": 2,
+        "pitchOffsetDeci": 0,
+        "saved": true,
+        "yawOffsetDeci": 65
+      },
+      "records": [
+        {
+          "gesture": "nod",
+          "outcome": "success",
+          "sampleCount": 7,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            41
+          ],
+          "eligibleToStartObservedMS": 51.873,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "shake",
+          "outcome": "success",
+          "sampleCount": 9,
+          "yawDeciRange": [
+            -65,
+            65
+          ],
+          "pitchDeciRange": [
+            0,
+            0
+          ],
+          "eligibleToStartObservedMS": 64.084,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "tilt",
+          "outcome": "success",
+          "sampleCount": 15,
+          "yawDeciRange": [
+            0,
+            80
+          ],
+          "pitchDeciRange": [
+            -40,
+            0
+          ],
+          "eligibleToStartObservedMS": 47.165,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_up",
+          "outcome": "success",
+          "sampleCount": 26,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            0,
+            80
+          ],
+          "eligibleToStartObservedMS": 67.057,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_down",
+          "outcome": "success",
+          "sampleCount": 25,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            -80,
+            0
+          ],
+          "eligibleToStartObservedMS": 65.927,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_at_user",
+          "outcome": "success",
+          "sampleCount": 3,
+          "yawDeciRange": [
+            -100,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            0
+          ],
+          "eligibleToStartObservedMS": 42.983,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "center",
+          "outcome": "success",
+          "sampleCount": 3,
+          "yawDeciRange": [
+            -100,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            0
+          ],
+          "eligibleToStartObservedMS": 47.632,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        }
+      ],
+      "finalPWMEnabled": false,
+      "finalPoseDeci": [
+        0,
+        0
+      ]
+    },
+    {
+      "runID": "9E60C044-9E35-4B9D-B416-494995410737",
+      "sourceRevision": "c227e0364e0fe6269516e7a02c73ed31e03eaa3f-working",
+      "intensity": "medium",
+      "strength": "standard",
+      "OS": "27.2",
+      "thermalBefore": "fair",
+      "thermalAfter": "fair",
+      "calibrationBefore": {
+        "invert": 2,
+        "pitchOffsetDeci": 0,
+        "saved": true,
+        "yawOffsetDeci": 65
+      },
+      "calibrationAfter": {
+        "invert": 2,
+        "pitchOffsetDeci": 0,
+        "saved": true,
+        "yawOffsetDeci": 65
+      },
+      "records": [
+        {
+          "gesture": "nod",
+          "outcome": "success",
+          "sampleCount": 8,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            -100,
+            82
+          ],
+          "eligibleToStartObservedMS": 47.643,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "shake",
+          "outcome": "success",
+          "sampleCount": 8,
+          "yawDeciRange": [
+            -120,
+            150
+          ],
+          "pitchDeciRange": [
+            0,
+            0
+          ],
+          "eligibleToStartObservedMS": 45.455,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "tilt",
+          "outcome": "success",
+          "sampleCount": 14,
+          "yawDeciRange": [
+            0,
+            120
+          ],
+          "pitchDeciRange": [
+            -60,
+            0
+          ],
+          "eligibleToStartObservedMS": 63.095,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_up",
+          "outcome": "success",
+          "sampleCount": 26,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            0,
+            140
+          ],
+          "eligibleToStartObservedMS": 64.004,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_down",
+          "outcome": "success",
+          "sampleCount": 24,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            -140,
+            0
+          ],
+          "eligibleToStartObservedMS": 42.399,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_at_user",
+          "outcome": "success",
+          "sampleCount": 3,
+          "yawDeciRange": [
+            -100,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            0
+          ],
+          "eligibleToStartObservedMS": 45.016,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "center",
+          "outcome": "success",
+          "sampleCount": 3,
+          "yawDeciRange": [
+            -100,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            0
+          ],
+          "eligibleToStartObservedMS": 49.439,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        }
+      ],
+      "finalPWMEnabled": false,
+      "finalPoseDeci": [
+        0,
+        0
+      ]
+    },
+    {
+      "runID": "FFBC77FC-AEDB-4DEC-B274-FFF49F0B0849",
+      "sourceRevision": "c227e0364e0fe6269516e7a02c73ed31e03eaa3f-working",
+      "intensity": "large",
+      "strength": "standard",
+      "OS": "27.2",
+      "thermalBefore": "fair",
+      "thermalAfter": "fair",
+      "calibrationBefore": {
+        "invert": 2,
+        "pitchOffsetDeci": 0,
+        "saved": true,
+        "yawOffsetDeci": 65
+      },
+      "calibrationAfter": {
+        "invert": 2,
+        "pitchOffsetDeci": 0,
+        "saved": true,
+        "yawOffsetDeci": 65
+      },
+      "records": [
+        {
+          "gesture": "nod",
+          "outcome": "success",
+          "sampleCount": 9,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            -141,
+            128
+          ],
+          "eligibleToStartObservedMS": 54.66,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "shake",
+          "outcome": "success",
+          "sampleCount": 14,
+          "yawDeciRange": [
+            -249,
+            238
+          ],
+          "pitchDeciRange": [
+            0,
+            0
+          ],
+          "eligibleToStartObservedMS": 63.586,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "tilt",
+          "outcome": "success",
+          "sampleCount": 15,
+          "yawDeciRange": [
+            0,
+            150
+          ],
+          "pitchDeciRange": [
+            -75,
+            0
+          ],
+          "eligibleToStartObservedMS": 58.797,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_up",
+          "outcome": "success",
+          "sampleCount": 26,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            0,
+            200
+          ],
+          "eligibleToStartObservedMS": 46.898,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_down",
+          "outcome": "success",
+          "sampleCount": 25,
+          "yawDeciRange": [
+            0,
+            0
+          ],
+          "pitchDeciRange": [
+            -200,
+            0
+          ],
+          "eligibleToStartObservedMS": 61.202,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "look_at_user",
+          "outcome": "success",
+          "sampleCount": 3,
+          "yawDeciRange": [
+            -100,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            0
+          ],
+          "eligibleToStartObservedMS": 50.469,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        },
+        {
+          "gesture": "center",
+          "outcome": "success",
+          "sampleCount": 4,
+          "yawDeciRange": [
+            -100,
+            0
+          ],
+          "pitchDeciRange": [
+            -50,
+            0
+          ],
+          "eligibleToStartObservedMS": 46.358,
+          "rejectedCount": 0,
+          "saveSeq": 0,
+          "observerReport": "問題なく自然に動いた"
+        }
+      ],
+      "finalPWMEnabled": false,
+      "finalPoseDeci": [
+        0,
+        0
+      ]
+    }
+  ],
+  "measurementBoundary": "Production MotionCoordinator and iPhone BLE with synthetic speechStarted. STATUS reports firmware targets, not measured physical angles. Human observer accepted all three stages. Global strength standard; no face target; tilt first direction per stage.",
+  "excludedAttempt": {
+    "runID": "33D2F2D1-185A-486B-BD70-BF31F45162F9",
+    "intensity": "medium",
+    "outcome": "failed_before_motion",
+    "reason": "XCTest began before host became active; bounded startup wait added before BLE construction. No events or STATUS samples."
+  }
+}

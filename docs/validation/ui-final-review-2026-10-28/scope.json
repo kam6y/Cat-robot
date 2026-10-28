@@ -1,0 +1,14 @@
+{
+  "worktree": "/Users/goodapple/.codex/worktrees/b200/Cat_robot",
+  "base": "9ee8dacbe31e2bc3295eaa8f623049cc771bfb64",
+  "head": "d3e2fb096179d64a62fc0a847bd723ad699a2af2",
+  "previousCrossReviewHead": "1d9e1d0",
+  "rangePaths": [
+    "CatRobot",
+    "CatRobotTests",
+    "tools/face-size-tuner",
+    "scripts/generate_face_size_tuner_project.rb",
+    "CatRobot.xcodeproj",
+    "README.md"
+  ]
+}

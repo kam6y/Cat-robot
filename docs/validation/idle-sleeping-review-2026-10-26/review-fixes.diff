@@ -1,0 +1,1093 @@
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/App/ConversationAppCoordinator.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/App/ConversationAppCoordinator.swift
+index 8b958a7..7762969 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/App/ConversationAppCoordinator.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/App/ConversationAppCoordinator.swift
+@@ -22,6 +22,10 @@ final class ConversationAppCoordinator {
+     private(set) var destination: ConversationAppDestination = .onboarding
+     let inactivity: ConversationInactivity
+     private var isSleeping: Bool { inactivity.state == .sleeping }
++    private var isConversationForeground: Bool {
++        destination == .conversation && scenePhase == .active && isVoiceSettingsClosed
++    }
++    private var canRunConversation: Bool { isConversationForeground && !isSleeping }
+ 
+     @ObservationIgnored private let viewModel: ConversationViewModel
+     @ObservationIgnored private let wakeLock: ConversationScreenWakeLock
+@@ -74,10 +78,10 @@ final class ConversationAppCoordinator {
+         inactivity = ConversationInactivity(settings: idleSettings ?? ConversationIdleSettings(), clock: idleClock)
+         viewModel.onAddressedActivity = { [weak self] in self?.inactivity.recordActivity() }
+         viewModel.onPhaseChange = { [weak self] phase in self?.conversationPhaseDidChange(phase) }
++        viewModel.onPendingSpeechChange = { [weak self] in self?.updateInactivity() }
+         inactivity.onStateChange = { [weak self] in
+-            guard let self else { return }
+-            if self.isSleeping { self.enterSleeping() }
+-            else { self.updateFaceEnvironment() }
++            guard let self, self.isSleeping else { return }
++            self.enterSleeping()
+         }
+     }
+ 
+@@ -87,22 +91,15 @@ final class ConversationAppCoordinator {
+     }
+ 
+     private func updateInactivity(phase: ConversationPhase? = nil) {
+-        inactivity.setMonitoring(hasStartedConversation && destination == .conversation
+-            && scenePhase == .active && isVoiceSettingsClosed, phase: phase ?? viewModel.viewState.phase,
++        inactivity.setMonitoring(isConversationForeground, phase: phase ?? viewModel.viewState.phase,
+             hasPendingSpeech: viewModel.hasPendingSpeech)
+     }
+ 
+     private func enterSleeping() {
++        viewModel.clearCaptionForStandby()
+         invalidateActionTasksForSceneInactivity()
+-        activeStartIntentID = nil
+-        startTask?.cancel()
+-        viewModel.invalidateForSceneInactivity()
++        pauseConversationForScene()
+         updateRobotScene(scenePhase)
+-        let task = Task { @MainActor [weak self, viewModel] in
+-            await viewModel.sceneBecameInactive()
+-            self?.pauseTask = nil
+-        }
+-        pauseTask = task
+     }
+ 
+     private func wakeFromSleeping() {
+@@ -124,7 +121,7 @@ final class ConversationAppCoordinator {
+     }
+ 
+     private func updateFaceEnvironment(phase: ConversationPhase? = nil) {
+-        let visible = destination == .conversation && scenePhase == .active && isVoiceSettingsClosed && !isSleeping
++        let visible = canRunConversation
+         expressions.setVisible(visible)
+         look.setVisible(visible)
+         let mode: RobotControlMode
+@@ -141,8 +138,8 @@ final class ConversationAppCoordinator {
+ 
+     /// Microphone/model/audio preflight has already finished. Camera rejection never fails chat.
+     private func completeConversationStartIfEligible() async {
+-        guard !Task.isCancelled, destination == .conversation, scenePhase == .active,
+-              isVoiceSettingsClosed, !isSleeping, viewModel.viewState.phase.permitsFaceTracking else { return }
++        guard !Task.isCancelled, canRunConversation,
++              viewModel.viewState.phase.permitsFaceTracking else { return }
+         hasStartedConversation = true
+         updateInactivity()
+         guard !isSleeping else { return }
+@@ -157,6 +154,7 @@ final class ConversationAppCoordinator {
+     func beginConversation() {
+         guard destination == .onboarding, isVoiceSettingsClosed else { return }
+         destination = .conversation
++        inactivity.recordActivity()
+         updateRobotScene(scenePhase)
+         acquireWakeLockIfNeeded()
+         launchStart()
+@@ -166,7 +164,7 @@ final class ConversationAppCoordinator {
+     /// 進行中の開始（マイク許可の待ちなど）があるときは重ねない。猫のタップによる一時停止もこれらの出来事で解ける。
+     private func resumeListeningIfNeeded() {
+         updateInactivity()
+-        guard destination == .conversation, scenePhase == .active, isVoiceSettingsClosed, !isSleeping,
++        guard canRunConversation,
+               activeStartIntentID == nil, faceTracking?.isAwaitingPermission != true else { return }
+         launchStart()
+     }
+@@ -393,6 +391,10 @@ final class ConversationAppCoordinator {
+         guard destination == .conversation, !didForwardPauseSinceActive else { return }
+         didForwardPauseSinceActive = true
+         deferredPermissionPrompt = false
++        pauseConversationForScene()
++    }
++
++    private func pauseConversationForScene() {
+         activeStartIntentID = nil
+         startTask?.cancel()
+         viewModel.invalidateForSceneInactivity()
+@@ -435,9 +437,7 @@ final class ConversationAppCoordinator {
+     }
+ 
+     private func acquireWakeLockIfNeeded() {
+-        guard destination == .conversation,
+-              scenePhase == .active, isVoiceSettingsClosed,
+-              wakeLockToken == nil else { return }
++        guard isConversationForeground, wakeLockToken == nil else { return }
+         wakeLockToken = wakeLock.acquire()
+     }
+ 
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/App/ConversationSettingsView.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/App/ConversationSettingsView.swift
+index ddff357..436fc23 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/App/ConversationSettingsView.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/App/ConversationSettingsView.swift
+@@ -27,10 +27,10 @@ struct ConversationSettingsView: View {
+ 
+     init(voiceSettings: SpeechVoiceSettings, modelSettings: ConversationModelSettings,
+          memory: LongTermMemoryViewModel, usage: any ConversationUsageMetering,
+-         idleSettings: ConversationIdleSettings? = nil, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
++         idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
+          camera: ConversationCamera? = nil,
+          onDeleteAll: @escaping @MainActor () async -> Void, onDone: @escaping () -> Void) {
+-        self.idleSettings = idleSettings ?? ConversationIdleSettings()
++        self.idleSettings = idleSettings
+         self.faceTracking = faceTracking
+         self.camera = camera
+         self.robotSettings = robotSettings
+@@ -69,9 +69,9 @@ struct ConversationSettingsView: View {
+                     .accessibilityIdentifier(ConversationSettingsIdentifier.voicePresetPicker.rawValue)
+                 } header: { Text("声") } footer: { Text("選んだ声は次の会話から使います。初期設定はF1です。") }
+                 Section {
+-                    Stepper("眠そうになるまで \(idleSettings.sleepyMinutes) 分", value: $idleSettings.sleepyMinutes, in: 1...1439)
++                    Stepper("眠そうになるまで \(idleSettings.sleepyMinutes) 分", value: $idleSettings.sleepyMinutes, in: ConversationIdleSettings.sleepyRange)
+                         .accessibilityIdentifier(ConversationSettingsIdentifier.sleepyMinutesStepper.rawValue)
+-                    Stepper("待機に入るまで \(idleSettings.sleepingMinutes) 分", value: $idleSettings.sleepingMinutes, in: 2...1440)
++                    Stepper("待機に入るまで \(idleSettings.sleepingMinutes) 分", value: $idleSettings.sleepingMinutes, in: ConversationIdleSettings.sleepingRange)
+                         .accessibilityIdentifier(ConversationSettingsIdentifier.sleepingMinutesStepper.rawValue)
+                 } header: { Text("居眠り") } footer: {
+                     Text("どちらも最後に話しかけてからの時間です。待機は眠そうになる時間より後に設定します。待機中はマイク・カメラ・首の自動動作を止め、猫をタップすると起きます。変更は設定を閉じたときに反映します。")
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/Integration/ConversationViewModel.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/Integration/ConversationViewModel.swift
+index a5a97a6..16902be 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/Integration/ConversationViewModel.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/Integration/ConversationViewModel.swift
+@@ -95,6 +95,7 @@ final class ConversationViewModel {
+     @ObservationIgnored private var noticeExpiryTask: Task<Void, Never>?
+     @ObservationIgnored var onAddressedActivity: @MainActor () -> Void = {}
+     @ObservationIgnored var onPhaseChange: @MainActor (ConversationPhase) -> Void = { _ in }
++    @ObservationIgnored var onPendingSpeechChange: @MainActor () -> Void = {}
+     private static let noticeLifetime: Duration = .seconds(5)
+ 
+     init(dependencies: ConversationDependencies) {
+@@ -200,6 +201,10 @@ final class ConversationViewModel {
+         }
+     }
+ 
++    func clearCaptionForStandby() {
++        viewState.caption = ""
++    }
++
+     func showTypedInput() {
+         viewState.showsTypedInput = true
+     }
+@@ -804,8 +809,9 @@ final class ConversationViewModel {
+             )
+         } else {
+             synchronizeCaptureTimingWithSegmenter()
++            return
+         }
+-        onPhaseChange(viewState.phase)
++        onPendingSpeechChange()
+     }
+ 
+     private func synchronizeCaptureTimingWithSegmenter() {
+@@ -813,7 +819,7 @@ final class ConversationViewModel {
+         segmentationTask?.cancel()
+         segmentationTask = nil
+         latestCaptureActivityAt = nil
+-        onPhaseChange(viewState.phase)
++        onPendingSpeechChange()
+     }
+ 
+     private func presentUnrecognizedSpeechWhileListening() {
+@@ -825,7 +831,7 @@ final class ConversationViewModel {
+         let presentation = ConversationErrorPresentation(.speechUnrecognized)
+         viewState.errorMessage = presentation.message
+         viewState.recoveries = presentation.recoveries
+-        onPhaseChange(viewState.phase)
++        onPendingSpeechChange()
+     }
+ 
+     private func scheduleSegmentationFlush(
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/UI/ConversationAccessibility.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/UI/ConversationAccessibility.swift
+index 10cc665..90e8ed2 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/UI/ConversationAccessibility.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/UI/ConversationAccessibility.swift
+@@ -3,6 +3,7 @@ import SwiftUI
+ enum ConversationListeningSemantic: Equatable {
+     case resume
+     case pause
++    case wake
+ 
+     var actionLabel: String {
+         switch self {
+@@ -10,6 +11,8 @@ enum ConversationListeningSemantic: Equatable {
+             "聞き取りを再開"
+         case .pause:
+             "聞き取りを一時停止"
++        case .wake:
++            "猫を起こす"
+         }
+     }
+ 
+@@ -19,6 +22,8 @@ enum ConversationListeningSemantic: Equatable {
+             "マイクの聞き取りを再開します"
+         case .pause:
+             "マイクの聞き取りを停止します"
++        case .wake:
++            "タップして会話を再開します"
+         }
+     }
+ }
+@@ -27,17 +32,15 @@ struct ConversationAccessibility: Equatable {
+     let listeningSemantic: ConversationListeningSemantic
+     let microphoneValue: String
+     let assistantStatus: String
+-    private let isSleeping: Bool
+ 
+-    var listeningAction: String { isSleeping ? "猫を起こす" : listeningSemantic.actionLabel }
+-    var listeningHint: String { isSleeping ? "タップして会話を再開します" : listeningSemantic.hint }
++    var listeningAction: String { listeningSemantic.actionLabel }
++    var listeningHint: String { listeningSemantic.hint }
+ 
+     init(phase: ConversationPhase, inactivity: ConversationInactivityState = .awake) {
+-        isSleeping = inactivity == .sleeping
+-        if isSleeping {
+-            listeningSemantic = .resume
++        if inactivity == .sleeping {
++            listeningSemantic = .wake
+             microphoneValue = "停止中"
+-            assistantStatus = "待機中・タップで起こす"
++            assistantStatus = ConversationViewState.standbyStatus
+             return
+         }
+         switch phase {
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/UI/ConversationView.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/UI/ConversationView.swift
+index e3b8e09..a97db59 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/UI/ConversationView.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/UI/ConversationView.swift
+@@ -37,7 +37,7 @@ struct ConversationView: View {
+                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                 : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 18))
+             layout {
+-                Label(state.displayedMicrophoneStatus, systemImage: microphoneSymbol)
++                Label(state.displayedMicrophoneStatus, systemImage: state.microphoneSymbol)
+                     .font(.subheadline.weight(.semibold))
+                     .accessibilityLabel("マイクの状態")
+                     .accessibilityValue(accessibility.microphoneValue)
+@@ -77,7 +77,7 @@ struct ConversationView: View {
+     }
+ 
+     private var prioritizesContent: Bool {
+-        dynamicTypeSize.isAccessibilitySize || (state.showsTypedInput && !state.isSleeping) || state.errorMessage != nil
++        dynamicTypeSize.isAccessibilitySize || state.displaysTypedInput || state.errorMessage != nil
+             || ConversationMemoryPresentation(state: state.memoryState).message != nil
+     }
+ 
+@@ -114,11 +114,11 @@ struct ConversationView: View {
+                     .accessibilityIdentifier("conversationCaption")
+             }
+ 
+-            if !state.isSleeping, !state.provisionalTranscript.isEmpty {
++            if !state.displayedProvisionalTranscript.isEmpty {
+                 VStack(alignment: .leading, spacing: 3) {
+                     Text("聞き取り中…")
+                         .font(.caption.weight(.semibold))
+-                    Text(state.provisionalTranscript)
++                    Text(state.displayedProvisionalTranscript)
+                         .font(.body)
+                         .lineLimit(prioritizesContent ? nil : 2)
+                 }
+@@ -208,7 +208,7 @@ struct ConversationView: View {
+                 .frame(maxHeight: .infinity)
+                 transcriptContent
+             }
+-            if state.showsTypedInput && !state.isSleeping {
++            if state.displaysTypedInput {
+                 typedInput(usesGlass: usesGlass)
+             }
+         }
+@@ -229,18 +229,6 @@ struct ConversationView: View {
+         )
+     }
+ 
+-    private var microphoneSymbol: String {
+-        if state.isSleeping { return "mic.slash.fill" }
+-        return switch state.phase {
+-        case .listening:
+-            "mic.fill"
+-        case .paused, .failed:
+-            "mic.slash.fill"
+-        default:
+-            "mic.badge.xmark"
+-        }
+-    }
+-
+     private func sendTypedText() {
+         guard !state.typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+         actions.sendTypedText()
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/UI/ConversationViewState.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/UI/ConversationViewState.swift
+index fe4d95e..5d8a326 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/UI/ConversationViewState.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/UI/ConversationViewState.swift
+@@ -36,6 +36,7 @@ enum RobotConnectionStatus: Equatable, Sendable {
+ }
+ 
+ struct ConversationViewState: Equatable, Sendable {
++    static let standbyStatus = "待機中・タップで起こす"
+     var robotStatus: RobotConnectionStatus? = nil
+     var memoryState: ConversationMemoryState = .unsupported
+     var memoryNotice: String? = nil
+@@ -43,14 +44,24 @@ struct ConversationViewState: Equatable, Sendable {
+     var isLooking = false
+     var inactivity: ConversationInactivityState = .awake
+     var isSleeping: Bool { inactivity == .sleeping }
++    var displaysTypedInput: Bool { showsTypedInput && !isSleeping }
+     var faceExpression: FaceExpression {
+         if isSleeping { return .sleeping }
+         if inactivity == .sleepy, phase == .listening || phase == .idle || phase == .paused { return .sleepy }
+         return isLooking ? .curious : heldExpression ?? .automatic(for: phase)
+     }
+     var displayedCaption: String { isSleeping ? "" : isLooking ? "見ています" : caption }
+-    var displayedActivityStatus: String { isSleeping ? "待機中・タップで起こす" : activityStatus }
++    var displayedProvisionalTranscript: String { isSleeping ? "" : provisionalTranscript }
++    var displayedActivityStatus: String { isSleeping ? Self.standbyStatus : activityStatus }
+     var displayedMicrophoneStatus: String { isSleeping ? "マイクは停止中" : microphoneStatus }
++    var microphoneSymbol: String {
++        if isSleeping { return "mic.slash.fill" }
++        return switch phase {
++        case .listening: "mic.fill"
++        case .paused, .failed: "mic.slash.fill"
++        default: "mic.badge.xmark"
++        }
++    }
+     var phase: ConversationPhase
+     var mouthPose: MouthPose
+     var microphoneStatus: String
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobotTests/Face/FaceConversationPresentationTests.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift
+index 1dda90b..62515cd 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobotTests/Face/FaceConversationPresentationTests.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Face/FaceConversationPresentationTests.swift
+@@ -27,11 +27,14 @@ final class FaceConversationPresentationTests: XCTestCase {
+         ]
+         for (authorization, name, typeSize) in states {
+             let camera = ConversationCamera(source: FakeFaceCaptureSource(authorization: authorization), clock: ManualRobotClock())
+-            let defaults = UserDefaults(suiteName: "camera-fixture-\(UUID().uuidString)")!
++            let defaultsName = "camera-fixture-\(UUID().uuidString)"
++            let defaults = UserDefaults(suiteName: defaultsName)!
++            defer { defaults.removePersistentDomain(forName: defaultsName) }
+             let view = ConversationSettingsView(voiceSettings: SpeechVoiceSettings(defaults: defaults),
+                 modelSettings: ConversationModelSettings(defaults: defaults),
+                 memory: LongTermMemoryViewModel(memory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore())),
+-                usage: ConversationUsageSpy(), camera: camera, onDeleteAll: {}, onDone: {})
++                usage: ConversationUsageSpy(), idleSettings: ConversationIdleSettings(defaults: defaults),
++                camera: camera, onDeleteAll: {}, onDone: {})
+                 .environment(\.dynamicTypeSize, typeSize)
+             let host = UIHostingController(rootView: view)
+             let size = CGSize(width: 852, height: 393)
+diff --git a/private/tmp/cat-idle-review-20261026/original/README.md b/Users/goodapple/.codex/worktrees/b200/Cat_robot/README.md
+index e875744..bfcfae3 100644
+--- a/private/tmp/cat-idle-review-20261026/original/README.md
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/README.md
+@@ -47,7 +47,7 @@ BLEプロトコル版1のロボットを使います。首が未接続でも会
+ `express(expression, hold_seconds)` は表情を予約します。`neutral` / `happy` / `curious` / `thinking` / `listening` / `speaking` / `sleepy` / `surprised` / `sorry` の9種類を使えます。保持は1〜10秒（既定3秒）、最初の実再生開始を起点とし、複数文で延長しません。保持後はその時の会話状態へ戻り、停止・設定・背景・新しい会話・失敗時は取消します。首やカメラが使えなくても表情は表示でき、`sleepy` 自体はマイクや首を操作しません。瞳のカメラ追従は別課題です。 表情と文口同期の自動試験、採用画像との比較、実機の未確認項目は[顔・表情・発話同期の検証記録](docs/validation/2026-10-24-face-expression.md)にまとめています。
+ 
+ 
+-最後に話しかけてから5分で `sleepy`、合計10分で自動待機に入り `sleeping` を表示します。「…」→「設定」→「居眠り」でそれぞれ分単位に変更でき、設定は端末に保存します（待機は眠そうになる時間より後、最大24時間）。猫への呼びかけとして受け付けた音声、文字の送信、猫のタップで時間をリセットし、周囲の雑談では延長しません。返事や聞き取り判定の途中は処理を終えてから待機し、認識途中の声は最大20秒の区切りまで待ちます。
++最後に話しかけてから5分で `sleepy`、合計10分で自動待機に入り `sleeping` を表示します。「…」→「設定」→「居眠り」でそれぞれ分単位に変更でき、設定は端末に保存します（待機は眠そうになる時間より後、最大24時間）。猫への呼びかけとして受け付けた音声、文字の送信、猫のタップで時間をリセットし、周囲の雑談では延長しません。返事や聞き取り判定の途中は処理を終えてから待機し、未確定の認識は発話開始から最大20秒で区切ります。音声認識の終了処理は既存の完了待ちを使い、別のタイムアウトは設けていません。
+ 
+ 自動待機中は寝顔を表示したまま、マイク・カメラ・首の自動動作を止めます。首の姿勢保持と接続は維持します。背景・端末ロック・設定中の時間も数え、戻った時点で期限を過ぎていれば寝たままになります。猫をタップすると再開し、入力途中だった文字は残ります。`sleeping` は `express` から選べません。[下書きとベクターの比較](docs/design/sleeping-2026-10-26/visual-comparison.md)と[検証記録](docs/validation/2026-10-26-idle-sleeping.md)に詳細をまとめています。
+ 
+diff --git a/private/tmp/cat-idle-review-20261026/original/scripts/face-render/Measure.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/scripts/face-render/Measure.swift
+index 13b2c94..c16f451 100644
+--- a/private/tmp/cat-idle-review-20261026/original/scripts/face-render/Measure.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/scripts/face-render/Measure.swift
+@@ -9,6 +9,8 @@ import Foundation
+ @MainActor
+ enum Measurement {
+     static let sleepingDirectory = "docs/design/sleeping-2026-10-26"
++    /// sleeping の下書き（16:9 の全面がキャンバス）。計測と描画の比較で同じ画像を読む。
++    static let sleepingDraftPath = "\(sleepingDirectory)/sleeping-draft.png"
+ 
+     static func run(root: String, rendered: Bool) throws {
+         let directory = "\(root)/docs/design/face-expression-2026-10-26"
+@@ -144,11 +146,9 @@ enum Measurement {
+                   + zip(offsets, sums).map { String(format: "+%d:%.0f", $0, $1 / Double(rays)) }.joined(separator: " "))
+         }
+ 
+-        // 鼻
+-        let corals = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
+-            tones[$0, $1] == .coral
+-        }
+-        if let nose = corals.first {
++        // 鼻・口・ひげ（目の外のクリーム色）
++        let features = faceFeatures(bitmap: bitmap, tones: tones, screen: screen, excluding: eyeBounds)
++        if let nose = features.nose {
+             describe("nose", nose.bounds)
+             print("  nose color \(meanColor(nose.pixels))")
+             let widths = stride(from: 0.1, through: 0.91, by: 0.2).map { f -> String in
+@@ -158,27 +158,42 @@ enum Measurement {
+             }
+             print("  nose width by height fraction px " + widths.joined(separator: " "))
+         }
++        if let mouth = features.mouth {
++            describe("mouth", mouth.bounds)
++            print("  mouth color \(meanColor(mouth.pixels))")
++            print("  mouth columns (cv x: y ranges in cv) " + columnProfile(mouth, reference: reference, samples: 15))
++        }
++        for (name, whisker) in features.whiskers {
++            describe(name, whisker.bounds)
++            print("  centerline (cv x, cv y, thickness px) " + columnProfile(whisker, reference: reference, samples: 9))
++        }
++    }
++
++    /// 鼻（珊瑚色の最大の成分）、口（中央の幅 ±10% にかかるクリーム色をまとめたもの。縦線の合流部で分かれることがある）、
++    /// ひげ（残りのクリーム色。左→右、上→下の順に "left whisker 1" … と名付ける）。採用画像と sleeping の下書きで同じ計測。
++    /// `excluding` は目（または閉じた目の弧）の外接で、2px 外側まで含めてクリーム色の候補から除く。
++    private struct FaceFeatures {
++        var nose: Component?
++        var mouth: Component?
++        var whiskers: [(name: String, component: Component)]
++    }
+ 
+-        // 口とひげ（目の外のクリーム色）
++    private static func faceFeatures(bitmap: Bitmap, tones: ToneMap, screen: CGRect, excluding boxes: [CGRect]) -> FaceFeatures {
++        let corals = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
++            tones[$0, $1] == .coral
++        }
+         let creams = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 150) { x, y in
+-            tones[x, y] == .cream && !eyeBounds.contains { $0.insetBy(dx: -2, dy: -2).contains(CGPoint(x: x, y: y)) }
++            tones[x, y] == .cream && !boxes.contains { $0.insetBy(dx: -2, dy: -2).contains(CGPoint(x: x, y: y)) }
+         }
+-        // 口は中央の幅 ±10% にかかる成分をまとめる（縦線の合流部で分かれることがある）
+         let isMouth = { (c: Component) in abs(c.bounds.midX - screen.midX) < screen.width * 0.1 }
+         var mouth = Component()
+         creams.filter(isMouth).forEach { part in part.pixels.forEach { mouth.add($0.0, $0.1) } }
+-        if mouth.count > 0 {
+-            describe("mouth", mouth.bounds)
+-            print("  mouth color \(meanColor(mouth.pixels))")
+-            print("  mouth columns (cv x: y ranges in cv) " + columnProfile(mouth, reference: reference, samples: 15))
+-        }
+         let whiskers = creams.filter { !isMouth($0) }
+             .sorted { ($0.bounds.midX < screen.midX ? 0 : 1, $0.bounds.minY) < ($1.bounds.midX < screen.midX ? 0 : 1, $1.bounds.minY) }
+-        for (index, whisker) in whiskers.enumerated() {
+-            let side = whisker.bounds.midX < screen.midX ? "left" : "right"
+-            describe("\(side) whisker \(index % 3 + 1)", whisker.bounds)
+-            print("  centerline (cv x, cv y, thickness px) " + columnProfile(whisker, reference: reference, samples: 9))
+-        }
++            .enumerated().map { index, whisker in
++                (name: "\(whisker.bounds.midX < screen.midX ? "left" : "right") whisker \(index % 3 + 1)", component: whisker)
++            }
++        return FaceFeatures(nose: corals.first, mouth: mouth.count > 0 ? mouth : nil, whiskers: whiskers)
+     }
+ 
+     private static func describe(_ label: String, _ rect: CGRect, reference: ReferenceImage) {
+@@ -210,7 +225,7 @@ enum Measurement {
+     /// sleeping の下書き（docs/design/sleeping-2026-10-26/sleeping-draft.png。16:9 の全面がキャンバス）と現在の描画
+     /// （1280×720 のキャンバス）を同じ計測にかけ、最後に下書きを 1280×720 に縮めて色の分類ごとの IoU を出す。
+     static func runSleeping(root: String) throws {
+-        let draft = try ReferenceImage(name: "sleeping-draft.png", path: "\(root)/\(sleepingDirectory)/sleeping-draft.png")
++        let draft = try ReferenceImage(name: "sleeping-draft.png", path: "\(root)/\(sleepingDraftPath)")
+         let draftProfile = reportSleeping(draft)
+         let rendered = FaceRender.canvasImage(.sleeping, .closed)
+         let renderedProfile = reportSleeping(ReferenceImage(name: "rendered sleeping (canvas 1280x720)", rendered: rendered))
+@@ -253,13 +268,9 @@ enum Measurement {
+                          (r.bounds.minY - d.bounds.minY) * 720, (r.bounds.maxY - d.bounds.maxY) * 720,
+                          shared.count, mean, maxAbs))
+         }
+-        let scaled = compose(width: rendered.width, height: rendered.height) { context in
+-            drawImage(draft.bitmap.makeImage(), in: CGRect(x: 0, y: 0, width: rendered.width, height: rendered.height),
+-                      context: context)
+-        }
+-        let agreement = toneAgreement(reference: scaled, rendered: rendered)
+-            .map { String(format: "%@ %.3f", $0.0.rawValue, $0.1) }.joined(separator: ", ")
+-        print("sleeping: color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): \(agreement)")
++        let scaled = FaceRender.scaled(draft.bitmap.makeImage(), width: rendered.width, height: rendered.height)
++        print("sleeping: color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): "
++              + FaceRender.agreementSummary(reference: scaled, rendered: rendered))
+     }
+ 
+     struct ArcProfile {
+@@ -283,7 +294,6 @@ enum Measurement {
+ 
+     /// 閉じた目の弧（虹彩の色の連結成分 2 つ）を列ごとに走査し、目の局所座標（sleeping の目の枠。neutral と同じ）で
+     /// 上縁・下縁・太さを固定の u で出す。鼻・口・ひげは採用画像と同じ計測。戻り値は弧の縁（差分の計算用）。
+-    @discardableResult
+     private static func reportSleeping(_ reference: ReferenceImage) -> SleepingProfile {
+         let bitmap = reference.bitmap
+         let screen = reference.screen
+@@ -297,7 +307,6 @@ enum Measurement {
+         let arcs = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
+             tones[$0, $1].isIris
+         }.prefix(2).sorted { $0.minX < $1.minX }
+-        var arcBounds: [CGRect] = []
+         var result = SleepingProfile()
+         func canvasBounds(_ rect: CGRect) -> CGRect {
+             CGRect(origin: reference.canvasNormalized(rect.origin),
+@@ -317,7 +326,6 @@ enum Measurement {
+         for (index, arc) in arcs.enumerated() {
+             let side: CatFaceSide = index == 0 ? .left : .right
+             let frame = CatFaceGeometry.eyeFrame(side: side, eye: appearance.eye(side))
+-            arcBounds.append(arc.bounds)
+             var profile = ArcProfile()
+             profile.bounds = canvasBounds(arc.bounds)
+             describe("\(side) closed lid", arc.bounds, reference: reference)
+@@ -385,31 +393,19 @@ enum Measurement {
+             result.arcs[side] = profile
+         }
+ 
+-        let corals = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 200) {
+-            tones[$0, $1] == .coral
+-        }
+-        if let nose = corals.first {
++        let features = faceFeatures(bitmap: bitmap, tones: tones, screen: screen, excluding: arcs.map(\.bounds))
++        if let nose = features.nose {
+             describe("nose", nose.bounds, reference: reference)
+             print("  nose color \(meanColor(nose.pixels, bitmap: bitmap))")
+             result.features["nose"] = featureProfile(nose)
+         }
+-        let creams = components(width: bitmap.width, height: bitmap.height, region: screen, minimumCount: 150) { x, y in
+-            tones[x, y] == .cream && !arcBounds.contains { $0.insetBy(dx: -2, dy: -2).contains(CGPoint(x: x, y: y)) }
+-        }
+-        let isMouth = { (c: Component) in abs(c.bounds.midX - screen.midX) < screen.width * 0.1 }
+-        var mouth = Component()
+-        creams.filter(isMouth).forEach { part in part.pixels.forEach { mouth.add($0.0, $0.1) } }
+-        if mouth.count > 0 {
++        if let mouth = features.mouth {
+             describe("mouth", mouth.bounds, reference: reference)
+             print("  mouth color \(meanColor(mouth.pixels, bitmap: bitmap))")
+             print("  mouth columns (cv x: y ranges in cv) " + columnProfile(mouth, reference: reference, samples: 15))
+             result.features["mouth"] = featureProfile(mouth)
+         }
+-        let whiskers = creams.filter { !isMouth($0) }
+-            .sorted { ($0.bounds.midX < screen.midX ? 0 : 1, $0.bounds.minY) < ($1.bounds.midX < screen.midX ? 0 : 1, $1.bounds.minY) }
+-        for (index, whisker) in whiskers.enumerated() {
+-            let side = whisker.bounds.midX < screen.midX ? "left" : "right"
+-            let name = "\(side) whisker \(index % 3 + 1)"
++        for (name, whisker) in features.whiskers {
+             describe(name, whisker.bounds, reference: reference)
+             print("  centerline (cv x, cv y, thickness px) " + columnProfile(whisker, reference: reference, samples: 9))
+             result.features[name] = featureProfile(whisker)
+diff --git a/private/tmp/cat-idle-review-20261026/original/scripts/face-render/Render.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/scripts/face-render/Render.swift
+index d95f5b5..7d4d977 100644
+--- a/private/tmp/cat-idle-review-20261026/original/scripts/face-render/Render.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/scripts/face-render/Render.swift
+@@ -11,55 +11,28 @@ enum FaceRender {
+ 
+     /// レビューに渡した round は固定する。既にファイルがある round へは `--overwrite` なしでは書かない。
+     static func run(round: Int, root: String, overwrite: Bool) throws -> [String] {
+-        let directory = "\(root)/docs/design/face-expression-2026-10-26/renders/round-\(round)"
+-        let existing = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+-        if !existing.isEmpty && !overwrite {
+-            throw HarnessError("round-\(round) already has \(existing.count) files; use the next round number "
+-                               + "(or --overwrite only for a round that has not been handed to review)")
+-        }
++        let directory = try roundDirectory(under: "\(root)/docs/design/face-expression-2026-10-26",
++                                           round: round, overwrite: overwrite)
+         return try run(directory: directory, root: root, screenScale: 2)
+     }
+ 
+     /// sleeping の round: 下書き sleeping-draft.png との比較画像を docs/design/sleeping-2026-10-26/renders/round-N/ へ出す。
+     static func runSleeping(round: Int, root: String, overwrite: Bool) throws -> [String] {
+-        let design = "\(root)/\(Measurement.sleepingDirectory)"
+-        let directory = "\(design)/renders/round-\(round)"
+-        let existing = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+-        if !existing.isEmpty && !overwrite {
+-            throw HarnessError("round-\(round) already has \(existing.count) files; use the next round number "
+-                               + "(or --overwrite only for a round that has not been handed to review)")
+-        }
+-        var written: [String] = []
+-        func save(_ image: CGImage, _ name: String) throws {
+-            let path = "\(directory)/\(name)"
+-            try writePNG(image, to: path)
+-            written.append(path)
+-        }
++        let directory = try roundDirectory(under: "\(root)/\(Measurement.sleepingDirectory)", round: round, overwrite: overwrite)
++        let output = ImageWriter(directory: directory)
+         let canvas = canvasImage(.sleeping, .closed)
+-        try save(canvas, "canvas-sleeping-closed.png")
+-        try save(canvasImage(.sleepy, .closed), "canvas-sleepy-closed.png")
+-        try save(screenImage(.sleeping, .closed), "screen-sleeping.png")
+-        try save(screenImage(.sleeping, .closed, scale: 3), "screen3x-sleeping.png")
++        try output.save(canvas, "canvas-sleeping-closed.png")
++        try output.save(canvasImage(.sleepy, .closed), "canvas-sleepy-closed.png")
++        try output.save(screenImage(.sleeping, .closed), "screen-sleeping.png")
++        try output.save(screenImage(.sleeping, .closed, scale: 3), "screen3x-sleeping.png")
+ 
+         // 下書きは 16:9 の全面がキャンバス。1280×720 に縮めて上下に並べ、50% で重ね、画素差の絶対値も出す。
+-        let draft = try Bitmap(contentsOf: "\(design)/sleeping-draft.png")
++        let draft = try Bitmap(contentsOf: "\(root)/\(Measurement.sleepingDraftPath)")
+         let width = canvas.width
+         let height = canvas.height
+-        let full = CGRect(x: 0, y: 0, width: width, height: height)
+-        let scaledDraft = compose(width: width, height: height) { context in
+-            drawImage(draft.makeImage(), in: full, context: context)
+-        }
+-        try save(scaledDraft, "draft-1280x720.png")
+-        try save(compose(width: width, height: height * 2) { context in
+-            drawImage(scaledDraft, in: full, context: context)
+-            drawImage(canvas, in: CGRect(x: 0, y: height, width: width, height: height), context: context)
+-            context.setFillColor(CGColor(red: 0.35, green: 0.35, blue: 0.35, alpha: 1))
+-            context.fill(CGRect(x: 0, y: height - 1, width: width, height: 2))
+-        }, "compare-sleeping.png")
+-        try save(compose(width: width, height: height) { context in
+-            drawImage(scaledDraft, in: full, context: context)
+-            drawImage(canvas, in: full, context: context, alpha: 0.5)
+-        }, "overlay-sleeping.png")
++        let scaledDraft = scaled(draft.makeImage(), width: width, height: height)
++        try output.save(scaledDraft, "draft-1280x720.png")
++        try saveComparison(reference: scaledDraft, rendered: canvas, suffix: "sleeping", to: output)
+         let a = Bitmap(image: scaledDraft)
+         let b = Bitmap(image: canvas)
+         var diff = Bitmap(width: width, height: height)
+@@ -69,13 +42,12 @@ enum FaceRender {
+             }
+             diff.pixels[index + 3] = 255
+         }
+-        try save(diff.makeImage(), "diff-sleeping.png")
+-        let agreement = toneAgreement(reference: scaledDraft, rendered: canvas)
+-            .map { String(format: "%@ %.3f", $0.0.rawValue, $0.1) }.joined(separator: ", ")
+-        print("render: sleeping color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): \(agreement)")
++        try output.save(diff.makeImage(), "diff-sleeping.png")
++        print("render: sleeping color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): "
++              + agreementSummary(reference: scaledDraft, rendered: canvas))
+ 
+-        try save(render(GalleryView(), size: GalleryView.size, scale: 2), "gallery.png")
+-        return written
++        try output.save(render(GalleryView(), size: GalleryView.size, scale: 2), "gallery.png")
++        return output.written
+     }
+ 
+     /// 試し描き用。round ではない任意のディレクトリ（作業用の場所）へ同じ画像を出す。screenScale は画面モックの倍率。
+@@ -84,20 +56,15 @@ enum FaceRender {
+     }
+ 
+     private static func run(directory: String, root: String, screenScale: CGFloat) throws -> [String] {
+-        var written: [String] = []
+-        func save(_ image: CGImage, _ name: String) throws {
+-            let path = "\(directory)/\(name)"
+-            try writePNG(image, to: path)
+-            written.append(path)
+-        }
++        let output = ImageWriter(directory: directory)
+ 
+         // (a) キャンバス単体 1280×720
+         for expression in FaceExpression.allCases {
+-            try save(canvasImage(expression, .closed), "canvas-\(expression.rawValue)-closed.png")
++            try output.save(canvasImage(expression, .closed), "canvas-\(expression.rawValue)-closed.png")
+         }
+         for expression in heldMouthExpressions {
+             for pose in CatFaceGeometry.mouthPoses where pose != .closed {
+-                try save(canvasImage(expression, pose), "canvas-\(expression.rawValue)-\(pose).png")
++                try output.save(canvasImage(expression, pose), "canvas-\(expression.rawValue)-\(pose).png")
+             }
+         }
+ 
+@@ -106,12 +73,12 @@ enum FaceRender {
+         for expression in FaceExpression.allCases {
+             let image = screenImage(expression, .closed, scale: screenScale)
+             screens[expression] = image
+-            try save(image, "screen-\(expression.rawValue).png")
++            try output.save(image, "screen-\(expression.rawValue).png")
+         }
+ 
+         // (b′) 3 倍の画面モック 2556×1179（iOS Simulator キャプチャと同じ倍率で細い帯を確かめる）
+         for expression in [FaceExpression.neutral, .happy] {
+-            try save(screenImage(expression, .closed, scale: 3), "screen3x-\(expression.rawValue).png")
++            try output.save(screenImage(expression, .closed, scale: 3), "screen3x-\(expression.rawValue).png")
+         }
+ 
+         // (c) 採用画像との比較と 50% 重ね
+@@ -120,29 +87,69 @@ enum FaceRender {
+             let reference = try ReferenceImage(name: name, path: "\(references)/\(name)-b.png")
+             let referenceScreen = reference.bitmap.cropped(to: reference.deviceRect)
+             let mock = screens[expression]!
+-            let width = mock.width
+-            let height = mock.height
+-            try save(compose(width: width, height: height * 2) { context in
+-                drawImage(referenceScreen, in: CGRect(x: 0, y: 0, width: width, height: height), context: context)
+-                drawImage(mock, in: CGRect(x: 0, y: height, width: width, height: height), context: context)
+-                context.setFillColor(CGColor(red: 0.35, green: 0.35, blue: 0.35, alpha: 1))
+-                context.fill(CGRect(x: 0, y: height - 1, width: width, height: 2))
+-            }, "compare-\(name).png")
+-            try save(compose(width: width, height: height) { context in
+-                drawImage(referenceScreen, in: CGRect(x: 0, y: 0, width: width, height: height), context: context)
+-                drawImage(mock, in: CGRect(x: 0, y: 0, width: width, height: height), context: context, alpha: 0.5)
+-            }, "overlay-\(name).png")
+-            let scaledReference = compose(width: width, height: height) { context in
+-                drawImage(referenceScreen, in: CGRect(x: 0, y: 0, width: width, height: height), context: context)
+-            }
+-            let agreement = toneAgreement(reference: scaledReference, rendered: mock)
+-                .map { String(format: "%@ %.3f", $0.0.rawValue, $0.1) }.joined(separator: ", ")
+-            print("render: \(name) color-class IoU vs reference (Y bright, O lit inner, M cap, D deep, W highlight, C cream, P nose): \(agreement)")
++            try saveComparison(reference: referenceScreen, rendered: mock, suffix: name, to: output)
++            let scaledReference = scaled(referenceScreen, width: mock.width, height: mock.height)
++            print("render: \(name) color-class IoU vs reference (Y bright, O lit inner, M cap, D deep, W highlight, C cream, P nose): "
++                  + agreementSummary(reference: scaledReference, rendered: mock))
+         }
+ 
+         // (d) 全表情の一覧（3 列）
+-        try save(render(GalleryView(), size: GalleryView.size, scale: 2), "gallery.png")
+-        return written
++        try output.save(render(GalleryView(), size: GalleryView.size, scale: 2), "gallery.png")
++        return output.written
++    }
++
++    /// `design/renders/round-N/`。レビューに渡した round は固定する: 既にファイルがある round へは `--overwrite` なしでは書かない。
++    private static func roundDirectory(under design: String, round: Int, overwrite: Bool) throws -> String {
++        let directory = "\(design)/renders/round-\(round)"
++        let existing = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
++        if !existing.isEmpty && !overwrite {
++            throw HarnessError("round-\(round) already has \(existing.count) files; use the next round number "
++                               + "(or --overwrite only for a round that has not been handed to review)")
++        }
++        return directory
++    }
++
++    /// 参照（上）と描画（下）を灰色の線で区切って縦に並べた `compare-<suffix>.png` と、50% で重ねた `overlay-<suffix>.png`。
++    /// 参照は描画と同じ大きさに縮めて置く。
++    private static func saveComparison(reference: CGImage, rendered: CGImage, suffix: String, to output: ImageWriter) throws {
++        let width = rendered.width
++        let height = rendered.height
++        let full = CGRect(x: 0, y: 0, width: width, height: height)
++        try output.save(compose(width: width, height: height * 2) { context in
++            drawImage(reference, in: full, context: context)
++            drawImage(rendered, in: CGRect(x: 0, y: height, width: width, height: height), context: context)
++            context.setFillColor(CGColor(red: 0.35, green: 0.35, blue: 0.35, alpha: 1))
++            context.fill(CGRect(x: 0, y: height - 1, width: width, height: 2))
++        }, "compare-\(suffix).png")
++        try output.save(compose(width: width, height: height) { context in
++            drawImage(reference, in: full, context: context)
++            drawImage(rendered, in: full, context: context, alpha: 0.5)
++        }, "overlay-\(suffix).png")
++    }
++
++    /// 画像を width×height に縮めた（または広げた）コピー。色分類の IoU は同じ大きさの画像どうしで取る。
++    static func scaled(_ image: CGImage, width: Int, height: Int) -> CGImage {
++        compose(width: width, height: height) { context in
++            drawImage(image, in: CGRect(x: 0, y: 0, width: width, height: height), context: context)
++        }
++    }
++
++    /// 色分類ごとの IoU を "Y 0.968, C 0.873, …" の形にする。
++    static func agreementSummary(reference: CGImage, rendered: CGImage) -> String {
++        toneAgreement(reference: reference, rendered: rendered)
++            .map { String(format: "%@ %.3f", $0.0.rawValue, $0.1) }.joined(separator: ", ")
++    }
++
++    /// 1 つの出力先ディレクトリへ PNG を書き、書いたパスを順に覚える。
++    private final class ImageWriter {
++        let directory: String
++        private(set) var written: [String] = []
++        init(directory: String) { self.directory = directory }
++        func save(_ image: CGImage, _ name: String) throws {
++            let path = "\(directory)/\(name)"
++            try writePNG(image, to: path)
++            written.append(path)
++        }
+     }
+ 
+     static func canvasImage(_ expression: FaceExpression, _ pose: MouthPose) -> CGImage {
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/Inactivity/ConversationIdleSettings.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/Inactivity/ConversationIdleSettings.swift
+index 0300ecd..d6d1421 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/Inactivity/ConversationIdleSettings.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/Inactivity/ConversationIdleSettings.swift
+@@ -3,6 +3,8 @@ import Observation
+ 
+ @MainActor @Observable
+ final class ConversationIdleSettings {
++    static let sleepyRange = 1...1439
++    static let sleepingRange = 2...1440
+     @ObservationIgnored private let defaults: UserDefaults
+     private static let sleepyKey = "conversation.sleepyMinutes"
+     private static let sleepingKey = "conversation.sleepingMinutes"
+@@ -12,7 +14,7 @@ final class ConversationIdleSettings {
+     var sleepyMinutes: Int {
+         get { storedSleepy }
+         set {
+-            storedSleepy = min(1439, max(1, newValue))
++            storedSleepy = min(Self.sleepyRange.upperBound, max(Self.sleepyRange.lowerBound, newValue))
+             storedSleeping = max(storedSleeping, storedSleepy + 1)
+             persist()
+         }
+@@ -21,7 +23,7 @@ final class ConversationIdleSettings {
+     var sleepingMinutes: Int {
+         get { storedSleeping }
+         set {
+-            storedSleeping = min(1440, max(2, newValue))
++            storedSleeping = min(Self.sleepingRange.upperBound, max(Self.sleepingRange.lowerBound, newValue))
+             storedSleepy = min(storedSleepy, storedSleeping - 1)
+             persist()
+         }
+@@ -29,9 +31,10 @@ final class ConversationIdleSettings {
+ 
+     init(defaults: UserDefaults = .standard) {
+         self.defaults = defaults
+-        let sleepy = min(1439, max(1, (defaults.object(forKey: Self.sleepyKey) as? Int) ?? 5))
++        let sleepy = min(Self.sleepyRange.upperBound, max(Self.sleepyRange.lowerBound,
++            (defaults.object(forKey: Self.sleepyKey) as? Int) ?? 5))
+         storedSleepy = sleepy
+-        storedSleeping = min(1440, max(sleepy + 1,
++        storedSleeping = min(Self.sleepingRange.upperBound, max(sleepy + 1,
+             (defaults.object(forKey: Self.sleepingKey) as? Int) ?? 10))
+     }
+ 
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/Inactivity/ConversationInactivity.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/Inactivity/ConversationInactivity.swift
+index 6d63611..fe62fa9 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobot/Conversation/Inactivity/ConversationInactivity.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobot/Conversation/Inactivity/ConversationInactivity.swift
+@@ -61,8 +61,6 @@ final class ConversationInactivity {
+         evaluate()
+     }
+ 
+-    func settingsDidChange() { evaluate() }
+-
+     private func setState(_ value: ConversationInactivityState) {
+         guard state != value else { return }
+         state = value
+@@ -75,24 +73,25 @@ final class ConversationInactivity {
+         timer = nil
+         guard state != .sleeping, monitoring, let lastActivity else { return }
+         switch phase {
+-        case .idle, .listening, .paused: break
+-        default:
++        case .idle, .listening, .paused, .failed: break
++        case .preparing, .classifying, .thinking, .speaking, .clarifying:
+             setState(.awake)
+             return
+         }
++        let now = clock.now
+         let sleepyAt = lastActivity + Double(settings.sleepyMinutes) * 60
+         let sleepingAt = lastActivity + Double(settings.sleepingMinutes) * 60
+         if phase == .listening, hasPendingSpeech {
+             // Preserve the deadline while the segmenter finishes the current utterance.
+             // Its existing 20-second maximum also releases unfinalized recognition.
+-            setState(clock.now >= sleepyAt ? .sleepy : .awake)
++            setState(now >= sleepyAt ? .sleepy : .awake)
+             return
+         }
+-        if clock.now >= sleepingAt {
++        if now >= sleepingAt {
+             setState(.sleeping)
+             return
+         }
+-        let isSleepy = clock.now >= sleepyAt
++        let isSleepy = now >= sleepyAt
+         setState(isSleepy ? .sleepy : .awake)
+         let deadline = isSleepy ? sleepingAt : sleepyAt
+         let token = generation
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobotTests/Conversation/Inactivity/ConversationIdleIntegrationTests.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Inactivity/ConversationIdleIntegrationTests.swift
+index afa0987..3479596 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobotTests/Conversation/Inactivity/ConversationIdleIntegrationTests.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Inactivity/ConversationIdleIntegrationTests.swift
+@@ -4,9 +4,12 @@ import XCTest
+ @MainActor
+ final class ConversationIdleIntegrationTests: XCTestCase {
+     private func app(_ h: ConversationHarness, clock: ManualRobotClock) -> ConversationAppCoordinator {
+-        ConversationAppCoordinator(viewModel: h.sut,
++        let name = UUID().uuidString
++        let defaults = UserDefaults(suiteName: name)!
++        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
++        return ConversationAppCoordinator(viewModel: h.sut,
+             wakeLock: TestIdleTimerStorage(initialValue: false).makeWakeLock(),
+-            idleSettings: ConversationIdleSettings(defaults: UserDefaults(suiteName: UUID().uuidString)!),
++            idleSettings: ConversationIdleSettings(defaults: defaults),
+             idleClock: clock)
+     }
+ 
+@@ -197,12 +200,10 @@ final class ConversationIdleIntegrationTests: XCTestCase {
+         await clock.advance(by: 1); await app.waitForOperations()
+         XCTAssertEqual(app.inactivity.state, .sleepy)
+         XCTAssertEqual(h.sut.viewState.phase, .listening)
+-        if h.sut.viewState.phase == .listening {
+-            await h.emitCompletedUtterance("猫ちゃん、こんにちは", at: 600)
+-            XCTAssertEqual(app.inactivity.state, .awake)
+-            await clock.advance(by: 299)
+-            XCTAssertEqual(app.inactivity.state, .awake)
+-        }
++        await h.emitCompletedUtterance("猫ちゃん、こんにちは", at: 600)
++        XCTAssertEqual(app.inactivity.state, .awake)
++        await clock.advance(by: 299)
++        XCTAssertEqual(app.inactivity.state, .awake)
+         app.scenePhaseDidChange(.background); await app.waitForOperations()
+         await h.sut.shutdown()
+     }
+@@ -223,4 +224,145 @@ final class ConversationIdleIntegrationTests: XCTestCase {
+         await h.sut.shutdown()
+     }
+ 
++    func testTypedOnlyConversationSleepsAfterMicrophoneDenial() async {
++        let h = ConversationHarness(microphoneAllowed: false), clock = ManualRobotClock()
++        let app = app(h, clock: clock)
++        app.beginConversation(); await app.waitForOperations()
++        XCTAssertEqual(h.sut.viewState.phase, .failed(.microphoneDenied))
++        await clock.advance(by: 100)
++        let actions = app.makeActions(openSettings: {})
++        actions.performRecovery(.showTypedInput)
++        actions.updateTypedText("こんにちは")
++        actions.sendTypedText(); await app.waitForOperations()
++        XCTAssertEqual(h.sut.viewState.phase, .paused)
++        actions.updateTypedText("書きかけの質問")
++        await clock.advance(by: 299)
++        XCTAssertEqual(app.inactivity.state, .awake)
++        await clock.advance(by: 1)
++        XCTAssertEqual(app.inactivity.state, .sleepy)
++        await clock.advance(by: 300); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .sleeping)
++        XCTAssertEqual(h.sut.viewState.typedText, "書きかけの質問")
++        actions.toggleListening(); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .awake)
++        XCTAssertEqual(h.sut.viewState.phase, .failed(.microphoneDenied))
++        XCTAssertEqual(h.sut.viewState.typedText, "書きかけの質問")
++        actions.sendTypedText(); await app.waitForOperations()
++        XCTAssertEqual(h.sut.viewState.phase, .paused)
++        let starts = await h.recognizer.startCount
++        let prompts = await h.reply.prompts
++        XCTAssertEqual(starts, 0)
++        XCTAssertEqual(prompts, ["こんにちは", "書きかけの質問"])
++        app.scenePhaseDidChange(.background); await app.waitForOperations()
++        await h.sut.shutdown()
++    }
++
++    func testDeniedMicrophoneWithoutTypedInputStillSleepsAfterExplicitStart() async {
++        let h = ConversationHarness(microphoneAllowed: false), clock = ManualRobotClock()
++        let app = app(h, clock: clock)
++        app.beginConversation(); await app.waitForOperations()
++        XCTAssertEqual(h.sut.viewState.phase, .failed(.microphoneDenied))
++        await clock.advance(by: 300)
++        XCTAssertEqual(app.inactivity.state, .sleepy)
++        await clock.advance(by: 300); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .sleeping)
++        XCTAssertEqual(h.sut.viewState.phase, .paused)
++        let starts = await h.recognizer.startCount
++        XCTAssertEqual(starts, 0)
++        app.scenePhaseDidChange(.background); await app.waitForOperations()
++        await h.sut.shutdown()
++    }
++
++    func testTerminalSpeechFailureStillReachesStandby() async {
++        let h = ConversationHarness(speakerError: .speechSynthesisFailed), clock = ManualRobotClock()
++        let app = app(h, clock: clock)
++        app.beginConversation(); await app.waitForOperations()
++        await h.emitCompletedUtterance("猫ちゃん、こんにちは", at: 0)
++        XCTAssertEqual(h.sut.viewState.phase, .failed(.speechSynthesisFailed))
++        await clock.advance(by: 299)
++        XCTAssertEqual(app.inactivity.state, .awake)
++        await clock.advance(by: 1)
++        XCTAssertEqual(app.inactivity.state, .sleepy)
++        var presentation = h.sut.viewState
++        presentation.inactivity = app.inactivity.state
++        XCTAssertEqual(presentation.faceExpression, .sorry, "エラーの案内は寝るまで表示する")
++        await clock.advance(by: 300); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .sleeping)
++        XCTAssertEqual(h.sut.viewState.phase, .paused)
++        let beforeWake = await h.recognizer.startCount
++        XCTAssertEqual(beforeWake, 1)
++        app.makeActions(openSettings: {}).toggleListening(); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .awake)
++        XCTAssertEqual(h.sut.viewState.phase, .listening)
++        let afterWake = await h.recognizer.startCount
++        XCTAssertEqual(afterWake, 2)
++        app.scenePhaseDidChange(.background); await app.waitForOperations()
++        await h.sut.shutdown()
++    }
++
++    func testExpiredDeadlineDuringFailureCleanupSleepsAndWakesOnce() async {
++        let gate = ConversationTestGate()
++        addTeardownBlock { await gate.open() }
++        let h = ConversationHarness(speakerError: .speechSynthesisFailed, audioDeactivateGate: gate)
++        let clock = ManualRobotClock(), app = app(h, clock: clock)
++        app.beginConversation(); await app.waitForOperations()
++        let turn = Task { await h.emitCompletedUtterance("猫ちゃん、こんにちは", at: 0) }
++        await gate.waitUntilEntered()
++        await clock.advance(by: 600)
++        XCTAssertEqual(app.inactivity.state, .awake, "失敗の後片付けが完了するまでは処理中")
++        await gate.open(); await turn.value; await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .sleeping)
++        XCTAssertEqual(h.sut.viewState.phase, .paused)
++        await clock.advance(by: 600); await app.waitForOperations()
++        let beforeWake = await h.recognizer.startCount
++        XCTAssertEqual(beforeWake, 1)
++        app.makeActions(openSettings: {}).toggleListening(); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .awake)
++        XCTAssertEqual(h.sut.viewState.phase, .listening)
++        let afterWake = await h.recognizer.startCount
++        XCTAssertEqual(afterWake, 2)
++        app.scenePhaseDidChange(.background); await app.waitForOperations()
++        await h.sut.shutdown()
++    }
++
++    func testStandbyClearsOldCaptionButKeepsTypedDraftAfterWake() async {
++        let h = ConversationHarness(replySnapshots: ["前の返事"]), clock = ManualRobotClock()
++        let app = app(h, clock: clock)
++        app.beginConversation(); await app.waitForOperations()
++        await h.emitCompletedUtterance("猫ちゃん、こんにちは", at: 0)
++        XCTAssertEqual(h.sut.viewState.caption, "前の返事")
++        let actions = app.makeActions(openSettings: {})
++        actions.showTypedInput(); actions.updateTypedText("書きかけの質問")
++        await clock.advance(by: 600); await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .sleeping)
++        XCTAssertEqual(h.sut.viewState.caption, "")
++        XCTAssertEqual(h.sut.viewState.typedText, "書きかけの質問")
++        actions.toggleListening(); await app.waitForOperations()
++        XCTAssertEqual(h.sut.viewState.phase, .listening)
++        XCTAssertEqual(h.sut.viewState.caption, "")
++        XCTAssertEqual(h.sut.viewState.typedText, "書きかけの質問")
++        XCTAssertTrue(h.sut.viewState.showsTypedInput)
++        app.scenePhaseDidChange(.background); await app.waitForOperations()
++        await h.sut.shutdown()
++    }
++
++    func testIgnoredSpeechAtDeadlineReleasesPendingWithoutResettingActivity() async {
++        let h = ConversationHarness(), clock = ManualRobotClock()
++        let app = app(h, clock: clock)
++        app.beginConversation(); await app.waitForOperations()
++        await clock.advance(by: 599)
++        await h.emit(.provisional("えっ"), at: 599)
++        await clock.advance(by: 1)
++        XCTAssertEqual(app.inactivity.state, .sleepy)
++        await h.emitCompletedUtterance("えっと", at: 600)
++        await app.waitForOperations()
++        XCTAssertEqual(app.inactivity.state, .sleeping)
++        XCTAssertEqual(h.sut.viewState.phase, .paused)
++        let classifications = await h.classifier.calls, prompts = await h.reply.prompts
++        XCTAssertTrue(classifications.isEmpty)
++        XCTAssertTrue(prompts.isEmpty)
++        app.scenePhaseDidChange(.background); await app.waitForOperations()
++        await h.sut.shutdown()
++    }
++
+ }
+diff --git a/private/tmp/cat-idle-review-20261026/original/CatRobotTests/Conversation/Inactivity/ConversationInactivityTests.swift b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Inactivity/ConversationInactivityTests.swift
+index 42783c4..a83ab0f 100644
+--- a/private/tmp/cat-idle-review-20261026/original/CatRobotTests/Conversation/Inactivity/ConversationInactivityTests.swift
++++ b/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Inactivity/ConversationInactivityTests.swift
+@@ -3,8 +3,15 @@ import XCTest
+ 
+ @MainActor
+ final class ConversationInactivityTests: XCTestCase {
++    private func isolatedDefaults() -> UserDefaults {
++        let name = UUID().uuidString
++        let defaults = UserDefaults(suiteName: name)!
++        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
++        return defaults
++    }
++
+     private func settings() -> ConversationIdleSettings {
+-        ConversationIdleSettings(defaults: UserDefaults(suiteName: UUID().uuidString)!)
++        ConversationIdleSettings(defaults: isolatedDefaults())
+     }
+ 
+     func testDefaultBoundariesAndSleepIsStickyUntilTapWake() async {
+@@ -22,7 +29,7 @@ final class ConversationInactivityTests: XCTestCase {
+         idle.recordActivity()
+         idle.setMonitoring(false, phase: .paused)
+         idle.setMonitoring(true, phase: .listening)
+-        idle.settingsDidChange()
++        idle.setMonitoring(true, phase: .paused)
+         XCTAssertEqual(idle.state, .sleeping)
+         idle.wake()
+         XCTAssertEqual(idle.state, .awake)
+@@ -77,15 +84,15 @@ final class ConversationInactivityTests: XCTestCase {
+         await clock.advance(by: 180)
+         settings.sleepyMinutes = 1
+         settings.sleepingMinutes = 2
+-        idle.settingsDidChange()
++        idle.setMonitoring(true, phase: .paused)
+         XCTAssertEqual(idle.state, .sleeping)
+         settings.sleepingMinutes = 20
+-        idle.settingsDidChange()
++        idle.setMonitoring(true, phase: .paused)
+         XCTAssertEqual(idle.state, .sleeping)
+     }
+ 
+     func testSettingsPersistAndKeepSleepingLaterThanSleepy() {
+-        let defaults = UserDefaults(suiteName: UUID().uuidString)!
++        let defaults = isolatedDefaults()
+         let first = ConversationIdleSettings(defaults: defaults)
+         first.sleepyMinutes = 12
+         XCTAssertEqual(first.sleepingMinutes, 13)

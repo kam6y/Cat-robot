@@ -1,0 +1,26 @@
+[
+  {
+    "file": "images/largest-text-fullscreen-75.png",
+    "originalAttachment": "tuner-largest-text-75-fullscreen_0_E2552C18-2D43-483C-B5F5-9367FC4F78CC.png",
+    "sha256": "93affda4a0963a77d6f37df6f454087d70a6b742c1f4e9e8cb9d8442ae8873d6",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/largest-text-controls-75.png",
+    "originalAttachment": "tuner-largest-text-75-controls_0_B9BED395-3E24-426C-96DB-AEB63E8E96AE.png",
+    "sha256": "70961d1d77403549b2ba213a1adbd79db59dec1e3c82771505558b5ecec04ef3",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/standard-85.png",
+    "originalAttachment": "tuner-standard-85-reset_0_9EEE0D1C-B87D-4946-A04D-40C43938254C.png",
+    "sha256": "3075a534d1683f5b4518a5f613b1b1a6d8f506199c8ec54d6bba119517d91664",
+    "visuallyInspected": true
+  },
+  {
+    "file": "images/standard-75.png",
+    "originalAttachment": "tuner-standard-75-controls_0_74E5FC6D-44CB-4D39-9612-9EAD44D136D8.png",
+    "sha256": "17cc0711af110b4294d81ab08756e238db0871b260f200cea8ccd13dd01ca140",
+    "visuallyInspected": true
+  }
+]

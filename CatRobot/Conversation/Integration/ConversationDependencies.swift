@@ -17,11 +17,17 @@ struct ConversationDependencies: Sendable {
     let audioSession: any AudioSessionControlling
     let memory: any ConversationMemoryManaging
     let replyPlaybackMode: ReplyPlaybackMode
+    let motion: any RobotMotionControlling
+    let faceExpressions: any FaceExpressionControlling
+    let look: any LookControlling
+    let replyTurnObserver: any ReplyTurnObserving
     let replyTraceSink: any ReplyTraceSink
     let latency: any ConversationLatencyTracking
     let addresseePolicy: AddresseePolicy
     let now: @Sendable () -> TimeInterval
     let clarificationDelay: @Sendable (Duration) async -> Void
+    /// 「新しい会話を始めました」などの通知を消すまでの待ち。テストでは差し替える。
+    let noticeDelay: @Sendable (Duration) async -> Void
     let lifecycleCheckpoint: @Sendable (ConversationLifecycleCheckpoint) async -> Void
     let serviceTeardown: @Sendable () async -> Void
 
@@ -36,12 +42,19 @@ struct ConversationDependencies: Sendable {
         latency: any ConversationLatencyTracking,
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         replyPlaybackMode: ReplyPlaybackMode = .completeResponse,
+        motion: any RobotMotionControlling = NoopRobotMotionController(),
+        faceExpressions: any FaceExpressionControlling = NoopFaceExpressionController(),
+        look: any LookControlling = NoopLookController(),
+        replyTurnObserver: (any ReplyTurnObserving)? = nil,
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         addresseePolicy: AddresseePolicy = AddresseePolicy(),
         now: @escaping @Sendable () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
         },
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
+            try? await Task.sleep(for: duration)
+        },
+        noticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
         lifecycleCheckpoint: @escaping @Sendable (ConversationLifecycleCheckpoint) async -> Void = { _ in },
@@ -58,48 +71,15 @@ struct ConversationDependencies: Sendable {
         self.latency = latency
         self.replyTraceSink = replyTraceSink
         self.replyPlaybackMode = replyPlaybackMode
+        self.motion = motion
+        self.faceExpressions = faceExpressions
+        self.look = look
+        self.replyTurnObserver = replyTurnObserver ?? motion
         self.addresseePolicy = addresseePolicy
         self.now = now
         self.clarificationDelay = clarificationDelay
+        self.noticeDelay = noticeDelay
         self.lifecycleCheckpoint = lifecycleCheckpoint
         self.serviceTeardown = serviceTeardown
-    }
-}
-
-extension ConversationDependencies {
-    @MainActor
-    static func live(memoryStore: (any ConversationMemoryStore)? = nil, voiceSettings: SpeechVoiceSettings? = nil) -> Self {
-        let store: any ConversationMemoryStore
-        if let memoryStore { store = memoryStore }
-        else if let directory = try? FileConversationMemoryStore.defaultDirectory() {
-            store = FileConversationMemoryStore(directory: directory, compatibilityID: GemmaMemoryCompatibility.current)
-        } else { store = UnavailableConversationMemoryStore() }
-        let gemma = GemmaConversationService(memoryStore: store)
-        let concreteRecognizer = AppleSpeechRecognizer()
-        let recognizer: any SpeechRecognizing = concreteRecognizer
-        let voices = voiceSettings ?? SpeechVoiceSettings()
-        let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
-        let engine = SupertonicEngine(root: resources.appendingPathComponent("Supertonic"),
-                                      manifest: resources.appendingPathComponent("supertonic-manifest.json"))
-        let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voices.selected })
-        let audioSession = AppleAudioSessionController()
-        let serviceTeardown: @Sendable () async -> Void = {
-            await concreteRecognizer.shutdown()
-        }
-
-        return Self(
-            microphonePermission: MicrophonePermissionService(),
-            modelAvailability: gemma,
-            recognizer: recognizer,
-            classifier: gemma,
-            reply: gemma,
-            speaker: speaker,
-            audioSession: audioSession,
-            latency: ConversationLatencyTracker.live(),
-            replyTraceSink: OSReplyTraceSink(),
-            replyPlaybackMode: .sentencePrefetch,
-            memory: gemma,
-            serviceTeardown: serviceTeardown
-        )
     }
 }
