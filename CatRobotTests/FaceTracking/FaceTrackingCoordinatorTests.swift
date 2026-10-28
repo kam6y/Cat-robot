@@ -1,6 +1,13 @@
 import XCTest
 @testable import CatRobot
 
+private let turnedFace = FaceRectangle(x: 0.4, y: 0.4, width: 0.2, height: 0.2, yawRadians: .pi / 2, pitchRadians: 0)
+private let unknownHeadingFace = FaceRectangle(x: 0.4, y: 0.4, width: 0.2, height: 0.2)
+
+private func face(yawDegrees: Double) -> FaceRectangle {
+    FaceRectangle(x: 0.4, y: 0.4, width: 0.2, height: 0.2, yawRadians: yawDegrees * .pi / 180, pitchRadians: 0)
+}
+
 @MainActor
 final class FaceTrackingCoordinatorTests: XCTestCase {
     func testPersistedScreenAimChangesActualTrackingTarget() async throws {
@@ -187,7 +194,7 @@ final class FaceTrackingCoordinatorTests: XCTestCase {
         h.environment()
         await robotDrain()
         await h.clock.advance(by: 0.1)
-        h.frame(faces: [.init(x: 0.7, y: 0.4, width: 0.1, height: 0.2)])
+        h.frame(faces: [.init(x: 0.7, y: 0.4, width: 0.1, height: 0.2, yawRadians: 0, pitchRadians: 0)])
         await robotDrain()
         await h.clock.advance(by: 0.05)
         h.frame()
@@ -287,6 +294,111 @@ final class FaceTrackingCoordinatorTests: XCTestCase {
         h.frame(faces: [])
         await robotDrain()
         XCTAssertEqual(h.motion.trackingStates.filter { $0 == .returnToCenter }.count, 1)
+    }
+
+    func testTurnedOrUnknownHeadingFacesNeverStartFollowing() async {
+        for face in [turnedFace, unknownHeadingFace] {
+            let h = FaceTrackingHarness()
+            h.environment()
+            h.frame(faces: [face])
+            await robotDrain()
+            XCTAssertTrue(h.following.isEmpty)
+            XCTAssertFalse(h.motion.trackingStates.contains(.holding))
+            XCTAssertEqual(h.coordinator.status, .searching)
+        }
+    }
+
+    func testTurnedFrameDiscardsPendingFacingFrameAndIsNotReportedAsTracking() async {
+        let h = FaceTrackingHarness()
+        h.environment()
+        h.frame()
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 1)
+        await h.clock.advance(by: 0.1)
+        h.frame(faces: [.init(x: 0.6, y: 0.4, width: 0.2, height: 0.2, yawRadians: 0, pitchRadians: 0)])
+        await robotDrain()
+        XCTAssertEqual(h.coordinator.status, .tracking) // The fresh facing image still waits for STATUS.
+        await h.clock.advance(by: 0.05)
+        h.frame(faces: [turnedFace])
+        await robotDrain()
+        XCTAssertEqual(h.motion.trackingStates.last, .holding)
+        XCTAssertEqual(h.coordinator.status, .searching)
+        await h.clock.advance(by: 0.05)
+        h.link.emitStatus(robotStatus())
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 1)
+    }
+
+    func testTurnedAndUnknownHeadingFramesDoNotRenewLossAndFacingFaceResumes() async {
+        let h = FaceTrackingHarness()
+        h.environment()
+        h.frame()
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 1)
+        await h.advanceFresh(by: 0.2)
+        h.frame(faces: [turnedFace])
+        await robotDrain()
+        XCTAssertEqual(h.motion.trackingStates.last, .holding)
+        await h.advanceFresh(by: 9.79)
+        h.frame(faces: [unknownHeadingFace])
+        await robotDrain()
+        XCTAssertFalse(h.motion.trackingStates.contains(.returnToCenter))
+        await h.advanceFresh(by: 0.01)
+        XCTAssertEqual(h.motion.trackingStates.filter { $0 == .returnToCenter }.count, 1)
+        XCTAssertEqual(h.following.count, 1)
+        h.frame()
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 2)
+        XCTAssertEqual(h.coordinator.status, .tracking)
+    }
+
+    func testStoredScreenAimCorrectionCentersTheFacingWindowForReceiveAndProjection() async throws {
+        let h = FaceTrackingHarness(storedYawCorrection: 10)
+        h.environment()
+        h.frame(faces: [face(yawDegrees: -39)])
+        await robotDrain()
+        let target = try XCTUnwrap(h.following.last)
+        XCTAssertEqual(target.yaw, -10, accuracy: 0.000_001)
+        XCTAssertEqual(h.coordinator.status, .tracking)
+    }
+
+    func testFaceOutsideCorrectedWindowDiscardsPendingFrameAndDoesNotRenewLoss() async {
+        let h = FaceTrackingHarness(storedYawCorrection: 10)
+        h.environment()
+        h.frame()
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 1)
+        await h.clock.advance(by: 0.1)
+        h.frame()
+        await robotDrain()
+        XCTAssertEqual(h.coordinator.status, .tracking) // The fresh facing image still waits for STATUS.
+        await h.clock.advance(by: 0.05)
+        h.frame(faces: [face(yawDegrees: 25)])
+        await robotDrain()
+        XCTAssertEqual(h.motion.trackingStates.last, .holding)
+        XCTAssertEqual(h.coordinator.status, .searching)
+        await h.advanceFresh(by: 9.84)
+        h.frame(faces: [face(yawDegrees: 25)])
+        await robotDrain()
+        XCTAssertFalse(h.motion.trackingStates.contains(.returnToCenter))
+        await h.advanceFresh(by: 0.01)
+        XCTAssertEqual(h.motion.trackingStates.filter { $0 == .returnToCenter }.count, 1)
+        XCTAssertEqual(h.following.count, 1)
+    }
+
+    func testCorrectionChangedInSettingsRecentersTheWindowForTheNextCapture() async throws {
+        let h = FaceTrackingHarness(storedYawCorrection: 0)
+        h.environment()
+        h.frame(faces: [face(yawDegrees: -35)])
+        await robotDrain()
+        XCTAssertTrue(h.following.isEmpty)
+        h.environment(mode: .settings)
+        h.preferences.trackingYawCorrection = 14
+        h.environment()
+        h.frame(faces: [face(yawDegrees: -40)])
+        await robotDrain()
+        let target = try XCTUnwrap(h.following.last)
+        XCTAssertEqual(target.yaw, -14, accuracy: 0.000_001)
     }
 
     func testNewFaceCancelsLossDeadlineAndNewConversationDiscardsIt() async {

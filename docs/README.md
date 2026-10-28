@@ -1,6 +1,6 @@
 # 文書の索引
 
-この索引は `docs/` に残っている文書の案内です。「現役の仕様」は今の main の振る舞いの基準です。「日付つきの検証記録」は、その日にその版で確かめたことの記録で、今の状態を保証するものではありません。
+この索引は `docs/` に残っている文書の案内です。「現役の仕様」はこの版の振る舞いの基準です。「日付つきの検証記録」は、その日にその版で確かめたことの記録で、今の状態を保証するものではありません。
 
 構成と非同期処理の約束事は [アーキテクチャ](architecture.md) にまとめています。ビルド・テスト・プロジェクト生成の手順は [README](../README.md) を見てください。
 
@@ -41,8 +41,9 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | [2026-10-27 UI 再編](superpowers/specs/2026-10-27-ui-reorganization-design.md) | 設定の階層と会話画面の構成 |
 | [2026-10-27 UI 仕上げ](superpowers/specs/2026-10-27-ui-polish-design.md) | UI の仕上げ |
 | [2026-10-28 main の整理](superpowers/specs/2026-10-28-main-refactor-design.md) | 今回の責務整理・旧経路の退役・文書とブランチの整理 |
+| [2026-10-28 顔の向きによる追尾条件](superpowers/specs/2026-10-28-face-facing-gate-design.md) | 顔の向き（Vision の yaw/pitch）で追尾する顔を絞る条件。左右の判定中心は照準補正に連動 |
 
-進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) だけです。
+進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。
 
 ## 採用済みのデザイン資料（`design/`）
 
@@ -79,6 +80,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | 2026-10-27 UI 相互レビュー | [記録](validation/2026-10-27-ui-cross-review.md) | 最大文字でのカテゴリ詳細→校正→文字サイズ変更という逆の経路は未検証。配布後の通常起動と動作確認はしていない。画像は基準コミットにある |
 | 2026-10-27 UI 仕上げ | [記録](validation/2026-10-27-ui-polish.md)、[詳細](validation/ui-polish-2026-10-27/) | 文字入力中は、聞き取り状態の切り替えで顔の高さが変わる場合がある（仕様として維持） |
 | 2026-10-28 UI 最終レビュー | [記録](validation/2026-10-28-ui-final-review.md)、[詳細](validation/ui-final-review-2026-10-28/) | 最大文字の全画面キャプチャで顔が欠落した。原因は未確定 |
+| 2026-10-28 顔の向き | [記録](validation/2026-10-28-face-facing-gate.md) | 実際の人の顔での判定（会話距離・画面端・眼鏡・照明、追尾の停止・約10秒での復帰・再開、閾値近くでの切り替わり、猫の顔を見たときに判定中心の -c 度付近になるか）、実際の Vision 推定値・サーボの挙動・消費電力・発熱は実機で未確認 |
 
 ## 2026-10-28 main 整理の検証
 

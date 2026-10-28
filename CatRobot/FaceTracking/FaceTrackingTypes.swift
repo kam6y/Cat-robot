@@ -1,12 +1,27 @@
 import Foundation
 
-/// An upright, unmirrored rectangle with the front camera fixed to the screen's left.
+/// An upright, unmirrored face rectangle with optional head angles.
+/// The front camera is fixed to the screen's left.
 /// Lower-left origin, normalized to 0...1; the adapter normalizes sensor mounting.
 struct FaceRectangle: Equatable, Sendable {
     let x: Double
     let y: Double
     let width: Double
     let height: Double
+    /// Vision head angles in the upright image, not the robot's neck angles.
+    /// Missing metadata must never be interpreted as a frontal face.
+    let yawRadians: Double?
+    let pitchRadians: Double?
+
+    init(x: Double, y: Double, width: Double, height: Double,
+         yawRadians: Double? = nil, pitchRadians: Double? = nil) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.yawRadians = yawRadians
+        self.pitchRadians = pitchRadians
+    }
 }
 
 /// Face events contain no image. Times use RobotClock's monotonic domain.

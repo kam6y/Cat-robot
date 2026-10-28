@@ -77,7 +77,7 @@ final class FaceTrackingHarness {
         coordinator.setEnvironment(conversationVisible: visible, sceneActive: active, mode: mode, phase: phase)
     }
     func frame(capturedAt: TimeInterval? = nil, generation: UUID? = nil,
-               faces: [FaceRectangle] = [.init(x: 0.4, y: 0.4, width: 0.2, height: 0.2)]) {
+               faces: [FaceRectangle] = [.init(x: 0.4, y: 0.4, width: 0.2, height: 0.2, yawRadians: 0, pitchRadians: 0)]) {
         guard let start = source.starts.last else { return }
         source.emit(.observation(.init(generation: generation ?? start.generation,
                                       capturedAt: capturedAt ?? clock.now, completedAt: clock.now,

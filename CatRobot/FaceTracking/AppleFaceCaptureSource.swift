@@ -317,16 +317,25 @@ private final class FaceCaptureWorker: NSObject, AVCaptureVideoDataOutputSampleB
         fulfillSnapshotIfFresh()
         do {
             let request = VNDetectFaceRectanglesRequest()
+            // Revision 3 supplies continuous yaw and pitch in the upright image.
+            request.revision = VNDetectFaceRectanglesRequestRevision3
             try VNImageRequestHandler(cvPixelBuffer: buffer, orientation: run.imageOrientation).perform([request])
             guard gate.isCurrent(run.generation),
                   let completedAt = run.mapping.robotTime(hostTime: CMClockGetTime(CMClockGetHostTimeClock()).seconds) else { return }
             let faces = (request.results ?? []).map { observation in
                 let box = observation.boundingBox
-                return FaceRectangle(x: box.minX, y: box.minY, width: box.width, height: box.height)
+                return FaceRectangle(x: box.minX, y: box.minY, width: box.width, height: box.height,
+                                     yawRadians: observation.yaw?.doubleValue,
+                                     pitchRadians: observation.pitch?.doubleValue)
             }
             #if DEBUG
             if run.frameCount == 1 || run.frameCount % 25 == 0 {
                 logger.debug("frame width=\(CVPixelBufferGetWidth(buffer)) height=\(CVPixelBufferGetHeight(buffer)) interval=\(interval) processing=\(completedAt - capturedAt) faces=\(faces.count) thermal=\(ProcessInfo.processInfo.thermalState.rawValue)")
+                for (index, face) in faces.prefix(3).enumerated() {
+                    let yawDegrees = face.yawRadians.map { $0 * 180 / .pi } ?? .nan
+                    let pitchDegrees = face.pitchRadians.map { $0 * 180 / .pi } ?? .nan
+                    logger.debug("head index=\(index) yawDegrees=\(yawDegrees) pitchDegrees=\(pitchDegrees)")
+                }
             }
             #endif
             continuation.yield(.observation(.init(generation: run.generation, capturedAt: capturedAt,

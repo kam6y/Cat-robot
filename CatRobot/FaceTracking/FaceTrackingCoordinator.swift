@@ -190,7 +190,7 @@ final class FaceTrackingCoordinator {
                   lastObservationAt.map({ observation.capturedAt > $0 }) ?? true else { return }
             lastObservationAt = observation.capturedAt
             pending = observation
-            if FaceTrackingGeometry.selectFace(observation.faces) == nil {
+            if FaceTrackingGeometry.selectFace(observation.faces, yawCorrection: preferences.trackingYawCorrection) == nil {
                 pending = nil
                 if lastFaceAt != nil, !returnRequested { setMotionState(.holding) }
             } else { processPending() }

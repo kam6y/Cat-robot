@@ -1,8 +1,16 @@
 import Foundation
 
 enum FaceTrackingGeometry {
-    static func selectFace(_ faces: [FaceRectangle]) -> FaceRectangle? {
-        faces.lazy.filter(\.isValid).min { lhs, rhs in
+    fileprivate static let facingYawHalfWidthDegrees: Double = 30
+    fileprivate static let facingPitchLimitDegrees: Double = 25
+
+    static func selectFace(_ faces: [FaceRectangle], yawCorrection: Double) -> FaceRectangle? {
+        guard yawCorrection.isFinite, RobotPreferences.trackingYawCorrectionRange.contains(yawCorrection) else { return nil }
+        // A face turned from the left-mounted lens toward screen center has negative Vision yaw.
+        // Construct endpoints in degrees first to preserve inclusive fractional-degree bounds.
+        let yawRange = ((-yawCorrection - facingYawHalfWidthDegrees) * .pi / 180)...((-yawCorrection + facingYawHalfWidthDegrees) * .pi / 180)
+        // Filter before ranking so a nearer turned face cannot hide a facing face.
+        return faces.lazy.filter { $0.isValid && $0.isFacingScreen(yawRange: yawRange) }.min { lhs, rhs in
             let leftDistance = pow(lhs.centerX - 0.5, 2) + pow(lhs.centerY - 0.5, 2)
             let rightDistance = pow(rhs.centerX - 0.5, 2) + pow(rhs.centerY - 0.5, 2)
             if leftDistance != rightDistance { return leftDistance < rightDistance }
@@ -16,10 +24,9 @@ enum FaceTrackingGeometry {
 
     static func project(_ observation: FaceObservation, yawCorrection: Double, pose: FacePose) -> FacePose? {
         let fov = observation.horizontalFieldOfView, aspect = observation.aspectRatio
-        guard yawCorrection.isFinite, RobotPreferences.trackingYawCorrectionRange.contains(yawCorrection),
-              pose.isFinite, fov.isFinite, fov > 0, fov < 180,
+        guard pose.isFinite, fov.isFinite, fov > 0, fov < 180,
               aspect.isFinite, aspect > 0,
-              let face = selectFace(observation.faces) else { return nil }
+              let face = selectFace(observation.faces, yawCorrection: yawCorrection) else { return nil }
         // Upright front-camera frames are not mirrored. Rightward image motion is leftward
         // to the person facing the robot.
         let tangent = tan(fov * .pi / 360)
@@ -36,6 +43,13 @@ private extension FaceRectangle {
     var centerX: Double { x + width / 2 }
     var centerY: Double { y + height / 2 }
     var area: Double { width * height }
+    func isFacingScreen(yawRange: ClosedRange<Double>) -> Bool {
+        guard let yawRadians, let pitchRadians,
+              yawRadians.isFinite, pitchRadians.isFinite else { return false }
+        // Head direction, not eye gaze.
+        return yawRange.contains(yawRadians)
+            && abs(pitchRadians) <= FaceTrackingGeometry.facingPitchLimitDegrees * .pi / 180
+    }
     var isValid: Bool {
         x.isFinite && y.isFinite && width.isFinite && height.isFinite
             && x >= 0 && y >= 0 && width > 0 && height > 0
