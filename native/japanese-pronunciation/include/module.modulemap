@@ -1,0 +1,4 @@
+module CJPPronunciation {
+    header "CJPPronunciation.h"
+    export *
+}

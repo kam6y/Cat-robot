@@ -1,0 +1,21 @@
+[package]
+name = "catrobot-japanese-pronunciation"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90.0"
+publish = false
+
+[lib]
+name = "cjp_pronunciation"
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+jpreprocess = "=0.15.0"
+regex = "1.12.3"
+unicode-normalization = "=0.1.26"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "unwind"
