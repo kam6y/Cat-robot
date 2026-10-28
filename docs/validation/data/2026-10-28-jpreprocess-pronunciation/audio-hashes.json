@@ -1,0 +1,82 @@
+{
+  "ambiguous-jpreprocess.wav": {
+    "sha256": "0d11e75c5582d3c0055898bfed6caed4e042e68c5d61281d7f4e57b29ec4805c",
+    "bytes": 372556,
+    "frames": 92115
+  },
+  "ambiguous-original.wav": {
+    "sha256": "7b361c97833ac46ac65d6cb9fb3a82189e31acfff330455d1282e0327720bdf1",
+    "bytes": 377152,
+    "frames": 93264
+  },
+  "clock-jpreprocess.wav": {
+    "sha256": "1218c38ab63e99418ce1649ad97783ae831e43186638a8a11a76d726979b9c36",
+    "bytes": 364192,
+    "frames": 90024
+  },
+  "clock-original.wav": {
+    "sha256": "d37262d72f0ea836973dad42a7a876f30a634bd1b59338a307be79f9f8a5059a",
+    "bytes": 418948,
+    "frames": 103713
+  },
+  "counter-jpreprocess.wav": {
+    "sha256": "e59f3de95a3c51d27bf7d6c4dcf6858f9bc793a9d8e059d9cb760fbe658632e5",
+    "bytes": 393484,
+    "frames": 97347
+  },
+  "counter-original.wav": {
+    "sha256": "1cf3d2f22ec4c5d3afa575b47cb7f1c03781c32dedc870bdcfec37fc2afe3f7a",
+    "bytes": 446372,
+    "frames": 110569
+  },
+  "greeting-jpreprocess.wav": {
+    "sha256": "d059bcc078a56d4ff96411db6da3c2f4c16f998061396ced3a608797e45baf98",
+    "bytes": 431144,
+    "frames": 106762
+  },
+  "greeting-original.wav": {
+    "sha256": "c4bc482d80fac3c93237350b91f056df692a7e3242196f0ed0b115e6e0a4d70f",
+    "bytes": 510068,
+    "frames": 126493
+  },
+  "plus-jpreprocess.wav": {
+    "sha256": "f88a2a9b8d743f9969c2aef9fd99ef91b147973ee5106ef9cab8a4c013d3119e",
+    "bytes": 315964,
+    "frames": 77967
+  },
+  "plus-original.wav": {
+    "sha256": "ecb1c940fd0d0b140f78698d2869e32bd49c69313b26619a954e3a5b4ef0d395",
+    "bytes": 312432,
+    "frames": 77084
+  },
+  "service-plus-jpreprocess.wav": {
+    "sha256": "7388978f4f5617100a8bac0e0bc53df1fe5c58be58ed90714d864f7c2eaed6a7",
+    "bytes": 349400,
+    "frames": 86326
+  },
+  "service-plus-original.wav": {
+    "sha256": "ee51393c73d75473b0437a44c32eab4d6693a833a3ac9b12316ef2971feaf546",
+    "bytes": 308336,
+    "frames": 76060
+  },
+  "temperature-jpreprocess.wav": {
+    "sha256": "deb31bd4877950a1e5cee6dafdeea38833b3cccf5a17ca3fcb473818bdc98dd7",
+    "bytes": 392620,
+    "frames": 97131
+  },
+  "temperature-original.wav": {
+    "sha256": "635eb8ed2c0b51fc297373008bc66ade70fad66d30dbac2e86daaddc498bf345",
+    "bytes": 380264,
+    "frames": 94042
+  },
+  "youtube-jpreprocess.wav": {
+    "sha256": "764add8e3bad4e5e7f3e23ca8e5d564df3a209dbe60857ed0b3aa696321fabca",
+    "bytes": 289688,
+    "frames": 71398
+  },
+  "youtube-original.wav": {
+    "sha256": "2225f363b06e2360f24c9799ca173ce28e7d50caae87be177b9e317ed85796e8",
+    "bytes": 306852,
+    "frames": 75689
+  }
+}

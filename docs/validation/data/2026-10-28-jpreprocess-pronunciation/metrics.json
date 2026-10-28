@@ -1,0 +1,29 @@
+{
+  "recordedSourceRevision": "17810a158442d6f3be2f31e77c1092db7d6b2466-working",
+  "equivalentSourceCommit": "184aee7",
+  "device": "iPhone17,1",
+  "OS": "27.2",
+  "firstDictionaryPrepareSeconds": 0.060006708328728564,
+  "footprintBeforeBytes": 29230800,
+  "footprintAfterBytes": 180832096,
+  "footprintDifferenceBytes": 151601296,
+  "comparisonCount": 8,
+  "waveCount": 16,
+  "conversionSecondsByFixture": {
+    "plus": 0.0026053750043502077,
+    "youtube": 0.00016699999832781032,
+    "counter": 0.00047325000195996836,
+    "greeting": 0.00016254166985163465,
+    "service-plus": 0.00014487500448012725,
+    "ambiguous": 0.00014954167272662744,
+    "temperature": 0.00015725000412203372,
+    "clock": 0.00012041666923323646
+  },
+  "testResult": "Passed",
+  "auditoryAssessment": "unverified",
+  "foregroundApplicationState": 0,
+  "debugBundleBytes": 567155586,
+  "dictionaryFileBytes": 80055769,
+  "previousDebugBundleBytes": 445713033,
+  "debugBundleIncreaseBytes": 121442553
+}

@@ -145,6 +145,13 @@ scripts/build_jpreprocess.sh
 scripts/run_supertonic_integration_device_test.sh <UDID> pronunciation
 ```
 
+実機試験はアプリが前面にある状態で実行します。`test.log`に専用テストの開始が出た後、前面へ出す操作が必要な場合は別ターミナルで次を実行します。
+
+```bash
+xcrun devicectl device process launch --device <UDID> --activate com.kamby.CatRobot
+```
+
+
 ## Supertonic音声の準備と設定
 
 通常アプリは Supertonic 3 を使用します。「…」→「設定」→「会話」の「声」で F1〜F5・M1〜M5 を選び、初期値は F1 です。選択は再起動後も保持します。設定を開くと会話を一時停止し、閉じると自動で再開します（自動待機で寝ている場合は猫のタップが必要です）。再開後は選んだ声を使い、会話の記憶は変更しません。
