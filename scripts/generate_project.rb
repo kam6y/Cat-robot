@@ -39,6 +39,7 @@ def apply_common_settings(target)
       "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" => "NO",
       "SWIFT_STRICT_CONCURRENCY" => "complete",
       "SWIFT_VERSION" => "6.0",
+      "SWIFT_INCLUDE_PATHS" => ["$(inherited)", "$(SRCROOT)/native/japanese-pronunciation/include"],
       "TARGETED_DEVICE_FAMILY" => "1"
     )
   end
@@ -129,6 +130,21 @@ end
 validation.always_out_of_date = "1"
 app_target.build_phases.delete(validation)
 app_target.build_phases.insert(0, validation)
+
+native_reference = app_group.new_file("LocalAssets/JPreprocess/CJPPronunciation.xcframework")
+native_reference.last_known_file_type = "wrapper.xcframework"
+app_target.frameworks_build_phase.add_file_reference(native_reference, true)
+pronunciation_dictionary = app_group.new_file("LocalAssets/JPreprocess/dictionary")
+pronunciation_dictionary.last_known_file_type = "folder"
+pronunciation_notices = app_group.new_file("Vendor/JPreprocess")
+pronunciation_notices.last_known_file_type = "folder"
+app_target.add_resources([pronunciation_dictionary, pronunciation_notices])
+pronunciation_validation = app_target.new_shell_script_build_phase("Validate jpreprocess assets")
+pronunciation_validation.shell_script = 'PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 "$SRCROOT/scripts/validate_jpreprocess_assets.py" --root "$SRCROOT/CatRobot/LocalAssets/JPreprocess" --manifest "$SRCROOT/CatRobot/Resources/jpreprocess-manifest.json"'
+pronunciation_validation.input_paths = ["$(SRCROOT)/scripts/validate_jpreprocess_assets.py", "$(SRCROOT)/CatRobot/Resources/jpreprocess-manifest.json", "$(SRCROOT)/CatRobot/LocalAssets/JPreprocess"]
+pronunciation_validation.always_out_of_date = "1"
+app_target.build_phases.delete(pronunciation_validation)
+app_target.build_phases.insert(0, pronunciation_validation)
 
 # Xcode 15.3 以降は、静的リンクする onnxruntime.framework の「中身のないスタブ」を Frameworks に埋め込む
 # （ビルドログの "Injecting stub binary into codeless framework"）。スタブはアプリの deployment target で

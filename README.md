@@ -124,6 +124,21 @@ API キーは利用者が用意し、ソース・README・検証ログへ記載�
 
 利用量は Claude で正常に完了した返答をもとにしたアプリ内の概算です。宛先判定・要約・メモ整理を含む実際の請求額とは異なるため、請求は Claude Console で確認します。ワークスペースの月間支出上限は Console で別途設定します。
 
+## 日本語の読み変換の準備
+
+jpreprocess 0.15.0と固定した日本語辞書を使い、読み上げる文章だけをカナへ変換します。YouTube等の英語名、数字・助数詞、単独の`+`を扱います。URL・メール・コード・未知語は原文を保持します。従来のiPhone/Bluetoothだけを置き換える処理は廃止し、辞書や変換の失敗時は既存の音声エラーとして扱います。表示用・記憶用の返答は書き換えません。
+
+Rust 1.90.0とXcodeを用意し、最初に次を実行します。通常のXcodeビルドではネットワーク取得やRustのビルドを行いません。
+
+```bash
+rustup toolchain install 1.90.0 --profile minimal
+rustup target add --toolchain 1.90.0 aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+python3 scripts/prepare_jpreprocess_assets.py --root CatRobot/LocalAssets/JPreprocess --manifest CatRobot/Resources/jpreprocess-manifest.json
+scripts/build_jpreprocess.sh
+```
+
+ネイティブソースを変更したら`build_jpreprocess.sh`を再実行します。辞書は`LocalAssets/JPreprocess/dictionary`、静的ライブラリは同じ親フォルダのXCFrameworkに置き、Gitには追加しません。欠損・改変・ソースとライブラリの不一致はビルド時に検出します。[出典とライセンス](CatRobot/Vendor/JPreprocess/PROVENANCE.md)も参照してください。
+
 ## Supertonic音声の準備と設定
 
 通常アプリは Supertonic 3 を使用します。「…」→「設定」→「会話」の「声」で F1〜F5・M1〜M5 を選び、初期値は F1 です。選択は再起動後も保持します。設定を開くと会話を一時停止し、閉じると自動で再開します（自動待機で寝ている場合は猫のタップが必要です）。再開後は選んだ声を使い、会話の記憶は変更しません。
@@ -178,7 +193,7 @@ ruby scripts/test_generate_project.rb
 
 ソース変更と再生成した`CatRobot.xcodeproj`は一緒に管理します。生成をもう一度実行してもプロジェクト差分が増えないことが決定性の基準です。
 
-生成するアプリターゲットには 2 つのスクリプト段階があります。最初の「Validate Supertonic assets」は同梱する音声資産を検証します。最後の「Remove codeless onnxruntime framework」は、静的リンク済みの `onnxruntime.framework` に Xcode が埋め込む中身のないスタブを取り除きます。スタブは App Store Connect の検証で ITMS-90208（Info.plist の最小 OS と不一致）になるためです。取り除くのは記号を公開しないスタブだけで、本物の dylib なら残します。検査や削除に失敗したらビルドを止めます。スクリプトの sandbox（`ENABLE_USER_SCRIPT_SANDBOXING`）は成果物の削除を許さず、削除対象を出力に宣言すると埋め込み段階と衝突するため、アプリターゲットだけ sandbox を切っています（プロジェクト既定とテストターゲットは有効のまま）。
+生成するアプリターゲットには 3 つのスクリプト段階があります。「Validate jpreprocess assets」は辞書とネイティブライブラリを、「Validate Supertonic assets」は同梱する音声資産をコンパイル前に検証します。最後の「Remove codeless onnxruntime framework」は、静的リンク済みの `onnxruntime.framework` に Xcode が埋め込む中身のないスタブを取り除きます。スタブは App Store Connect の検証で ITMS-90208（Info.plist の最小 OS と不一致）になるためです。取り除くのは記号を公開しないスタブだけで、本物の dylib なら残します。検査や削除に失敗したらビルドを止めます。スクリプトの sandbox（`ENABLE_USER_SCRIPT_SANDBOXING`）は成果物の削除を許さず、削除対象を出力に宣言すると埋め込み段階と衝突するため、アプリターゲットだけ sandbox を切っています（プロジェクト既定とテストターゲットは有効のまま）。
 
 ## Simulatorでビルド・テスト
 

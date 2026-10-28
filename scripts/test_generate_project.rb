@@ -188,6 +188,17 @@ end
 
 puts "PASS: deterministic CatRobot project contract"
 
+native = app.frameworks_build_phase.files_references.find { |r| r&.path == "LocalAssets/JPreprocess/CJPPronunciation.xcframework" }
+assert(native, "native Japanese pronunciation library must be linked")
+assert(app.resources_build_phase.files_references.any? { |r| r.path == "LocalAssets/JPreprocess/dictionary" }, "Japanese pronunciation dictionary must be bundled")
+assert(app.resources_build_phase.files_references.any? { |r| r.path == "Vendor/JPreprocess" }, "jpreprocess notices must be bundled")
+pronunciation_validation = app.shell_script_build_phases.find { |p| p.name == "Validate jpreprocess assets" }
+assert(pronunciation_validation && app.build_phases.index(pronunciation_validation) < app.build_phases.index(app.source_build_phase), "jpreprocess must be validated before compilation")
+[app, tests].each do |target|
+  assert(target.build_configurations.all? { |c| Array(c.build_settings["SWIFT_INCLUDE_PATHS"]).flat_map { |v| v.split }.include?("$(SRCROOT)/native/japanese-pronunciation/include") }, "native C module must be importable by #{target.name}")
+end
+assert(app.copy_files_build_phases.none? { |p| p.files_references.include?(native) }, "static jpreprocess library must not be embedded")
+
 ort = project.root_object.package_references.find { |p| p.repositoryURL.end_with?("onnxruntime-swift-package-manager") }
 assert(ort && ort.requirement == { "kind" => "exactVersion", "version" => "1.24.2" }, "pinned ONNX runtime missing")
 assert(app.resources_build_phase.files_references.any? { |r| r.path == "LocalAssets/Supertonic" }, "Supertonic bundle missing")

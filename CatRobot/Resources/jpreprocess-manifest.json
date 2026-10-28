@@ -1,0 +1,49 @@
+{
+  "version": "0.15.0",
+  "archive": {
+    "url": "https://github.com/jpreprocess/jpreprocess/releases/download/v0.15.0/naist-jdic-jpreprocess.tar.gz",
+    "sha256": "8a930bbc57bf4adcf521d53544c7dc9ab8ab3aa997a591b1b1608dc5539017b8"
+  },
+  "files": [
+    {
+      "path": "char_def.bin",
+      "size": 2356,
+      "sha256": "cd3dbb6fa448906590c2e5ef2600378e4bd074c4d1d6fc5c049d4fd8c2d2d556"
+    },
+    {
+      "path": "dict.da",
+      "size": 33049069,
+      "sha256": "26f14fe3affdb0966e1696ae6cd4b7faac91bf85b7ca57a5d8cdc045da58d043"
+    },
+    {
+      "path": "dict.vals",
+      "size": 7889010,
+      "sha256": "7fb308e1909be247779be0a4c81070416635c4ff0ab266d48a5e964baffd345f"
+    },
+    {
+      "path": "dict.words",
+      "size": 32164203,
+      "sha256": "7ef63438285a3dd50299aa826f3d62d9657a907184e055a179af3e00eae820aa"
+    },
+    {
+      "path": "dict.wordsidx",
+      "size": 3155608,
+      "sha256": "67b30a728ab8816def37d9e2775d99dc98bf8eaa6f74a821dd3ee2fd009e8b61"
+    },
+    {
+      "path": "matrix.mtx",
+      "size": 3792264,
+      "sha256": "a64b58ac89b2ca21f3ae6c56ca772f8d4488cc636f47b821b4cca9c0c67c95d2"
+    },
+    {
+      "path": "metadata.json",
+      "size": 767,
+      "sha256": "8fa56e3d131c9d7cabc3633bb7c2add979469a1e22be90ecd714e81df20a5dd4"
+    },
+    {
+      "path": "unk.bin",
+      "size": 2492,
+      "sha256": "1ff6b44ab3145cd8ac731b9cb0500804feae5fa257aee8bc78a65a8dc80bb454"
+    }
+  ]
+}
