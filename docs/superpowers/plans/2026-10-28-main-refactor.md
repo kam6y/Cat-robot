@@ -1,6 +1,6 @@
 # Main Refactoring Implementation Plan
 
-> **For agentic workers:** Use superpowers:executing-plans inline with the explicitly requested agmsg Claude pair. Codex owns Git, generation and all test execution. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Use superpowers:executing-plans inline with the explicitly requested agmsg Claude pair. Codex owns Git, generation and all test execution. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** mainの現役実装へ処理を集約し、責務・文書・旧ブランチを整理する。
 
@@ -80,7 +80,7 @@
 - [x] Freeze all sources and run whole CatRobot suite, FaceSizeTuner tests, Python, both project generator contracts, native firmware/ServoDriver checks and face renderer.
 - [x] Fresh-context reviewer audits full range using requesting-code-review; Claude reviews Codex changes and Codex reviews Claude changes. Apply receiving-code-review to findings.
 - [x] Fix verified important defects with meaningful reproductions; rerun only affected checks plus required final suite if code changes.
-- [ ] Record exact counts, removed-test reasons, evidence/source hashes and actual limitations; commit; integrate to main normally after confirming main has not moved. No force push.
+- [x] Record exact counts, removed-test reasons, evidence/source hashes and actual limitations; commit; integrate to main normally after confirming main has not moved. No force push.
 
 ### Task 6: 不要branch/worktreeの整理（Codex、Claude確認）
 
@@ -88,4 +88,4 @@
 - [x] Freeze exact deletion candidates, protecting main/current branch, dirty branch names and LocalAssets worktrees; Claude checks classifications.
 - [x] Remove eligible clean worktrees normally; keep any refused paths. Delete corresponding local historical branches only after bundle verification. No reset/clean/force-remove.
 - [x] Compare remote refs with frozen OIDs immediately before deleting obsolete branches. On changed OID, retain and report.
-- [ ] Verify main/working tree, remaining refs/worktrees and backup restoration instructions; record final outcomes.
+- [x] Verify main/working tree, remaining refs/worktrees and backup restoration instructions; record final outcomes.

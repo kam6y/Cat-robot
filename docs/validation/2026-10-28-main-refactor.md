@@ -60,3 +60,9 @@ git fetch /Users/goodapple/Archives/Cat_robot/2026-10-28/before-cleanup.bundle \
 ```
 
 顔の製品3ファイルのGit blobは基点と一致している（`product-face-hashes.json`）。最終全suite後の変更は文書とGit参照だけである。
+
+## main への統合
+
+作業開始時のmainと共有mainが `69c2a22` のままであることを直前に確認し、作業先端 `42584f575542911b71cf070644afd2b6abe261df` を `87ec9450177313ba620f9b624cc7b52a66ec4c7f` へsquash統合した。Git treeはともに `e9723a793554f71dc2b1aee42540ab7dbe4b4c0a` で完全一致。統合後の追加はこの完了記録と計画のチェックだけで、製品・テスト・生成プロジェクトは最終825テストを通ったものと同一。
+
+今回の作業コミット履歴も `completed-refactor.bundle` として両アーカイブに保管・検証してから作業ブランチの参照を削除した。旧ローカルブランチ31本の削除とは別に、今回作成した作業ブランチ1本を整理した結果、ローカル13ブランチ・14 worktreeが残る。リモートの残存はmainを含め5ブランチ。b200の作業場所はmainとして保持し、初期チェックアウトの未コミット文書も変更していない。
