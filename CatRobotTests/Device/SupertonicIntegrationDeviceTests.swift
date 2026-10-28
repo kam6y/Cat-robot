@@ -19,7 +19,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
 #else
         let env = ProcessInfo.processInfo.environment
         guard env["SUPER_INTEGRATION_TESTS"] == "1", let id = env["SUPER_RUN_ID"], UUID(uuidString: id) != nil,
-              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "lifecycle"].contains(selectedStage) else {
+              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "lifecycle", "pronunciation"].contains(selectedStage) else {
             throw XCTSkip("Use the dedicated device runner")
         }
         runID = id; stage = selectedStage; executionTimeAllowance = 3600
@@ -51,6 +51,8 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
                     try await trial(fixture, repetition: repetition, voice: .f1, engine: engine)
                 }
             }
+        } else if stage == "pronunciation" {
+            try await pronunciation(engine)
         } else if stage == "lifecycle" {
             try await lifecycle(engine)
         }
@@ -102,6 +104,65 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         print("SUPER_TRIAL \(stage) \(fixture.id) sentencePrefetch \(repetition) \(outcome)")
         if outcome != "success" { XCTFail("\(fixture.id): \(failure)") }
     }
+    /// Fixed original inputs have no old iPhone/Bluetooth substitutions, so their
+    /// raw input is also the legacy normalizer output. No old converter is retained.
+    private func pronunciation(_ engine: SupertonicEngine) async throws {
+        let frontend = JapanesePronunciationService.shared
+        let before = sample()
+        let coldStart = ProcessInfo.processInfo.systemUptime
+        try await frontend.prepare()
+        let coldSeconds = ProcessInfo.processInfo.systemUptime - coldStart
+        let after = sample()
+        let fixtures = [
+            ("plus", "+ボタンを押してね。"),
+            ("youtube", "YouTubeを見よう。"),
+            ("counter", "3人で25個を分けるよ。"),
+            ("greeting", "こんにちは。今日も一緒に遊ぼうね。"),
+        ]
+        for (id, original) in fixtures {
+            let cooldown = try await coolDown()
+            let conversionStart = ProcessInfo.processInfo.systemUptime
+            let spoken = try await frontend.normalize(original)
+            let conversionSeconds = ProcessInfo.processInfo.systemUptime - conversionStart
+            var outputs: [[String: Any]] = []
+            for (variant, text) in [("original", original), ("jpreprocess", spoken)] {
+                let started = ProcessInfo.processInfo.systemUptime
+                let pcm = try await engine.synthesize(text: text, voiceID: "F1", steps: 8)
+                try pcm.validate()
+                let synthesisSeconds = ProcessInfo.processInfo.systemUptime - started
+                let filename = "\(id)-\(variant).wav"
+                try writeWAV(pcm, to: directory.appendingPathComponent(filename))
+                outputs.append(["variant": variant, "text": text, "file": filename,
+                                "synthesisSeconds": synthesisSeconds,
+                                "durationSeconds": Double(pcm.samples.count) / pcm.sampleRate,
+                                "processedChunks": SpeechTextAudit(input: text).processedChunks])
+            }
+            records.append(["runID": runID, "sourceRevision": revision, "stage": stage,
+                "mode": "pronunciationComparison", "fixture": id, "voice": "F1", "steps": 8,
+                "original": original, "spoken": spoken, "outputs": outputs,
+                "coldPreparationSeconds": coldSeconds, "conversionSeconds": conversionSeconds,
+                "beforeDictionary": before, "afterDictionary": after,
+                "footprintSamples": [before, after, sample()], "cooldownSeconds": cooldown,
+                "thermalAfter": String(describing: ProcessInfo.processInfo.thermalState),
+                "audibleAssessment": "pending", "outcome": "success"])
+            try save()
+            print("SUPER_PRONUNCIATION \(id) \(conversionSeconds) \(spoken)")
+        }
+        // Exercise the production speaker as well as the directly saved A/B PCM.
+        try await trial(.init(id: "pronunciation-speaker", text: "+ボタンでYouTubeを開くよ。", prompt: ""),
+                        repetition: 0, voice: .f1, engine: engine)
+    }
+    private func writeWAV(_ pcm: SpeechPCM, to url: URL) throws {
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: pcm.sampleRate,
+                                         channels: 1, interleaved: false),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(pcm.samples.count)),
+              let channel = buffer.floatChannelData?[0] else { throw ConversationServiceError.speechSynthesisFailed }
+        buffer.frameLength = AVAudioFrameCount(pcm.samples.count)
+        pcm.samples.withUnsafeBufferPointer { values in channel.update(from: values.baseAddress!, count: values.count) }
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
+    }
+
     private func lifecycle(_ engine: SupertonicEngine) async throws {
         for action in ["generating", "stop", "background", "interruption", "routeChange"] {
             _ = try await coolDown()

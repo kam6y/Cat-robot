@@ -139,6 +139,12 @@ scripts/build_jpreprocess.sh
 
 ネイティブソースを変更したら`build_jpreprocess.sh`を再実行します。辞書は`LocalAssets/JPreprocess/dictionary`、静的ライブラリは同じ親フォルダのXCFrameworkに置き、Gitには追加しません。欠損・改変・ソースとライブラリの不一致はビルド時に検出します。[出典とライセンス](CatRobot/Vendor/JPreprocess/PROVENANCE.md)も参照してください。
 
+実機で新旧の入力から音声サンプルを生成するには、専用の試験コマンドを使います。実行すると短い確認音声が流れます。結果と未確認事項は [検証記録](docs/validation/2026-10-28-jpreprocess-pronunciation.md) を参照してください。
+
+```bash
+scripts/run_supertonic_integration_device_test.sh <UDID> pronunciation
+```
+
 ## Supertonic音声の準備と設定
 
 通常アプリは Supertonic 3 を使用します。「…」→「設定」→「会話」の「声」で F1〜F5・M1〜M5 を選び、初期値は F1 です。選択は再起動後も保持します。設定を開くと会話を一時停止し、閉じると自動で再開します（自動待機で寝ている場合は猫のタップが必要です）。再開後は選んだ声を使い、会話の記憶は変更しません。
