@@ -100,6 +100,9 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
         case .sentence(let sentence):
             return try await prepare(sentence, voice: voice)
         case .candidate(let candidate):
+            let trace = ReplyTraceContext.current
+            var used = false
+            defer { if !used { trace?.mark(.preparationDiscarded, part: .first, sentenceOrdinal: 0) } }
             let spoken: String
             do { spoken = try await normalizedInput(candidate.original) }
             catch {
@@ -120,6 +123,8 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
                     if actual == spoken {
                         let pcm = try await preparation.value
                         try Task.checkCancellation()
+                        used = true
+                        trace?.mark(.preparationUsed, part: .first, sentenceOrdinal: 0)
                         return Prepared(sentence: confirmed, spoken: actual, pcm: pcm)
                     }
                     preparation.cancel()
@@ -157,11 +162,20 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
 
     private func makePCM(_ spoken: String, ordinal: Int, voice: SpeechVoicePreset, speculative: Bool) async throws -> SpeechPCM {
         try Task.checkCancellation()
+        let trace = ReplyTraceContext.current
+        let part: ReplySpeechPart = ordinal == 0 ? .first : .remainder
+        trace?.mark(speculative ? .preparationStarted : .synthesisStarted, part: part, sentenceOrdinal: ordinal)
+        var outcome = ReplyTraceOutcome.speechFailure
+        defer {
+            trace?.mark(speculative ? .preparationFinished : .synthesisFinished, part: part,
+                        outcome: Task.isCancelled ? .cancelled : outcome, sentenceOrdinal: ordinal)
+        }
         onSynthesis?(ordinal, speculative ? "preparationStarted" : "synthesisStarted")
         let pcm = try await synthesize(spoken, voice)
         try Task.checkCancellation()
         try pcm.validate()
         onSynthesis?(ordinal, speculative ? "preparationFinished" : "synthesisFinished")
+        outcome = .success
         return pcm
     }
     private func forward(_ events: AsyncThrowingStream<SpeechEvent, Error>, sentence: SpeechSentence,

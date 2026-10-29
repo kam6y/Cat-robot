@@ -8,6 +8,8 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let reply = ControlledReply()
         let player = TestPCMPlayer()
         let inputs = SynthesisInputs()
+        let sink = RecordingReplyTraceSink()
+        let trace = ReplyTrace(sink: sink, now: { ProcessInfo.processInfo.systemUptime })
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
             synthesize: { text, _ in
                 await inputs.record(text)
@@ -15,7 +17,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
                 return SpeechPCM(samples: [0.25], sampleRate: 24_000)
             })
         let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
-        let run = Task { try await sut.run(prompt: "挨拶して", trace: nil, onUpdate: { _ in }) }
+        let run = Task { try await sut.run(prompt: "挨拶して", trace: trace, onUpdate: { _ in }) }
         await reply.waitUntilRequested()
         await reply.yield("こんにちは。")
         await fulfillment(of: [synthesisStarted], timeout: 0.5)
@@ -26,6 +28,12 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         XCTAssertEqual(response, "こんにちは。")
         XCTAssertEqual(synthesized, ["こんにちは。"], "A matching prepared sentence must not be synthesized again")
         XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(sink.events.filter { $0.point == .preparationUsed }.count, 1)
+        XCTAssertFalse(sink.events.contains { $0.point == .preparationDiscarded })
+        XCTAssertFalse(sink.events.contains { $0.point == .synthesisStarted && $0.sentenceOrdinal == 0 })
+        let committedAt = try XCTUnwrap(sink.events.first { $0.point == .speechEnqueued }?.at)
+        let startedAt = try XCTUnwrap(sink.events.first { $0.point == .speechStarted }?.at)
+        XCTAssertGreaterThanOrEqual(startedAt, committedAt)
     }
 
     func testFirstPreparationReusesTrimmedInputButAuditsConfirmedOriginal() async throws {

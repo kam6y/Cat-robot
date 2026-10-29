@@ -27,11 +27,17 @@ struct LookTool: Tool {
     init(look: any LookControlling) { self.look = look }
 
     func call(arguments: Arguments) async throws -> LookToolOutput {
+        let trace = ReplyTraceContext.current
+        trace?.mark(.toolStarted, tool: .look)
+        var outcome = ReplyTraceOutcome.generationFailure
+        defer { trace?.mark(.toolFinished, outcome: Task.isCancelled ? .cancelled : outcome, tool: .look) }
         // Capture the SDK caller's scope before crossing the main actor.
         let turn = MotionTurnContext.current
         try Task.checkCancellation()
-        guard let turn else { return .init(message: "この返答では画像を取得できません") }
-        return try await capture(for: turn)
+        guard let turn else { outcome = .success; return .init(message: "この返答では画像を取得できません") }
+        let result = try await capture(for: turn)
+        outcome = .success
+        return result
     }
 
     @MainActor

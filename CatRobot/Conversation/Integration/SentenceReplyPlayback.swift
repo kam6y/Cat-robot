@@ -93,6 +93,9 @@ final class SentenceReplyPlayback {
                 final = snapshot
                 if reply.supportsStableReplyPrefix {
                     let sentences = try buffer.receive(snapshot)
+                    if buffer.preparationCandidate != nil {
+                        trace?.mark(.firstCandidate, part: .first, sentenceOrdinal: 0)
+                    }
                     let candidate = prepareFirstSentence ? buffer.preparationCandidate : nil
                     let key = candidate?.original.trimmingCharacters(in: .whitespacesAndNewlines)
                     if key != candidateKey {
@@ -121,6 +124,7 @@ final class SentenceReplyPlayback {
             await pending?.value
             try Task.checkCancellation()
             for sentence in try buffer.receive(final, final: true) {
+                trace?.mark(.firstSentence)
                 trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
                 try await channel.send(sentence)
             }

@@ -15,6 +15,9 @@ struct MoveHeadTool: Tool {
     init(motion: any RobotMotionControlling) { self.motion = motion }
 
     func call(arguments: Arguments) async throws -> String {
+        let trace = ReplyTraceContext.current
+        trace?.mark(.toolStarted, tool: .moveHead)
+        defer { trace?.mark(.toolFinished, outcome: Task.isCancelled ? .cancelled : .success, tool: .moveHead) }
         guard let turn = MotionTurnContext.current else { return "この返答では首の動作を予約できません" }
         guard !Task.isCancelled else { return "この返答の動作予約は取り消されました" }
         guard let gesture = RobotGesture(rawValue: arguments.gesture.lowercased()),

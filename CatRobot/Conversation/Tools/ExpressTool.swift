@@ -16,6 +16,9 @@ struct ExpressTool: Tool {
     init(expressions: any FaceExpressionControlling) { self.expressions = expressions }
 
     func call(arguments: Arguments) async throws -> String {
+        let trace = ReplyTraceContext.current
+        trace?.mark(.toolStarted, tool: .express)
+        defer { trace?.mark(.toolFinished, outcome: Task.isCancelled ? .cancelled : .success, tool: .express) }
         guard let turn = MotionTurnContext.current, !Task.isCancelled else {
             return "この返答の表情は変更できません"
         }

@@ -20,7 +20,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
 #else
         let env = ProcessInfo.processInfo.environment
         guard env["SUPER_INTEGRATION_TESTS"] == "1", let id = env["SUPER_RUN_ID"], UUID(uuidString: id) != nil,
-              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "lifecycle", "pronunciation"].contains(selectedStage) else {
+              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "lifecycle", "pronunciation", "latency", "latency-cloud"].contains(selectedStage) else {
             throw XCTSkip("Use the dedicated device runner")
         }
         runID = id; stage = selectedStage; executionTimeAllowance = 3600
@@ -42,7 +42,15 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             try await engine.prepare()
             print("SUPER_PREPARED \(ProcessInfo.processInfo.systemUptime - preparation)")
         }
-        if stage == "voices" {
+        if stage == "latency" {
+            try await ResponseLatencyDeviceBenchmark.run(engine: engine, runID: runID, revision: revision,
+                coolDown: { try await self.coolDown() }, sample: { self.sample() },
+                record: { row in self.records.append(row); try self.save() })
+        } else if stage == "latency-cloud" {
+            try await ResponseLatencyDeviceBenchmark.cloud(engine: engine, runID: runID, revision: revision,
+                coolDown: { try await self.coolDown() }, sample: { self.sample() },
+                record: { row in self.records.append(row); try self.save() })
+        } else if stage == "voices" {
             for voice in SpeechVoicePreset.allCases {
                 let fixture = SupertonicLatencyFixture(id: voice.rawValue, text: "こんにちは。今日も一緒に遊ぼうね。", prompt: "")
                 try await trial(fixture, repetition: 0, voice: voice, engine: engine)
@@ -228,11 +236,12 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         let hardware = withUnsafePointer(to: &uts.machine) { pointer in
             pointer.withMemoryRebound(to: CChar.self, capacity: 256) { String(cString: $0) }
         }
-        let payload: [String: Any] = ["schemaVersion": 1, "runID": runID, "sourceRevision": revision, "stage": stage,
+        var payload: [String: Any] = ["schemaVersion": 1, "runID": runID, "sourceRevision": revision, "stage": stage,
             "device": hardware, "OS": UIDevice.current.systemVersion,
             "route": session.currentRoute.outputs.map { $0.portType.rawValue }, "volume": session.outputVolume,
             "connection": ProcessInfo.processInfo.environment["SUPER_CONNECTION"] ?? "unknown",
             "pronunciationPreparation": pronunciationPreparation, "records": records]
+        if stage == "latency" { payload["latencyConfiguration"] = ResponseLatencyDeviceBenchmark.configuration }
         try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
             .write(to: directory.appendingPathComponent("results.json"), options: .atomic)
     }
