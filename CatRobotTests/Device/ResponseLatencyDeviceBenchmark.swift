@@ -43,6 +43,10 @@ struct ResponseLatencyDeviceBenchmark {
 
     private static func activateAudio() async throws {
         try await waitForForeground()
+        // Acquire the display assertion while active, rather than only during
+        // XCTest's initially-background launch. Renew it before each trial.
+        UIApplication.shared.isIdleTimerDisabled = false
+        UIApplication.shared.isIdleTimerDisabled = true
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
