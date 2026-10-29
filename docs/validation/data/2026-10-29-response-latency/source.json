@@ -1,0 +1,19 @@
+{
+  "base": "7733e201cf0bf7d9feeea7352a11d4e82b8c2d03",
+  "runtimeRevision": "91ceca49b3aefdeb188a0e48b38c82c2e908b464",
+  "branch": "feature/response-latency",
+  "frozenFileCount": 263,
+  "fullSuiteAndDeviceFilesMatch": true,
+  "pairedRunID": "BC6921D6-AE21-4C8F-8D06-99BCC65A5711",
+  "cloudRunID": "708F5226-A491-40FA-BBCF-2CEB7BFCAAFF",
+  "comparison": "same final build; preparation disabled versus enabled; not an original-main binary",
+  "clock": "monotonic request to PCM playback callback, not acoustic or ASR boundary latency",
+  "configuration": {
+    "voice": "F1",
+    "steps": 8,
+    "threads": 2,
+    "speed": 1.05,
+    "stabilityMilliseconds": 75,
+    "maximumCandidateNormalizedCharacters": 16
+  }
+}

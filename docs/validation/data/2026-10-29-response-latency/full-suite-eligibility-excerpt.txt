@@ -1,0 +1,5 @@
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.016 (0.017) seconds
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.003 (0.003) seconds
+	 Executed 862 tests, with 2 tests skipped and 0 failures (0 unexpected) in 153.223 (153.743) seconds
+	 Executed 862 tests, with 2 tests skipped and 0 failures (0 unexpected) in 153.223 (153.753) seconds
+** TEST SUCCEEDED **

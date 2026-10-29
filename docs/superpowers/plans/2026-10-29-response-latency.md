@@ -1,6 +1,6 @@
 # Response Start Latency Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Preserve the selected model and voice while hiding first-sentence TTS preparation behind generation finalization.
 
@@ -36,13 +36,13 @@
 
 **Interfaces:** `ReplySentenceBuffer.preparationCandidate: String?`; `ReplySentenceStreamBuffer.preparationCandidate: SpeechSentence?`; `SpeechSentenceInput` has `candidate`/`sentence`; `SpeechSentenceChannel.offerPreparation(_:)` and `nextInput()` with old `next()` still returning committed sentences. `ReplyPlaybackCoordinator`/`SentenceReplyPlayback` accept `prepareFirstSentence: Bool = true` for paired control trials. `SupertonicSentenceSpeaker` owns preparation internally; synthesize/normalize injected functions remain unchanged.
 
-- [ ] Write `testFirstSentenceSynthesisStartsBeforeGenerationCompletesButPlaybackWaitsForConfirmation` against existing public coordinator/speaker APIs; expect synthesis while reply stream is open and zero playback until finish. Run focused test. Expected: assertion timeout on old code, then cleanly finish the stream.
-- [ ] Add gated behavior cases for mismatch/drain, candidate-only synthesis failure, cancelled inference, whitespace reuse, confirmed overlong output, generation failure, unstable/protected prefixes; observe the missing early-preparation assertions fail before implementation.
-- [ ] Implement parser candidate exposure without altering confirmed output; bounded candidate delivery separate from committed queue, with committed/error precedence and at most one offered attempt.
-- [ ] Own the75ms stable-content timer in enqueue, cancel and join it on replacement/exit; preserve original stream failure and limits.
-- [ ] Own candidate normalization/synthesis in speaker; normalize confirmed text again and enforce pre-trim output limit, reuse only equal canonical input/current voice, otherwise cancel/join and synthesize final; audit only committed inputs.
-- [ ] Add cancellation checks between denoising steps, no mathematical changes; document vendor change.
-- [ ] Run focused playback, parser, channel and speaker suites via external runner. Expected: all pass; no missed/duplicate original text or stale audio. Commit task1.
+- [x] Write `testFirstSentenceSynthesisStartsBeforeGenerationCompletesButPlaybackWaitsForConfirmation` against existing public coordinator/speaker APIs; expect synthesis while reply stream is open and zero playback until finish. Run focused test. Expected: assertion timeout on old code, then cleanly finish the stream.
+- [x] Add gated behavior cases for mismatch/drain, candidate-only synthesis failure, cancelled inference, whitespace reuse, confirmed overlong output, generation failure, unstable/protected prefixes; observe the missing early-preparation assertions fail before implementation.
+- [x] Implement parser candidate exposure without altering confirmed output; bounded candidate delivery separate from committed queue, with committed/error precedence and at most one offered attempt.
+- [x] Own the75ms stable-content timer in enqueue, cancel and join it on replacement/exit; preserve original stream failure and limits.
+- [x] Own candidate normalization/synthesis in speaker; normalize confirmed text again and enforce pre-trim output limit, reuse only equal canonical input/current voice, otherwise cancel/join and synthesize final; audit only committed inputs.
+- [x] Add cancellation checks between denoising steps, no mathematical changes; document vendor change.
+- [x] Run focused playback, parser, channel and speaker suites via external runner. Expected: all pass; no missed/duplicate original text or stale audio. Commit task1.
 
 ### Task 2: Timing and device comparison
 
@@ -50,10 +50,10 @@
 
 **Interfaces:** Add content-free firstCandidate/preparation/synthesis/tool start/end events with optional typed tool identity. Existing trace decoding accepts absent optional metadata. Device benchmark receives paired `prepareFirstSentence` flags and identical replay snapshots/times; records actual playback timestamps, synthesis counts/hit/miss, memory/thermal and original text.
 
-- [ ] Add behavioral trace tests for tool success/failure/cancellation balancing and absence of content, then make them pass with notice-level timing. Reuse timing hooks for actual synthesis and distinguish discarded attempts from accepted inputs.
-- [ ] Build a gated physical stage for immediate, delayed single-sentence, two-sentence, quoted/number, and corrected-candidate streams. Alternate control/enabled order for at least3repetitions; use current selected voice,8steps. Test summarizer on controlled records for missing events/wrong run/source and paired acceptance limits.
-- [ ] Add a small real-current-Claude smoke using test-only memory/usage and no real robot/camera side effects; record client-tool and candidate timing separately from fixed replay.
-- [ ] Generate project deterministically if files added; run generation contract and targeted tests. Expected: pass. Commit task2.
+- [x] Add behavioral trace tests for tool success/failure/cancellation balancing and absence of content, then make them pass with notice-level timing. Reuse timing hooks for actual synthesis and distinguish discarded attempts from accepted inputs.
+- [x] Build a gated physical stage for immediate, delayed single-sentence, two-sentence, quoted/number, and corrected-candidate streams. Alternate control/enabled order for at least3repetitions; use current selected voice,8steps. Test summarizer on controlled records for missing events/wrong run/source and paired acceptance limits.
+- [x] Add a small real-current-Claude smoke using test-only memory/usage and no real robot/camera side effects; record client-tool and candidate timing separately from fixed replay.
+- [x] Generate project deterministically if files added; run generation contract and targeted tests. Expected: pass. Commit task2.
 
 ### Task 3: Acceptance, review and durable evidence
 
@@ -61,7 +61,7 @@
 
 **Interfaces:** Source hashes tie final tested files to results; matched replay records retain source/run/settings and timing definitions.
 
-- [ ] Run full Swift suite once on integrated code and related asset/generation checks. Expected: zero failures, physical-only tests explicitly skipped.
-- [ ] Run signed paired device trials in foreground and real-Claude smoke. Expected: exact original text, one accepted synthesis on hit, no playback before confirmation, delayed first-audio median improvement; immediate/miss p95 regression<=100ms. Adjust only eligibility/delay if measured gate fails and record the reason.
-- [ ] Ask existing agmsg Claude for bounded whole-diff review while validation runs; dispatch one fresh final reviewer as executing-plans requires. Receive findings technically and fix material issues with regression tests. Re-run only checks affected by new changes or failures.
-- [ ] Save all findings/decisions, paired metrics, source proof, limits and auditory-assessment status. Confirm normal device launch if installed, clean worktree and feature branch state. Commit evidence; do not merge main.
+- [x] Run full Swift suite once on integrated code and related asset/generation checks. Expected: zero failures, physical-only tests explicitly skipped.
+- [x] Run signed paired device trials in foreground and real-Claude smoke. Expected: exact original text, one accepted synthesis on hit, no playback before confirmation, delayed first-audio median improvement; immediate/miss p95 regression<=100ms. Adjust only eligibility/delay if measured gate fails and record the reason.
+- [x] Ask existing agmsg Claude for bounded whole-diff review while validation runs; dispatch one fresh final reviewer as executing-plans requires. Receive findings technically and fix material issues with regression tests. Re-run only checks affected by new changes or failures.
+- [x] Save all findings/decisions, paired metrics, source proof, limits and auditory-assessment status. Confirm normal device launch if installed, clean worktree and feature branch state. Commit evidence; do not merge main.

@@ -1,0 +1,7 @@
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Services/SupertonicSentenceSpeakerTests.swift:36: error: -[CatRobotTests.SupertonicSentenceSpeakerTests testLongPronunciationWaitsForConfirmationWithoutSpeculativeInference] : Fulfilled inverted expectation "Long pronunciation must not start speculative inference".
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Services/SupertonicSentenceSpeakerTests.swift:36: error: -[CatRobotTests.SupertonicSentenceSpeakerTests testLongPronunciationWaitsForConfirmationWithoutSpeculativeInference] : Fulfilled inverted expectation "Long pronunciation must not start speculative inference".
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Services/SupertonicSentenceSpeakerTests.swift:50: error: -[CatRobotTests.SupertonicSentenceSpeakerTests testLongPronunciationWaitsForConfirmationWithoutSpeculativeInference] : XCTAssertEqual failed: ("["キョーワマドノソバデヒナタボッコヲシナガラ、ユックリオハナシシヨーネ。", "ハイ。"]") is not equal to ("["ハイ。"]")
+	 Executed 1 test, with 3 failures (0 unexpected) in 0.594 (0.600) seconds
+	 Executed 1 test, with 3 failures (0 unexpected) in 0.594 (0.602) seconds
+	 Executed 1 test, with 3 failures (0 unexpected) in 0.594 (0.604) seconds
+** TEST FAILED **

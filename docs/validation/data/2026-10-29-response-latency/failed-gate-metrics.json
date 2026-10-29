@@ -1,0 +1,156 @@
+{
+  "latency/baseline": {
+    "totalTrials": 24,
+    "successfulTrials": 24,
+    "start": {
+      "count": 24,
+      "median": 0.8906565625011353,
+      "p95": 1.5910382500005653
+    },
+    "gap": {
+      "count": 3,
+      "median": 0.12418804166736663,
+      "p95": 0.12511541666572157
+    },
+    "total": {
+      "count": 24,
+      "median": 2.6191658541665674,
+      "p95": 4.142698541667414
+    },
+    "footprintBytes": {
+      "count": 24,
+      "median": 581282256.0,
+      "p95": 606833104
+    },
+    "cooldownSeconds": 0.00020508333727775607,
+    "hotEnds": 0
+  },
+  "latency/prepared": {
+    "totalTrials": 24,
+    "successfulTrials": 24,
+    "start": {
+      "count": 24,
+      "median": 0.8448368333338294,
+      "p95": 1.1235827500004234
+    },
+    "gap": {
+      "count": 3,
+      "median": 0.12425575000088429,
+      "p95": 0.2454077916663664
+    },
+    "total": {
+      "count": 24,
+      "median": 2.398153937500865,
+      "p95": 3.9103407916663855
+    },
+    "footprintBytes": {
+      "count": 24,
+      "median": 581134800.0,
+      "p95": 606849488
+    },
+    "cooldownSeconds": 6.604166446777526e-05,
+    "hotEnds": 0
+  },
+  "latencyAcceptance": {
+    "passed": false,
+    "p95RegressionLimitSeconds": 0.1,
+    "fixtures": {
+      "changed": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.010185583332713577,
+          "p95": 0.04971645833393268
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "changed-long": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": 0.08345774999725109,
+          "p95": 0.10774262500126497
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": false
+      },
+      "delayed": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.39776941666605126,
+          "p95": -0.39735404166640365
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "immediate": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.04668604166545265,
+          "p95": -0.002234166666312376
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 0,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "punctuation": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.00920616666735441,
+          "p95": 0.05989450000015495
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "quoted": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.4674555000001419,
+          "p95": -0.44935233333308133
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "two-sentence": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.22662416666753415,
+          "p95": -0.22561716666859866
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "whitespace": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.4084811250013445,
+          "p95": -0.408146374998978
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      }
+    }
+  }
+}

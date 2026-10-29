@@ -1,0 +1,26 @@
+{
+  "swiftFullSuite": {
+    "passed": 860,
+    "skippedPhysicalOnly": 2,
+    "failed": 0
+  },
+  "pythonScriptTests": {
+    "passed": 29,
+    "failed": 0
+  },
+  "generationContract": "passed earlier; generator unchanged after verification",
+  "supertonicAndJpreprocessAssets": "passed earlier; assets/native code unchanged",
+  "physicalPaired": {
+    "rows": 54,
+    "passedTests": 1,
+    "failed": 0,
+    "skipped": 0,
+    "gate": true
+  },
+  "physicalCloud": {
+    "rows": 3,
+    "passedTests": 1,
+    "failed": 0,
+    "skipped": 0
+  }
+}
