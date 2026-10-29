@@ -123,8 +123,8 @@ def summarize(rows):
                            start=distribution([v['start'] for v in values]),
                            gap=distribution([g for v in values for g in v['gaps']]),
                            total=distribution([v['total'] for v in values]), footprintBytes=distribution(peaks),
-                           cooldownSeconds=sum(r.get('cooldownSeconds', 0) for r in rows),
-                           hotEnds=sum(r.get('thermalAfter') in ['serious', 'critical'] for r in rows))
+                           cooldownSeconds=sum(r.get('cooldownSeconds', 0) for r in group_rows),
+                           hotEnds=sum(r.get('thermalAfter') in ['serious', 'critical'] for r in group_rows))
     latency = [r for r in rows if r['stage'] == 'latency']
     if latency:
         result['latencyAcceptance'] = latency_acceptance(latency)

@@ -22,6 +22,15 @@ class IntegrationSummaryTests(unittest.TestCase):
         self.assertEqual(result['totalTrials'], 3)
         self.assertEqual(result['successfulTrials'], 1)
         self.assertEqual(result['start']['count'], 1)
+    def test_cooldown_and_heat_stay_with_their_own_mode(self):
+        baseline = dict(self.record(), mode='baseline', cooldownSeconds=2, thermalAfter='nominal')
+        prepared = dict(self.record(), mode='prepared', cooldownSeconds=7, thermalAfter='serious')
+        result = summarize([baseline, prepared])
+        self.assertEqual(result['fixed/baseline']['cooldownSeconds'], 2)
+        self.assertEqual(result['fixed/baseline']['hotEnds'], 0)
+        self.assertEqual(result['fixed/prepared']['cooldownSeconds'], 7)
+        self.assertEqual(result['fixed/prepared']['hotEnds'], 1)
+
     def test_run_identity_mismatch_is_rejected(self):
         with self.assertRaises(ValueError): validate_run(dict(runID='different', records=[self.record()]), 'different')
         with self.assertRaises(ValueError): validate_run(dict(runID='run', records=[self.record()]), 'old')
