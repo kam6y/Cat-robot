@@ -1,0 +1,4 @@
+{
+  "command": "ruby scripts/test_generate_project.rb",
+  "exitCode": 0
+}

@@ -65,3 +65,9 @@
 - [x] Run signed paired device trials in foreground and real-Claude smoke. Expected: exact original text, one accepted synthesis on hit, no playback before confirmation, delayed first-audio median improvement; immediate/miss p95 regression<=100ms. Adjust only eligibility/delay if measured gate fails and record the reason.
 - [x] Ask existing agmsg Claude for bounded whole-diff review while validation runs; dispatch one fresh final reviewer as executing-plans requires. Receive findings technically and fix material issues with regression tests. Re-run only checks affected by new changes or failures.
 - [x] Save all findings/decisions, paired metrics, source proof, limits and auditory-assessment status. Confirm normal device launch if installed, clean worktree and feature branch state. Commit evidence; do not merge main.
+
+## User-authorized finishing follow-up
+
+The later user instruction supersedes the original no-main-merge/push constraint: bring in repaired main, run actual Claude `/simplify` via agmsg alongside a fresh independent code review, exchange findings using `receiving-code-review` on both sides, then squash merge to main and push after verification. Root owns all edits.
+
+Both reports and reciprocal receptions are complete. Accepted bounded simplifications keep the same model/voice and confirmation/cancel-and-join contracts. The final full suite passed861 tests with2 physical-only skips (863 total), focused94 passed, Python29 passed, project generation and asset/native receipts passed. Current kanji-preserving paired66 trials and3 current-model smoke trials passed. The current evidence, source hashes, decisions and transparent minor deferrals are in [the finishing validation](../../validation/2026-10-29-response-latency-finish.md). Old all-kana54-trial evidence is historical only. Squash integration and push use this tested source tree; no additional approval is needed.

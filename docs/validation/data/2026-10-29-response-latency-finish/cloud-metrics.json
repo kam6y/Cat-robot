@@ -1,0 +1,28 @@
+{
+  "latency-cloud/prepared": {
+    "totalTrials": 3,
+    "successfulTrials": 3,
+    "start": {
+      "count": 3,
+      "median": 1.483665875002771,
+      "p95": 3.1187257083329314
+    },
+    "gap": {
+      "count": 3,
+      "median": 0.08263120833362336,
+      "p95": 0.09314266666478943
+    },
+    "total": {
+      "count": 3,
+      "median": 6.576127791668114,
+      "p95": 14.666632041666162
+    },
+    "footprintBytes": {
+      "count": 3,
+      "median": 590776808,
+      "p95": 592316952
+    },
+    "cooldownSeconds": 7.15000023774337e-05,
+    "hotEnds": 0
+  }
+}

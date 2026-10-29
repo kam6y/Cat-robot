@@ -1,0 +1,35 @@
+{
+  "interpretation": "Benchmark 8/2/1.05 fields are declarations checked for artifact consistency, not observed engine telemetry. Executor inspected these versioned production call sites and their source hashes; voice comes from selected preset at runtime.",
+  "sourceAudit": [
+    {
+      "file": "CatRobot/Conversation/Services/Supertonic/SupertonicSentenceSpeaker.swift",
+      "line": 36,
+      "code": "do { return try await engine.synthesize(text: text, voiceID: preset.rawValue, steps: 8) }",
+      "sha256": "cccc711b620ea83e94600aa250dd4fd4b97630553b73d09c91d075d7397fb936"
+    },
+    {
+      "file": "CatRobot/Conversation/Services/Supertonic/SupertonicEngine.swift",
+      "line": 62,
+      "code": "let (samples, duration) = try tts.call(text, \"ja\", style, steps)",
+      "sha256": "5747dc0e6dda98359c876f11fe66fdff7a4270f4066f26c937c6ebcf392cbb70"
+    },
+    {
+      "file": "CatRobot/Conversation/Services/Supertonic/SupertonicEngine.swift",
+      "line": 48,
+      "code": "let model = try loadTextToSpeech(root.appendingPathComponent(\"onnx\").path, false, environment)",
+      "sha256": "5747dc0e6dda98359c876f11fe66fdff7a4270f4066f26c937c6ebcf392cbb70"
+    },
+    {
+      "file": "CatRobot/Vendor/Supertonic/Helper.swift",
+      "line": 705,
+      "code": "func call(_ text: String, _ lang: String, _ style: Style, _ totalStep: Int, speed: Float = 1.05, silenceDuration: Float = 0.3) throws -> (wav: [Float], duration: Float) {",
+      "sha256": "c96b8d9107a04692bf05b2a945ae0c398c7ea499293696a8eacee34712a84519"
+    },
+    {
+      "file": "CatRobot/Vendor/Supertonic/Helper.swift",
+      "line": 820,
+      "code": "try sessionOptions.setIntraOpNumThreads(2)",
+      "sha256": "c96b8d9107a04692bf05b2a945ae0c398c7ea499293696a8eacee34712a84519"
+    }
+  ]
+}

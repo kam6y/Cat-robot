@@ -1,0 +1,10 @@
+{
+  "base": "2fa4ae7b15ee5398a735764cd1186465e0d2ddcd",
+  "reviewHead": "3472b95ddf4d9b332357ec2baae53fd02e9cc620",
+  "runtimeRevision": "76a8a9b321bee6a1d46296153d13bbdb9be443b1",
+  "pairedRunID": "E863AB87-4D5A-4FC3-8F05-2242608451ED",
+  "cloudRunID": "66F9C254-CC08-4D45-804F-D8BDEDAAB06F",
+  "sourceFileCount": 263,
+  "fullSuiteAndDeviceSourcesMatch": true,
+  "comparison": "same current natural Japanese build; preparation disabled/enabled; not literal original-main binary"
+}

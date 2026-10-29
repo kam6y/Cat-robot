@@ -86,7 +86,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | 2026-10-28 顔の向き | [記録](validation/2026-10-28-face-facing-gate.md) | 実際の人の顔での判定（会話距離・画面端・眼鏡・照明、追尾の停止・約10秒での復帰・再開、閾値近くでの切り替わり、猫の顔を見たときに判定中心の -c 度付近になるか）、実際の Vision 推定値・サーボの挙動・消費電力・発熱は実機で未確認 |
 | 2026-10-28 日本語の読み変換 | [記録](validation/2026-10-28-jpreprocess-pronunciation.md)、[計画](superpowers/plans/2026-10-28-jpreprocess-pronunciation.md) | 聴取による発音・自然さの評価は未確認。検証状況は記録を参照 |
 | 2026-10-29 日本語読み変換の相互レビュー | [記録](validation/2026-10-29-jpreprocess-cross-review.md) | 双方の受領評価、補正漏れ/ビルド検査の修正、mmapの実機測定。発音・自然さの聴取評価は未確認 |
-| 2026-10-29 話し始めるまでの短縮 | [記録](validation/2026-10-29-response-latency.md)、[計画](superpowers/plans/2026-10-29-response-latency.md) | 固定snapshot54試行は基準合格。実会話3件は再利用0件で、普段の会話の改善量・音声境界からの遅延・聴取評価は未確認 |
+| 2026-10-29 話し始めるまでの短縮 | [仕上げと相互レビュー](validation/2026-10-29-response-latency-finish.md)、[旧54試行の履歴](validation/2026-10-29-response-latency.md)、[計画](superpowers/plans/2026-10-29-response-latency.md) | 日本語を残す現行方式66試行が基準合格。現モデル3件は再利用0件で、普段の会話の改善量・音声境界からの遅延・聴取評価は未確認 |
 | 2026-10-29 日本語読み上げの修復 | [記録](validation/2026-10-29-natural-japanese-speech-repair.md) | 利用者がC方式を自然と選択。全体846成功/2skip、native22成功、実機固定文再生成功。未対応漢字と全文章/全声の品質は制約が残る |
 
 ## 2026-10-28 main 整理の検証
