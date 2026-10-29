@@ -22,6 +22,7 @@ struct ResponseLatencyDeviceBenchmark {
         .init(id: "whitespace", changes: [.init(milliseconds: 0, text: "こんにちは。"), .init(milliseconds: 200, text: "こんにちは。 \n")], finishMilliseconds: 700, requiresHit: true),
         .init(id: "changed", changes: [.init(milliseconds: 0, text: "仮の返答。"), .init(milliseconds: 200, text: "本当の返答。")], finishMilliseconds: 200, requiresHit: false),
         .init(id: "punctuation", changes: [.init(milliseconds: 0, text: "えっ！"), .init(milliseconds: 200, text: "えっ！？")], finishMilliseconds: 200, requiresHit: false),
+        .init(id: "changed-boundary", changes: [.init(milliseconds: 0, text: "アイウエオカキクケコサシスセソ。"), .init(milliseconds: 200, text: "うん、遊ぼうね。")], finishMilliseconds: 200, requiresHit: false),
         .init(id: "changed-long", changes: [.init(milliseconds: 0, text: "今日は窓のそばで日なたぼっこをしながら、ゆっくりお話ししようね。"), .init(milliseconds: 200, text: "うん、遊ぼうね。")], finishMilliseconds: 200, requiresHit: false)
     ]
     static var configuration: [String: Any] {
@@ -59,6 +60,8 @@ struct ResponseLatencyDeviceBenchmark {
                     sample: @escaping @MainActor () -> [String: Any],
                     record: @MainActor ([String: Any]) throws -> Void) async throws {
         let voice = SpeechVoiceSettings().selected
+        let boundaryPronunciation = try await JapanesePronunciationService.shared.normalize("アイウエオカキクケコサシスセソ。")
+        XCTAssertEqual(boundaryPronunciation.count, 16, "The boundary fixture must exercise the largest eligible pronunciation")
         try await activateAudio()
         let warmup = SupertonicSentenceSpeaker(engine: engine, voice: { voice })
         try await warmup.prepare()
@@ -73,6 +76,11 @@ struct ResponseLatencyDeviceBenchmark {
                                               runID: runID, revision: revision, stage: "latency", requiresHit: fixture.requiresHit,
                                               cooldown: cooldown, sample: sample)
                     try record(row)
+                    if enabled, let events = row["events"] as? [[String: Any]] {
+                        let attempts = events.filter { $0["point"] as? String == "preparationStarted" }.count
+                        if fixture.id == "changed-boundary" { XCTAssertEqual(attempts, 1, "Exercise cancellation at the eligibility limit") }
+                        if fixture.id == "changed-long" { XCTAssertEqual(attempts, 0, "Long candidates must take the ordinary path") }
+                    }
                     if row["outcome"] as? String != "success" { throw BenchmarkFailure.trialFailed }
                 }
             }

@@ -111,6 +111,12 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
                 guard let confirmed = try await channel.next() else { return nil }
                 return try await prepare(confirmed, voice: voice)
             }
+            // Keep speculative native work within short, normalized inputs.
+            // Longer confirmed speech still uses the ordinary synthesis path.
+            guard spoken.count <= 16 else {
+                guard let confirmed = try await channel.next() else { return nil }
+                return try await prepare(confirmed, voice: voice)
+            }
             let preparation = Task { try await makePCM(spoken, ordinal: 0, voice: voice, speculative: true) }
             return try await withTaskCancellationHandler {
                 do {
