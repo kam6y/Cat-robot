@@ -1,0 +1,774 @@
+{
+  "connection": "usb",
+  "device": "iPhone17,1",
+  "OS": "27.2",
+  "pronunciationPreparation": {
+    "after": {
+      "at": 18984.173953416666,
+      "bytes": 87164696
+    },
+    "before": {
+      "at": 18984.093012416666,
+      "bytes": 12764832
+    },
+    "measuredBeforeModelPreparation": true,
+    "seconds": 0.08093000000008033
+  },
+  "records": [
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 0.003710458335262956,
+      "cooldownSeconds": 9.533333286526613e-05,
+      "fixture": "plus",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18985.866908083335,
+          "bytes": 592923016
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "+ボタンを押してね。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 1.747936507936508,
+          "file": "plus-original.wav",
+          "processedChunks": [
+            "<ja>+ボタンを押してね。</ja>"
+          ],
+          "synthesisSeconds": 0.5014386666698556,
+          "text": "+ボタンを押してね。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.000136054421769,
+          "file": "plus-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>プラスボタンを押してね。</ja>"
+          ],
+          "synthesisSeconds": 0.5090566250000848,
+          "text": "プラスボタンを押してね。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "プラスボタンを押してね。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 0.002038874998106621,
+      "cooldownSeconds": 7.500020728912205e-07,
+      "fixture": "youtube",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18986.899055916667,
+          "bytes": 591481248
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "YouTubeを見よう。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 1.7163038548752834,
+          "file": "youtube-original.wav",
+          "processedChunks": [
+            "<ja>YouTubeを見よう。</ja>"
+          ],
+          "synthesisSeconds": 0.5075577916650218,
+          "text": "YouTubeを見よう。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 1.7879591836734694,
+          "file": "youtube-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>ユーチューブを見よう。</ja>"
+          ],
+          "synthesisSeconds": 0.5169659583334578,
+          "text": "ユーチューブを見よう。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "ユーチューブを見よう。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 0.00016745833272580057,
+      "cooldownSeconds": 4.1666498873382807e-07,
+      "fixture": "counter",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18988.32079525,
+          "bytes": 563317152
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "3人で25個を分けるよ。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 2.507233560090703,
+          "file": "counter-original.wav",
+          "processedChunks": [
+            "<ja>3人で25個を分けるよ。</ja>"
+          ],
+          "synthesisSeconds": 0.7075302500015823,
+          "text": "3人で25個を分けるよ。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.507233560090703,
+          "file": "counter-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>3人で25個を分けるよ。</ja>"
+          ],
+          "synthesisSeconds": 0.7098767916650104,
+          "text": "3人で25個を分けるよ。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "3人で25個を分けるよ。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 6.904166730237193e-05,
+      "cooldownSeconds": 5.833353498019278e-07,
+      "fixture": "greeting",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18989.826060625,
+          "bytes": 567609760
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "こんにちは。今日も一緒に遊ぼうね。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 2.8683219954648527,
+          "file": "greeting-original.wav",
+          "processedChunks": [
+            "<ja>こんにちは。今日も一緒に遊ぼうね。</ja>"
+          ],
+          "synthesisSeconds": 0.7473936666683585,
+          "text": "こんにちは。今日も一緒に遊ぼうね。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.8683219954648527,
+          "file": "greeting-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>こんにちは。今日も一緒に遊ぼうね。</ja>"
+          ],
+          "synthesisSeconds": 0.7539173333352664,
+          "text": "こんにちは。今日も一緒に遊ぼうね。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "こんにちは。今日も一緒に遊ぼうね。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 0.0024518333302694373,
+      "cooldownSeconds": 5.416695785243064e-07,
+      "fixture": "service-plus",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18990.904994208333,
+          "bytes": 551930272
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "Disney+を見よう。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 1.7247165532879818,
+          "file": "service-plus-original.wav",
+          "processedChunks": [
+            "<ja>Disney+を見よう。</ja>"
+          ],
+          "synthesisSeconds": 0.5261895416660991,
+          "text": "Disney+を見よう。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.10297052154195,
+          "file": "service-plus-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>ディズニープラスを見よう。</ja>"
+          ],
+          "synthesisSeconds": 0.5460852500000328,
+          "text": "ディズニープラスを見よう。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "ディズニープラスを見よう。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 6.829166522948071e-05,
+      "cooldownSeconds": 4.1666498873382807e-07,
+      "fixture": "ambiguous",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18992.016523125,
+          "bytes": 551930272
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "辛いカレーが好きだよ。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 2.114829931972789,
+          "file": "ambiguous-original.wav",
+          "processedChunks": [
+            "<ja>辛いカレーが好きだよ。</ja>"
+          ],
+          "synthesisSeconds": 0.5562512083342881,
+          "text": "辛いカレーが好きだよ。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.114829931972789,
+          "file": "ambiguous-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>辛いカレーが好きだよ。</ja>"
+          ],
+          "synthesisSeconds": 0.5527529166683962,
+          "text": "辛いカレーが好きだよ。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "辛いカレーが好きだよ。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 0.0001597916634636931,
+      "cooldownSeconds": 5.416659405454993e-07,
+      "fixture": "temperature",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18993.12059691667,
+          "bytes": 551930272
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "今日は25℃だよ。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 2.132471655328798,
+          "file": "temperature-original.wav",
+          "processedChunks": [
+            "<ja>今日は25°Cだよ。</ja>"
+          ],
+          "synthesisSeconds": 0.5506275416664721,
+          "text": "今日は25℃だよ。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.132471655328798,
+          "file": "temperature-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>今日は25°Cだよ。</ja>"
+          ],
+          "synthesisSeconds": 0.5496319583326112,
+          "text": "今日は25℃だよ。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "今日は25℃だよ。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "afterDictionary": {
+        "at": 18984.173953416666,
+        "bytes": 87164696
+      },
+      "audibleAssessment": "pending",
+      "beforeDictionary": {
+        "at": 18984.093012416666,
+        "bytes": 12764832
+      },
+      "coldPreparationSeconds": 0.08093000000008033,
+      "conversionSeconds": 0.00014208333232090808,
+      "cooldownSeconds": 4.1666862671263516e-07,
+      "fixture": "clock",
+      "footprintSamples": [
+        {
+          "at": 18984.093012416666,
+          "bytes": 12764832
+        },
+        {
+          "at": 18984.173953416666,
+          "bytes": 87164696
+        },
+        {
+          "at": 18994.584160333336,
+          "bytes": 551946656
+        }
+      ],
+      "mode": "pronunciationComparison",
+      "original": "7:30に起こしてね。",
+      "outcome": "success",
+      "outputs": [
+        {
+          "durationSeconds": 2.3517687074829934,
+          "file": "clock-original.wav",
+          "processedChunks": [
+            "<ja>7:30に起こしてね。</ja>"
+          ],
+          "synthesisSeconds": 0.7300727083311358,
+          "text": "7:30に起こしてね。",
+          "variant": "original"
+        },
+        {
+          "durationSeconds": 2.3517687074829934,
+          "file": "clock-jpreprocess.wav",
+          "processedChunks": [
+            "<ja>7:30に起こしてね。</ja>"
+          ],
+          "synthesisSeconds": 0.7280782916677708,
+          "text": "7:30に起こしてね。",
+          "variant": "jpreprocess"
+        }
+      ],
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "spoken": "7:30に起こしてね。",
+      "stage": "pronunciation",
+      "steps": 8,
+      "thermalAfter": "nominal",
+      "voice": "F1"
+    },
+    {
+      "applicationStateRawValue": 0,
+      "audioCategory": "AVAudioSessionCategoryPlayback",
+      "audioSampleRate": 48000,
+      "cooldownSeconds": 3.333334461785853e-07,
+      "error": "",
+      "events": [
+        {
+          "at": 18994.592846666666,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "point": "request"
+        },
+        {
+          "at": 18994.59303575,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "point": "firstCaption"
+        },
+        {
+          "at": 18994.59308979167,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "outcome": "success",
+          "point": "streamFinished"
+        },
+        {
+          "at": 18994.593117625,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "part": "first",
+          "point": "speechEnqueued",
+          "sentenceOrdinal": 0
+        },
+        {
+          "at": 18995.6078295,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "part": "first",
+          "point": "speechStarted",
+          "sentenceOrdinal": 0,
+          "source": "started"
+        },
+        {
+          "at": 18998.91750075,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "part": "first",
+          "point": "speechFinished",
+          "sentenceOrdinal": 0
+        },
+        {
+          "at": 18998.917807416667,
+          "id": "1DF92446-17F5-4A9B-BB48-69A36216F24F",
+          "outcome": "success",
+          "point": "finished"
+        }
+      ],
+      "fixture": "pronunciation-speaker",
+      "footprintSamples": [
+        {
+          "at": 18994.592209583334,
+          "bytes": 552061344
+        },
+        {
+          "at": 18994.694774791667,
+          "bytes": 552470944
+        },
+        {
+          "at": 18994.795902041667,
+          "bytes": 552503712
+        },
+        {
+          "at": 18994.897034541667,
+          "bytes": 552503712
+        },
+        {
+          "at": 18994.998139166666,
+          "bytes": 552503712
+        },
+        {
+          "at": 18995.098629750002,
+          "bytes": 552503712
+        },
+        {
+          "at": 18995.199762541666,
+          "bytes": 552503712
+        },
+        {
+          "at": 18995.300863250002,
+          "bytes": 552503712
+        },
+        {
+          "at": 18995.540466041668,
+          "bytes": 570722720
+        },
+        {
+          "at": 18995.645535333333,
+          "bytes": 570739104
+        },
+        {
+          "at": 18995.746435708334,
+          "bytes": 570739104
+        },
+        {
+          "at": 18995.847860916667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18995.94918479167,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.050552666667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.151872416667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.252544958334,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.3538925,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.455237416667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.556328708335,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.656915166666,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.758388208335,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.859037875,
+          "bytes": 570739104
+        },
+        {
+          "at": 18996.960423708333,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.061743041668,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.163160583335,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.26452466667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.36584491667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.46727229167,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.568634958334,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.669952833334,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.771272625003,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.872588583334,
+          "bytes": 570739104
+        },
+        {
+          "at": 18997.97318625,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.073769416667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.175112375,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.27648925,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.377835458334,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.479225333336,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.580618875,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.681996791667,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.783381833335,
+          "bytes": 570739104
+        },
+        {
+          "at": 18998.917411041668,
+          "bytes": 570231200
+        },
+        {
+          "at": 18998.918608250002,
+          "bytes": 570165664
+        }
+      ],
+      "inputs": [
+        {
+          "original": "｢+ボタン｣でYouTubeを開くよ。",
+          "processedChunks": [
+            "<ja>「プラスボタン」でユーチューブを開くよ。</ja>"
+          ],
+          "spoken": "｢プラスボタン｣でユーチューブを開くよ。"
+        }
+      ],
+      "mode": "sentencePrefetch",
+      "outcome": "success",
+      "repetition": 0,
+      "response": "｢+ボタン｣でYouTubeを開くよ。",
+      "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+      "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+      "stage": "pronunciation",
+      "synthesis": [
+        {
+          "at": 18994.593667875,
+          "point": "synthesisStarted",
+          "sentenceOrdinal": 0
+        },
+        {
+          "at": 18995.392626666668,
+          "point": "synthesisFinished",
+          "sentenceOrdinal": 0
+        }
+      ],
+      "thermalAfter": "nominal",
+      "thermalBefore": "nominal",
+      "voice": "F1"
+    }
+  ],
+  "route": [
+    "Speaker"
+  ],
+  "runID": "8D754551-D800-4DC0-8F2F-D12AEBB5D1C3",
+  "schemaVersion": 1,
+  "sourceRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+  "stage": "pronunciation",
+  "volume": 0.25
+}

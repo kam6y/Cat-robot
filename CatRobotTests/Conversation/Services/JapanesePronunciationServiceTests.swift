@@ -5,15 +5,28 @@ import XCTest
 final class JapanesePronunciationServiceTests: XCTestCase {
     private var dictionary: URL { (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("dictionary") }
 
+    func testCorrectionKeepsNaturalJapaneseAroundLatinTerms() async throws {
+        let service = JapanesePronunciationService(root: dictionary)
+        for (input, expected) in [
+            ("YouTubeで動画を見て、友達と共有するよ。", "ユーチューブで動画を見て、友達と共有するよ。"),
+            ("こんにちは。今日も一緒に遊ぼうね。", "こんにちは。今日も一緒に遊ぼうね。"),
+            ("iPhoneとBluetoothを使う。", "アイフォーンとブルートゥースを使う。"),
+            ("+ボタンを押してね。", "プラスボタンを押してね。"),
+        ] {
+            let output = try await service.normalize(input)
+            XCTAssertEqual(output, expected, input)
+        }
+    }
+
     func testRealDictionaryReadsNamesOperatorsAndJapanese() async throws {
         let service = JapanesePronunciationService(root: dictionary)
         for (input, expected) in [
-            ("YouTubeを見よう。", "ユーチューブヲミヨー。"),
-            ("+ボタンを押してね。", "プラスボタンヲオシテネ。"),
-            ("iPhoneとBluetooth。", "アイフォーントブルートゥース。"),
-            ("3人と25%。", "サンニントニジューゴパーセント。"),
-            ("Disney+を見よう。", "ディズニープラスヲミヨー。"),
-            ("+ボタンを押してね♪", "プラスボタンヲオシテネ♪"),
+            ("YouTubeを見よう。", "ユーチューブを見よう。"),
+            ("+ボタンを押してね。", "プラスボタンを押してね。"),
+            ("iPhoneとBluetooth。", "アイフォーンとブルートゥース。"),
+            ("3人と25%。", "3人と25%。"),
+            ("Disney+を見よう。", "ディズニープラスを見よう。"),
+            ("+ボタンを押してね♪", "プラスボタンを押してね♪"),
             ("｢+ボタン｣", "｢プラスボタン｣"),
             ("“iPhone”", "“アイフォーン”"),
         ] {
@@ -66,9 +79,9 @@ final class JapanesePronunciationServiceTests: XCTestCase {
             do { _ = try await service.normalize(input); XCTFail("invalid input succeeded") }
             catch { XCTAssertEqual(error as? JapanesePronunciationError, .invalidInput) }
         }
-        let boundary = try await service.normalize(String(repeating: "猫", count: 1000))
-        XCTAssertEqual(boundary, String(repeating: "ネコ", count: 1000))
-        do { _ = try await service.normalize(String(repeating: "猫", count: 1001)); XCTFail("expanded output exceeded engine limit") }
+        let boundary = try await service.normalize(String(repeating: "+", count: 666) + "12")
+        XCTAssertEqual(boundary, String(repeating: "プラス", count: 666) + "12")
+        do { _ = try await service.normalize(String(repeating: "+", count: 667)); XCTFail("expanded output exceeded engine limit") }
         catch { XCTAssertEqual(error as? JapanesePronunciationError, .outputTooLong) }
     }
 }

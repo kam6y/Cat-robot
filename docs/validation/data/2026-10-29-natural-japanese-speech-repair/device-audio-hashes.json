@@ -1,0 +1,18 @@
+{
+  "ambiguous-jpreprocess.wav": "a6e7c3deedb9f53dfe4e22d78c43470e005a4183e6d52de6e304ba9e9ed53db6",
+  "ambiguous-original.wav": "27aadc83567db64a80ed4a9105d4e712727934ed5b42fb60963beb5d75b4a6ea",
+  "clock-jpreprocess.wav": "783973b03842952ce851760257934e69fffe006802ac3b932cc31217d5cb559a",
+  "clock-original.wav": "80f1a5b81008559369b12f0356f1b2f467743843dcf2e918bd7b5ea4a1068dca",
+  "counter-jpreprocess.wav": "a50f7a4b89abc26ada54885260e37a2c70bab19107fab1eb24fbb1e25dcb06df",
+  "counter-original.wav": "e7fb845435e8535f0e045443a8175cffa9196c4af81c359c633c2fa3b8fefe55",
+  "greeting-jpreprocess.wav": "b42f76a2a6b19ebf89f372e14f8fa91f167ce6a64e02f4224d7ac3f9bcae4a9b",
+  "greeting-original.wav": "c04e0767652feb497be1fe3714aeb5edf5029317393e8bfbae5fa315bc853ad5",
+  "plus-jpreprocess.wav": "20dd5e6c04f8915c6431877155f9a548812b2f4164a0223be243aeb66251b892",
+  "plus-original.wav": "d04379cdf7f021d0804db14e53c7164ea62c06417575a0d39e318ce9d44a79d1",
+  "service-plus-jpreprocess.wav": "1db739155f48dd4c78dcf77d5e572f42f04e2a31346b7f17b99b25f42ec63076",
+  "service-plus-original.wav": "c0006e485377033d1233165c37f9b6fc8c9c34ea53db3f58ac0c7e78162ab675",
+  "temperature-jpreprocess.wav": "ccaa7ee28d06d3844f9eec63e413cf018b869c8da933e8444496ed949dd8ece1",
+  "temperature-original.wav": "3fd7505a1b84420a4c3fa48c1288cb7369c36cb792443511cc8efffc926a20ca",
+  "youtube-jpreprocess.wav": "9db42b89fdac489aec7c91405298b8c4007b80567c1fb7671dabe9313ce6f9cc",
+  "youtube-original.wav": "db812cb8a8b58ed51d096d5d8b2b5663a7d469668776021c43502ccebaf0c5a7"
+}

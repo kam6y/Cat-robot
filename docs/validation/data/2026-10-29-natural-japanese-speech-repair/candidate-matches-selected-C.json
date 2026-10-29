@@ -1,0 +1,10 @@
+{
+  "scope": "Final native output equals listener-selected C input; no private text retained here",
+  "sourceSHA256": "7c70b831d9197ee841ca1844295e7de3137e9de951c747aec34f6a1562d7962b",
+  "cases": [
+    {
+      "fixture": "recent-1",
+      "matchesListenerSelectedC": true
+    }
+  ]
+}

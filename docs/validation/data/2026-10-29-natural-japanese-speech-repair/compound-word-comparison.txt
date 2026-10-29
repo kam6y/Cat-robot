@@ -1,0 +1,13 @@
+Before:
+"Mr.Children" => Ok("エムアール.チルドレン")
+"Dr.STONE" => Ok("ドクター.STONE")
+"No.1" => Ok("ノー.イチ")
+"Lv.5" => Ok("エルブイ.ゴ")
+"YouTube’s" => Ok("YouTube’s")
+
+After:
+'Mr.Children' => 'ミスターチルドレン'
+'Dr.STONE' => 'Dr.STONE'
+'No.1' => 'ナンバーイチ'
+'Lv.5' => 'Lv.5'
+'YouTube’s' => 'YouTube’s'

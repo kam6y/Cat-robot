@@ -1,0 +1,23 @@
+{
+  "artifactFiles": {
+    "CJPPronunciation.xcframework/Info.plist": "eae931ac1e8990b6c462cb6276efa41a84abdc2e64b45899eb5537797ff588b6",
+    "CJPPronunciation.xcframework/ios-arm64/Headers/CJPPronunciation.h": "cae9812a745d8dbbff83f423e6011a1581d71655cba5379a91e2e95b0399eab5",
+    "CJPPronunciation.xcframework/ios-arm64/Headers/module.modulemap": "a3e1458b1497bf6891bfa64778e5a568aada97d1c12758d6c104954c85019686",
+    "CJPPronunciation.xcframework/ios-arm64/libcjp_pronunciation.a": "b9313e5fc739096e682a304385449c2dc86914a78f71f2eedb7529b2546b7b9f",
+    "CJPPronunciation.xcframework/ios-arm64_x86_64-simulator/Headers/CJPPronunciation.h": "cae9812a745d8dbbff83f423e6011a1581d71655cba5379a91e2e95b0399eab5",
+    "CJPPronunciation.xcframework/ios-arm64_x86_64-simulator/Headers/module.modulemap": "a3e1458b1497bf6891bfa64778e5a568aada97d1c12758d6c104954c85019686",
+    "CJPPronunciation.xcframework/ios-arm64_x86_64-simulator/libcjp_pronunciation.a": "b097b81cd879d994e72578bfce0cef7a06f57a825e04d3875591beae7190048b"
+  },
+  "sourceFiles": {
+    "native/japanese-pronunciation/Cargo.lock": "ea865d1906bad80e0fcf32e17c8d43c89ef67d1e62d541d5e6aae7720f8d1932",
+    "native/japanese-pronunciation/Cargo.toml": "6f117829c21b7fa01ce44872ea05aed795966e1af090879949be151767d5619f",
+    "native/japanese-pronunciation/include/CJPPronunciation.h": "cae9812a745d8dbbff83f423e6011a1581d71655cba5379a91e2e95b0399eab5",
+    "native/japanese-pronunciation/include/module.modulemap": "a3e1458b1497bf6891bfa64778e5a568aada97d1c12758d6c104954c85019686",
+    "native/japanese-pronunciation/rust-toolchain.toml": "9cbde07377abdce69bc9580adb0315d52e2a09d6494a2005550a7e6733d9688b",
+    "native/japanese-pronunciation/src/ffi.rs": "4f86db3cdf0463d4396d58c78f061f9ed53a4512c6c69704c6168165f50dcee8",
+    "native/japanese-pronunciation/src/lib.rs": "7c70b831d9197ee841ca1844295e7de3137e9de951c747aec34f6a1562d7962b",
+    "native/japanese-pronunciation/tests/ffi.rs": "5131a8e56d14241c29468790630f1df7415fbb0de1d418c6e862bdc37ddcaebb",
+    "native/japanese-pronunciation/tests/pronunciation.rs": "5dbbe251f691eca0999d9003420d0a1308d9a541a21c38fc7e672b547b196b71",
+    "scripts/build_jpreprocess.sh": "a601ee4172a99a77d09423a012867b3b9ca7dc35efcef317682f17a35732cb5b"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "scope": "Authorized local diagnostic, same model/F1/8steps/CPU2threads, fixed-noise seed100; not an exhaustive listening evaluation",
+  "A": "original mixed-script text",
+  "B": "whole-sentence kana pronunciation text",
+  "C": "Latin term corrected, Japanese surface retained",
+  "userAnswer": "Cだけ自然だわ",
+  "chosenApproach": "C",
+  "privateHistoryAndAudioCommitted": false
+}

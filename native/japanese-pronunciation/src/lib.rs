@@ -29,11 +29,17 @@ static ALIASES: LazyLock<Regex> = LazyLock::new(|| {
         .join("|");
     Regex::new(&format!(r"(?i)(?-u:\b)({names})(?-u:\b)")).unwrap()
 });
-static IDENTIFIERS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"[A-Za-z_][A-Za-z0-9_+]*").unwrap());
-
-static GROUPED_NUMBER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})+").unwrap());
+static IDENTIFIERS: LazyLock<Regex> = LazyLock::new(|| {
+    // Keep foreign-script suffixes and attached marks in the same candidate.
+    // Only the ASCII/fullwidth whitelist below is eligible for correction.
+    let base = r"[\p{L}\p{N}_＿+＋&&[^\p{Han}\p{Hiragana}\p{Katakana}ーｰﾞﾟ]]";
+    let start = r"[\p{L}\p{N}_＿&&[^\p{Han}\p{Hiragana}\p{Katakana}ーｰﾞﾟ]]";
+    let atom = format!(r"(?:{base}\p{{M}}*)");
+    let segment = format!(r"(?:{start}\p{{M}}*){atom}*");
+    // A plus operator cannot open a word or absorb its following quote wrapper.
+    // Typographic connectors join a candidate but remain ineligible for rewriting.
+    Regex::new(&format!(r"{segment}(?:[-'.－．＇‐‑’]{segment})*")).unwrap()
+});
 
 impl Pronouncer {
     pub fn load(path: &Path) -> Result<Self, Error> {
@@ -64,30 +70,23 @@ impl Pronouncer {
     }
 
     fn convert_plain(&self, text: &str, output: &mut String) -> Result<(), Error> {
-        let mut start = 0;
-        let grouped: Vec<Range<usize>> = GROUPED_NUMBER
-            .find_iter(text)
-            .filter(|m| {
-                !text[..m.start()].chars().next_back().is_some_and(is_digit)
-                    && !text[m.end()..].chars().next().is_some_and(is_digit)
-            })
-            .map(|m| m.range())
-            .collect();
-        let chars: Vec<(usize, char)> = text.char_indices().collect();
-        for (index, &(offset, c)) in chars.iter().enumerate() {
-            let between_digits = index > 0
-                && index + 1 < chars.len()
-                && is_digit(chars[index - 1].1)
-                && is_digit(chars[index + 1].1);
-            let inside_number = (matches!(c, '.' | '．') && between_digits)
-                || (matches!(c, ',' | '，') && grouped.iter().any(|r| r.contains(&offset)));
-            if is_separator(c) && !inside_number {
-                output.push_str(&self.convert_run(&text[start..offset])?);
-                output.push(c);
-                start = offset + c.len_utf8();
+        let mut cursor = 0;
+        for term in IDENTIFIERS.find_iter(text) {
+            output.push_str(&text[cursor..term.start()].replace(['+', '＋'], "プラス"));
+            let word = term.as_str();
+            if is_latin_word(word) {
+                output.push_str(&self.convert_run(word)?);
+            } else if word.chars().all(|c| {
+                is_digit(c) || matches!(c, '+' | '＋' | '.' | '．' | '-' | '－' | '\'' | '＇')
+            }) {
+                // Numeric expressions retain their notation; only plus is verbalized.
+                output.push_str(&word.replace(['+', '＋'], "プラス"));
+            } else {
+                output.push_str(word);
             }
+            cursor = term.end();
         }
-        output.push_str(&self.convert_run(&text[start..])?);
+        output.push_str(&text[cursor..].replace(['+', '＋'], "プラス"));
         Ok(())
     }
 
@@ -139,7 +138,18 @@ impl Pronouncer {
         {
             return Ok(original.to_owned());
         }
-        let composed: String = original.nfc().collect();
+        // Eligibility was checked on the original characters. Fold width only:
+        // compatibility forms such as Roman numerals/ligatures stay untouched.
+        let composed: String = original
+            .chars()
+            .map(|c| {
+                if ('\u{ff01}'..='\u{ff5e}').contains(&c) {
+                    char::from_u32(c as u32 - 0xfee0).unwrap()
+                } else {
+                    c
+                }
+            })
+            .collect();
         let canonical = ALIASES.replace_all(&composed, |captures: &Captures<'_>| {
             CANONICAL_ALIASES
                 .iter()
@@ -170,14 +180,11 @@ impl Pronouncer {
                 }
             }
         }
-        if njd.nodes.iter().enumerate().any(|(i, node)| {
-            let numeric_separator = matches!(node.get_string(), "．" | "，")
-                && i > 0
-                && i + 1 < njd.nodes.len()
-                && njd.nodes[i - 1].get_string().chars().all(is_digit)
-                && njd.nodes[i + 1].get_string().chars().all(is_digit);
-            node.get_pron().mora_size() == 0 && !numeric_separator
-        }) {
+        if njd
+            .nodes
+            .iter()
+            .any(|node| node.get_pron().mora_size() == 0)
+        {
             return Ok(original.to_owned());
         }
         njd.preprocess();
@@ -205,20 +212,19 @@ fn is_latin_word(text: &str) -> bool {
         c.is_ascii_alphabetic() || ('Ａ'..='Ｚ').contains(&c) || ('ａ'..='ｚ').contains(&c)
     }
     text.chars().any(letter)
-        && text
-            .chars()
-            .all(|c| letter(c) || is_digit(c) || matches!(c, '_' | '＿' | '+' | '＋'))
+        && text.chars().all(|c| {
+            letter(c)
+                || is_digit(c)
+                || matches!(
+                    c,
+                    '_' | '＿' | '+' | '＋' | '-' | '－' | '.' | '．' | '\'' | '＇'
+                )
+        })
 }
 
 fn is_digit(c: char) -> bool {
     c.is_ascii_digit() || ('０'..='９').contains(&c)
 }
-const SEPARATORS: &str = "。、！？「」『』（）()[]{}【】〈〉《》\"!?,.，．:;：；…‥・･〜～♪♫＝=※→←☆★♡♥｡､｢｣“”‘’［］｛｝＂—―";
-
-fn is_separator(c: char) -> bool {
-    c.is_whitespace() || SEPARATORS.contains(c)
-}
-
 fn protected_ranges(text: &str) -> Vec<Range<usize>> {
     let mut ranges: Vec<Range<usize>> = PROTECTED.find_iter(text).map(|m| m.range()).collect();
     let mut cursor = 0;

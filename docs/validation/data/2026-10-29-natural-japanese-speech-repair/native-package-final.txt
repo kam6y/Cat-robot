@@ -1,0 +1,8 @@
+   Compiling catrobot-japanese-pronunciation v0.1.0 (/Users/goodapple/.codex/worktrees/b200/Cat_robot/native/japanese-pronunciation)
+    Finished `release` profile [optimized] target(s) in 2.15s
+   Compiling catrobot-japanese-pronunciation v0.1.0 (/Users/goodapple/.codex/worktrees/b200/Cat_robot/native/japanese-pronunciation)
+    Finished `release` profile [optimized] target(s) in 1.48s
+   Compiling catrobot-japanese-pronunciation v0.1.0 (/Users/goodapple/.codex/worktrees/b200/Cat_robot/native/japanese-pronunciation)
+    Finished `release` profile [optimized] target(s) in 1.82s
+xcframework successfully written out to: /Users/goodapple/.codex/worktrees/b200/Cat_robot/.build/jpreprocess-package.wMtfT4/CJPPronunciation.xcframework
+PASS: jpreprocess dictionary and native build verified

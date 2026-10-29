@@ -1,0 +1,30 @@
+{
+  "runtimeRevision": "f2367d5a2487dfa5fded96d0385d3d7a18fa1bc2",
+  "swift": {
+    "total": 848,
+    "passed": 846,
+    "skippedPhysicalOnly": 2,
+    "failed": 0
+  },
+  "native": {
+    "pronunciationPassed": 18,
+    "ffiPassed": 4,
+    "failed": 0
+  },
+  "python": {
+    "passed": 17,
+    "failed": 0
+  },
+  "device": {
+    "passedTests": 1,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "successfulRecords": 9,
+    "wavPairs": 8,
+    "productionSpeakerForeground": true
+  },
+  "sourceFileCount": 262,
+  "sameTestedAndDeployedSources": true,
+  "beforeReviewFixFullRun": "intentionally aborted; not a passing result",
+  "dictionaryOnlyNearLimitTest": "deferred; symbol expansion covers shared output guard"
+}

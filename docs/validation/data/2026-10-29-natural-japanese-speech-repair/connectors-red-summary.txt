@@ -1,0 +1,6 @@
+running 1 test
+test typographic_internal_connectors_do_not_split_unknown_terms ... FAILED
+failures:
+failures:
+    typographic_internal_connectors_do_not_split_unknown_terms
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.74s
