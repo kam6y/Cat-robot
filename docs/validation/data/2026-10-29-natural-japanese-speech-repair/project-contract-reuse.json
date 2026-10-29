@@ -1,0 +1,8 @@
+{
+  "basis": "Previous successful deterministic project contract on main jpreprocess cross-review; generator and project files unchanged",
+  "files": {
+    "CatRobot.xcodeproj/project.pbxproj": true,
+    "scripts/generate_project.rb": true,
+    "scripts/test_generate_project.rb": true
+  }
+}

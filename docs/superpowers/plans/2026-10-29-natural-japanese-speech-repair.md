@@ -36,6 +36,6 @@
 **Interfaces:** native output flows through unchanged Swift speaker; tests pin C output and real Latin expansion limits.
 - [x] Add/update real dictionary mixed-language expected outputs and output-limit case using actual symbol expansion through the shared post-normalization guard; run red/green against rebuilt library without bypassing validation.
 - [x] Rebuild native3targets and validate receipts/assets; run focused Swift and then full suite once; run relevant Python and project contract. Expected zero failures, physical-only skips explicit.
-- [ ] Use an external current-source synthesis probe for C-like output; run signed physical reproduction/playback if available, then restore normal app. Keep model/voice/steps unchanged.
-- [ ] Request one fresh whole-fix review; receive materially, fix regressions with tests; rerun affected checks only.
-- [ ] Save source proof, verification, comparison/limitations and reviewer decisions; clean working tree and commit main repair. Do not publish private data.
+- [x] Use an external current-source synthesis probe for C-like output; run signed physical reproduction/playback if available, then restore normal app. Keep model/voice/steps unchanged.
+- [x] Request one fresh whole-fix review; receive materially, fix regressions with tests; rerun affected checks only.
+- [x] Save source proof, verification, comparison/limitations and reviewer decisions; clean working tree and commit main repair. Do not publish private data.

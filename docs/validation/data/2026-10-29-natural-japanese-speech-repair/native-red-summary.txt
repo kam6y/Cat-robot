@@ -1,0 +1,23 @@
+running 16 tests
+test missing_dictionary_cannot_silently_become_passthrough ... ok
+test invalid_or_oversized_input_is_an_error ... ok
+test protected_spans_and_punctuation_remain_exact ... ok
+test dictionary_reads_service_names_and_case_aliases ... ok
+test combining_kana_is_read_without_losing_valid_voicing ... ok
+test plus_operator_does_not_corrupt_cpp_or_identifiers ... ok
+test known_english_word_is_recovered_when_context_selects_unknown_token ... ok
+test unicode_latin_and_fullwidth_terms_are_not_partially_rewritten ... FAILED
+test service_and_expression_suffix_plus_is_not_read_as_tasu ... ok
+test numeric_grouping_is_distinct_from_a_comma_separated_list ... ok
+test unknown_content_never_disappears ... ok
+test japanese_particles_numbers_and_counters_use_pronunciation ... ok
+test japanese_surfaces_remain_intact_for_natural_speech ... FAILED
+test latin_readings_preserve_surrounding_japanese_surface ... FAILED
+test known_punctuation_keeps_neighboring_corrections_active ... ok
+test punctuation_width_and_typographic_variants_keep_corrections ... ok
+failures:
+failures:
+    japanese_surfaces_remain_intact_for_natural_speech
+    latin_readings_preserve_surrounding_japanese_surface
+    unicode_latin_and_fullwidth_terms_are_not_partially_rewritten
+test result: FAILED. 13 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s

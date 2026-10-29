@@ -1,0 +1,51 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64e",
+        "deviceId": "00008140-000610311A90801C",
+        "modelName": "iPhone 16 Pro",
+        "osBuildNumber": "24B119",
+        "osVersion": "27.2",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "passedTests": 1,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "SupertonicIntegrationDeviceTests · Built with macOS 26.6.2",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1793281873.371,
+  "passedTests": 1,
+  "result": "Passed",
+  "runtimeWarnings": [
+    {
+      "issueType": "Runtime Warning",
+      "message": "[Internal] Thread running at User-interactive quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions"
+    },
+    {
+      "issueType": "Runtime Warning",
+      "message": "This method can lead to UI unresponsiveness if called on the main thread. Consider using the asynchronous activate/deactivate API instead for calls from the main thread.",
+      "sourceURL": "file:///Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Device/SupertonicIntegrationDeviceTests.swift"
+    },
+    {
+      "issueType": "Runtime Warning",
+      "message": "This method can lead to UI unresponsiveness if called on the main thread while the audio session is active.",
+      "sourceURL": "file:///Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Device/SupertonicIntegrationDeviceTests.swift"
+    }
+  ],
+  "skippedTests": 0,
+  "startTime": 1793281846.52,
+  "statistics": [],
+  "testFailures": [],
+  "title": "Test - SupertonicIntegrationDeviceTests",
+  "topInsights": [],
+  "totalTestCount": 1
+}

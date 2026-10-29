@@ -1,0 +1,6 @@
+running 1 test
+test halfwidth_japanese_voicing_keeps_latin_neighbor_correction ... FAILED
+failures:
+failures:
+    halfwidth_japanese_voicing_keeps_latin_neighbor_correction
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.68s
