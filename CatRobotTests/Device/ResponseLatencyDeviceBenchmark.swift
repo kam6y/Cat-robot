@@ -29,11 +29,33 @@ struct ResponseLatencyDeviceBenchmark {
          "clock": "monotonic request to PCM playback callback; not acoustic measurement"]
     }
 
+    static func waitForForeground() async throws {
+        let started = ProcessInfo.processInfo.systemUptime
+        var announced = false
+        while UIApplication.shared.applicationState != .active {
+            if !announced { print("LATENCY_WAITING_FOR_FOREGROUND"); announced = true }
+            guard ProcessInfo.processInfo.systemUptime - started < 120 else {
+                throw XCTSkip("Keep the unlocked iPhone test app in foreground")
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    private static func activateAudio() async throws {
+        try await waitForForeground()
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default)
+        try session.setActive(true)
+    }
+
+    private enum BenchmarkFailure: Error { case trialFailed }
+
     static func run(engine: SupertonicEngine, runID: String, revision: String,
                     coolDown: @MainActor () async throws -> Double,
                     sample: @escaping @MainActor () -> [String: Any],
                     record: @MainActor ([String: Any]) throws -> Void) async throws {
         let voice = SpeechVoiceSettings().selected
+        try await activateAudio()
         let warmup = SupertonicSentenceSpeaker(engine: engine, voice: { voice })
         try await warmup.prepare()
         for try await _ in try await warmup.speak("こんにちは。") {}
@@ -47,6 +69,7 @@ struct ResponseLatencyDeviceBenchmark {
                                               runID: runID, revision: revision, stage: "latency", requiresHit: fixture.requiresHit,
                                               cooldown: cooldown, sample: sample)
                     try record(row)
+                    if row["outcome"] as? String != "success" { throw BenchmarkFailure.trialFailed }
                 }
             }
         }
@@ -77,6 +100,7 @@ struct ResponseLatencyDeviceBenchmark {
             row["effort"] = settings.effort.rawValue
             row["memoryScope"] = "isolated test-only memory and usage; robot/camera controllers are noops"
             try record(row)
+            if row["outcome"] as? String != "success" { throw BenchmarkFailure.trialFailed }
         }
     }
 
@@ -84,6 +108,7 @@ struct ResponseLatencyDeviceBenchmark {
                               fixture: String, repetition: Int, enabled: Bool, voice: SpeechVoicePreset,
                               runID: String, revision: String, stage: String, requiresHit: Bool, cooldown: Double,
                               sample: @escaping @MainActor () -> [String: Any]) async throws -> [String: Any] {
+        try await activateAudio()
         let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voice })
         try await speaker.prepare()
         var inputs: [[String: Any]] = []
@@ -114,7 +139,7 @@ struct ResponseLatencyDeviceBenchmark {
         deadline.cancel(); await deadline.value
         sampler.cancel(); await sampler.value; samples.append(sample())
         await speaker.stop()
-        if let expected, response != expected { outcome = "failed"; failure = "responseMismatch" }
+        if outcome == "success", let expected, response != expected { outcome = "failed"; failure = "responseMismatch" }
         if outcome != "success" { XCTFail("Latency \(fixture): \(failure)") }
         let events = try JSONSerialization.jsonObject(with: JSONEncoder().encode(sink.events))
         let mode = enabled ? "prepared" : "baseline"

@@ -31,6 +31,9 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             .appendingPathComponent("SupertonicIntegration/\(id)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try save()
+        if stage == "latency" || stage == "latency-cloud" {
+            try await ResponseLatencyDeviceBenchmark.waitForForeground()
+        }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
