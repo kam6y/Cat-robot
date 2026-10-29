@@ -1,0 +1,66 @@
+{
+  "ambiguous-jpreprocess.wav": {
+    "sha256": "df2bd71469fb476c635b7ca681c2229f827cf0cb093cf9922bcdebc32b8da93c",
+    "bytes": 372556
+  },
+  "ambiguous-original.wav": {
+    "sha256": "cd2c60bff5f3a29977308222dc973199ea59db9a15253fcb580ab8656a88cd97",
+    "bytes": 377152
+  },
+  "clock-jpreprocess.wav": {
+    "sha256": "26ac47270347a94af5534ca5a7cea737fd1fa248110ac77f90f0b22d34da495a",
+    "bytes": 364192
+  },
+  "clock-original.wav": {
+    "sha256": "82ee16616465cd9da7fd008fd83b137e471c2375cac0cfed2453057806950c34",
+    "bytes": 418948
+  },
+  "counter-jpreprocess.wav": {
+    "sha256": "c56405b91f0f37f9f8ef949a11247af0756f0c17fb831433e989324b6449087b",
+    "bytes": 393484
+  },
+  "counter-original.wav": {
+    "sha256": "f4bfa18fde97e9b28cfa4ecc512d70ae1f32baf7171ca87abf2e10906642cd6f",
+    "bytes": 446372
+  },
+  "greeting-jpreprocess.wav": {
+    "sha256": "b7a080e843e5174da5512a78c47b89265c460f4d0ee24edad502c429a90277b0",
+    "bytes": 431144
+  },
+  "greeting-original.wav": {
+    "sha256": "266626879525535dee8584f421659d0c49e93204be3ee2f65b36738055f0f0f2",
+    "bytes": 510068
+  },
+  "plus-jpreprocess.wav": {
+    "sha256": "0eb50f256577f4a14c530c72c478b3db888a9e3e0894b0288d3956e48e7c5333",
+    "bytes": 315964
+  },
+  "plus-original.wav": {
+    "sha256": "74470c1eff691ed4ecd676d7a4e8544b86098c8b95067ed2bf43530a6d9af304",
+    "bytes": 312432
+  },
+  "service-plus-jpreprocess.wav": {
+    "sha256": "2e5d1aec7f36772e351346812340bfd72342d9640ee27de968e1ddf6e5265601",
+    "bytes": 349400
+  },
+  "service-plus-original.wav": {
+    "sha256": "b9030a55e0f457ff504f0d3a056f7683941e1dbc902beb5648f696299580052f",
+    "bytes": 308336
+  },
+  "temperature-jpreprocess.wav": {
+    "sha256": "54d5a8aa606aa01a10fa34222ada3bee4703de6a2898bb2bcaeb171b281a621b",
+    "bytes": 392620
+  },
+  "temperature-original.wav": {
+    "sha256": "e18898e391162a553e2dae673c410c01a74fd09275f8f7e5d26ea5f58736b5ae",
+    "bytes": 380264
+  },
+  "youtube-jpreprocess.wav": {
+    "sha256": "681318a22ff13c79b1af4e1f660f4152baf9509e534181de40dc496e0bf78e76",
+    "bytes": 289688
+  },
+  "youtube-original.wav": {
+    "sha256": "e1ad61c25c1fe95042d4490f72d1f9682d4c4d2e2ee496c5a39a42d0bd1d437d",
+    "bytes": 306852
+  }
+}

@@ -77,11 +77,11 @@ final class SupertonicSentenceSpeakerTests: XCTestCase {
     }
 
     func testStopDuringPronunciationNeverStartsSynthesis() async throws {
-        let converter = ControlledPronunciation()
+        let converter = ConversationTestGate()
         let inputs = SynthesisInputs()
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {},
-            normalize: { try await converter.normalize($0) }, voice: { .f1 },
+            normalize: { _ in await converter.wait(); return "ユーチューブ" }, voice: { .f1 },
             synthesize: { text, _ in
                 await inputs.record(text)
                 return SpeechPCM(samples: [1], sampleRate: 24_000)
@@ -90,10 +90,10 @@ final class SupertonicSentenceSpeakerTests: XCTestCase {
         speaker.onInput = { _, _ in audited = true }
         let stream = try await speaker.speak("YouTube")
         let consume = Task { for try await _ in stream {} }
-        await converter.waitUntilStarted()
+        await converter.waitUntilEntered()
         let stopping = Task { await speaker.stop() }
         await player.waitForStop()
-        await converter.release()
+        await converter.open()
         await stopping.value
         do { try await consume.value; XCTFail("cancelled conversion succeeded") }
         catch { XCTAssertEqual(error as? ConversationServiceError, .cancelled) }
@@ -265,19 +265,4 @@ final class TestPCMPlayer: PCMPlaying {
 actor SynthesisInputs {
     private(set) var inputs: [String] = []
     func record(_ text: String) { inputs.append(text) }
-}
-
-actor ControlledPronunciation {
-    private var pending: CheckedContinuation<String, Error>?
-    private var started: CheckedContinuation<Void, Never>?
-    func normalize(_ text: String) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            pending = continuation
-            started?.resume(); started = nil
-        }
-    }
-    func waitUntilStarted() async {
-        if pending == nil { await withCheckedContinuation { started = $0 } }
-    }
-    func release() { pending?.resume(returning: "ユーチューブ"); pending = nil }
 }

@@ -201,3 +201,28 @@ fn known_punctuation_keeps_neighboring_corrections_active() {
         assert_eq!(frontend().pronounce(&input).unwrap(), expected, "{input}");
     }
 }
+
+#[test]
+fn punctuation_width_and_typographic_variants_keep_corrections() {
+    for (input, expected) in [
+        ("+ボタンを押してね｡", "プラスボタンヲオシテネ｡"),
+        ("｢+ボタン｣", "｢プラスボタン｣"),
+        ("YouTube､Bluetooth", "ユーチューブ､ブルートゥース"),
+        ("iPhone｡", "アイフォーン｡"),
+        ("“YouTube”を見よう", "“ユーチューブ”ヲミヨー"),
+        ("［YouTube］を見よう", "［ユーチューブ］ヲミヨー"),
+        ("YouTube—見よう", "ユーチューブ—ミヨー"),
+        ("‘YouTube’", "‘ユーチューブ’"),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+    // Independent width/quote family oracle, not the production separator table.
+    for mark in [
+        '。', '｡', '、', '､', '「', '｢', '」', '｣', '[', '［', ']', '］', '{', '｛', '}', '｝',
+        '"', '＂', '“', '”', '‘', '’', '—', '―',
+    ] {
+        let input = format!("+{mark}YouTube");
+        let expected = format!("プラス{mark}ユーチューブ");
+        assert_eq!(frontend().pronounce(&input).unwrap(), expected, "{input}");
+    }
+}

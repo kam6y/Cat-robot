@@ -43,7 +43,11 @@ def validate_framework(root):
 
 def native_sources(source_root):
     native = source_root / "native/japanese-pronunciation"
-    files = [p for p in native.rglob("*") if p.is_file() and p.suffix in (".rs", ".toml", ".lock", ".h", ".modulemap")]
+    # Cargo's generated target sources are not inputs to the native adapter.
+    files = [native / name for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "build.rs")]
+    for folder in ("src", "include", "tests"):
+        files.extend((native / folder).rglob("*"))
+    files = [p for p in files if p.is_file() and p.suffix in (".rs", ".toml", ".lock", ".h", ".modulemap")]
     script = source_root / "scripts/build_jpreprocess.sh"
     if script.is_file():
         files.append(script)

@@ -1,12 +1,11 @@
 //! Japanese text frontend. Only the returned string changes; callers retain source text.
-use jpreprocess::{
-    normalize_text_for_naist_jdic, DefaultTokenizer, JPreprocess, SystemDictionaryConfig,
-};
+use jpreprocess::{normalize_text_for_naist_jdic, DefaultTokenizer, Dictionary, JPreprocess, NJD};
 use regex::{Captures, Regex};
 use std::{ops::Range, path::Path, sync::LazyLock};
 use unicode_normalization::UnicodeNormalization;
 
 pub const MAX_INPUT_BYTES: usize = 32_768;
+const CANONICAL_ALIASES: [&str; 4] = ["YouTuber", "YouTube", "iPhone", "Bluetooth"];
 
 #[derive(Debug)]
 pub enum Error {
@@ -23,7 +22,12 @@ static PROTECTED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)https?://[^\s<>「」]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}").unwrap()
 });
 static ALIASES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?-u:\b)(youtuber|youtube|iphone|bluetooth)(?-u:\b)").unwrap()
+    let names = CANONICAL_ALIASES
+        .iter()
+        .map(|name| regex::escape(name))
+        .collect::<Vec<_>>()
+        .join("|");
+    Regex::new(&format!(r"(?i)(?-u:\b)({names})(?-u:\b)")).unwrap()
 });
 static IDENTIFIERS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[A-Za-z_][A-Za-z0-9_+]*").unwrap());
@@ -33,9 +37,9 @@ static GROUPED_NUMBER: LazyLock<Regex> =
 
 impl Pronouncer {
     pub fn load(path: &Path) -> Result<Self, Error> {
-        let dictionary = SystemDictionaryConfig::File(path.to_path_buf())
-            .load()
-            .map_err(|_| Error::Dictionary)?;
+        // Bundled dictionary files are immutable for the lifetime of this frontend.
+        let dictionary =
+            Dictionary::load_from_path_with_options(path, true).map_err(|_| Error::Dictionary)?;
         Ok(Self {
             frontend: JPreprocess::with_dictionaries(dictionary, None),
         })
@@ -87,6 +91,17 @@ impl Pronouncer {
         Ok(())
     }
 
+    fn known_single_word(&self, text: &str, expected_surface: &str) -> Result<Option<NJD>, Error> {
+        let njd = self
+            .frontend
+            .text_to_njd(text)
+            .map_err(|_| Error::Conversion)?;
+        let known = njd.nodes.len() == 1
+            && njd.nodes[0].get_string() == expected_surface
+            && njd.nodes[0].get_pron().mora_size() > 0;
+        Ok(known.then_some(njd))
+    }
+
     fn verbalize_plus(&self, text: &str) -> Result<String, Error> {
         let mut output = String::with_capacity(text.len());
         let mut cursor = 0;
@@ -96,13 +111,8 @@ impl Pronouncer {
             // Preserve dictionary lexemes such as C++; other suffix/operator plus
             // signs must not fall through to the dictionary's arithmetic タス entry.
             let keep_word = if word.contains('+') {
-                let njd = self
-                    .frontend
-                    .text_to_njd(word)
-                    .map_err(|_| Error::Conversion)?;
-                njd.nodes.len() == 1
-                    && njd.nodes[0].get_string() == normalize_text_for_naist_jdic(word)
-                    && njd.nodes[0].get_pron().mora_size() > 0
+                self.known_single_word(word, &normalize_text_for_naist_jdic(word))?
+                    .is_some()
             } else {
                 true
             };
@@ -131,12 +141,12 @@ impl Pronouncer {
         }
         let composed: String = original.nfc().collect();
         let canonical = ALIASES.replace_all(&composed, |captures: &Captures<'_>| {
-            match captures[1].to_ascii_lowercase().as_str() {
-                "youtube" => "YouTube",
-                "youtuber" => "YouTuber",
-                "iphone" => "iPhone",
-                _ => "Bluetooth",
-            }
+            CANONICAL_ALIASES
+                .iter()
+                .copied()
+                .find(|name| name.eq_ignore_ascii_case(&captures[1]))
+                .unwrap_or(&captures[0])
+                .to_owned()
         });
         let prepared = self.verbalize_plus(&canonical)?;
         let normalized = normalize_text_for_naist_jdic(&prepared);
@@ -155,15 +165,8 @@ impl Pronouncer {
         // by splitting an unknown identifier into pronounceable letters.
         for node in &mut njd.nodes {
             if node.get_pron().mora_size() == 0 && is_latin_word(node.get_string()) {
-                let isolated = self
-                    .frontend
-                    .text_to_njd(node.get_string())
-                    .map_err(|_| Error::Conversion)?;
-                if isolated.nodes.len() == 1 {
-                    let known = &isolated.nodes[0];
-                    if known.get_string() == node.get_string() && known.get_pron().mora_size() > 0 {
-                        *node = known.clone();
-                    }
+                if let Some(known) = self.known_single_word(node.get_string(), node.get_string())? {
+                    *node = known.nodes.into_iter().next().ok_or(Error::Conversion)?;
                 }
             }
         }
@@ -180,14 +183,12 @@ impl Pronouncer {
         njd.preprocess();
         // Despite its name, upstream to_pure_string retains the U+2019
         // devoicing marker. Supertonic accepts kana text, not Open JTalk marks.
-        let result: String = njd
+        let mut result: String = njd
             .nodes
             .iter()
             .map(|node| node.get_pron().to_pure_string())
-            .collect::<String>()
-            .chars()
-            .filter(|c| *c != '’')
             .collect();
+        result.retain(|c| c != '’');
         if result.is_empty()
             || !result
                 .chars()
@@ -212,60 +213,10 @@ fn is_latin_word(text: &str) -> bool {
 fn is_digit(c: char) -> bool {
     c.is_ascii_digit() || ('０'..='９').contains(&c)
 }
+const SEPARATORS: &str = "。、！？「」『』（）()[]{}【】〈〉《》\"!?,.，．:;：；…‥・･〜～♪♫＝=※→←☆★♡♥｡､｢｣“”‘’［］｛｝＂—―";
+
 fn is_separator(c: char) -> bool {
-    c.is_whitespace()
-        || matches!(
-            c,
-            '。' | '、'
-                | '！'
-                | '？'
-                | '「'
-                | '」'
-                | '『'
-                | '』'
-                | '（'
-                | '）'
-                | '('
-                | ')'
-                | '['
-                | ']'
-                | '{'
-                | '}'
-                | '【'
-                | '】'
-                | '〈'
-                | '〉'
-                | '《'
-                | '》'
-                | '"'
-                | '!'
-                | '?'
-                | ','
-                | '.'
-                | '，'
-                | '．'
-                | ':'
-                | ';'
-                | '：'
-                | '；'
-                | '…'
-                | '‥'
-                | '・'
-                | '･'
-                | '〜'
-                | '～'
-                | '♪'
-                | '♫'
-                | '＝'
-                | '='
-                | '※'
-                | '→'
-                | '←'
-                | '☆'
-                | '★'
-                | '♡'
-                | '♥'
-        )
+    c.is_whitespace() || SEPARATORS.contains(c)
 }
 
 fn protected_ranges(text: &str) -> Vec<Range<usize>> {

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from prepare_jpreprocess_assets import extract_checked_archive
-from validate_jpreprocess_assets import validate_dictionary, validate_framework, validate_receipt
+from validate_jpreprocess_assets import validate_dictionary, validate_framework, validate_receipt, native_sources, native_artifacts
 
 
 def digest(data):
@@ -102,18 +102,38 @@ class JPreprocessAssetTests(unittest.TestCase):
 
     def test_receipt_rejects_changed_source_or_binary(self):
         source_root = self.root / "repo"
-        (source_root / "native/japanese-pronunciation").mkdir(parents=True)
+        (source_root / "native/japanese-pronunciation/src").mkdir(parents=True)
         (self.root / "CJPPronunciation.xcframework").mkdir()
-        (source_root / "native/japanese-pronunciation/source.rs").write_bytes(b"source")
+        (source_root / "native/japanese-pronunciation/src/lib.rs").write_bytes(b"source")
         (self.root / "CJPPronunciation.xcframework/library.a").write_bytes(b"library")
-        receipt = {"sourceFiles": {"native/japanese-pronunciation/source.rs": digest(b"source")}, "artifactFiles": {"CJPPronunciation.xcframework/library.a": digest(b"library")}}
+        receipt = {"sourceFiles": {"native/japanese-pronunciation/src/lib.rs": digest(b"source")}, "artifactFiles": {"CJPPronunciation.xcframework/library.a": digest(b"library")}}
         (self.root / "native-build.json").write_text(json.dumps(receipt))
         validate_receipt(self.root, source_root)
-        (source_root / "native/japanese-pronunciation/source.rs").write_bytes(b"changed")
+        (source_root / "native/japanese-pronunciation/src/lib.rs").write_bytes(b"changed")
         with self.assertRaises(ValueError):
             validate_receipt(self.root, source_root)
-        (source_root / "native/japanese-pronunciation/source.rs").write_bytes(b"source")
+        (source_root / "native/japanese-pronunciation/src/lib.rs").write_bytes(b"source")
         (self.root / "CJPPronunciation.xcframework/library.a").write_bytes(b"changed")
+        with self.assertRaises(ValueError):
+            validate_receipt(self.root, source_root)
+
+
+    def test_receipt_ignores_generated_target_but_tracks_new_source(self):
+        source_root = self.root / "repo"
+        native = source_root / "native/japanese-pronunciation"
+        (native / "src").mkdir(parents=True)
+        (native / "src/lib.rs").write_bytes(b"source")
+        framework = self.root / "CJPPronunciation.xcframework"
+        framework.mkdir()
+        (framework / "library.a").write_bytes(b"library")
+        receipt = {"sourceFiles": native_sources(source_root), "artifactFiles": native_artifacts(self.root)}
+        (self.root / "native-build.json").write_text(json.dumps(receipt))
+        generated = native / "target/debug/build/serde-123/out/private.rs"
+        generated.parent.mkdir(parents=True)
+        generated.write_bytes(b"generated")
+        (native / "target/Cargo.toml").write_bytes(b"generated manifest")
+        validate_receipt(self.root, source_root)
+        (native / "src/new_module.rs").write_bytes(b"new real source")
         with self.assertRaises(ValueError):
             validate_receipt(self.root, source_root)
 

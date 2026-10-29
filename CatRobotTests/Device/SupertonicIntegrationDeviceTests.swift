@@ -171,7 +171,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             print("SUPER_PRONUNCIATION \(id) \(conversionSeconds) \(spoken)")
         }
         // Exercise the production speaker as well as the directly saved A/B PCM.
-        try await trial(.init(id: "pronunciation-speaker", text: "+ボタンでYouTubeを開くよ。", prompt: ""),
+        try await trial(.init(id: "pronunciation-speaker", text: "｢+ボタン｣でYouTubeを開くよ。", prompt: ""),
                         repetition: 0, voice: .f1, engine: engine)
     }
     private func writeWAV(_ pcm: SpeechPCM, to url: URL) throws {

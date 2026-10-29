@@ -29,7 +29,7 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
         }, normalize: { text in
             do { return try await JapanesePronunciationService.shared.normalize(text) }
             catch is CancellationError { throw ConversationServiceError.cancelled }
-            catch { throw ConversationServiceError.speechSynthesisFailed }
+            catch { throw SupertonicErrorMapper.map(error) }
         }, voice: voice, synthesize: { text, preset in
             do { return try await engine.synthesize(text: text, voiceID: preset.rawValue, steps: 8) }
             catch is CancellationError { throw ConversationServiceError.cancelled }

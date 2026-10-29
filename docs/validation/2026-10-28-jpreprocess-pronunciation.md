@@ -1,8 +1,8 @@
 # jpreprocessによる読み変換の検証
 
-作業開始2026-10-28、実機確認2026-10-29 JST。branch `feature/jpreprocess-pronunciation`、基点 `def7573`、コード確定 `184aee7`。表示・記憶用の原文を保持し、音声用の読みをjpreprocessへ完全に置き換えた。旧2語置換とそれへ戻す経路を削除した。
+作業開始2026-10-28、実機確認2026-10-29 JST。これは初回統合版の履歴で、その後の整理・修正・mmap計測は [相互レビューの記録](2026-10-29-jpreprocess-cross-review.md) にある。branch `feature/jpreprocess-pronunciation`、基点 `def7573`、コード確定 `184aee7`。表示・記憶用の原文を保持し、音声用の読みをjpreprocessへ完全に置き換えた。旧2語置換とそれへ戻す経路を削除した。
 
-## 最終結果
+## 初回統合時の結果（184aee7）
 
 | 検証 | 結果 |
 |---|---|
@@ -14,7 +14,7 @@
 | 通常起動 | 同じ署名アプリを試験終了後に通常環境で再起動し、process PID 3477確認 |
 | 聴取による発音・自然さ | 未確認 |
 
-最終コード29ファイルは [source-hashes.json](data/2026-10-28-jpreprocess-pronunciation/source-hashes.json) と一致。ビルド内のrevision表示は `17810a1-working` だが、そのソース内容が後の `184aee7` と同じであることをhashで照合した。モデル、声、8推論ステップ、先読み1文、同時推論1件、PCM 60秒上限を維持した。
+初回検証版の29ファイルは、当時 [source-hashes.json](data/2026-10-28-jpreprocess-pronunciation/source-hashes.json) と照合した。ビルド内のrevision表示は `17810a1-working` だが、そのソース内容が後の `184aee7` と同じであることをhashで照合した。モデル、声、8推論ステップ、先読み1文、同時推論1件、PCM 60秒上限を維持した。
 
 ## ペアレビューと修正
 
@@ -58,7 +58,7 @@ F1・8 stepsで原文と変換文を合成した。乱数状態の同一性は�
 | 署名Debugアプリのバンドル | 567,155,586 bytes |
 | この端末の以前のDebugビルドとの差 | +121,442,553 bytes |
 
-ファイルキャッシュ状態は固定していない。process footprint差は辞書だけの厳密な占有量ではなく、初期化中のコード/allocator等も含む。バンドル値は非圧縮のDebug参考値であり、配信サイズやRelease性能の測定ではない。現在は1つの辞書をヒープへロードして再利用する。
+ファイルキャッシュ状態は固定していない。process footprint差は辞書だけの厳密な占有量ではなく、初期化中のコード/allocator等も含む。バンドル値は非圧縮のDebug参考値であり、配信サイズやRelease性能の測定ではない。初回統合版では1つの辞書をヒープへロードして再利用していた。後のmmap変更は相互レビューの記録を参照。
 
 ## 途中の失敗と切り分け
 

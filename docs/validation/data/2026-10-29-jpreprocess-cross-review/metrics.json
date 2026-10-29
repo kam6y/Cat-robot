@@ -1,0 +1,42 @@
+{
+  "baselineHead": "eb41f9c37372892da8b1cda75811ac2d3b28e25e",
+  "reviewFixesDiffSha256": "6bb0519532396698cfab128281ec7f5966a9ee640bb708a0d1451c28653666fe",
+  "recordedSourceRevision": "eb41f9c37372892da8b1cda75811ac2d3b28e25e-working",
+  "device": "iPhone17,1",
+  "OS": "27.2",
+  "configuration": "Debug, single physical-device observation per version",
+  "dictionaryPreparationSeconds": {
+    "heap": 0.060006708328728564,
+    "mmap": 0.04777499999909196
+  },
+  "preparationFootprintDifferenceBytes": {
+    "heap": 151601296,
+    "mmap": 74350712,
+    "observedReduction": 77250584
+  },
+  "conversionSecondsByFixture": {
+    "plus": 0.0052987083327025175,
+    "youtube": 0.001368625002214685,
+    "counter": 0.0026128749959752895,
+    "greeting": 0.002491916668077465,
+    "service-plus": 0.0004854166618315503,
+    "ambiguous": 0.0025698749959701672,
+    "temperature": 0.0007170416720327921,
+    "clock": 0.0006907916613272391
+  },
+  "previousConversionSecondsByFixture": {
+    "plus": 0.0026053750043502077,
+    "youtube": 0.00016699999832781032,
+    "counter": 0.00047325000195996836,
+    "greeting": 0.00016254166985163465,
+    "service-plus": 0.00014487500448012725,
+    "ambiguous": 0.00014954167272662744,
+    "temperature": 0.00015725000412203372,
+    "clock": 0.00012041666923323646
+  },
+  "deviceTest": "Passed",
+  "comparisonPairs": 8,
+  "auditoryAssessment": "unverified",
+  "productionTrialSpoken": "｢プラスボタン｣デユーチューブヲヒラクヨ。",
+  "normalLaunchPID": 3499
+}

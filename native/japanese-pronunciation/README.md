@@ -15,7 +15,7 @@ is an error, never a retry through the old normalizer.
 Use Rust 1.90.0. `Cargo.lock` fixes all transitive packages. For host tests:
 
 ```sh
-JPREPROCESS_DICT=/absolute/path/to/naist-jdic cargo test --manifest-path native/japanese-pronunciation/Cargo.toml --locked
+JPREPROCESS_DICT=/absolute/path/to/naist-jdic CARGO_TARGET_DIR=.build/jpreprocess-host cargo +1.90.0 test --manifest-path native/japanese-pronunciation/Cargo.toml --locked
 ```
 
 Tests require the real, hash-checked dictionary; missing assets are not skipped.
@@ -32,3 +32,6 @@ Both free functions accept null. Rust panics are contained at the C boundary.
 Native input byte limits complement the Swift/engine 2,000-character limit. Swift
 also checks expanded output before synthesis, and checks cancellation before/after
 synchronous native work; native processing is not forcibly interruptible mid-call.
+
+Dictionary files are mapped read-only and must not be modified while a frontend
+handle is alive. The signed app bundle already provides immutable resources.

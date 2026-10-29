@@ -10,3 +10,6 @@ __pycache__/
 
 # superpowers の計画ワークスペース（台帳・brief）
 .superpowers/
+
+# Cargo host-test output (native build artifacts stay local).
+/native/japanese-pronunciation/target/
