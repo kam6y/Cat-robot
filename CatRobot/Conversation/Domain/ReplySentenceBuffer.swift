@@ -93,7 +93,7 @@ struct ReplySentenceBuffer {
         // This is only a preparation hint: a later snapshot may still extend
         // punctuation or revise unsent text. The committed prefix stays unchanged.
         if let ready, ready == snapshot.endIndex {
-            preparationCandidate = String(snapshot[..<ready])
+            preparationCandidate = snapshot
         }
         return nil
     }

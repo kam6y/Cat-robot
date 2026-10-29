@@ -102,11 +102,11 @@ actor SpeechSentenceChannel {
         }
     }
     private func cancelSend(_ id: UUID) {
-        guard sender?.0 == id else { return }
-        let waiting = sender!; sender = nil; waiting.2.resume(throwing: CancellationError())
+        guard let waiting = sender, waiting.0 == id else { return }
+        sender = nil; waiting.2.resume(throwing: CancellationError())
     }
     private func cancelReceive(_ id: UUID) {
-        guard receiver?.0 == id else { return }
-        let waiting = receiver!; receiver = nil; waiting.1.resume(throwing: CancellationError())
+        guard let waiting = receiver, waiting.0 == id else { return }
+        receiver = nil; waiting.1.resume(throwing: CancellationError())
     }
 }

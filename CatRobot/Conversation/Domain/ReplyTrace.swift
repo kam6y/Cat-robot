@@ -73,4 +73,16 @@ final class ReplyTrace: @unchecked Sendable {
     func finish(_ outcome: ReplyTraceOutcome) { mark(.finished, outcome: outcome) }
 }
 
-enum ReplyTraceContext { @TaskLocal static var current: ReplyTrace? }
+enum ReplyTraceContext {
+    @TaskLocal static var current: ReplyTrace?
+
+    static func withTool<T>(_ tool: ReplyTraceTool, _ body: () async throws -> T) async rethrows -> T {
+        let trace = current
+        trace?.mark(.toolStarted, tool: tool)
+        var outcome = ReplyTraceOutcome.generationFailure
+        defer { trace?.mark(.toolFinished, outcome: Task.isCancelled ? .cancelled : outcome, tool: tool) }
+        let result = try await body()
+        outcome = .success
+        return result
+    }
+}

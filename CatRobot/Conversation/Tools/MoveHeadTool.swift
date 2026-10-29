@@ -15,26 +15,25 @@ struct MoveHeadTool: Tool {
     init(motion: any RobotMotionControlling) { self.motion = motion }
 
     func call(arguments: Arguments) async throws -> String {
-        let trace = ReplyTraceContext.current
-        trace?.mark(.toolStarted, tool: .moveHead)
-        defer { trace?.mark(.toolFinished, outcome: Task.isCancelled ? .cancelled : .success, tool: .moveHead) }
-        guard let turn = MotionTurnContext.current else { return "この返答では首の動作を予約できません" }
-        guard !Task.isCancelled else { return "この返答の動作予約は取り消されました" }
-        guard let gesture = RobotGesture(rawValue: arguments.gesture.lowercased()),
-              let intensity = RobotIntensity(rawValue: arguments.intensity.lowercased()),
-              (1...3).contains(arguments.repeats ?? 1) else {
-            return "動作・強さ・回数を確認してください（回数は1〜3です）"
-        }
-        let request = RobotMotionRequest(gesture: gesture, intensity: intensity, repeats: arguments.repeats ?? 1)
-        let result = await MainActor.run {
-            Task.isCancelled ? MotionReservationResult.invalidated : motion.reserve(request, for: turn)
-        }
-        switch result {
-        case .reserved(let count): return "\(label(gesture))を\(count)回予約しました"
-        case .unavailable: return "今は首を動かせません"
-        case .budgetExceeded: return "この返答の動作枠を超えるため追加しません"
-        case .invalidated: return "この返答の動作予約は取り消されました"
-        case .invalidArguments: return "動作・強さ・回数を確認してください（回数は1〜3です）"
+        return await ReplyTraceContext.withTool(.moveHead) {
+            guard let turn = MotionTurnContext.current else { return "この返答では首の動作を予約できません" }
+            guard !Task.isCancelled else { return "この返答の動作予約は取り消されました" }
+            guard let gesture = RobotGesture(rawValue: arguments.gesture.lowercased()),
+                  let intensity = RobotIntensity(rawValue: arguments.intensity.lowercased()),
+                  (1...3).contains(arguments.repeats ?? 1) else {
+                return "動作・強さ・回数を確認してください（回数は1〜3です）"
+            }
+            let request = RobotMotionRequest(gesture: gesture, intensity: intensity, repeats: arguments.repeats ?? 1)
+            let result = await MainActor.run {
+                Task.isCancelled ? MotionReservationResult.invalidated : motion.reserve(request, for: turn)
+            }
+            switch result {
+            case .reserved(let count): return "\(label(gesture))を\(count)回予約しました"
+            case .unavailable: return "今は首を動かせません"
+            case .budgetExceeded: return "この返答の動作枠を超えるため追加しません"
+            case .invalidated: return "この返答の動作予約は取り消されました"
+            case .invalidArguments: return "動作・強さ・回数を確認してください（回数は1〜3です）"
+            }
         }
     }
 

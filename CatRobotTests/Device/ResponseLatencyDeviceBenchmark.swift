@@ -23,6 +23,8 @@ struct ResponseLatencyDeviceBenchmark {
         .init(id: "changed", changes: [.init(milliseconds: 0, text: "仮の返答。"), .init(milliseconds: 200, text: "本当の返答。")], finishMilliseconds: 200, requiresHit: false),
         .init(id: "punctuation", changes: [.init(milliseconds: 0, text: "えっ！"), .init(milliseconds: 200, text: "えっ！？")], finishMilliseconds: 200, requiresHit: false),
         .init(id: "changed-boundary", changes: [.init(milliseconds: 0, text: "アイウエオカキクケコサシスセソ。"), .init(milliseconds: 200, text: "うん、遊ぼうね。")], finishMilliseconds: 200, requiresHit: false),
+        .init(id: "changed-kanji-boundary", changes: [.init(milliseconds: 0, text: "東京特許許可局許可局長今日出勤。"), .init(milliseconds: 200, text: "うん、遊ぼうね。")], finishMilliseconds: 200, requiresHit: false),
+        .init(id: "delayed-mixed", changes: [.init(milliseconds: 0, text: "YouTubeで猫を観よう。")], finishMilliseconds: 700, requiresHit: true),
         .init(id: "changed-long", changes: [.init(milliseconds: 0, text: "今日は窓のそばで日なたぼっこをしながら、ゆっくりお話ししようね。"), .init(milliseconds: 200, text: "うん、遊ぼうね。")], finishMilliseconds: 200, requiresHit: false)
     ]
     static var configuration: [String: Any] {
@@ -61,7 +63,12 @@ struct ResponseLatencyDeviceBenchmark {
                     record: @MainActor ([String: Any]) throws -> Void) async throws {
         let voice = SpeechVoiceSettings().selected
         let boundaryPronunciation = try await JapanesePronunciationService.shared.normalize("アイウエオカキクケコサシスセソ。")
-        XCTAssertEqual(boundaryPronunciation.count, 16, "The boundary fixture must exercise the largest eligible pronunciation")
+        XCTAssertEqual(boundaryPronunciation.count, SupertonicSentenceSpeaker.maximumPreparedPronunciationCharacters, "The boundary fixture must exercise the largest eligible pronunciation")
+        let kanjiPronunciation = try await JapanesePronunciationService.shared.normalize("東京特許許可局許可局長今日出勤。")
+        XCTAssertEqual(kanjiPronunciation, "東京特許許可局許可局長今日出勤。", "Kanji must retain the user's selected natural speech input")
+        XCTAssertEqual(kanjiPronunciation.count, SupertonicSentenceSpeaker.maximumPreparedPronunciationCharacters, "Exercise the eligibility limit with kanji-heavy input, in addition to katakana")
+        let mixedPronunciation = try await JapanesePronunciationService.shared.normalize("YouTubeで猫を観よう。")
+        XCTAssertEqual(mixedPronunciation, "ユーチューブで猫を観よう。")
         try await activateAudio()
         let warmup = SupertonicSentenceSpeaker(engine: engine, voice: { voice })
         try await warmup.prepare()
@@ -78,7 +85,7 @@ struct ResponseLatencyDeviceBenchmark {
                     try record(row)
                     if enabled, let events = row["events"] as? [[String: Any]] {
                         let attempts = events.filter { $0["point"] as? String == "preparationStarted" }.count
-                        if fixture.id == "changed-boundary" { XCTAssertEqual(attempts, 1, "Exercise cancellation at the eligibility limit") }
+                        if fixture.id == "changed-boundary" || fixture.id == "changed-kanji-boundary" { XCTAssertEqual(attempts, 1, "Exercise cancellation at the eligibility limit") }
                         if fixture.id == "changed-long" { XCTAssertEqual(attempts, 0, "Long candidates must take the ordinary path") }
                     }
                     if row["outcome"] as? String != "success" { throw BenchmarkFailure.trialFailed }
@@ -157,7 +164,10 @@ struct ResponseLatencyDeviceBenchmark {
         let mode = enabled ? "prepared" : "baseline"
         print("LATENCY_TRIAL \(fixture) \(mode) \(repetition) \(outcome)")
         return ["runID": runID, "sourceRevision": revision, "stage": stage, "fixture": fixture, "repetition": repetition,
-                "mode": mode, "requiresPreparationHit": requiresHit, "voice": voice.rawValue, "steps": 8, "threads": 2, "speed": 1.05,
+                "mode": mode, "requiresPreparationHit": requiresHit, "voice": voice.rawValue,
+                // Declared configuration, checked against the tested production source;
+                // these three fields are not runtime engine telemetry.
+                "steps": 8, "threads": 2, "speed": 1.05,
                 "applicationStateRawValue": UIApplication.shared.applicationState.rawValue,
                 "thermalBefore": before, "thermalAfter": String(describing: ProcessInfo.processInfo.thermalState),
                 "cooldownSeconds": cooldown, "footprintSamples": samples,

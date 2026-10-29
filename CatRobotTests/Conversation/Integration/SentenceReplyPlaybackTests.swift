@@ -219,7 +219,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
             await reply.waitUntilRequested()
             await reply.yield(text)
             await updates.waitForCaption(text)
-            try await Task.sleep(for: .milliseconds(150))
+            try await Task.sleep(for: SentenceReplyPlayback.preparationStableDelay * 2)
             let before = await inputs.inputs
             XCTAssertTrue(before.isEmpty, text)
             await reply.finish()

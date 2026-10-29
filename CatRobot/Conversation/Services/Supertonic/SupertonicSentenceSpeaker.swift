@@ -3,6 +3,8 @@ import Foundation
 /// Owns one reply: one inference at a time, one next sentence, ordered playback.
 @MainActor
 final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
+    /// Normalized graphemes, including preserved kanji; not a duration or cancellation bound.
+    static let maximumPreparedPronunciationCharacters = 16
     private struct Prepared: Sendable { let sentence: SpeechSentence; let spoken: String; let pcm: SpeechPCM }
     private enum Completion: Sendable { case played; case next(Prepared?) }
     private let player: any PCMPlaying
@@ -103,47 +105,45 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
             let trace = ReplyTraceContext.current
             var used = false
             defer { if !used { trace?.mark(.preparationDiscarded, part: .first, sentenceOrdinal: 0) } }
-            let spoken: String
-            do { spoken = try await normalizedInput(candidate.original) }
+            let hint: String?
+            do { hint = try await normalizedInput(candidate.original) }
             catch {
                 try Task.checkCancellation()
                 // A failed hint is not a failure of a different confirmed sentence.
-                guard let confirmed = try await channel.next() else { return nil }
-                return try await prepare(confirmed, voice: voice)
+                hint = nil
             }
-            // Keep speculative native work within short, normalized inputs.
             // Longer confirmed speech still uses the ordinary synthesis path.
-            guard spoken.count <= 16 else {
+            guard let spoken = hint, spoken.count <= Self.maximumPreparedPronunciationCharacters else {
                 guard let confirmed = try await channel.next() else { return nil }
                 return try await prepare(confirmed, voice: voice)
             }
-            let preparation = Task { try await makePCM(spoken, ordinal: 0, voice: voice, speculative: true) }
+            let candidateSynthesis = Task { try await makePCM(spoken, ordinal: 0, voice: voice, speculative: true) }
             return try await withTaskCancellationHandler {
                 do {
                     guard let confirmed = try await channel.next() else {
-                        preparation.cancel()
-                        _ = await preparation.result
+                        candidateSynthesis.cancel()
+                        _ = await candidateSynthesis.result
                         return nil
                     }
                     let actual = try await normalizedInput(confirmed.original)
                     if actual == spoken {
-                        let pcm = try await preparation.value
+                        let pcm = try await candidateSynthesis.value
                         try Task.checkCancellation()
                         used = true
                         trace?.mark(.preparationUsed, part: .first, sentenceOrdinal: 0)
                         return Prepared(sentence: confirmed, spoken: actual, pcm: pcm)
                     }
-                    preparation.cancel()
-                    _ = await preparation.result
+                    candidateSynthesis.cancel()
+                    _ = await candidateSynthesis.result
                     try Task.checkCancellation()
                     let pcm = try await makePCM(actual, ordinal: confirmed.ordinal, voice: voice, speculative: false)
                     return Prepared(sentence: confirmed, spoken: actual, pcm: pcm)
                 } catch {
-                    preparation.cancel()
-                    _ = await preparation.result
+                    candidateSynthesis.cancel()
+                    _ = await candidateSynthesis.result
                     throw error
                 }
-            } onCancel: { preparation.cancel() }
+            } onCancel: { candidateSynthesis.cancel() }
         }
     }
 
@@ -153,11 +153,12 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
         try Task.checkCancellation()
         // Validate before canonicalizing: whitespace must not hide an oversized
         // confirmed pronunciation when a shorter candidate's PCM is reused.
-        guard spoken.count <= 2_000, !spoken.utf8.contains(0),
-              !spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard spoken.count <= 2_000, !spoken.utf8.contains(0) else {
             throw ConversationServiceError.speechSynthesisFailed
         }
-        return spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canonical = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !canonical.isEmpty else { throw ConversationServiceError.speechSynthesisFailed }
+        return canonical
     }
 
     private func prepare(_ sentence: SpeechSentence, voice: SpeechVoicePreset) async throws -> Prepared {
@@ -170,17 +171,19 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
         try Task.checkCancellation()
         let trace = ReplyTraceContext.current
         let part: ReplySpeechPart = ordinal == 0 ? .first : .remainder
-        trace?.mark(speculative ? .preparationStarted : .synthesisStarted, part: part, sentenceOrdinal: ordinal)
+        let (begin, end): (ReplyTracePoint, ReplyTracePoint) = speculative
+            ? (.preparationStarted, .preparationFinished) : (.synthesisStarted, .synthesisFinished)
+        trace?.mark(begin, part: part, sentenceOrdinal: ordinal)
         var outcome = ReplyTraceOutcome.speechFailure
         defer {
-            trace?.mark(speculative ? .preparationFinished : .synthesisFinished, part: part,
+            trace?.mark(end, part: part,
                         outcome: Task.isCancelled ? .cancelled : outcome, sentenceOrdinal: ordinal)
         }
-        onSynthesis?(ordinal, speculative ? "preparationStarted" : "synthesisStarted")
+        onSynthesis?(ordinal, begin.rawValue)
         let pcm = try await synthesize(spoken, voice)
         try Task.checkCancellation()
         try pcm.validate()
-        onSynthesis?(ordinal, speculative ? "preparationFinished" : "synthesisFinished")
+        onSynthesis?(ordinal, end.rawValue)
         outcome = .success
         return pcm
     }
