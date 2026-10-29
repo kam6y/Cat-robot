@@ -3,7 +3,7 @@ import Foundation
 /// Owns one reply: one inference at a time, one next sentence, ordered playback.
 @MainActor
 final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
-    private struct Prepared: Sendable { let sentence: SpeechSentence; let pcm: SpeechPCM }
+    private struct Prepared: Sendable { let sentence: SpeechSentence; let spoken: String; let pcm: SpeechPCM }
     private enum Completion: Sendable { case played; case next(Prepared?) }
     private let player: any PCMPlaying
     private let normalize: @Sendable (String) async throws -> String
@@ -74,6 +74,7 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
                 var current = try await nextPrepared(channel, voice: selected)
                 while let ready = current {
                     try Task.checkCancellation()
+                    onInput?(ready.sentence.original, ready.spoken)
                     let events = try await player.play(ready.pcm)
                     if prefetch {
                         current = try await playAndPrefetch(events, ready.sentence, channel, selected, pair.continuation)
@@ -94,17 +95,74 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
         return pair.stream
     }
     private func nextPrepared(_ channel: SpeechSentenceChannel, voice: SpeechVoicePreset) async throws -> Prepared? {
-        guard let sentence = try await channel.next() else { return nil }
+        guard let input = try await channel.nextInput() else { return nil }
+        switch input {
+        case .sentence(let sentence):
+            return try await prepare(sentence, voice: voice)
+        case .candidate(let candidate):
+            let spoken: String
+            do { spoken = try await normalizedInput(candidate.original) }
+            catch {
+                try Task.checkCancellation()
+                // A failed hint is not a failure of a different confirmed sentence.
+                guard let confirmed = try await channel.next() else { return nil }
+                return try await prepare(confirmed, voice: voice)
+            }
+            let preparation = Task { try await makePCM(spoken, ordinal: 0, voice: voice, speculative: true) }
+            return try await withTaskCancellationHandler {
+                do {
+                    guard let confirmed = try await channel.next() else {
+                        preparation.cancel()
+                        _ = await preparation.result
+                        return nil
+                    }
+                    let actual = try await normalizedInput(confirmed.original)
+                    if actual == spoken {
+                        let pcm = try await preparation.value
+                        try Task.checkCancellation()
+                        return Prepared(sentence: confirmed, spoken: actual, pcm: pcm)
+                    }
+                    preparation.cancel()
+                    _ = await preparation.result
+                    try Task.checkCancellation()
+                    let pcm = try await makePCM(actual, ordinal: confirmed.ordinal, voice: voice, speculative: false)
+                    return Prepared(sentence: confirmed, spoken: actual, pcm: pcm)
+                } catch {
+                    preparation.cancel()
+                    _ = await preparation.result
+                    throw error
+                }
+            } onCancel: { preparation.cancel() }
+        }
+    }
+
+    private func normalizedInput(_ original: String) async throws -> String {
         try Task.checkCancellation()
-        let spoken = try await normalize(sentence.original)
+        let spoken = try await normalize(original)
         try Task.checkCancellation()
-        onInput?(sentence.original, spoken)
-        onSynthesis?(sentence.ordinal, "synthesisStarted")
+        // Validate before canonicalizing: whitespace must not hide an oversized
+        // confirmed pronunciation when a shorter candidate's PCM is reused.
+        guard spoken.count <= 2_000, !spoken.utf8.contains(0),
+              !spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ConversationServiceError.speechSynthesisFailed
+        }
+        return spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func prepare(_ sentence: SpeechSentence, voice: SpeechVoicePreset) async throws -> Prepared {
+        let spoken = try await normalizedInput(sentence.original)
+        let pcm = try await makePCM(spoken, ordinal: sentence.ordinal, voice: voice, speculative: false)
+        return Prepared(sentence: sentence, spoken: spoken, pcm: pcm)
+    }
+
+    private func makePCM(_ spoken: String, ordinal: Int, voice: SpeechVoicePreset, speculative: Bool) async throws -> SpeechPCM {
+        try Task.checkCancellation()
+        onSynthesis?(ordinal, speculative ? "preparationStarted" : "synthesisStarted")
         let pcm = try await synthesize(spoken, voice)
         try Task.checkCancellation()
         try pcm.validate()
-        onSynthesis?(sentence.ordinal, "synthesisFinished")
-        return Prepared(sentence: sentence, pcm: pcm)
+        onSynthesis?(ordinal, speculative ? "preparationFinished" : "synthesisFinished")
+        return pcm
     }
     private func forward(_ events: AsyncThrowingStream<SpeechEvent, Error>, sentence: SpeechSentence,
                          into output: AsyncThrowingStream<SentenceSpeechEvent, Error>.Continuation) async throws {

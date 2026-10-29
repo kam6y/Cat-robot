@@ -5,8 +5,10 @@ final class SentenceReplyPlayback {
     private struct Failure: Error { let error: Error; let outcome: ReplyTraceOutcome }
     private let reply: any ReplyGenerating
     private let speaker: any SentenceSpeechSpeaking
-    init(reply: any ReplyGenerating, speaker: any SentenceSpeechSpeaking) {
+    private let prepareFirstSentence: Bool
+    init(reply: any ReplyGenerating, speaker: any SentenceSpeechSpeaking, prepareFirstSentence: Bool = true) {
         self.reply = reply; self.speaker = speaker
+        self.prepareFirstSentence = prepareFirstSentence
     }
     func run(prompt: String, trace: ReplyTrace?, onUpdate: @escaping @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws -> String {
         let channel = SpeechSentenceChannel()
@@ -83,23 +85,51 @@ final class SentenceReplyPlayback {
     private func enqueue(_ snapshots: AsyncThrowingStream<String, Error>, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?) async throws {
         var buffer = ReplySentenceStreamBuffer()
         var final = ""
-        for try await snapshot in snapshots {
-            try Task.checkCancellation()
-            final = snapshot
-            if reply.supportsStableReplyPrefix {
-                for sentence in try buffer.receive(snapshot) {
-                    trace?.mark(.firstSentence)
-                    trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
-                    try await channel.send(sentence)
+        var pending: Task<Void, Never>?
+        var candidateKey: String?
+        do {
+            for try await snapshot in snapshots {
+                try Task.checkCancellation()
+                final = snapshot
+                if reply.supportsStableReplyPrefix {
+                    let sentences = try buffer.receive(snapshot)
+                    let candidate = prepareFirstSentence ? buffer.preparationCandidate : nil
+                    let key = candidate?.original.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if key != candidateKey {
+                        pending?.cancel()
+                        await pending?.value
+                        pending = nil
+                        candidateKey = key
+                        if let candidate {
+                            pending = Task {
+                                do {
+                                    try await Task.sleep(for: .milliseconds(75))
+                                    try Task.checkCancellation()
+                                    await channel.offerPreparation(candidate)
+                                } catch {}
+                            }
+                        }
+                    }
+                    for sentence in sentences {
+                        trace?.mark(.firstSentence)
+                        trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
+                        try await channel.send(sentence)
+                    }
                 }
             }
+            pending?.cancel()
+            await pending?.value
+            try Task.checkCancellation()
+            for sentence in try buffer.receive(final, final: true) {
+                trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
+                try await channel.send(sentence)
+            }
+            await channel.finish()
+        } catch {
+            pending?.cancel()
+            await pending?.value
+            throw error
         }
-        try Task.checkCancellation()
-        for sentence in try buffer.receive(final, final: true) {
-            trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
-            try await channel.send(sentence)
-        }
-        await channel.finish()
     }
     private func play(_ channel: SpeechSentenceChannel, _ trace: ReplyTrace?,
                       _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws {

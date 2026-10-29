@@ -1,14 +1,34 @@
 import Foundation
 
-/// Single producer/consumer, with an awaited send instead of a dropping stream.
+enum SpeechSentenceInput: Sendable {
+    case candidate(SpeechSentence)
+    case sentence(SpeechSentence)
+}
+
+/// Single producer/consumer, with awaited committed sends and one optional hint.
 actor SpeechSentenceChannel {
     private let capacity: Int
     private var queue: [SpeechSentence] = []
+    private var candidate: SpeechSentence?
+    private var offeredPreparation = false
+    private var hasCommittedSentence = false
     private var closed = false
     private var failure: Error?
     private var sender: (UUID, SpeechSentence, CheckedContinuation<Void, Error>)?
-    private var receiver: (UUID, CheckedContinuation<SpeechSentence?, Error>)?
+    private var receiver: (UUID, CheckedContinuation<SpeechSentenceInput?, Error>)?
     init(capacity: Int = 2) { self.capacity = max(1, capacity) }
+
+    func offerPreparation(_ sentence: SpeechSentence) {
+        guard !closed, failure == nil, !hasCommittedSentence,
+              !offeredPreparation, sentence.ordinal == 0 else { return }
+        offeredPreparation = true
+        if let waiting = receiver {
+            receiver = nil
+            waiting.1.resume(returning: .candidate(sentence))
+        } else {
+            candidate = sentence
+        }
+    }
 
     func send(_ sentence: SpeechSentence) async throws {
         let id = UUID()
@@ -18,18 +38,31 @@ actor SpeechSentenceChannel {
                 if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
                 else if let failure { continuation.resume(throwing: failure) }
                 else if closed { continuation.resume(throwing: ConversationServiceError.cancelled) }
-                else if let waiting = receiver {
-                    receiver = nil
-                    waiting.1.resume(returning: sentence)
-                    continuation.resume()
-                } else if queue.count < capacity {
-                    queue.append(sentence); continuation.resume()
-                } else if sender == nil { sender = (id, sentence, continuation) }
-                else { continuation.resume(throwing: ConversationServiceError.modelBusy) }
+                else {
+                    hasCommittedSentence = true
+                    candidate = nil
+                    if let waiting = receiver {
+                        receiver = nil
+                        waiting.1.resume(returning: .sentence(sentence))
+                        continuation.resume()
+                    } else if queue.count < capacity {
+                        queue.append(sentence); continuation.resume()
+                    } else if sender == nil { sender = (id, sentence, continuation) }
+                    else { continuation.resume(throwing: ConversationServiceError.modelBusy) }
+                }
             }
         } onCancel: { Task { await self.cancelSend(id) } }
     }
+
+    /// Existing consumers only see confirmed sentences.
     func next() async throws -> SpeechSentence? {
+        while let input = try await nextInput() {
+            if case .sentence(let sentence) = input { return sentence }
+        }
+        return nil
+    }
+
+    func nextInput() async throws -> SpeechSentenceInput? {
         let id = UUID()
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
@@ -41,17 +74,22 @@ actor SpeechSentenceChannel {
                     if let waiting = sender {
                         sender = nil; queue.append(waiting.1); waiting.2.resume()
                     }
-                    continuation.resume(returning: first)
+                    continuation.resume(returning: .sentence(first))
                 } else if closed { continuation.resume(returning: nil) }
-                else if receiver == nil { receiver = (id, continuation) }
+                else if let candidate {
+                    self.candidate = nil
+                    continuation.resume(returning: .candidate(candidate))
+                } else if receiver == nil { receiver = (id, continuation) }
                 else { continuation.resume(throwing: ConversationServiceError.modelBusy) }
             }
         } onCancel: { Task { await self.cancelReceive(id) } }
     }
+
     func finish(throwing error: Error? = nil) {
         guard failure == nil else { return }
         if closed, error == nil { return }
         closed = true
+        candidate = nil
         failure = error
         if error != nil { queue.removeAll() }
         if let waiting = sender {
@@ -64,11 +102,11 @@ actor SpeechSentenceChannel {
         }
     }
     private func cancelSend(_ id: UUID) {
-        guard let waiting = sender, waiting.0 == id else { return }
-        sender = nil; waiting.2.resume(throwing: CancellationError())
+        guard sender?.0 == id else { return }
+        let waiting = sender!; sender = nil; waiting.2.resume(throwing: CancellationError())
     }
     private func cancelReceive(_ id: UUID) {
-        guard let waiting = receiver, waiting.0 == id else { return }
-        receiver = nil; waiting.1.resume(throwing: CancellationError())
+        guard receiver?.0 == id else { return }
+        let waiting = receiver!; receiver = nil; waiting.1.resume(throwing: CancellationError())
     }
 }

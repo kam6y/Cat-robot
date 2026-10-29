@@ -628,6 +628,7 @@ class TextToSpeech {
         
         // Denoising loop
         for step in 0..<totalStep {
+            try Task.checkCancellation()
             let currentStepArray = Array(repeating: Float(step), count: bsz)
             let currentStepValue = try ORTValue(tensorData: NSMutableData(bytes: currentStepArray, length: currentStepArray.count * MemoryLayout<Float>.size),
                                                 elementType: .float,
@@ -681,6 +682,7 @@ class TextToSpeech {
             }
         }
         
+        try Task.checkCancellation()
         // Generate waveform
         let finalXtFlat = xt.flatMap { $0.flatMap { $0 } }
         let finalXtShape: [NSNumber] = [NSNumber(value: bsz), NSNumber(value: xt[0].count), NSNumber(value: xt[0][0].count)]

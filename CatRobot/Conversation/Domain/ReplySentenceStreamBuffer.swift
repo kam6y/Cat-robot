@@ -5,7 +5,9 @@ struct ReplySentenceStreamBuffer {
     private var emitted = ""
     private var ordinal = 0
     private var completed = false
+    private(set) var preparationCandidate: SpeechSentence?
     mutating func receive(_ snapshot: String, final: Bool = false) throws -> [SpeechSentence] {
+        preparationCandidate = nil
         guard snapshot.hasPrefix(emitted) else { throw ConversationServiceError.modelGenerationFailed }
         if completed { return [] }
         var pending = String(snapshot.dropFirst(emitted.count))
@@ -13,7 +15,12 @@ struct ReplySentenceStreamBuffer {
         var output: [SpeechSentence] = []
         while true {
             var parser = ReplySentenceBuffer()
-            guard let first = try parser.receive(pending) else { break }
+            guard let first = try parser.receive(pending) else {
+                if ordinal == 0, !final, let candidate = parser.preparationCandidate {
+                    preparationCandidate = SpeechSentence(ordinal: 0, original: candidate)
+                }
+                break
+            }
             output.append(SpeechSentence(ordinal: ordinal, original: first))
             ordinal += 1; emitted += first
             pending = String(pending.dropFirst(first.count))

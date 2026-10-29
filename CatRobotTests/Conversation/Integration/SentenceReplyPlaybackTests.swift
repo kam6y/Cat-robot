@@ -3,6 +3,224 @@ import XCTest
 
 @MainActor
 final class SentenceReplyPlaybackTests: XCTestCase {
+    func testFirstSentenceSynthesisStartsBeforeGenerationCompletesButPlaybackWaitsForConfirmation() async throws {
+        let synthesisStarted = expectation(description: "Prepare the completed first sentence while generation remains open")
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        let inputs = SynthesisInputs()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
+            synthesize: { text, _ in
+                await inputs.record(text)
+                synthesisStarted.fulfill()
+                return SpeechPCM(samples: [0.25], sampleRate: 24_000)
+            })
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "挨拶して", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("こんにちは。")
+        await fulfillment(of: [synthesisStarted], timeout: 0.5)
+        XCTAssertEqual(player.playCount, 0, "Preparation must not make unconfirmed text audible")
+        await reply.finish()
+        let response = try await run.value
+        let synthesized = await inputs.inputs
+        XCTAssertEqual(response, "こんにちは。")
+        XCTAssertEqual(synthesized, ["こんにちは。"], "A matching prepared sentence must not be synthesized again")
+        XCTAssertEqual(player.playCount, 1)
+    }
+
+    func testFirstPreparationReusesTrimmedInputButAuditsConfirmedOriginal() async throws {
+        let synthesisStarted = expectation(description: "Prepare before trailing whitespace arrives")
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        let inputs = SynthesisInputs()
+        var originals: [String] = []
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
+            synthesize: { text, _ in
+                await inputs.record(text)
+                synthesisStarted.fulfill()
+                return SpeechPCM(samples: [0.25], sampleRate: 24_000)
+            })
+        speaker.onInput = { original, _ in originals.append(original) }
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "挨拶して", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("こんにちは。")
+        await fulfillment(of: [synthesisStarted], timeout: 0.5)
+        XCTAssertTrue(originals.isEmpty, "Unconfirmed preparation is not a committed speech input")
+        await reply.yield("こんにちは。 \n")
+        await reply.finish()
+        let response = try await run.value
+        let synthesized = await inputs.inputs
+        XCTAssertEqual(response, "こんにちは。 \n")
+        XCTAssertEqual(originals, ["こんにちは。 \n"])
+        XCTAssertEqual(synthesized, ["こんにちは。"])
+        XCTAssertEqual(player.playCount, 1)
+    }
+
+    func testChangedCandidateCancelsAndDrainsBeforeSynthesisOfConfirmedText() async throws {
+        let started = expectation(description: "Candidate inference entered")
+        let cancelled = expectation(description: "Changed candidate is cancelled before it finishes")
+        let gate = ConversationTestGate()
+        let synthesis = PreparationSynthesisProbe(started: started, cancelled: cancelled, gate: gate)
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        var audited: [String] = []
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
+            synthesize: { try await synthesis.make($0, voice: $1) })
+        speaker.onInput = { original, _ in audited.append(original) }
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("仮の文。")
+        await fulfillment(of: [started], timeout: 0.5)
+        await reply.yield("確定した別の文。")
+        await reply.finish()
+        await fulfillment(of: [cancelled], timeout: 0.5)
+        let beforeDrain = await synthesis.inputs
+        XCTAssertEqual(beforeDrain, ["仮の文。"], "Final synthesis cannot overlap an uncooperative candidate")
+        XCTAssertEqual(player.playCount, 0)
+        await gate.open()
+        let response = try await run.value
+        let actual = await synthesis.inputs
+        let maximumConcurrent = await synthesis.maximumConcurrent
+        XCTAssertEqual(response, "確定した別の文。")
+        XCTAssertEqual(actual, ["仮の文。", "確定した別の文。"])
+        XCTAssertEqual(audited, ["確定した別の文。"])
+        XCTAssertEqual(maximumConcurrent, 1)
+        XCTAssertEqual(player.playCount, 1)
+    }
+
+    func testUnusedCandidateFailureDoesNotFailDifferentConfirmedSentence() async throws {
+        let started = expectation(description: "Candidate fails while generation stays open")
+        let synthesis = PreparationSynthesisProbe(started: started, failFirst: true)
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
+            synthesize: { try await synthesis.make($0, voice: $1) })
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("仮の文。")
+        await fulfillment(of: [started], timeout: 0.5)
+        await reply.yield("別の確定文。")
+        await reply.finish()
+        let response = try await run.value
+        let actual = await synthesis.inputs
+        XCTAssertEqual(response, "別の確定文。")
+        XCTAssertEqual(actual, ["仮の文。", "別の確定文。"])
+        XCTAssertEqual(player.playCount, 1)
+    }
+
+    func testCancellationWaitsForCandidateInferenceAndNeverPlaysItsPCM() async throws {
+        let started = expectation(description: "Candidate inference entered")
+        let cancelled = expectation(description: "Cancellation reaches owned candidate task")
+        let gate = ConversationTestGate()
+        let synthesis = PreparationSynthesisProbe(started: started, cancelled: cancelled, gate: gate)
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 },
+            synthesize: { try await synthesis.make($0, voice: $1) })
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("まだ確定していない文。")
+        await fulfillment(of: [started], timeout: 0.5)
+        var stopReturned = false
+        let stop = Task { await sut.cancelAndWait(); stopReturned = true }
+        await fulfillment(of: [cancelled], timeout: 0.5)
+        XCTAssertFalse(stopReturned, "Stop must drain native inference even when cancellation is ignored")
+        XCTAssertEqual(player.playCount, 0)
+        await gate.open()
+        await stop.value
+        do { _ = try await run.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .cancelled) }
+        XCTAssertTrue(stopReturned)
+        XCTAssertEqual(player.playCount, 0)
+        let next = Task { try await sut.run(prompt: "次の質問", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested(2)
+        await reply.yield("新しい返答。")
+        await reply.finish()
+        let nextResponse = try await next.value
+        let actual = await synthesis.inputs
+        XCTAssertEqual(nextResponse, "新しい返答。")
+        XCTAssertEqual(actual, ["まだ確定していない文。", "新しい返答。"])
+        XCTAssertEqual(player.playCount, 1, "The next turn cannot play the cancelled candidate")
+    }
+
+    func testConfirmedOutputLimitIsCheckedBeforeTrimmingOnPreparationHit() async throws {
+        let started = expectation(description: "Valid candidate is prepared")
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        let inputs = SynthesisInputs()
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { original in
+            original.hasSuffix(" ") ? String(repeating: " ", count: 2_000) + "ハイ。" : "ハイ。"
+        }, voice: { .f1 }, synthesize: { text, _ in
+            await inputs.record(text)
+            started.fulfill()
+            return SpeechPCM(samples: [1], sampleRate: 24_000)
+        })
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("はい。")
+        await fulfillment(of: [started], timeout: 0.5)
+        await reply.yield("はい。 ")
+        await reply.finish()
+        do { _ = try await run.value; XCTFail("Confirmed normalization must not bypass the output limit") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .speechSynthesisFailed) }
+        let actual = await inputs.inputs
+        XCTAssertEqual(actual, ["ハイ。"])
+        XCTAssertEqual(player.playCount, 0)
+    }
+
+    func testGenerationFailureDiscardsReadyUnconfirmedPCMAndPreservesError() async throws {
+        let started = expectation(description: "Candidate is synthesized before upstream fails")
+        let reply = ControlledReply()
+        let player = TestPCMPlayer()
+        var audited: [String] = []
+        let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in
+            started.fulfill()
+            return SpeechPCM(samples: [1], sampleRate: 24_000)
+        })
+        speaker.onInput = { original, _ in audited.append(original) }
+        let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
+        await reply.waitUntilRequested()
+        await reply.yield("未確定の返答。")
+        await fulfillment(of: [started], timeout: 0.5)
+        await reply.finish(throwing: ConversationServiceError.modelGenerationFailed)
+        do { _ = try await run.value; XCTFail("Expected upstream failure") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
+        XCTAssertTrue(audited.isEmpty)
+        XCTAssertEqual(player.playCount, 0)
+    }
+
+    func testUnstableOrProtectedIncompletePrefixDoesNotStartPreparation() async throws {
+        for (text, stable) in [("仮の返答。", false), ("「閉じない引用。", true),
+                               ("https://example.test/?q=a!", true), ("`閉じないコード。", true)] {
+            let reply = ControlledReply(stablePrefix: stable)
+            let player = TestPCMPlayer()
+            let inputs = SynthesisInputs()
+            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { text, _ in
+                await inputs.record(text)
+                return SpeechPCM(samples: [1], sampleRate: 24_000)
+            })
+            let sut = ReplyPlaybackCoordinator(reply: reply, speaker: speaker)
+            let updates = PlaybackUpdates()
+            let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: updates.record) }
+            await reply.waitUntilRequested()
+            await reply.yield(text)
+            await updates.waitForCaption(text)
+            try await Task.sleep(for: .milliseconds(150))
+            let before = await inputs.inputs
+            XCTAssertTrue(before.isEmpty, text)
+            await reply.finish()
+            let response = try await run.value
+            XCTAssertEqual(response, text)
+            XCTAssertEqual(player.playCount, 1)
+        }
+    }
+
     func testVoiceCaptureWaitsForLastSentenceAndCaptionStaysOriginal() async throws {
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [0.1], sampleRate: 24_000) })
@@ -190,5 +408,40 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let data = Data(#"{"id":"00000000-0000-0000-0000-000000000001","point":"speechStarted","at":1,"part":"first"}"#.utf8)
         let event = try JSONDecoder().decode(ReplyTraceEvent.self, from: data)
         XCTAssertNil(event.sentenceOrdinal)
+    }
+}
+
+/// Only the external synthesis boundary is controlled; parsing, transport,
+/// ownership, validation and playback selection are the real product pipeline.
+private actor PreparationSynthesisProbe {
+    let started: XCTestExpectation
+    let cancelled: XCTestExpectation?
+    let gate: ConversationTestGate?
+    let failFirst: Bool
+    private(set) var inputs: [String] = []
+    private var active = 0
+    private(set) var maximumConcurrent = 0
+
+    init(started: XCTestExpectation, cancelled: XCTestExpectation? = nil,
+         gate: ConversationTestGate? = nil, failFirst: Bool = false) {
+        self.started = started; self.cancelled = cancelled; self.gate = gate; self.failFirst = failFirst
+    }
+
+    func make(_ text: String, voice: SpeechVoicePreset) async throws -> SpeechPCM {
+        let index = inputs.count
+        inputs.append(text)
+        active += 1
+        maximumConcurrent = max(maximumConcurrent, active)
+        defer { active -= 1 }
+        if index == 0 {
+            started.fulfill()
+            let cancellation = cancelled
+            await withTaskCancellationHandler {
+                await gate?.wait()
+            } onCancel: { cancellation?.fulfill() }
+            try Task.checkCancellation()
+            if failFirst { throw SupertonicError.inferenceFailed }
+        }
+        return SpeechPCM(samples: [Float(index + 1)], sampleRate: 24_000)
     }
 }
