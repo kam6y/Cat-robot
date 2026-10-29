@@ -188,6 +188,10 @@ final class ConversationRecoveryTests: XCTestCase {
         await harness.sut.startConversation()
 
         await harness.emit(.finalized(""))
+        // An empty transcript already equals the harness's initial value;
+        // wait for the actual recovery presentation before asserting or retrying.
+        let didReceiveEmptyFinal = await harness.waitUntil { harness.sut.viewState.errorMessage != nil }
+        XCTAssertTrue(didReceiveEmptyFinal)
 
         let startsBeforeRetry = await harness.recognizer.startCount
         let isRunning = await harness.recognizer.isRunning

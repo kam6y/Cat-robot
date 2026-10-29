@@ -16,18 +16,20 @@ struct ExpressTool: Tool {
     init(expressions: any FaceExpressionControlling) { self.expressions = expressions }
 
     func call(arguments: Arguments) async throws -> String {
-        guard let turn = MotionTurnContext.current, !Task.isCancelled else {
-            return "この返答の表情は変更できません"
-        }
-        let request = FaceExpressionRequest(expression: .normalized(arguments.expression),
-                                            holdSeconds: arguments.hold_seconds ?? 3)
-        let result = await MainActor.run {
-            Task.isCancelled ? FaceExpressionReservationResult.invalidated : expressions.reserve(request, for: turn)
-        }
-        switch result {
-        case .reserved: return "\(label(request.expression))表情を\(request.holdSeconds)秒予約しました"
-        case .invalidated: return "この返答の表情は変更できません"
-        case .unavailable: return "今は表情を変えられません"
+        return await ReplyTraceContext.withTool(.express) {
+            guard let turn = MotionTurnContext.current, !Task.isCancelled else {
+                return "この返答の表情は変更できません"
+            }
+            let request = FaceExpressionRequest(expression: .normalized(arguments.expression),
+                                                holdSeconds: arguments.hold_seconds ?? 3)
+            let result = await MainActor.run {
+                Task.isCancelled ? FaceExpressionReservationResult.invalidated : expressions.reserve(request, for: turn)
+            }
+            switch result {
+            case .reserved: return "\(label(request.expression))表情を\(request.holdSeconds)秒予約しました"
+            case .invalidated: return "この返答の表情は変更できません"
+            case .unavailable: return "今は表情を変えられません"
+            }
         }
     }
 

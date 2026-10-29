@@ -3,6 +3,7 @@ import Foundation
 /// Splits at most once. The emitted prefix is immutable; the remaining text may change.
 struct ReplySentenceBuffer {
     private var sent: String?
+    private(set) var preparationCandidate: String?
     private static let endings: Set<Character> = ["。", "！", "？", "!", "?"]
     private static let pairs: [Character: Character] = ["「": "」", "『": "』", "（": "）", "(": ")", "“": "”", "\"": "\""]
     // Matching ASCII closing quotes are consumed by the stack before a split
@@ -10,6 +11,7 @@ struct ReplySentenceBuffer {
     private static let closers = Set(pairs.values).subtracting(["\""])
 
     mutating func receive(_ snapshot: String) throws -> String? {
+        preparationCandidate = nil
         if let sent {
             guard snapshot.hasPrefix(sent) else { throw ConversationServiceError.modelGenerationFailed }
             return nil
@@ -87,6 +89,11 @@ struct ReplySentenceBuffer {
                 hasContent = true
                 candidate = nil
             }
+        }
+        // This is only a preparation hint: a later snapshot may still extend
+        // punctuation or revise unsent text. The committed prefix stays unchanged.
+        if let ready, ready == snapshot.endIndex {
+            preparationCandidate = snapshot
         }
         return nil
     }

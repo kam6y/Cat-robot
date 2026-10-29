@@ -1,0 +1,60 @@
+{
+  "scope": "Exploratory macOS host data only, sequential settings not balanced, not iPhone acceptance",
+  "rows": [
+    {
+      "run": "host-baseline-phases.json",
+      "threads": 2,
+      "fixture": "short",
+      "medianSeconds": 0.41154983337037265
+    },
+    {
+      "run": "host-baseline-phases.json",
+      "threads": 2,
+      "fixture": "normal",
+      "medianSeconds": 0.40546058339532465
+    },
+    {
+      "run": "host-baseline-phases.json",
+      "threads": 2,
+      "fixture": "long",
+      "medianSeconds": 0.7802795000607148
+    },
+    {
+      "run": "host-threads1.json",
+      "threads": 1,
+      "fixture": "short",
+      "medianSeconds": 0.6741364999907091
+    },
+    {
+      "run": "host-threads1.json",
+      "threads": 1,
+      "fixture": "normal",
+      "medianSeconds": 0.7494246667483822
+    },
+    {
+      "run": "host-threads1.json",
+      "threads": 1,
+      "fixture": "long",
+      "medianSeconds": 1.3550349166616797
+    },
+    {
+      "run": "host-threads4.json",
+      "threads": 4,
+      "fixture": "short",
+      "medianSeconds": 0.5827795832883567
+    },
+    {
+      "run": "host-threads4.json",
+      "threads": 4,
+      "fixture": "normal",
+      "medianSeconds": 0.5263641666388139
+    },
+    {
+      "run": "host-threads4.json",
+      "threads": 4,
+      "fixture": "long",
+      "medianSeconds": 0.8331342915771529
+    }
+  ],
+  "decision": "Keep CPU 2 threads; do not claim micro-copy or voice-style caching materially reduces conversational latency"
+}

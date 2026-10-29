@@ -14,11 +14,13 @@ struct RememberTool: Tool {
     init(memory: any LongTermMemoryWriting) { self.memory = memory }
 
     func call(arguments: Arguments) async throws -> String {
-        let category = LongTermFactCategory(rawValue: arguments.category.lowercased()) ?? .other
-        switch try await memory.remember(arguments.fact, category: category) {
-        case .saved: return "覚えました: \(arguments.fact)"
-        case .duplicate: return "すでに覚えています: \(arguments.fact)"
-        case .rejected: return "この記憶は保存できませんでした（会話がリセットされました）: \(arguments.fact)"
+        return try await ReplyTraceContext.withTool(.remember) {
+            let category = LongTermFactCategory(rawValue: arguments.category.lowercased()) ?? .other
+            switch try await memory.remember(arguments.fact, category: category) {
+            case .saved: return "覚えました: \(arguments.fact)"
+            case .duplicate: return "すでに覚えています: \(arguments.fact)"
+            case .rejected: return "この記憶は保存できませんでした（会話がリセットされました）: \(arguments.fact)"
+            }
         }
     }
 }

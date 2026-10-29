@@ -5,6 +5,12 @@ enum ReplyTracePoint: String, Codable, Sendable {
     case request, firstCaption, firstSentence, generationFinished, streamFinished
     case compactionStarted, compactionFinished, sessionStarted, sessionFinished
     case saveStarted, saveFinished, speechEnqueued, speechStarted, speechFinished, finished
+    case firstCandidate, preparationStarted, preparationFinished, preparationUsed, preparationDiscarded
+    case synthesisStarted, synthesisFinished, toolStarted, toolFinished
+}
+enum ReplyTraceTool: String, Codable, Sendable {
+    case remember, express, look
+    case moveHead = "move_head"
 }
 enum ReplyTraceOutcome: String, Codable, Sendable {
     case success, cancelled, generationFailure, speechFailure, saveWarning, noResponse, ambiguous
@@ -19,6 +25,7 @@ struct ReplyTraceEvent: Codable, Sendable {
     let source: ReplySpeechStartSource?
     let outcome: ReplyTraceOutcome?
     var sentenceOrdinal: Int? = nil
+    var tool: ReplyTraceTool? = nil
 }
 protocol ReplyTraceSink: Sendable { func record(_ event: ReplyTraceEvent) }
 struct NoopReplyTraceSink: ReplyTraceSink { func record(_ event: ReplyTraceEvent) {} }
@@ -34,7 +41,9 @@ final class ReplyTrace: @unchecked Sendable {
     private var intervals: [ReplyTracePoint: Int] = [:]
     private static let ends: [ReplyTracePoint: ReplyTracePoint] = [
         .classificationFinished: .classificationStarted, .compactionFinished: .compactionStarted,
-        .sessionFinished: .sessionStarted, .saveFinished: .saveStarted
+        .sessionFinished: .sessionStarted, .saveFinished: .saveStarted,
+        .preparationFinished: .preparationStarted, .synthesisFinished: .synthesisStarted,
+        .toolFinished: .toolStarted
     ]
 
     init(id: UUID = UUID(), sink: any ReplyTraceSink, now: @escaping @Sendable () -> TimeInterval) {
@@ -42,7 +51,8 @@ final class ReplyTrace: @unchecked Sendable {
     }
 
     func mark(_ point: ReplyTracePoint, part: ReplySpeechPart? = nil,
-              source: ReplySpeechStartSource? = nil, outcome: ReplyTraceOutcome? = nil, sentenceOrdinal: Int? = nil) {
+              source: ReplySpeechStartSource? = nil, outcome: ReplyTraceOutcome? = nil, sentenceOrdinal: Int? = nil,
+              tool: ReplyTraceTool? = nil) {
         lock.withLock {
             if let start = Self.ends[point] {
                 guard intervals[start, default: 0] > 0 else { return }
@@ -52,15 +62,27 @@ final class ReplyTrace: @unchecked Sendable {
                 if Self.ends.values.contains(point) { intervals[point, default: 0] += 1 }
             }
             switch point {
-            case .firstCaption, .firstSentence, .speechStarted, .generationFinished, .streamFinished:
+            case .firstCaption, .firstSentence, .firstCandidate, .speechStarted, .generationFinished, .streamFinished:
                 guard once.insert(point.rawValue + (part?.rawValue ?? "") + (sentenceOrdinal.map(String.init) ?? "")).inserted else { return }
             default: break
             }
             if point == .finished { terminal = true }
-            sink.record(ReplyTraceEvent(id: id, point: point, at: now(), part: part, source: source, outcome: outcome, sentenceOrdinal: sentenceOrdinal))
+            sink.record(ReplyTraceEvent(id: id, point: point, at: now(), part: part, source: source, outcome: outcome, sentenceOrdinal: sentenceOrdinal, tool: tool))
         }
     }
     func finish(_ outcome: ReplyTraceOutcome) { mark(.finished, outcome: outcome) }
 }
 
-enum ReplyTraceContext { @TaskLocal static var current: ReplyTrace? }
+enum ReplyTraceContext {
+    @TaskLocal static var current: ReplyTrace?
+
+    static func withTool<T>(_ tool: ReplyTraceTool, _ body: () async throws -> T) async rethrows -> T {
+        let trace = current
+        trace?.mark(.toolStarted, tool: tool)
+        var outcome = ReplyTraceOutcome.generationFailure
+        defer { trace?.mark(.toolFinished, outcome: Task.isCancelled ? .cancelled : outcome, tool: tool) }
+        let result = try await body()
+        outcome = .success
+        return result
+    }
+}

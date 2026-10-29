@@ -2,6 +2,21 @@ import XCTest
 @testable import CatRobot
 
 final class ReplySentenceBufferTests: XCTestCase {
+    func testPreparationCandidatesRequireAProtectedCompleteEndingAtSnapshotEnd() throws {
+        let cases: [(String, String?)] = [
+            ("はい。", "はい。"), ("「はい。」", "「はい。」"),
+            ("はい！？", "はい！？"), ("はい。 \n", "はい。 \n"),
+            ("途中", nil), ("「閉じない。", nil),
+            ("https://example.test/?q=a!", nil), ("`コード。", nil),
+            (#"はい。""#, nil), ("はい。次", nil)
+        ]
+        for (snapshot, expected) in cases {
+            var parser = ReplySentenceBuffer()
+            _ = try parser.receive(snapshot)
+            XCTAssertEqual(parser.preparationCandidate, expected, snapshot)
+        }
+    }
+
     func testWaitsForClosingQuoteAndFollowingContent() throws {
         var buffer = ReplySentenceBuffer()
         XCTAssertNil(try buffer.receive("「こんにちは。"))

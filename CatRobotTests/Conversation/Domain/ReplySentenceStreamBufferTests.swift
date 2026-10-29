@@ -2,6 +2,18 @@ import XCTest
 @testable import CatRobot
 
 final class ReplySentenceStreamBufferTests: XCTestCase {
+    func testPreparationHintDoesNotCommitOrLoseTrailingOriginalCharacters() throws {
+        var buffer = ReplySentenceStreamBuffer()
+        XCTAssertTrue(try buffer.receive("第一文。").isEmpty)
+        XCTAssertEqual(buffer.preparationCandidate, .init(ordinal: 0, original: "第一文。"))
+        let first = try buffer.receive("第一文。 \n第二文。")
+        XCTAssertEqual(first, [.init(ordinal: 0, original: "第一文。 \n")])
+        XCTAssertNil(buffer.preparationCandidate, "Later sentences use existing prefetch")
+        let last = try buffer.receive("第一文。 \n第二文。", final: true)
+        XCTAssertEqual(last, [.init(ordinal: 1, original: "第二文。")])
+        XCTAssertEqual((first + last).map(\.original).joined(), "第一文。 \n第二文。")
+    }
+
     func testSnapshotsPreserveEveryCharacterAcrossMultipleSentences() throws {
         for text in ["一文目。二文目。終わり", "「はい。」（次です！）最後。", "3.14とU.S.A.です。次。", "https://a.test/?q=a! 次。終わり", "```\niPhone。Bluetooth。\n```です。次。", "前。`閉じない。次。", "👩🏽‍🚀です。猫。終わり"] {
             var buffer = ReplySentenceStreamBuffer()
@@ -40,6 +52,35 @@ final class ReplySentenceStreamBufferTests: XCTestCase {
 
 @MainActor
 final class SpeechSentenceChannelTests: XCTestCase {
+    func testPreparationHintsAreBoundedAndCommittedInputTakesPrecedence() async throws {
+        let channel = SpeechSentenceChannel()
+        await channel.offerPreparation(.init(ordinal: 0, original: "候補。"))
+        await channel.offerPreparation(.init(ordinal: 0, original: "二つ目の候補。"))
+        let hint = try await channel.nextInput()
+        guard case .candidate(let candidate) = hint else { return XCTFail("Expected one preparation hint") }
+        XCTAssertEqual(candidate.original, "候補。")
+        try await channel.send(.init(ordinal: 0, original: "確定。"))
+        await channel.offerPreparation(.init(ordinal: 0, original: "古い候補。"))
+        await channel.finish()
+        let committed = try await channel.next()
+        let end = try await channel.nextInput()
+        XCTAssertEqual(committed, .init(ordinal: 0, original: "確定。"))
+        XCTAssertNil(end)
+
+        let queued = SpeechSentenceChannel()
+        await queued.offerPreparation(.init(ordinal: 0, original: "破棄する候補。"))
+        try await queued.send(.init(ordinal: 0, original: "優先する確定文。"))
+        await queued.finish()
+        let value = try await queued.next()
+        XCTAssertEqual(value?.original, "優先する確定文。")
+
+        let failed = SpeechSentenceChannel()
+        await failed.offerPreparation(.init(ordinal: 0, original: "失敗前の候補。"))
+        await failed.finish(throwing: ConversationServiceError.modelGenerationFailed)
+        do { _ = try await failed.nextInput(); XCTFail("Failure must discard the hint") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed) }
+    }
+
     func testBackpressurePreservesAllSentencesAndDrainsBeforeEnd() async throws {
         let channel = SpeechSentenceChannel(capacity: 2)
         let producer = Task {

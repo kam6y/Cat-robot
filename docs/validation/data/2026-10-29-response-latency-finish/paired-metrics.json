@@ -1,0 +1,192 @@
+{
+  "latency/baseline": {
+    "totalTrials": 33,
+    "successfulTrials": 33,
+    "start": {
+      "count": 33,
+      "median": 0.7613044583340525,
+      "p95": 1.4829321666657052
+    },
+    "gap": {
+      "count": 3,
+      "median": 0.08283020833187038,
+      "p95": 0.08942999999999302
+    },
+    "total": {
+      "count": 33,
+      "median": 2.377906208334025,
+      "p95": 4.226595208332583
+    },
+    "footprintBytes": {
+      "count": 33,
+      "median": 607668736,
+      "p95": 621922816
+    },
+    "cooldownSeconds": 0.0004836250009248033,
+    "hotEnds": 0
+  },
+  "latency/prepared": {
+    "totalTrials": 33,
+    "successfulTrials": 33,
+    "start": {
+      "count": 33,
+      "median": 0.7376526666666905,
+      "p95": 1.057030208332435
+    },
+    "gap": {
+      "count": 3,
+      "median": 0.08327320833268459,
+      "p95": 0.09603108333249111
+    },
+    "total": {
+      "count": 33,
+      "median": 2.344558666667581,
+      "p95": 3.991761208333628
+    },
+    "footprintBytes": {
+      "count": 33,
+      "median": 609716736,
+      "p95": 640092672
+    },
+    "cooldownSeconds": 9.900000077323057e-05,
+    "hotEnds": 0
+  },
+  "latencyAcceptance": {
+    "passed": true,
+    "p95RegressionLimitSeconds": 0.1,
+    "fixtures": {
+      "changed": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.031558333335851785,
+          "p95": 0.0017051666654879227
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "changed-boundary": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": 0.014259374998800922,
+          "p95": 0.014657833333330927
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "changed-kanji-boundary": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.028035666666255565,
+          "p95": -0.019923000003473135
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "changed-long": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": 0.0035827083338517696,
+          "p95": 0.00917575000130455
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 0,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "delayed": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.41385100000115926,
+          "p95": -0.4045885833329521
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "delayed-mixed": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.5056263333353854,
+          "p95": -0.5012740833335556
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "immediate": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.0018089583318214864,
+          "p95": 0.006237416670046514
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 0,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "punctuation": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.010397333335276926,
+          "p95": -0.0064650416643416975
+        },
+        "preparationHits": 0,
+        "preparationAttempts": 3,
+        "discardedPreparations": 3,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "quoted": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.4329649583341961,
+          "p95": -0.42590195833327016
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "two-sentence": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.22857954166465788,
+          "p95": -0.22233875000165426
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      },
+      "whitespace": {
+        "pairedStartDifference": {
+          "count": 3,
+          "median": -0.4030093749970547,
+          "p95": -0.3303435833331605
+        },
+        "preparationHits": 3,
+        "preparationAttempts": 3,
+        "discardedPreparations": 0,
+        "resynthesizedHits": 0,
+        "passed": true
+      }
+    }
+  }
+}

@@ -15,11 +15,13 @@ final class ReplyPlaybackCoordinator {
     private let reply: any ReplyGenerating
     private let speaker: any SentenceSpeechSpeaking
     private let motion: any ReplyTurnObserving
+    private let prepareFirstSentence: Bool
     private var active: (id: UUID, task: Task<String, Error>, speechStarted: Bool)?
 
     init(reply: any ReplyGenerating, speaker: any SentenceSpeechSpeaking,
-         motion: any ReplyTurnObserving = NoopRobotMotionController()) {
+         motion: any ReplyTurnObserving = NoopRobotMotionController(), prepareFirstSentence: Bool = true) {
         self.reply = reply; self.speaker = speaker; self.motion = motion
+        self.prepareFirstSentence = prepareFirstSentence
     }
 
     func run(prompt: String, trace: ReplyTrace?,
@@ -44,7 +46,7 @@ final class ReplyPlaybackCoordinator {
                 }
                 do {
                     let result = try await ReplyTraceContext.$current.withValue(trace) {
-                        try await SentenceReplyPlayback(reply: self.reply, speaker: self.speaker)
+                        try await SentenceReplyPlayback(reply: self.reply, speaker: self.speaker, prepareFirstSentence: self.prepareFirstSentence)
                             .run(prompt: prompt, trace: trace, onUpdate: update)
                     }
                     self.motion.speechFinished(motionTurn)

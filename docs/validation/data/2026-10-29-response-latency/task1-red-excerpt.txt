@@ -1,0 +1,7 @@
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Integration/SentenceReplyPlaybackTests.swift:48: error: -[CatRobotTests.SentenceReplyPlaybackTests testFirstPreparationReusesTrimmedInputButAuditsConfirmedOriginal] : Asynchronous wait failed: Exceeded timeout of 0.5 seconds, with unfulfilled expectations: "Prepare before trailing whitespace arrives".
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Integration/SentenceReplyPlaybackTests.swift:56: error: -[CatRobotTests.SentenceReplyPlaybackTests testFirstPreparationReusesTrimmedInputButAuditsConfirmedOriginal] : XCTAssertEqual failed: ("["こんにちは。 \n"]") is not equal to ("["こんにちは。"]")
+/Users/goodapple/.codex/worktrees/b200/Cat_robot/CatRobotTests/Conversation/Integration/SentenceReplyPlaybackTests.swift:21: error: -[CatRobotTests.SentenceReplyPlaybackTests testFirstSentenceSynthesisStartsBeforeGenerationCompletesButPlaybackWaitsForConfirmation] : Asynchronous wait failed: Exceeded timeout of 0.5 seconds, with unfulfilled expectations: "Prepare the completed first sentence while generation remains open".
+	 Executed 2 tests, with 3 failures (0 unexpected) in 2.346 (2.357) seconds
+	 Executed 2 tests, with 3 failures (0 unexpected) in 2.346 (2.359) seconds
+	 Executed 2 tests, with 3 failures (0 unexpected) in 2.346 (2.361) seconds
+** TEST FAILED **

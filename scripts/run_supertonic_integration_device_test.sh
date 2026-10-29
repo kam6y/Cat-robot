@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 if [[ $# != 2 ]]; then
-  echo 'Usage: run_supertonic_integration_device_test.sh <UDID> <voices|fixed|lifecycle|pronunciation>'
+  echo 'Usage: run_supertonic_integration_device_test.sh <UDID> <voices|fixed|lifecycle|pronunciation|latency|latency-cloud>'
   exit 2
 fi
 SUPER_DEVICE="$1"
 export SUPER_STAGE="$2"
-case "$SUPER_STAGE" in voices|fixed|lifecycle|pronunciation) ;; *) exit 2 ;; esac
+case "$SUPER_STAGE" in voices|fixed|lifecycle|pronunciation|latency|latency-cloud) ;; *) exit 2 ;; esac
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export SUPER_BUILD_DIR="${SUPER_BUILD_DIR:-/private/tmp/cat-supertonic-integration/device}"
 SUPER_PACKAGE_DIR="${SUPER_PACKAGE_DIR:-/private/tmp/cat-speech-comparison/packages}"
@@ -55,5 +55,7 @@ SUPER_EXPORT_STATUS=$?
 set -e
 if [[ "$SUPER_TEST_STATUS" -ne 0 ]]; then exit "$SUPER_TEST_STATUS"; fi
 if [[ "$SUPER_EXPORT_STATUS" -ne 0 ]]; then exit "$SUPER_EXPORT_STATUS"; fi
-python3 scripts/summarize_supertonic_integration.py "$SUPER_RESULT_DIR/data/results.json" --expected-run-id "$SUPER_RUN_ID" > "$SUPER_RESULT_DIR/metrics.json"
+SUPER_SUMMARY_COMMAND=(python3 scripts/summarize_supertonic_integration.py "$SUPER_RESULT_DIR/data/results.json" --expected-run-id "$SUPER_RUN_ID")
+if [[ "$SUPER_STAGE" == latency ]]; then SUPER_SUMMARY_COMMAND+=(--require-latency-acceptance); fi
+"${SUPER_SUMMARY_COMMAND[@]}" > "$SUPER_RESULT_DIR/metrics.json"
 printf 'Evidence: %s\n' "$SUPER_RESULT_DIR"

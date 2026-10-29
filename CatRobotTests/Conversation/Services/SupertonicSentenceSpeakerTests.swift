@@ -14,6 +14,45 @@ final class SupertonicSentenceSpeakerTests: XCTestCase {
         XCTAssertFalse(audit.removedOrReplaced.contains("\u{3099}"))
         XCTAssertTrue(audit.processedChunks.joined().contains("「"))
     }
+    func testLongPronunciationWaitsForConfirmationWithoutSpeculativeInference() async throws {
+        let longSpoken = "キョーワマドノソバデヒナタボッコヲシナガラ、ユックリオハナシシヨーネ。"
+        for confirmed in ["猫。", "はい。"] {
+            let candidateNormalized = ConversationTestGate()
+            let noPreparation = expectation(description: "Long pronunciation must not start speculative inference")
+            noPreparation.isInverted = true
+            let inputs = SynthesisInputs()
+            let player = TestPCMPlayer()
+            var originals: [String] = []
+            let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { original in
+                if original == "猫。" {
+                    await candidateNormalized.wait()
+                    return longSpoken
+                }
+                return "ハイ。"
+            }, voice: { .f1 }, synthesize: { text, _ in
+                await inputs.record(text)
+                return SpeechPCM(samples: [1], sampleRate: 24_000)
+            })
+            speaker.onSynthesis = { _, point in if point == "preparationStarted" { noPreparation.fulfill() } }
+            speaker.onInput = { original, _ in originals.append(original) }
+            let channel = SpeechSentenceChannel()
+            await channel.offerPreparation(.init(ordinal: 0, original: "猫。"))
+            let stream = try await speaker.speakSentences(from: channel, prefetch: true)
+            let consume = Task { for try await _ in stream {} }
+            await candidateNormalized.waitUntilEntered()
+            await candidateNormalized.open()
+            await fulfillment(of: [noPreparation], timeout: 0.15)
+            XCTAssertEqual(player.playCount, 0)
+            try await channel.send(.init(ordinal: 0, original: confirmed))
+            await channel.finish()
+            try await consume.value
+            let synthesized = await inputs.inputs
+            XCTAssertEqual(synthesized, [confirmed == "猫。" ? longSpoken : "ハイ。"])
+            XCTAssertEqual(originals, [confirmed], "Eligibility must not truncate or replace confirmed speech")
+            XCTAssertEqual(player.playCount, 1)
+        }
+    }
+
     func testSynthesisFailureDoesNotStartPlayback() async throws {
         let player = TestPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in throw SupertonicError.inferenceFailed })
