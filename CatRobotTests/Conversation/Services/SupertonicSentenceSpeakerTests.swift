@@ -33,7 +33,7 @@ final class SupertonicSentenceSpeakerTests: XCTestCase {
 
     func testSingleInputUsesRealPronunciation() async throws {
         let speaker = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, normalize: { try await JapanesePronunciationService.shared.normalize($0) }, voice: { .f1 }, synthesize: { text, voice in
-            XCTAssertEqual(text, "アイフォーンヲツカウ。")
+            XCTAssertEqual(text, "アイフォーンを使う。")
             XCTAssertEqual(voice, .f1)
             return SpeechPCM(samples: [0, 0.1], sampleRate: 24_000)
         })
@@ -112,7 +112,7 @@ final class SupertonicSentenceSpeakerTests: XCTestCase {
                 await inputs.record(text)
                 return SpeechPCM(samples: [1], sampleRate: 24_000)
             })
-        let stream = try await speaker.speak(String(repeating: "猫", count: 1001))
+        let stream = try await speaker.speak(String(repeating: "+", count: 667))
         do { for try await _ in stream {}; XCTFail("overlong speech succeeded") }
         catch { XCTAssertEqual(error as? JapanesePronunciationError, .outputTooLong) }
         let synthesized = await inputs.inputs

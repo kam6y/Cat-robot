@@ -26,7 +26,7 @@ fn native_allocation_roundtrip_reads_and_releases() {
         assert!(!result.is_null());
         assert_eq!(
             unsafe { CStr::from_ptr(result) }.to_str().unwrap(),
-            "ユーチューブヲミヨー。"
+            "ユーチューブを見よう。"
         );
         unsafe {
             cjp_string_free(result);

@@ -1,14 +1,19 @@
 # Japanese pronunciation frontend
 
 This static library is the sole Japanese pronunciation frontend before Supertonic.
-It uses jpreprocess 0.15.0 and the matching NAIST dictionary. It produces kana text,
-not phonemes or Open JTalk full-context labels. Original display/memory text is owned
-by the caller and is never edited here.
+It uses jpreprocess 0.15.0 and the matching NAIST dictionary for known Latin terms.
+Japanese surface text and numbers outside those terms stay unchanged; full-sentence
+kana conversion is intentionally avoided after a user-observed speech-quality regression.
+The caller retains the original display/memory text.
 
 `Pronouncer::pronounce` preserves URLs, email, backtick spans, punctuation and
-unknown runs. Known runs use contextual NJD pronunciation, with Open JTalk devoicing
-marks removed. Case aliases select dictionary spellings; they do not contain the
-old Swift iPhone/Bluetooth pronunciation substitutions. Standalone plus means
+unknown word clusters. Maximal non-Japanese word clusters prevent partially rewriting
+an identifier with accents, combining marks or another script. Only original ASCII/fullwidth
+Latin terms are eligible; width folding precedes dictionary lookup. Their digits are read
+with the whole term (e.g. iPhone15). Numeric-only runs retain notation.
+Known terms use NJD pronunciation with devoicing marks removed, never phoneme labels.
+Case aliases select dictionary spellings, not a hand-maintained pronunciation vocabulary.
+Standalone plus means
 「プラス」; identifiers and C++ keep their lexical meaning. An operational failure
 is an error, never a retry through the old normalizer.
 

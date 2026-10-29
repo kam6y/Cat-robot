@@ -8,3 +8,5 @@
 - Packages missing a license file in their published crate use the matching upstream VCS commit: jlabel `83ebc0b6b3a721b390123b5a8dd50774c5fc57d7`, lindera `d135c2821f65eb1becbbd4835cf2c1a5d0c2045e`, and kanaria `c994ccf06d179851a1c7c3285c3a408ccb6279ec` (repository moved to [samunohito/kanaria](https://github.com/samunohito/kanaria), file `LICENSE.txt`).
 
 `prepare_jpreprocess_assets.py` verifies downloads and extracts only pinned normal files. `build_jpreprocess.sh` explicitly compiles device arm64 and Simulator arm64/x86_64 libraries. The build receipt records source and framework hashes; ordinary Xcode builds validate this receipt and dictionary, and do not download or build Rust. Generated assets are ignored under `CatRobot/LocalAssets/JPreprocess`.
+
+The adapter preserves Japanese surface text for Supertonic naturalness. It applies dictionary readings only to complete eligible Latin terms and verbalizes unprotected plus operators; model, dictionary and dependency versions are unchanged.
