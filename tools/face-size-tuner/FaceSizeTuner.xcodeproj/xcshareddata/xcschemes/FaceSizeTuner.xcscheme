@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A5026BF0D35798BE4077AE9A52E0AB16"
+               BlueprintIdentifier = "D112FE6261A4BCB5750E104DF6480C1A"
                BuildableName = "FaceSizeTuner.app"
                BlueprintName = "FaceSizeTuner"
                ReferencedContainer = "container:FaceSizeTuner.xcodeproj">
@@ -44,7 +44,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A5026BF0D35798BE4077AE9A52E0AB16"
+            BlueprintIdentifier = "D112FE6261A4BCB5750E104DF6480C1A"
             BuildableName = "FaceSizeTuner.app"
             BlueprintName = "FaceSizeTuner"
             ReferencedContainer = "container:FaceSizeTuner.xcodeproj">
@@ -77,7 +77,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A5026BF0D35798BE4077AE9A52E0AB16"
+            BlueprintIdentifier = "D112FE6261A4BCB5750E104DF6480C1A"
             BuildableName = "FaceSizeTuner.app"
             BlueprintName = "FaceSizeTuner"
             ReferencedContainer = "container:FaceSizeTuner.xcodeproj">
@@ -94,7 +94,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A5026BF0D35798BE4077AE9A52E0AB16"
+            BlueprintIdentifier = "D112FE6261A4BCB5750E104DF6480C1A"
             BuildableName = "FaceSizeTuner.app"
             BlueprintName = "FaceSizeTuner"
             ReferencedContainer = "container:FaceSizeTuner.xcodeproj">

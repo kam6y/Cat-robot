@@ -5,6 +5,106 @@ import XCTest
 final class MotionCoordinatorTests: XCTestCase {
     private let nod = RobotMotionRequest(gesture: .nod, intensity: .large, repeats: 3)
 
+    func testFaceDrivenIdleWaitsForCueAndKeepsExistingCapsAndSpeed() async {
+        let h = MotionHarness()
+        h.motion.setIdleFaceDriven(true)
+        h.motion.setConversationPhase(.listening)
+        await h.advanceFresh(by: 12)
+        XCTAssertTrue(h.sentCommands.isEmpty, "Face life owns the quiet intervals")
+        h.motion.requestIdleFaceMotion(yaw: 20, pitch: -20)
+        await h.drain()
+        await h.advanceFresh(by: 3.1, step: 0.05)
+        let moves = h.link.sent.filter { if case .move = $0.command { true } else { false } }
+        XCTAssertFalse(moves.isEmpty)
+        for move in moves {
+            guard case let .move(yaw, pitch, speed) = move.command else { continue }
+            XCTAssertLessThanOrEqual(abs(yaw), 30)
+            XCTAssertLessThanOrEqual(abs(pitch), 20)
+            XCTAssertEqual(speed, 10)
+            XCTAssertEqual(move.priority, .idleMotion)
+        }
+        XCTAssertEqual(moves.last?.command, .move(yawDeci: 30, pitchDeci: -20, speed: 10))
+    }
+
+    func testFaceCueIsDroppedRatherThanReplayedAfterHigherPriorityWork() async {
+        for gate in 0..<7 {
+            let h = MotionHarness()
+            h.motion.setIdleFaceDriven(true)
+            h.motion.setConversationPhase(.listening)
+            switch gate {
+            case 0: h.motion.setControlMode(.settings)
+            case 1: h.motion.setControlMode(.background)
+            case 2: h.preferences.idleEnabled = false
+            case 3:
+                h.preferences.trackingEnabled = true
+                h.motion.setTrackingState(.holding)
+            case 4: h.motion.setAutomaticMotionSuspended(true)
+            case 5: _ = h.reserve()
+            default: await h.clock.advance(by: 2)
+            }
+            h.motion.requestIdleFaceMotion(yaw: 2, pitch: 1)
+            if gate != 3 { h.motion.requestYawnMotion(pitch: -10) } // Yawn may now pause tracking.
+            await h.drain()
+            XCTAssertTrue(h.sentCommands.isEmpty, "gate \(gate)")
+            h.motion.setControlMode(.conversation)
+            h.preferences.idleEnabled = true
+            h.preferences.trackingEnabled = false
+            h.motion.setTrackingState(.disabled)
+            h.motion.setAutomaticMotionSuspended(false)
+            h.link.emitStatus(robotStatus())
+            await h.advanceFresh(by: 10)
+            XCTAssertTrue(h.sentCommands.isEmpty, "Rejected cues must not be queued: gate \(gate)")
+        }
+    }
+
+    func testFaceCueCancellationInvalidatesBackpressuredWrite() async {
+        let h = MotionHarness()
+        h.motion.setIdleFaceDriven(true)
+        h.motion.setConversationPhase(.listening)
+        h.link.writable = false
+        h.motion.requestIdleFaceMotion(yaw: 2, pitch: 0)
+        await h.drain()
+        XCTAssertFalse(h.link.queuedCommands.isEmpty)
+        h.motion.cancelIdleFaceMotion()
+        await h.drain()
+        XCTAssertTrue(h.link.queuedCommands.isEmpty)
+        h.link.writable = true
+        await h.advanceFresh(by: 4)
+        XCTAssertTrue(h.sentCommands.isEmpty)
+    }
+
+    func testCancellingFaceLifeCannotCancelTrackingTakingOverAnIdleWrite() async {
+        let h = MotionHarness()
+        h.motion.setIdleFaceDriven(true)
+        h.motion.setConversationPhase(.listening)
+        h.motion.requestIdleFaceMotion(yaw: 2, pitch: 0)
+        await h.drain()
+        XCTAssertFalse(h.sentCommands.isEmpty)
+        h.preferences.trackingEnabled = true
+        h.link.writable = false
+        h.motion.setTrackingState(.following(.init(yaw: 12, pitch: 3, validUntil: h.clock.now + 1)))
+        await h.drain()
+        let tracking = RobotCommand.move(yawDeci: 120, pitchDeci: 30, speed: 20)
+        XCTAssertTrue(h.link.queuedCommands.contains(tracking))
+        h.motion.cancelIdleFaceMotion()
+        await h.drain()
+        XCTAssertTrue(h.link.queuedCommands.contains(tracking), "Face cancellation must not invalidate a higher-priority takeover")
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.contains(tracking))
+    }
+
+    func testNonFiniteFaceCuesAreIgnored() async {
+        let h = MotionHarness()
+        h.motion.setIdleFaceDriven(true)
+        h.motion.setConversationPhase(.listening)
+        h.motion.requestIdleFaceMotion(yaw: .nan, pitch: 0)
+        h.motion.requestIdleFaceMotion(yaw: 0, pitch: .infinity)
+        await h.drain()
+        XCTAssertTrue(h.sentCommands.isEmpty)
+    }
+
     func testSpeechReleasesOnceAndKeepsRunningAfterSpeechEnds() async {
         let h = MotionHarness()
         let turn = MotionTurnID()

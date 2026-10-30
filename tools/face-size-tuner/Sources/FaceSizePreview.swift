@@ -11,7 +11,7 @@ struct FaceSizePreview: View {
             Color.black.ignoresSafeArea()
             GeometryReader { proxy in
                 let insets = proxy.safeAreaInsets
-                CatFaceView(expression: expression, mouthPose: .closed, reduceMotion: true, isAnimating: false)
+                CatFaceView(expression: expression, mouthPose: .closed, reduceMotion: true)
                     .frame(width: (proxy.size.width + insets.leading + insets.trailing) * CGFloat(scale),
                            height: (proxy.size.height + insets.top + insets.bottom) * CGFloat(scale))
                     .position(x: proxy.size.width / 2, y: (proxy.size.height + insets.bottom - insets.top) / 2)

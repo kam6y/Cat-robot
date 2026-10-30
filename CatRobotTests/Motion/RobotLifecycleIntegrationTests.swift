@@ -74,13 +74,95 @@ final class RobotAppHarness {
 
 @MainActor
 final class RobotLifecycleIntegrationTests: XCTestCase {
+    func testCancellingUnwrittenYawnSettlesPreviousTrackingMove() async throws {
+        for openSettings in [false, true] {
+            let h = RobotAppHarness()
+            await h.startConnectedConversation()
+            h.ble.preferences.idleEnabled = true
+            h.ble.preferences.trackingEnabled = true
+            h.motion.setConversationPhase(.listening)
+            h.motion.setTrackingState(.following(.init(yaw: 25, pitch: 4, validUntil: h.ble.clock.now + 1)))
+            await h.ble.drain()
+            h.ble.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 120, pitch: 20))
+            await h.ble.drain()
+            h.ble.transport.canSendWriteWithoutResponse = false
+            let cue = try XCTUnwrap(CatFaceLifePlanner.yawn().frames.compactMap(\.neckCue).first)
+            let actions = h.coordinator.makeActions(openSettings: {})
+            actions.idleFaceMotion(cue)
+            await h.ble.drain()
+            let before = h.commands.count
+            if openSettings { h.motion.setControlMode(.settings) }
+            else { actions.cancelIdleFaceMotion() }
+            h.ble.transport.canSendWriteWithoutResponse = true
+            h.ble.transport.emit(.readyToWrite(attempt: h.ble.attempt))
+            await h.ble.drain()
+            let moves = h.commands.dropFirst(before).filter { if case .move = $0 { true } else { false } }
+            XCTAssertEqual(moves, [.move(yawDeci: 120, pitchDeci: 20, speed: 10)],
+                           "Cancel before the first yawn write must still stop the previous tracking move")
+            h.coordinator.scenePhaseDidChange(.background)
+        }
+    }
+
+    func testYawnTemporarilyTakesOverMovingTrackingAndResumesItsLatestTarget() async throws {
+        let h = RobotAppHarness()
+        await h.startConnectedConversation()
+        h.ble.preferences.idleEnabled = true
+        h.ble.preferences.trackingEnabled = true
+        h.motion.setConversationPhase(.listening)
+        h.motion.setTrackingState(.following(.init(yaw: 20, pitch: 4, validUntil: h.ble.clock.now + 1)))
+        await h.ble.drain()
+        h.ble.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 170, pitch: 30))
+        await h.ble.drain()
+        let before = h.commands.count
+        let cue = try XCTUnwrap(CatFaceLifePlanner.yawn().frames.compactMap(\.neckCue).first)
+        h.coordinator.makeActions(openSettings: {}).idleFaceMotion(cue)
+        await h.ble.drain()
+        // New camera targets keep arriving; none may interrupt the yawn.
+        for _ in 0..<28 {
+            h.motion.setTrackingState(.following(.init(yaw: -20, pitch: 2, validUntil: h.ble.clock.now + 1)))
+            await h.freshAdvance(0.1)
+        }
+        let during = h.commands.dropFirst(before).filter { if case .move = $0 { true } else { false } }
+        XCTAssertFalse(during.isEmpty)
+        XCTAssertTrue(during.allSatisfy {
+            if case let .move(yaw, pitch, speed) = $0 { yaw == 170 && abs(pitch) <= 100 && speed == 10 }
+            else { false }
+        }, "The yawn keeps the actual yaw instead of recentering or following camera updates")
+        await h.freshAdvance(0.4)
+        let moves = h.commands.dropFirst(before).filter { if case .move = $0 { true } else { false } }
+        XCTAssertTrue(moves.contains(.move(yawDeci: 170, pitchDeci: -100, speed: 10)))
+        XCTAssertEqual(moves.last, .move(yawDeci: -200, pitchDeci: 20, speed: 20))
+        h.coordinator.scenePhaseDidChange(.background)
+    }
+
+    func testYawnCueReachesTenDegreesThroughTheRealAppAction() async throws {
+        let h = RobotAppHarness()
+        await h.startConnectedConversation()
+        h.ble.preferences.idleEnabled = true
+        h.motion.setConversationPhase(.listening)
+        let cue = try XCTUnwrap(CatFaceLifePlanner.yawn().frames.compactMap(\.neckCue).first)
+        h.coordinator.makeActions(openSettings: {}).idleFaceMotion(cue)
+        await h.freshAdvance(3.1)
+        let moves = h.commands.compactMap { command -> (Int16, Int16, UInt8)? in
+            if case let .move(yaw, pitch, speed) = command { return (yaw, pitch, speed) }
+            return nil
+        }
+        let last = try XCTUnwrap(moves.last)
+        XCTAssertEqual(last.0, 0)
+        XCTAssertEqual(last.1, -100, "Yawn must reach 10°, not be clamped by the ordinary idle limit")
+        XCTAssertTrue(moves.allSatisfy { abs($0.0) <= 30 && abs($0.1) <= 100 && $0.2 == 10 })
+        h.coordinator.scenePhaseDidChange(.background)
+    }
+
     func testFaceAcquisitionPreemptsIdleThroughRealLinkUnderBackpressure() async {
         let h = RobotAppHarness()
         await h.startConnectedConversation()
         h.ble.preferences.idleEnabled = true
         h.motion.setConversationPhase(.listening)
         h.motion.setTrackingState(.searching)
-        await h.freshAdvance(4.2)
+        // The visible face now owns idle timing; exercise the real app action.
+        h.coordinator.makeActions(openSettings: {}).idleFaceMotion(.init(yaw: -1, pitch: 0))
+        await h.freshAdvance(1.2)
         XCTAssertTrue(h.commands.contains { if case .move = $0 { true } else { false } })
         h.ble.receiveStatus(robotStatus(flags: [.link, .moving, .torque], yaw: -10))
         await h.ble.drain()

@@ -33,21 +33,61 @@ enum FaceRender {
         let scaledDraft = scaled(draft.makeImage(), width: width, height: height)
         try output.save(scaledDraft, "draft-1280x720.png")
         try saveComparison(reference: scaledDraft, rendered: canvas, suffix: "sleeping", to: output)
-        let a = Bitmap(image: scaledDraft)
-        let b = Bitmap(image: canvas)
-        var diff = Bitmap(width: width, height: height)
+        try output.save(diffImage(scaledDraft, canvas), "diff-sleeping.png")
+        print("render: sleeping color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): "
+              + agreementSummary(reference: scaledDraft, rendered: canvas))
+
+        try output.save(render(GalleryView(), size: GalleryView.size, scale: 2), "gallery.png")
+        return output.written
+    }
+
+    /// あくびの参考（docs/design/idle-cat-life-2026-10-30/yawn-reference.png。16:9 の全面がキャンバス）。
+    static let yawnReferencePath = "docs/design/idle-cat-life-2026-10-30/yawn-reference.png"
+
+    /// あくび（`CatFaceAppearance.yawning`）の試し描き: 峰のキャンバス 1280×720 と画面モック、yawn 0.25/0.5/0.75（目は閉じたまま）、
+    /// neutral から峰への補間（AnimationVector の線形補間）の途中、参考を 1280×720 に縮めたもの、上下比較・50% 重ね・画素差。
+    static func runYawn(directory: String, root: String) throws -> [String] {
+        let output = ImageWriter(directory: directory)
+        let peak = canvasImage(appearance: .yawning)
+        try output.save(peak, "canvas-yawning-closed.png")
+        try output.save(screenImage(appearance: .yawning), "screen-yawning.png")
+        for amount in [0.25, 0.5, 0.75] {
+            var partial = CatFaceAppearance.yawning
+            partial.yawn = amount
+            try output.save(canvasImage(appearance: partial), "canvas-yawning-\(Int(amount * 100)).png")
+            try output.save(canvasImage(appearance: CatFaceAppearance.neutral.interpolated(toward: .yawning, fraction: amount)),
+                            "canvas-yawn-from-neutral-\(Int(amount * 100)).png")
+        }
+        // 片目ずつのまばたき（Eye.blink）の見え方: 閉じきる直前から sleeping と同じ金色の弧が出る。
+        for amount in [0.5, 0.8, 0.9, 1.0] {
+            var blinking = CatFaceAppearance.neutral
+            blinking.leftEye.blink = amount
+            blinking.rightEye.blink = amount
+            try output.save(canvasImage(appearance: blinking), "canvas-blink-neutral-\(Int(amount * 100)).png")
+        }
+
+        let reference = try Bitmap(contentsOf: "\(root)/\(yawnReferencePath)")
+        let scaledReference = scaled(reference.makeImage(), width: peak.width, height: peak.height)
+        try output.save(scaledReference, "yawn-reference-1280x720.png")
+        try saveComparison(reference: scaledReference, rendered: peak, suffix: "yawning", to: output)
+        try output.save(diffImage(scaledReference, peak), "diff-yawning.png")
+        print("yawn: color-class IoU reference(1280x720) vs rendered (Y gold arcs, C cream outline/fangs/whiskers, P nose and tongue, I mouth inside): "
+              + agreementSummary(reference: scaledReference, rendered: peak))
+        return output.written
+    }
+
+    /// 画素差の絶対値を 2 倍にした画像（同じ大きさの二つの画像）。
+    static func diffImage(_ first: CGImage, _ second: CGImage) -> CGImage {
+        let a = Bitmap(image: first)
+        let b = Bitmap(image: second)
+        var diff = Bitmap(width: first.width, height: first.height)
         for index in stride(from: 0, to: diff.pixels.count, by: 4) {
             for channel in 0..<3 {
                 diff.pixels[index + channel] = UInt8(min(255, abs(Int(a.pixels[index + channel]) - Int(b.pixels[index + channel])) * 2))
             }
             diff.pixels[index + 3] = 255
         }
-        try output.save(diff.makeImage(), "diff-sleeping.png")
-        print("render: sleeping color-class IoU draft(1280x720) vs rendered (Y arc, C cream, P nose): "
-              + agreementSummary(reference: scaledDraft, rendered: canvas))
-
-        try output.save(render(GalleryView(), size: GalleryView.size, scale: 2), "gallery.png")
-        return output.written
+        return diff.makeImage()
     }
 
     /// 試し描き用。round ではない任意のディレクトリ（作業用の場所）へ同じ画像を出す。screenScale は画面モックの倍率。
@@ -156,8 +196,16 @@ enum FaceRender {
         render(FaceOnBlack(expression: expression, mouthPose: pose), size: canvasPoints, scale: 2)
     }
 
+    static func canvasImage(appearance: CatFaceAppearance) -> CGImage {
+        render(FaceOnBlack(appearance: appearance, mouthPose: .closed), size: canvasPoints, scale: 2)
+    }
+
     static func screenImage(_ expression: FaceExpression, _ pose: MouthPose, scale: CGFloat = 2) -> CGImage {
         render(FaceOnBlack(expression: expression, mouthPose: pose), size: screenPoints, scale: scale)
+    }
+
+    static func screenImage(appearance: CatFaceAppearance, scale: CGFloat = 2) -> CGImage {
+        render(FaceOnBlack(appearance: appearance, mouthPose: .closed), size: screenPoints, scale: scale)
     }
 
     static func render<V: View>(_ view: V, size: CGSize, scale: CGFloat) -> CGImage {
@@ -170,14 +218,17 @@ enum FaceRender {
 }
 
 /// 純黒の上に 16:9 キャンバスを高さ基準で等比・中央に置く（実機と同じ配置）。
+/// プリセット以外の姿（あくびの峰など）は CatFaceView の appearanceOverride で渡す（CatFaceCanvas を直接置くと
+/// 配置は同じでも curious の 410 画素が ±1 だけ変わったので、製品と同じ CatFaceView を通す）。
 private struct FaceOnBlack: View {
-    let expression: FaceExpression
+    var expression: FaceExpression = .neutral
+    var appearance: CatFaceAppearance? = nil
     let mouthPose: MouthPose
 
     var body: some View {
         ZStack {
             Color.black
-            CatFaceView(expression: expression, mouthPose: mouthPose, reduceMotion: true, isAnimating: false)
+            CatFaceView(expression: expression, mouthPose: mouthPose, reduceMotion: true, appearanceOverride: appearance)
         }
     }
 }

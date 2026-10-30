@@ -46,7 +46,7 @@ struct OnboardingView: View {
 
     private var intro: some View {
         VStack(spacing: 14) {
-            CatFaceView(expression: .neutral, mouthPose: .closed, reduceMotion: true, isAnimating: false)
+            CatFaceView(expression: .neutral, mouthPose: .closed, reduceMotion: true)
                 .frame(width: 250, height: 115)
             Text("AIの猫と話そう")
                 .font(.title.weight(.bold))

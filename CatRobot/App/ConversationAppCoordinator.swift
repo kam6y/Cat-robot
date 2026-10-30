@@ -84,11 +84,16 @@ final class ConversationAppCoordinator {
         inactivity = ConversationInactivity(settings: idleSettings ?? ConversationIdleSettings(), clock: idleClock)
         viewModel.onAddressedActivity = { [weak self] in self?.inactivity.recordActivity() }
         viewModel.onPhaseChange = { [weak self] phase in self?.conversationPhaseDidChange(phase) }
-        viewModel.onPendingSpeechChange = { [weak self] in self?.updateInactivity() }
+        viewModel.onPendingSpeechChange = { [weak self] in
+            guard let self else { return }
+            if self.viewModel.hasPendingSpeech { self.motion.cancelIdleFaceMotion() }
+            self.updateInactivity()
+        }
         inactivity.onStateChange = { [weak self] in
             guard let self, self.isSleeping else { return }
             self.enterSleeping()
         }
+        motion.setIdleFaceDriven(true)
     }
 
     func conversationPhaseDidChange(_ phase: ConversationPhase) {
@@ -383,7 +388,17 @@ final class ConversationAppCoordinator {
                     await self.viewModel.retryMemoryOperation()
                     if recoversFromForgetFailure { self.resumeListeningIfNeeded() }
                 }
-            }
+            },
+            idleFaceMotion: { [weak self] cue in
+                guard let self, self.canRunConversation,
+                      self.viewModel.viewState.allowsIdleFaceLife, !self.viewModel.hasPendingSpeech,
+                      !self.look.isLooking, self.expressions.heldExpression == nil else { return }
+                switch cue.kind {
+                case .idle: self.motion.requestIdleFaceMotion(yaw: cue.yaw, pitch: cue.pitch)
+                case .yawn: self.motion.requestYawnMotion(pitch: cue.pitch)
+                }
+            },
+            cancelIdleFaceMotion: { [weak self] in self?.motion.cancelIdleFaceMotion() }
         )
     }
 

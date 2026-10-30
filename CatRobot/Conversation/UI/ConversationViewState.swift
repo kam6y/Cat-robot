@@ -72,10 +72,18 @@ struct ConversationViewState: Equatable, Sendable {
     var heldExpression: FaceExpression? = nil
     var isLooking = false
     var inactivity: ConversationInactivityState = .awake
+    var activityGeneration: UInt64 = 0
     var isAwaitingTapToResume = false
     var isRobotReconnecting = false
     var isFaceTrackingPausedForHeat = false
     var isSleeping: Bool { inactivity == .sleeping }
+    /// Decoration yields immediately to a person, a held reply, or another screen.
+    var allowsIdleFaceLife: Bool {
+        guard phase == .idle || phase == .listening || phase == .paused,
+              !isSleeping, !isLooking, heldExpression == nil, !showsTypedInput, errorMessage == nil,
+              provisionalTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return !ConversationMemoryPresentation(state: memoryState).blocksConversation
+    }
     var showsTapToResume: Bool {
         phase == .paused && isAwaitingTapToResume && !isSleeping
             && !ConversationMemoryPresentation(state: memoryState).blocksConversation
@@ -132,6 +140,8 @@ struct ConversationActions {
     var openVoiceSettings: () -> Void = {}
     var startNewConversation: () -> Void = {}
     var retryMemory: () -> Void = {}
+    var idleFaceMotion: (CatIdleNeckCue) -> Void = { _ in }
+    var cancelIdleFaceMotion: () -> Void = {}
 }
 
 extension ConversationPhase {

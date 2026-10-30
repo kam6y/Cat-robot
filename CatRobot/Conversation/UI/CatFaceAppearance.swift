@@ -4,6 +4,8 @@ import SwiftUI
 /// 目の局所座標は外形をおよそ単位円とし、u は鼻側が正、v は下が正。
 struct CatFaceAppearance: Equatable, Sendable {
     struct Eye: Equatable, Sendable {
+        /// この目のまばたきの量（0 開き、1 閉じ）。CatFaceLife のまばたきが片目ずつ時間をずらして動かす。
+        var blink: CGFloat = 0
         /// 基準の目に対する横・縦の倍率。大きくなるときは下端を保って上と外側へ広がる。
         var widthScale: CGFloat = 1
         var heightScale: CGFloat = 1
@@ -52,11 +54,22 @@ struct CatFaceAppearance: Equatable, Sendable {
     var mouthRoundness: CGFloat = 0
     /// 右上の眠りの Z（sleeping）の見え方。0 で無し、1 で 3 つの Z が見える。
     var sleepMarks: CGFloat = 0
+    /// あくび。0 で通常の口・鼻・ひげ、1 で参考 docs/design/idle-cat-life-2026-10-30/yawn-reference.png の峰
+    /// （大きく開いた口に舌と牙、鼻とひげは一緒に上がり、閉じた目の弧は ∩ になる）。間は鼻の下から口が育つ。
+    var yawn: CGFloat = 0
     var leftWhiskers = Whiskers()
     var rightWhiskers = Whiskers()
 
     func eye(_ side: CatFaceSide) -> Eye {
-        side == .left ? leftEye : rightEye
+        var eye = side == .left ? leftEye : rightEye
+        guard yawn > 0 else { return eye }
+        // Interruption may tween directly to any preset. Close before the raised
+        // whiskers reach the iris, and reopen only after they have descended.
+        // The nearest preset outline is reached around yawn 0.18; finish by 0.15.
+        let closure = min(1, yawn / 0.15)
+        eye.lid = max(eye.lid, closure)
+        eye.closed = max(eye.closed, closure) * CatFaceGeometry.closedArcVisibility(eye.lid)
+        return eye
     }
 
     func whiskers(_ side: CatFaceSide) -> Whiskers {
@@ -218,7 +231,20 @@ extension CatFaceAppearance {
         return value
     }()
 
-    private mutating func updateEyes(_ body: (inout Eye) -> Void) {
+    /// あくびの峰（表情プリセットではなく、sleepy へ移る前に一度だけ通る姿）: sleepy のまま両目をぎゅっと閉じて
+    /// ∩ の金色の弧を見せ、口を大きく開ける（参考 docs/design/idle-cat-life-2026-10-30/yawn-reference.png）。
+    static let yawning: CatFaceAppearance = {
+        var value = sleepy
+        value.updateEyes { eye in
+            eye.lid = 1
+            eye.closed = 1
+        }
+        value.yawn = 1
+        return value
+    }()
+
+    /// 両目に同じ変更を加える。
+    mutating func updateEyes(_ body: (inout Eye) -> Void) {
         body(&leftEye)
         body(&rightEye)
     }
@@ -277,7 +303,8 @@ extension CatFaceAppearance {
         \.rightWhiskers.lift, \.rightWhiskers.spread, \.irisBrightness,
         \.glow, \.mouthWidth, \.mouthSmile,
         \.mouthRoundness, \.leftEye.closed, \.rightEye.closed,
-        \.sleepMarks,
+        \.sleepMarks, \.leftEye.blink, \.rightEye.blink,
+        \.yawn,
     ]
 
     var animationVector: AnimationVector {
@@ -287,5 +314,14 @@ extension CatFaceAppearance {
                 self[keyPath: keyPath] = CGFloat(value)
             }
         }
+    }
+
+    /// SwiftUI の表情の補間と同じ数値で、この表情から other へ fraction だけ進んだ表情（テストと描画ハーネスが共有する）。
+    func interpolated(toward other: CatFaceAppearance, fraction: Double) -> CatFaceAppearance {
+        var delta = other.animationVector - animationVector
+        delta.scale(by: fraction)
+        var result = self
+        result.animationVector = animationVector + delta
+        return result
     }
 }

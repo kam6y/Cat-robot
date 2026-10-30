@@ -14,6 +14,24 @@ final class ConversationInactivityTests: XCTestCase {
         ConversationIdleSettings(defaults: isolatedDefaults())
     }
 
+    func testActivityGenerationChangesOnlyForAcceptedActivityAndExplicitWake() async {
+        let clock = ManualRobotClock()
+        let idle = ConversationInactivity(settings: settings(), clock: clock)
+        idle.setMonitoring(true, phase: .listening)
+        let initial = idle.activityGeneration
+        idle.setMonitoring(false, phase: .paused)
+        idle.setMonitoring(true, phase: .listening)
+        await clock.advance(by: 300)
+        XCTAssertEqual(idle.activityGeneration, initial)
+        idle.recordActivity()
+        XCTAssertEqual(idle.activityGeneration, initial + 1)
+        await clock.advance(by: 600)
+        idle.recordActivity()
+        XCTAssertEqual(idle.activityGeneration, initial + 1, "Ambient activity cannot wake a sleeping cat")
+        idle.wake()
+        XCTAssertEqual(idle.activityGeneration, initial + 2)
+    }
+
     func testDefaultBoundariesAndSleepIsStickyUntilTapWake() async {
         let clock = ManualRobotClock()
         let idle = ConversationInactivity(settings: settings(), clock: clock)

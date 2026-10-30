@@ -9,26 +9,27 @@
 /* Begin PBXBuildFile section */
 		08624FEB94EC4033CED8A39A40D94EA3 /* FaceSizeTunerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8715E55CFAA8F9BBA350C15F5144B7BD /* FaceSizeTunerTests.swift */; };
 		1E15555E9AE9F3DE575B5A073BD69B65 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEE1F706A90DCB0326D45D2CB26EEBD6 /* XCTest.framework */; };
-		28FE14D44616825EFE9A6EFC3343D9EA /* FaceSizeTunerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374B89057672366C52D43A19708E53C2 /* FaceSizeTunerView.swift */; };
-		34831167122AFC9999F404E72E4BEC9B /* FaceSizePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0205EDF9E25F1EB4C27EBD0D4094E3 /* FaceSizePreview.swift */; };
+		200273B640FFA8208F27FAD7536498C2 /* FaceSizePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0205EDF9E25F1EB4C27EBD0D4094E3 /* FaceSizePreview.swift */; };
+		30C9C0A1BA2076DF86B98FD3BFC04DBD /* CatFaceShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8A0CE78EAA5E40E53DB0BFCF199B64 /* CatFaceShapes.swift */; };
 		3E1B815EC88062B9D095B4DA3207D32D /* AccessibilityActivationSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4486814F860BA5ED159EFCB1B2DEC4C1 /* AccessibilityActivationSupport.swift */; };
-		43EF33C06CE50B8E2DE249422CE32524 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 55499EDDE18C250CD73FDDBC0DABAC8D /* Assets.xcassets */; };
-		5EA4282B0E78225BCC48698CDFBC1192 /* CatFaceShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F34B5DD54530BFA2501CBFD1AC359823 /* CatFaceShapes.swift */; };
-		7B5BA10B25425365191E8E65B6C64A5F /* Stubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7EAB830ADB080565079D675927CAB27 /* Stubs.swift */; };
-		894F5CA42F6B5C58A1511A334928AE36 /* CatFaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85C1BD46BE0D44D3CB0E7FDF8537DD94 /* CatFaceView.swift */; };
+		4F3D768B5946B566C1BAEB6B95F73F19 /* CatFaceAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB58C5D9B26185E7F1376ECBFD822680 /* CatFaceAppearance.swift */; };
+		60CD4ABAA391A4B7DD490C86130710FA /* CatFaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77CEFE29BCEB2262B1A56E978FFB872A /* CatFaceView.swift */; };
+		6634746135E33828810748A297C90A89 /* Stubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7EAB830ADB080565079D675927CAB27 /* Stubs.swift */; };
 		92C70CE50910F7FAA8FAC785B7FEF618 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 146F5F80E6D3FA76FC9B4566B56B1A50 /* Foundation.framework */; };
-		9302419DB0412BDD5128AB38DAB5DE9E /* FaceSizeTuningModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399698530C5A83E52F714AEC055BB430 /* FaceSizeTuningModel.swift */; };
-		ACEB9F036446ED1FF2A743D0B8B4EBE3 /* FaceSizeTunerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E334D41247FFA99321AFAC5F33738B12 /* FaceSizeTunerApp.swift */; };
-		D419A37E66C6D2B11C4E096A862D9643 /* CatFaceAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E469B04179CAC82D1BCD52C6B09CA97 /* CatFaceAppearance.swift */; };
-		FDD8C3A7F07BB2D3629D5628BBFDE190 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 146F5F80E6D3FA76FC9B4566B56B1A50 /* Foundation.framework */; };
+		99757AEC2FF9AEBDE036E19F1DBF2BBE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 55499EDDE18C250CD73FDDBC0DABAC8D /* Assets.xcassets */; };
+		AF355FD0D8ACF0763D49648056290DB4 /* CatFaceRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E33B16B5D7E3B517F8C8E7007D13C6A5 /* CatFaceRenderer.swift */; };
+		E4DDDBB27B04AC2135FEEE1D8DDAD299 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 146F5F80E6D3FA76FC9B4566B56B1A50 /* Foundation.framework */; };
+		E60E8B293248AAA574E6E7748F9124E5 /* FaceSizeTuningModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399698530C5A83E52F714AEC055BB430 /* FaceSizeTuningModel.swift */; };
+		E6B0BC4742114EDBEB84EAE774AB2C79 /* FaceSizeTunerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E334D41247FFA99321AFAC5F33738B12 /* FaceSizeTunerApp.swift */; };
+		EFC32D463F2B3BA70FE521300F2D2491 /* FaceSizeTunerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374B89057672366C52D43A19708E53C2 /* FaceSizeTunerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		AA3C21B8096E155A6B19323A277351EE /* PBXContainerItemProxy */ = {
+		97F07E83B4DA1F9670F68116011E4725 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 471B41DE73D1CD483C120D6126BB71C0 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = A5026BF0D35798BE4077AE9A52E0AB16;
+			remoteGlobalIDString = D112FE6261A4BCB5750E104DF6480C1A;
 			remoteInfo = FaceSizeTuner;
 		};
 /* End PBXContainerItemProxy section */
@@ -38,10 +39,9 @@
 		374B89057672366C52D43A19708E53C2 /* FaceSizeTunerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FaceSizeTunerView.swift; sourceTree = "<group>"; };
 		399698530C5A83E52F714AEC055BB430 /* FaceSizeTuningModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FaceSizeTuningModel.swift; sourceTree = "<group>"; };
 		4486814F860BA5ED159EFCB1B2DEC4C1 /* AccessibilityActivationSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccessibilityActivationSupport.swift; path = ../../CatRobotTests/App/AccessibilityActivationSupport.swift; sourceTree = "<group>"; };
-		4E469B04179CAC82D1BCD52C6B09CA97 /* CatFaceAppearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceAppearance.swift; sourceTree = "<group>"; };
 		55499EDDE18C250CD73FDDBC0DABAC8D /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = ../../CatRobot/Resources/Assets.xcassets; sourceTree = "<group>"; };
 		7797C5BAC9BC49DF355A9353CF0D1A57 /* FaceSizeTuner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FaceSizeTuner.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		85C1BD46BE0D44D3CB0E7FDF8537DD94 /* CatFaceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceView.swift; sourceTree = "<group>"; };
+		77CEFE29BCEB2262B1A56E978FFB872A /* CatFaceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceView.swift; sourceTree = "<group>"; };
 		8715E55CFAA8F9BBA350C15F5144B7BD /* FaceSizeTunerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FaceSizeTunerTests.swift; sourceTree = "<group>"; };
 		9FAE1898C1AE648C9ECB118BF50E4EBF /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Info.plist; path = Resources/Info.plist; sourceTree = "<group>"; };
 		A7885B22F2057B3062486A7A5B8E2C70 /* FaceSizeTunerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FaceSizeTunerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -49,7 +49,9 @@
 		CEE1F706A90DCB0326D45D2CB26EEBD6 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		D7EAB830ADB080565079D675927CAB27 /* Stubs.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Stubs.swift; path = "../../scripts/face-render/Stubs.swift"; sourceTree = "<group>"; };
 		E334D41247FFA99321AFAC5F33738B12 /* FaceSizeTunerApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FaceSizeTunerApp.swift; sourceTree = "<group>"; };
-		F34B5DD54530BFA2501CBFD1AC359823 /* CatFaceShapes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceShapes.swift; sourceTree = "<group>"; };
+		E33B16B5D7E3B517F8C8E7007D13C6A5 /* CatFaceRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceRenderer.swift; sourceTree = "<group>"; };
+		EB58C5D9B26185E7F1376ECBFD822680 /* CatFaceAppearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceAppearance.swift; sourceTree = "<group>"; };
+		FD8A0CE78EAA5E40E53DB0BFCF199B64 /* CatFaceShapes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatFaceShapes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,11 +64,11 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DB243BF8BF689CE5FF74275FBFD0AF9E /* Frameworks */ = {
+		720F8ED55AA364ED98FAA7F6782CF046 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FDD8C3A7F07BB2D3629D5628BBFDE190 /* Foundation.framework in Frameworks */,
+				E4DDDBB27B04AC2135FEEE1D8DDAD299 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -98,7 +100,7 @@
 				07CE68EB2B8CBADEAF65B48FADDC09FF /* Frameworks */,
 				9FAE1898C1AE648C9ECB118BF50E4EBF /* Info.plist */,
 				488CD31E6B0A8DD5EC6C787D9FA20094 /* Products */,
-				C33EC92F9F07349662112DFE7B7D0699 /* Shared Face */,
+				5F4BAE3D558ADD594C858B797491A069 /* Shared Face */,
 				422517CC2CCD8BA01D7BFF00281AC1AE /* Sources */,
 				D7EAB830ADB080565079D675927CAB27 /* Stubs.swift */,
 				473438AC081F0FB10BFE59C18E489837 /* Tests */,
@@ -135,12 +137,13 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		C33EC92F9F07349662112DFE7B7D0699 /* Shared Face */ = {
+		5F4BAE3D558ADD594C858B797491A069 /* Shared Face */ = {
 			isa = PBXGroup;
 			children = (
-				4E469B04179CAC82D1BCD52C6B09CA97 /* CatFaceAppearance.swift */,
-				F34B5DD54530BFA2501CBFD1AC359823 /* CatFaceShapes.swift */,
-				85C1BD46BE0D44D3CB0E7FDF8537DD94 /* CatFaceView.swift */,
+				EB58C5D9B26185E7F1376ECBFD822680 /* CatFaceAppearance.swift */,
+				E33B16B5D7E3B517F8C8E7007D13C6A5 /* CatFaceRenderer.swift */,
+				FD8A0CE78EAA5E40E53DB0BFCF199B64 /* CatFaceShapes.swift */,
+				77CEFE29BCEB2262B1A56E978FFB872A /* CatFaceView.swift */,
 			);
 			name = "Shared Face";
 			path = ../../CatRobot/Conversation/UI;
@@ -160,20 +163,20 @@
 			buildRules = (
 			);
 			dependencies = (
-				BF82EAF281B2C19B4C53FE6C243BEA4D /* PBXTargetDependency */,
+				CA957C12AAF62378C1ACC9979942BFB0 /* PBXTargetDependency */,
 			);
 			name = FaceSizeTunerTests;
 			productName = FaceSizeTunerTests;
 			productReference = A7885B22F2057B3062486A7A5B8E2C70 /* FaceSizeTunerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		A5026BF0D35798BE4077AE9A52E0AB16 /* FaceSizeTuner */ = {
+		D112FE6261A4BCB5750E104DF6480C1A /* FaceSizeTuner */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 027C159470B65441BE7756C9EC29DEB6 /* Build configuration list for PBXNativeTarget "FaceSizeTuner" */;
+			buildConfigurationList = 2A82157DBF144C98237FFA23C7C71CE1 /* Build configuration list for PBXNativeTarget "FaceSizeTuner" */;
 			buildPhases = (
-				C52AD0E9B1C5E67EB70486C918CE77D5 /* Sources */,
-				DB243BF8BF689CE5FF74275FBFD0AF9E /* Frameworks */,
-				929ED7DF2EEA9BC461977854460F59FF /* Resources */,
+				94E6107871591ABE1B312D2853A6D56D /* Sources */,
+				720F8ED55AA364ED98FAA7F6782CF046 /* Frameworks */,
+				F0F17695E2E4B01918DF2E252F38D485 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -209,25 +212,25 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A5026BF0D35798BE4077AE9A52E0AB16 /* FaceSizeTuner */,
+				D112FE6261A4BCB5750E104DF6480C1A /* FaceSizeTuner */,
 				2A3F9CCDA006CD4276304FEAAA3D7121 /* FaceSizeTunerTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		929ED7DF2EEA9BC461977854460F59FF /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				43EF33C06CE50B8E2DE249422CE32524 /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		DF64DD27FBBB00B4C1D90B3BF809B2F8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0F17695E2E4B01918DF2E252F38D485 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				99757AEC2FF9AEBDE036E19F1DBF2BBE /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -243,29 +246,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		C52AD0E9B1C5E67EB70486C918CE77D5 /* Sources */ = {
+		94E6107871591ABE1B312D2853A6D56D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D419A37E66C6D2B11C4E096A862D9643 /* CatFaceAppearance.swift in Sources */,
-				5EA4282B0E78225BCC48698CDFBC1192 /* CatFaceShapes.swift in Sources */,
-				894F5CA42F6B5C58A1511A334928AE36 /* CatFaceView.swift in Sources */,
-				34831167122AFC9999F404E72E4BEC9B /* FaceSizePreview.swift in Sources */,
-				ACEB9F036446ED1FF2A743D0B8B4EBE3 /* FaceSizeTunerApp.swift in Sources */,
-				28FE14D44616825EFE9A6EFC3343D9EA /* FaceSizeTunerView.swift in Sources */,
-				9302419DB0412BDD5128AB38DAB5DE9E /* FaceSizeTuningModel.swift in Sources */,
-				7B5BA10B25425365191E8E65B6C64A5F /* Stubs.swift in Sources */,
+				4F3D768B5946B566C1BAEB6B95F73F19 /* CatFaceAppearance.swift in Sources */,
+				AF355FD0D8ACF0763D49648056290DB4 /* CatFaceRenderer.swift in Sources */,
+				30C9C0A1BA2076DF86B98FD3BFC04DBD /* CatFaceShapes.swift in Sources */,
+				60CD4ABAA391A4B7DD490C86130710FA /* CatFaceView.swift in Sources */,
+				200273B640FFA8208F27FAD7536498C2 /* FaceSizePreview.swift in Sources */,
+				E6B0BC4742114EDBEB84EAE774AB2C79 /* FaceSizeTunerApp.swift in Sources */,
+				EFC32D463F2B3BA70FE521300F2D2491 /* FaceSizeTunerView.swift in Sources */,
+				E60E8B293248AAA574E6E7748F9124E5 /* FaceSizeTuningModel.swift in Sources */,
+				6634746135E33828810748A297C90A89 /* Stubs.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		BF82EAF281B2C19B4C53FE6C243BEA4D /* PBXTargetDependency */ = {
+		CA957C12AAF62378C1ACC9979942BFB0 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = FaceSizeTuner;
-			target = A5026BF0D35798BE4077AE9A52E0AB16 /* FaceSizeTuner */;
-			targetProxy = AA3C21B8096E155A6B19323A277351EE /* PBXContainerItemProxy */;
+			target = D112FE6261A4BCB5750E104DF6480C1A /* FaceSizeTuner */;
+			targetProxy = 97F07E83B4DA1F9670F68116011E4725 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -297,36 +301,6 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FaceSizeTuner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FaceSizeTuner";
 			};
 			name = Debug;
-		};
-		6C7F458B926D7C4464755C386EBA4726 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CATROBOT_SOURCE_REVISION = unversioned;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VUB4VP6453;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Resources/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatFaceSizeTuner;
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
 		};
 		721FB967E75C19E96A0E55F840D62A39 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -389,36 +363,6 @@
 			};
 			name = Debug;
 		};
-		8A9339BBB834D4489F1B3D422AE761EC /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CATROBOT_SOURCE_REVISION = unversioned;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VUB4VP6453;
-				ENABLE_TESTABILITY = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Resources/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatFaceSizeTuner;
-				SDKROOT = iphoneos;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
 		A6599644631027F15CA6C3CE9FFF72CE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -473,6 +417,36 @@
 			};
 			name = Release;
 		};
+		AC745D88F7C2497E5DB1FA889826F2B4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CATROBOT_SOURCE_REVISION = unversioned;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatFaceSizeTuner;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
 		BC7682B34773CDBEBBAAC0853C41A900 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -502,14 +476,44 @@
 			};
 			name = Release;
 		};
+		F40352AA404E3A548F8AF234E2EE3D78 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CATROBOT_SOURCE_REVISION = unversioned;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = VUB4VP6453;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kamby.CatFaceSizeTuner;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		027C159470B65441BE7756C9EC29DEB6 /* Build configuration list for PBXNativeTarget "FaceSizeTuner" */ = {
+		2A82157DBF144C98237FFA23C7C71CE1 /* Build configuration list for PBXNativeTarget "FaceSizeTuner" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				8A9339BBB834D4489F1B3D422AE761EC /* Debug */,
-				6C7F458B926D7C4464755C386EBA4726 /* Release */,
+				AC745D88F7C2497E5DB1FA889826F2B4 /* Debug */,
+				F40352AA404E3A548F8AF234E2EE3D78 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

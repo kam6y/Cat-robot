@@ -3,6 +3,73 @@ import XCTest
 
 @MainActor
 final class FaceTrackingMotionTests: XCTestCase {
+    func testYawnResumesAnInterruptedReturnToCenter() async {
+        let h = makeHarness()
+        h.motion.setIdleFaceDriven(true)
+        h.motion.setConversationPhase(.listening)
+        h.motion.setTrackingState(.returnToCenter)
+        await h.drain()
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: 0, pitchDeci: 0, speed: 10))
+        h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 150, pitch: 20))
+        await h.drain()
+        h.motion.requestYawnMotion(pitch: -10)
+        await h.advanceFresh(by: 3.3)
+        XCTAssertTrue(h.sentCommands.contains(.move(yawDeci: 150, pitchDeci: -100, speed: 10)))
+        XCTAssertEqual(h.sentCommands.last, .move(yawDeci: 0, pitchDeci: 0, speed: 10),
+                       "Replacing an already-issued return must allow a new return after the yawn")
+    }
+
+    func testFaceLossDuringYawnDoesNotCutItShortOrReplayAnExpiredTarget() async {
+        for loseFace in [false, true] {
+            let h = makeHarness()
+            h.motion.setIdleFaceDriven(true)
+            h.motion.setConversationPhase(.listening)
+            follow(h, yaw: 20, lifetime: 0.5)
+            await h.drain()
+            h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 150, pitch: 20))
+            await h.drain()
+            let before = h.sentCommands.count
+            h.motion.requestYawnMotion(pitch: -10)
+            await h.advanceFresh(by: 0.3)
+            if loseFace { h.motion.setTrackingState(.holding) }
+            await h.advanceFresh(by: 3)
+            let moves = Array(h.sentCommands.dropFirst(before))
+            XCTAssertTrue(moves.contains(.move(yawDeci: 150, pitchDeci: -100, speed: 10)))
+            XCTAssertFalse(moves.contains { if case .move(_, _, 20) = $0 { true } else { false } },
+                           "A stale target must not be replayed after the yawn")
+            follow(h, yaw: -15)
+            await h.drain()
+            XCTAssertEqual(h.sentCommands.last, .move(yawDeci: -150, pitchDeci: 0, speed: 20))
+        }
+    }
+
+    func testCancellingYawnInvalidatesQueuedSamplesAndAllowsFreshTracking() async {
+        let h = makeHarness()
+        h.motion.setIdleFaceDriven(true)
+        h.motion.setConversationPhase(.listening)
+        follow(h, yaw: 20)
+        await h.drain()
+        h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: 100))
+        await h.drain()
+        h.motion.requestYawnMotion(pitch: -10)
+        await h.advanceFresh(by: 0.2)
+        h.link.writable = false
+        await h.advanceFresh(by: 0.1)
+        XCTAssertTrue(h.link.queuedCommands.contains { if case .move(_, _, 10) = $0 { true } else { false } })
+        follow(h, yaw: -20)
+        h.motion.cancelIdleFaceMotion()
+        let before = h.sentCommands.count
+        h.link.writable = true
+        h.link.flush()
+        await h.drain()
+        // The hold command finishes the owned move; tracking waits for that STATUS.
+        h.link.emitStatus(robotStatus(state: .active, flags: [.link, .torque], yaw: 100))
+        await h.advanceFresh(by: 0.3)
+        let moves = Array(h.sentCommands.dropFirst(before))
+        XCTAssertFalse(moves.contains(.move(yawDeci: 100, pitchDeci: -100, speed: 10)))
+        XCTAssertEqual(moves.last, .move(yawDeci: -200, pitchDeci: 0, speed: 20))
+    }
+
     func testFaceAcquisitionPreemptsIdleIncludingItsQueuedNextSample() async {
         for backpressure in [false, true] {
             let h = makeHarness()

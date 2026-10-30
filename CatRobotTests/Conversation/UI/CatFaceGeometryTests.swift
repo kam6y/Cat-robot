@@ -11,6 +11,35 @@ final class CatFaceGeometryTests: XCTestCase {
         XCTAssertEqual(CatFaceGeometry.aspectRatio, 16.0 / 9.0, accuracy: 0.0001)
     }
 
+    func testBlinkMaskIsContinuousAtOpenAndClosedExpressionBoundaries() {
+        let rect = CGRect(x: 0, y: 0, width: 640, height: 360)
+        // Changing expression during a blink must not switch mask shapes abruptly.
+        for boundary: CGFloat in [0, 1] {
+            for blink: CGFloat in [0.25, 0.5, 0.75, 1] {
+                var exact = CatFaceAppearance.neutral
+                exact.leftEye.lid = boundary
+                exact.leftEye.blink = blink
+                var adjacent = exact
+                adjacent.leftEye.lid = boundary == 0 ? 0.000001 : 0.999999
+                let a = CatFaceGeometry.eye(side: .left, appearance: exact)
+                let b = CatFaceGeometry.eye(side: .left, appearance: adjacent)
+                let outline = a.outline.path(in: rect)
+                let maskA = a.lid.path(in: rect), maskB = b.lid.path(in: rect)
+                var changedSamples = 0
+                for y in stride(from: 0.5, to: 360.0, by: 2) {
+                    for x in stride(from: 0.5, to: 320.0, by: 2) {
+                        let point = CGPoint(x: x, y: y)
+                        if outline.contains(point), maskA.contains(point) != maskB.contains(point) {
+                            changedSamples += 1
+                        }
+                    }
+                }
+                XCTAssertLessThanOrEqual(changedSamples, 2,
+                    "lid \(boundary), blink \(blink): infinitesimal expression change jumps the eye mask")
+            }
+        }
+    }
+
     func testEveryPresetFitsNormalizedCanvas() {
         for expression in FaceExpression.allCases {
             for pose in CatFaceGeometry.mouthPoses {
@@ -177,21 +206,145 @@ final class CatFaceGeometryTests: XCTestCase {
     /// 引数の順で結果が変わったため。macOS 26 で確認）。
     func testFeaturesDoNotIntersect() {
         let rect = CGRect(x: 0, y: 0, width: 1600, height: 900)
-        for expression in FaceExpression.allCases {
+        let appearances: [(String, CatFaceAppearance)] = FaceExpression.allCases.map { ("\($0)", .preset($0)) } + [("yawning", .yawning)]
+        for (label, appearance) in appearances {
             for pose in CatFaceGeometry.mouthPoses {
                 for lineScale in [1.0, 1.35] {
-                    let parts = CatFaceGeometry.featurePaths(for: .preset(expression), mouthPose: pose,
-                                                             lineScale: lineScale, in: rect)
+                    let parts = CatFaceGeometry.featurePaths(for: appearance, mouthPose: pose, lineScale: lineScale, in: rect)
                     for (index, first) in parts.enumerated() {
                         for second in parts.dropFirst(index + 1) where mustStaySeparate(first.kind, second.kind) {
                             XCTAssertTrue(first.path.cgPath.intersection(second.path.cgPath).isEmpty,
-                                          "\(expression) \(pose) x\(lineScale): \(first.name) intersects \(second.name)")
+                                          "\(label) \(pose) x\(lineScale): \(first.name) intersects \(second.name)")
                         }
                     }
                 }
             }
         }
     }
+
+    // MARK: あくび（docs/design/idle-cat-life-2026-10-30/yawn-reference.png の実測。scripts/face-render の check と同じ判定）
+
+    /// 既存の 9 表情は yawn 0・片目のまばたき 0 のままで、あくびの部品を持たない。
+    func testPresetsIgnoreYawnAndPerEyeBlink() {
+        let rect = CGRect(x: 0, y: 0, width: 1600, height: 900)
+        for expression in FaceExpression.allCases {
+            let appearance = CatFaceAppearance.preset(expression)
+            XCTAssertEqual(appearance.yawn, 0, "\(expression)")
+            for side in CatFaceSide.allCases {
+                XCTAssertEqual(appearance.eye(side).blink, 0, "\(expression) \(side)")
+            }
+            for pose in CatFaceGeometry.mouthPoses {
+                let names = CatFaceGeometry.featurePaths(for: appearance, mouthPose: pose, in: rect).map(\.name)
+                XCTAssertFalse(names.contains { $0.contains("yawn") }, "\(expression) \(pose): \(names)")
+            }
+        }
+    }
+
+    /// あくびの峰は両目を閉じ、まぶたの上に ∩ の金色の弧を見せる: 頂点は目の中心より上、鼻側の先端だけ中心の少し下、
+    /// 横幅は目の横半径の約 1.62 倍（0.202）、頂点の縦の厚さ 0.042（キャンバス高さ単位）、両端は尖る。左右対称。
+    func testYawningShutsEyesUnderInvertedGoldArc() {
+        let rect = CGRect(x: 0, y: 0, width: 1600, height: 900)
+        let yawning = CatFaceAppearance.yawning
+        XCTAssertEqual(yawning.yawn, 1)
+        XCTAssertEqual(CatFaceGeometry.unmirroredShapeNames(for: yawning), [])
+        for point in CatFaceGeometry.drawingPoints(for: yawning, mouthPose: .closed) {
+            XCTAssertTrue((0...1).contains(point.x) && (0...1).contains(point.y), "yawning: \(point) is outside the canvas")
+        }
+        for side in CatFaceSide.allCases {
+            let eye = CatFaceGeometry.eye(side: side, appearance: yawning)
+            XCTAssertEqual(yawning.eye(side).closed, 1, "\(side)")
+            XCTAssertEqual(yawning.eye(side).lid, 1, "\(side)")
+            XCTAssertTrue(eye.outline.path(in: rect).cgPath.subtracting(eye.lid.path(in: rect).cgPath).isEmpty,
+                          "\(side): lid does not cover the eye")
+            let arc = eye.closedLid.bounds
+            let frame = eye.outline.bounds
+            XCTAssertGreaterThan(arc.minY, frame.minY, "\(side): arc starts above the eye")
+            XCTAssertLessThan(arc.maxY, frame.midY + 0.03, "\(side): arc goes below the eye center")
+            XCTAssertEqual(arc.width, 0.202, accuracy: 0.01, "\(side): arc span")
+            let path = eye.closedLid.path(in: rect).cgPath
+            XCTAssertEqual(closedLidThickness(path, atFraction: side == .left ? 0.352 : 0.648, in: rect), 0.042, accuracy: 0.004,
+                           "\(side): arc thickness at the apex")
+            for fraction in [0.0, 1.0] {
+                XCTAssertLessThanOrEqual(closedLidThickness(path, atFraction: fraction, in: rect), 0.004,
+                                         "\(side): arc tip at \(fraction) is not pointed")
+            }
+        }
+    }
+
+    /// あくびの峰の口は参考どおり大きく開き（線幅込みで約 0.249×0.40）、上端は上がった鼻の下端（0.5154、高さ 0.084）に接し、
+    /// 口の中に舌（上端 0.7024）と左右対称の 2 本の牙（先端 0.628）が収まる。
+    func testYawningOpensBigMouthWithTongueAndFangsUnderRaisedNose() throws {
+        let rect = CGRect(x: 0, y: 0, width: 1600, height: 900)
+        let yawning = CatFaceAppearance.yawning
+        let parts = CatFaceGeometry.featurePaths(for: yawning, mouthPose: .closed, in: rect)
+        func normalized(_ bounds: CGRect) -> CGRect {
+            CGRect(x: bounds.minX / rect.width, y: bounds.minY / rect.height,
+                   width: bounds.width / rect.width, height: bounds.height / rect.height)
+        }
+        let mouth = CatFaceGeometry.mouthBounds(for: yawning, mouthPose: .closed)
+        XCTAssertEqual(mouth.height, 0.40, accuracy: 0.02)
+        XCTAssertEqual(mouth.width, 0.249, accuracy: 0.012)
+        XCTAssertLessThan(mouth.maxY, 1)
+        let nose = normalized(try XCTUnwrap(parts.first { $0.kind == .nose }).path.boundingRect)
+        XCTAssertEqual(nose.maxY, 0.5154, accuracy: 0.006)
+        XCTAssertEqual(nose.height, 0.084, accuracy: 0.006)
+        XCTAssertEqual(mouth.minY, nose.maxY, accuracy: 0.012, "mouth top does not meet the nose bottom")
+        // 唇の尖りは参考どおり鼻の下端より少し上（0.5112）まで届き、舌・牙・下端は動かない。
+        XCTAssertEqual(mouth.minY, 0.5112, accuracy: 0.003, "mouth top")
+        let tongue = normalized(try XCTUnwrap(parts.first { $0.name == "yawn tongue" }).path.boundingRect)
+        XCTAssertEqual(tongue.minY, 0.7024, accuracy: 0.003)
+        XCTAssertTrue(mouth.insetBy(dx: 0.005, dy: 0.005).contains(tongue), "tongue \(tongue) is not inside the mouth \(mouth)")
+        let fangs = parts.filter { $0.name.hasSuffix("yawn fang") }.map { normalized($0.path.boundingRect) }
+        XCTAssertEqual(fangs.count, 2)
+        for fang in fangs {
+            XCTAssertEqual(fang.maxY, 0.628, accuracy: 0.003, "fang tip")
+            XCTAssertGreaterThan(fang.minY, nose.maxY, "fang \(fang) reaches the nose")
+            XCTAssertTrue(mouth.contains(fang), "fang \(fang) is not inside the mouth \(mouth)")
+        }
+        if fangs.count == 2 {
+            XCTAssertEqual(fangs[0].minX, 1 - fangs[1].maxX, accuracy: 0.001, "fangs are not mirrored")
+            XCTAssertEqual(fangs[0].minY, fangs[1].minY, accuracy: 0.001, "fangs are not mirrored")
+        }
+    }
+
+    /// あくびの峰のひげは参考 yawn-reference.png の 3 本の外接（端の白っぽい画素も含めて測る。左右は 0.001 以内で一致する
+    /// ので平均。右は鏡映）に収まる（鼻と一緒に上がり、長さは通常とほぼ同じ）。
+    func testYawningWhiskersMatchTheReference() {
+        let yawning = CatFaceAppearance.yawning
+        let sleepy = CatFaceAppearance.preset(.sleepy)
+        let referenceWhiskers = [
+            CGRect(x: 0.0437, y: 0.4942, width: 0.2476 - 0.0437, height: 0.5446 - 0.4942),
+            CGRect(x: 0.0634, y: 0.5505, width: 0.2647 - 0.0634, height: 0.6530 - 0.5505),
+            CGRect(x: 0.1083, y: 0.5946, width: 0.2644 - 0.1083, height: 0.7295 - 0.5946),
+        ]
+        for side in CatFaceSide.allCases {
+            let bounds = CatFaceGeometry.whiskers(side: side, appearance: yawning).map(\.bounds)
+            XCTAssertEqual(bounds.count, 3, "\(side)")
+            for (index, (actual, reference)) in zip(bounds, referenceWhiskers).enumerated() {
+                let expected = side == .left ? reference
+                    : CGRect(x: 1 - reference.maxX, y: reference.minY, width: reference.width, height: reference.height)
+                XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.005, "\(side) whisker \(index + 1)")
+                XCTAssertEqual(actual.maxX, expected.maxX, accuracy: 0.005, "\(side) whisker \(index + 1)")
+                XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.005, "\(side) whisker \(index + 1)")
+                XCTAssertEqual(actual.maxY, expected.maxY, accuracy: 0.005, "\(side) whisker \(index + 1)")
+            }
+            XCTAssertNotEqual(CatFaceGeometry.whiskers(side: side, appearance: sleepy).map(\.bounds), bounds, "\(side)")
+        }
+    }
+
+    /// yawn を 0 から 1 へ上げると口が鼻の下から育つ（補間の途中で口が縮んだり消えたりしない）。
+    func testYawnGrowsTheMouthFromTheNose() {
+        var heights: [CGFloat] = []
+        for amount in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            var partial = CatFaceAppearance.yawning
+            partial.yawn = amount
+            heights.append(CatFaceGeometry.mouthBounds(for: partial, mouthPose: .closed).height)
+        }
+        for (smaller, larger) in zip(heights, heights.dropFirst()) {
+            XCTAssertLessThan(smaller, larger, "\(heights)")
+        }
+    }
+
 
     /// 閉じた目の弧の縦の厚さ（キャンバス高さ単位）。fraction は弧の幅に対する x の位置（0 = 外側の先端、1 = 鼻側の先端）。
     /// scripts/face-render の check と同じ計り方。

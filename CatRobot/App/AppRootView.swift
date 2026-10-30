@@ -70,7 +70,8 @@ struct AppRootView: View {
                 ConversationView(
                     state: conversationState,
                     actions: coordinator.makeActions(openSettings: openSettings),
-                    isOpeningVoiceSettings: coordinator.isOpeningVoiceSettings
+                    isOpeningVoiceSettings: coordinator.isOpeningVoiceSettings,
+                    isFaceLifeVisible: !coordinator.showsVoiceSettings
                 )
             }
         }
@@ -111,6 +112,7 @@ struct AppRootView: View {
         state.heldExpression = faceExpressions.heldExpression
         state.isLooking = look.isLooking
         state.inactivity = coordinator.inactivity.state
+        state.activityGeneration = coordinator.inactivity.activityGeneration
         return state
     }
 

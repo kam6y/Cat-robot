@@ -1,0 +1,55 @@
+{
+  "verified-final-full": {
+    "result": "Passed",
+    "totalTestCount": 891,
+    "passedTests": 889,
+    "failedTests": 0,
+    "skippedTests": 2,
+    "startTime": 1793297375.88,
+    "finishTime": 1793297600.869
+  },
+  "verified-final-iphone": {
+    "result": "Passed",
+    "totalTestCount": 31,
+    "passedTests": 31,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "startTime": 1793297297.608,
+    "finishTime": 1793297373.738
+  },
+  "verified-final-ui": {
+    "result": "Passed",
+    "totalTestCount": 3,
+    "passedTests": 3,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "startTime": 1793297295.773,
+    "finishTime": 1793297371.326
+  },
+  "yawn-visibility-validation": {
+    "result": "Passed",
+    "totalTestCount": 12,
+    "passedTests": 12,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "startTime": 1793297113.469,
+    "finishTime": 1793297160.13
+  },
+  "lifecycle-face-cue-green": {
+    "result": "Passed",
+    "totalTestCount": 17,
+    "passedTests": 17,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "startTime": 1793295671.108,
+    "finishTime": 1793295723.759
+  },
+  "otherChecks": {
+    "projectGeneration": "PASS",
+    "faceRenderHarness": "PASS",
+    "faceSizeTunerIOSSimulatorBuild": "PASS",
+    "gitDiffCheck": "PASS",
+    "physicalNormalLaunch": "PASS",
+    "sourceFilesUnchanged": 253
+  }
+}

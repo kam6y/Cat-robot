@@ -3,6 +3,45 @@ import XCTest
 
 final class ConversationViewStateTests: XCTestCase {
 
+    func testIdleFaceLifeIncludesQuietListeningAndPausedButStopsForInteraction() {
+        for phase in [ConversationPhase.idle, .listening, .paused] {
+            var state = ConversationViewState.idle
+            state.phase = phase
+            XCTAssertTrue(state.allowsIdleFaceLife)
+            state.inactivity = .sleepy
+            XCTAssertTrue(state.allowsIdleFaceLife)
+            state.provisionalTranscript = "ねこ"
+            XCTAssertFalse(state.allowsIdleFaceLife)
+        }
+        for phase in [ConversationPhase.preparing, .classifying, .thinking, .speaking, .clarifying, .failed(.modelBusy)] {
+            var state = ConversationViewState.idle
+            state.phase = phase
+            XCTAssertFalse(state.allowsIdleFaceLife)
+        }
+    }
+
+    func testIdleFaceLifeDoesNotCoverLookHeldExpressionInputOrBlockingUI() {
+        var state = ConversationViewState.listening
+        state.isLooking = true
+        XCTAssertFalse(state.allowsIdleFaceLife)
+        state.isLooking = false
+        state.heldExpression = .neutral
+        XCTAssertFalse(state.allowsIdleFaceLife, "Even a held neutral expression belongs to the reply")
+        state.heldExpression = nil
+        state.showsTypedInput = true
+        XCTAssertFalse(state.allowsIdleFaceLife)
+        state.showsTypedInput = false
+        state.memoryState = .forgetting
+        XCTAssertFalse(state.allowsIdleFaceLife)
+        state.memoryState = .ready
+        state.errorMessage = "待機中のエラー"
+        XCTAssertFalse(state.allowsIdleFaceLife)
+        state.errorMessage = nil
+        state.inactivity = .sleeping
+        XCTAssertFalse(state.allowsIdleFaceLife)
+    }
+
+
     func testOnlyListeningShowsAMicrophoneChipDuringOrdinaryConversation() {
         for phase in [ConversationPhase.idle, .preparing, .listening, .thinking, .speaking, .clarifying, .paused] {
             var state = ConversationViewState.listening

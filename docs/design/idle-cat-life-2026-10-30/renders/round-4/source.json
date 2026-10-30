@@ -1,0 +1,18 @@
+{
+  "reference": "../../yawn-reference.png",
+  "referenceSHA256": "6c6feb3aaf56397aefc88e3d7b6194507347d298d8e5945cc0ece994450bc138",
+  "sourceFiles": {
+    "CatRobot/Conversation/UI/CatFaceAppearance.swift": "28453a70765ab7c9652722b396e11bfdafba30f1def6963955ae80e41a472fbb",
+    "CatRobot/Conversation/UI/CatFaceShapes.swift": "9b49686bf7d3f91bf904e44425de59400a45af96a1ace99dc5c84b549e68f699",
+    "CatRobot/Conversation/UI/CatFaceRenderer.swift": "b75731cbae91687531f9a70d5e554596e5d2239a85ad7bba80797663547b0fb6",
+    "CatRobot/Conversation/UI/CatFaceView.swift": "00fe122e1f6a56d91a89256e7cb026a7c25331511bba509219e22ed24d0e5e8b"
+  },
+  "renderSHA256": {
+    "diff-yawning.png": "b8fa0ac25f09e9bd7a4d727651d5850f78cd0e97c4e1eb93b083a31dd7606783",
+    "canvas-yawn-from-neutral-50.png": "d3fcb0665b0e0cee7c5015f9d5de9bde3213c5f1a714f9c223e143dd58ab73a3",
+    "overlay-yawning.png": "116cde6732bd28cb99d8aafa4950db486eb214ba878fa9f3c40a626c1c92f2a8",
+    "compare.txt": "0eea42666618c3021d9ca7babcde7a88fa1aeb117dff360d173fbad316d1eecb",
+    "compare-yawning.png": "a8b7bc622288b0515033223ab46960957190c03d23ee479d4406ae779b4197c8",
+    "canvas-yawning-closed.png": "bbb26a60a1ae9d7cbb803d8cdf19ce0c4b38c55839b0a5e8a88bcc49ab375bf6"
+  }
+}

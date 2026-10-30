@@ -2,7 +2,7 @@
 # 猫の顔の macOS レンダーハーネス: build → check → render を順に実行する。
 #   scripts/render_face.sh <round> [--overwrite]   例: scripts/render_face.sh 2
 #       レビューに渡した round は固定。既にある round へは --overwrite なしでは書かない。
-#       出力先 round-N/source.txt に製品 3 ファイルの識別子（git hash-object、差分の sha256 先頭 12 桁と基準のコミット、
+#       出力先 round-N/source.txt に製品 4 ファイルの識別子（git hash-object、差分の sha256 先頭 12 桁と基準のコミット、
 #       追跡の有無と git status）を残す。
 #   scripts/render_face.sh check               幾何条件の検査だけ（失敗なら終了コード 1）
 #   scripts/render_face.sh preview <dir> [scale]  試し描き（check の後、作業用の dir へ。round には書かない）
@@ -11,7 +11,9 @@
 #   scripts/render_face.sh measure --sleeping  sleeping の下書きと現在の描画を同じ計測にかける
 #   scripts/render_face.sh sleeping <round> [--overwrite]
 #       sleeping の round: docs/design/sleeping-2026-10-26/renders/round-N/ へ下書きとの比較画像・measure.txt・source.txt を出す。
-# Xcode プロジェクトには入れない（製品の顔の 3 ファイルを swiftc で直接含める）。
+#   scripts/render_face.sh yawn <dir>          あくび（CatFaceAppearance.yawning）の試し描き: 参考 yawn-reference.png との
+#       比較・重ね・差分画像と色分類の IoU を dir へ出す（check の後。round には書かない）。
+# Xcode プロジェクトには入れない（製品の顔の 4 ファイルを swiftc で直接含める）。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -21,6 +23,7 @@ mkdir -p "$build_dir"
 product_files=(
   CatRobot/Conversation/UI/CatFaceShapes.swift
   CatRobot/Conversation/UI/CatFaceAppearance.swift
+  CatRobot/Conversation/UI/CatFaceRenderer.swift
   CatRobot/Conversation/UI/CatFaceView.swift
 )
 
@@ -53,13 +56,19 @@ if [[ "${1:-}" == "measure" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "yawn" ]]; then
+  "$build_dir/face-render" check
+  "$build_dir/face-render" yawn "${@:2}"
+  exit 0
+fi
+
 write_source() {
   local source_file="$1"
   {
     for file in "${product_files[@]}"; do
       echo "$(git hash-object "$file")  $file"
     done
-    echo "$(git diff HEAD -- "${product_files[@]}" | shasum -a 256 | cut -c1-12)  git diff HEAD -- <3 files> | shasum -a 256 (first 12), base $(git rev-parse --short=8 HEAD)"
+    echo "$(git diff HEAD -- "${product_files[@]}" | shasum -a 256 | cut -c1-12)  git diff HEAD -- <4 files> | shasum -a 256 (first 12), base $(git rev-parse --short=8 HEAD)"
     for file in "${product_files[@]}"; do
       if git ls-files --error-unmatch "$file" > /dev/null 2>&1; then tracked="tracked"; else tracked="untracked"; fi
       state="$(git status --short -- "$file" | cut -c1-2 | tr ' ' '.')"
@@ -81,7 +90,7 @@ if [[ "${1:-}" == "sleeping" ]]; then
   exit 0
 fi
 
-round="${1:?usage: scripts/render_face.sh <round> [--overwrite] | sleeping <round> [--overwrite] | measure [--rendered | --sleeping]}"
+round="${1:?usage: scripts/render_face.sh <round> [--overwrite] | sleeping <round> [--overwrite] | measure [--rendered | --sleeping] | yawn <dir>}"
 "$build_dir/face-render" check
 "$build_dir/face-render" render --round "$round" "${@:2}"
 write_source "docs/design/face-expression-2026-10-26/renders/round-$round/source.txt"

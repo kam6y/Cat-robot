@@ -45,6 +45,21 @@ enum CatFaceGeometry {
     /// 丸い口（surprised）の上端。
     static let roundMouthTop: CGFloat = 0.722
 
+    // MARK: あくび（yawn）の配置
+    // 値は参考 docs/design/idle-cat-life-2026-10-30/yawn-reference.png（16:9 の全面がキャンバス）の実測
+    // （同じ場所の trace_yawn.py）。yawn の値で 0（通常）から 1（峰）へ線形に補間する。
+
+    /// 峰での鼻の移動量（キャンバス高さ単位、上が負。下端 0.7045 → 0.5154）と、下端を基準にした倍率（高さ 0.0882 → 0.0840、幅 0.0796 → 0.0754）。
+    static let yawnNoseShift: CGFloat = -0.1891
+    static let yawnNoseScale: CGFloat = 0.95
+    /// ω（または丸い口）からあくびの口へ透明度で切り替え終わる yawn の値。それまでに峰の口は約 1/3 の大きさに育つ。
+    static let yawnMouthBlendEnd: CGFloat = 0.35
+    /// 峰での口の輪郭の中心線を鼻に吊るす基準点の y（`yawnOutline` の座標。鼻の下端 0.5154 + 線幅の半分）。
+    static let yawnMouthAnchor: CGFloat = 0.5245
+    /// 上中央の尖りが基準点より上へ出る量。参考では唇が尖りで薄くなり、線の外縁が鼻の下端より上（0.5112）まで届くので、
+    /// 口全体は動かさず尖りの曲線だけをその分上げる（鼻を後から描くので、鼻の先が尖りに埋まって見える）。
+    static let yawnMouthCuspRise: CGFloat = 0.0042
+
     static func mouthOpening(for pose: MouthPose) -> CGFloat {
         switch pose {
         case .closed: 0
@@ -161,11 +176,12 @@ enum CatFaceGeometry {
         return EyeFrame(side: side, center: side.point(leftCenter), radii: radii)
     }
 
-    static func eye(side: CatFaceSide, appearance: CatFaceAppearance, blink: CGFloat = 0) -> EyeGeometry {
+    static func eye(side: CatFaceSide, appearance: CatFaceAppearance) -> EyeGeometry {
         let eye = appearance.eye(side)
         let frame = eyeFrame(side: side, eye: eye)
         let pupilCenter = frame.point(eye.pupilCenter.x, eye.pupilCenter.y)
-        let lidAmount = min(1, eye.lid + (1 - eye.lid) * blink)
+        // まばたきは静止のまぶたの残りを閉じる（足して 1 を超えないように）。
+        let lidAmount = min(1, eye.lid + (1 - eye.lid) * eye.blink)
         // ハイライト群（大きな白丸・小白点・四つ星）は静止のまぶたの線より下へ下げ、両目に白丸を残す。
         // まばたきの量は使わない（まばたき中にハイライトが動かないように）。
         let highlightCenter = frame.screenPoint(from: pupilCenter, offset: eye.highlightOffset)
@@ -187,8 +203,10 @@ enum CatFaceGeometry {
             sparkle: sparkle(frame: frame,
                              center: lowered(frame.screenPoint(from: pupilCenter, offset: eye.sparkleOffset)),
                              size: eye.sparkleSize),
-            lid: lid(frame: frame, amount: lidAmount, tilt: eye.lidTilt),
-            closedLid: closedLid(frame: frame),
+            lid: eye.lid > 0 && eye.lid < 1 && eye.blink > 0
+                ? blinkingLids(frame: frame, restingAmount: eye.lid, tilt: eye.lidTilt, progress: min(1, eye.blink))
+                : lid(frame: frame, amount: lidAmount, tilt: eye.lidTilt),
+            closedLid: closedLid(frame: frame, yawn: appearance.yawn),
             capGradientStart: frame.point(-0.60, 0),
             capGradientEnd: frame.point(0.70, 0)
         )
@@ -316,20 +334,93 @@ enum CatFaceGeometry {
         ])
     }
 
+    /// 半目からの瞬きは、上下のまぶたを閉眼の弧へ寄せる。
+    /// 上まぶただけを目の下まで通過させると、閉眼の弧が出る前に虹彩が消えてしまう。
+    /// 開始時は既存の半目と同じ曲線、終了時は closedLid と同じ上下の縁になる。
+    private static func blinkingLids(frame: EyeFrame, restingAmount: CGFloat, tilt: CGFloat,
+                                     progress: CGFloat) -> NormalizedPath {
+        // Split the resting cubic at its midpoint so both poses have two cubics.
+        func splitEdge(amount: CGFloat) -> [LidPoint] {
+            let edge = lidEdge(amount: amount, tilt: tilt)
+            let a = mix(edge[0], edge[1], 0.5), b = mix(edge[1], edge[2], 0.5)
+            let c = mix(edge[2], edge[3], 0.5)
+            let d = mix(a, b, 0.5), e = mix(b, c, 0.5)
+            return [edge[0], a, d, mix(d, e, 0.5), e, c, edge[3]]
+        }
+        let upperStart = splitEdge(amount: restingAmount)
+        let ordinaryUpper = splitEdge(amount: restingAmount + (1 - restingAmount) * progress)
+        // Fade the correction out at open/closed presets, including interrupted blinks.
+        let sleepyAmount = CatFaceAppearance.sleepy.leftEye.lid
+        let weight = min(restingAmount / sleepyAmount, (1 - restingAmount) / (1 - sleepyAmount))
+        let strength = weight * weight * (3 - 2 * weight)
+        let arc = sleepingLidArc
+        let upperEnd = [arc[6], arc[5], arc[4], arc[3], arc[2], arc[1], arc[0]]
+        let lowerEnd = [arc[6], arc[7], arc[8], arc[9], arc[10], arc[11], arc[0]]
+        let lowerStart = upperStart.map { (u: $0.u, v: CGFloat(1.3)) }
+        func mask(from start: [LidPoint], to end: [LidPoint], ordinary: [LidPoint], outside: CGFloat) -> NormalizedPath {
+            let closing = zip(start, end).map { mix($0, $1, progress) }
+            var p = zip(ordinary, closing).map { mix($0, $1, strength) }
+            // Use the same winding so overlapping masks stay opaque during transitions.
+            let direction: CGFloat = outside < 0 ? 1 : -1
+            if direction < 0 { p.reverse() }
+            return frame.path([
+                .move(-1.3 * direction, outside), .line(1.3 * direction, outside), .line(1.3 * direction, p[0].v),
+                .line(p[0].u, p[0].v),
+                .curve(p[1].u, p[1].v, p[2].u, p[2].v, p[3].u, p[3].v),
+                .curve(p[4].u, p[4].v, p[5].u, p[5].v, p[6].u, p[6].v),
+                .line(-1.3 * direction, p[6].v), .close
+            ])
+        }
+        let upper = mask(from: upperStart, to: upperEnd, ordinary: ordinaryUpper, outside: -1.3)
+        let lower = mask(from: lowerStart, to: lowerEnd, ordinary: lowerStart, outside: 1.3)
+        return NormalizedPath(upper.commands + lower.commands)
+    }
+
     /// まぶたの縁の 3 次ベジェ（目の局所座標、鼻側 u = 1.3 → 耳側 u = -1.3）。
-    private static func lidEdge(amount: CGFloat, tilt: CGFloat) -> [(u: CGFloat, v: CGFloat)] {
+    private static func lidEdge(amount: CGFloat, tilt: CGFloat) -> [LidPoint] {
         let edge = -1.25 + 2.5 * amount
         let bulge: CGFloat = 0.16
         return [(1.3, edge - tilt), (0.45, edge + bulge - tilt * 0.35),
                 (-0.45, edge + bulge + tilt * 0.35), (-1.3, edge + tilt)]
     }
 
-    /// 閉じた目（sleeping）の金色の弧。目の枠の下半分に、外形と同じ横幅で置く。上縁と下縁を別の 3 次ベジェで描き、
-    /// 両端は同じ点に集めて尖らせる（中央で太さ約 0.031、|u| 0.9 で約 0.06×縦半径、先端で 0）。各縁は中央で水平に接する
-    /// 左右対称の 2 本の 3 次ベジェ。値は下書き sleeping-draft.png の両目の弧を列ごとに実測して当てはめたもの
+    /// 閉じた目の金色の弧。上縁と下縁を別の 3 次ベジェで描き、両端は同じ点に集めて尖らせる。yawn 0 は sleeping の ∪、
+    /// 1 はあくびの ∩ で、間は 12 の点（先端・制御点・中央）を線形に補間する（0.5 付近はほぼ平らな線になる）。
+    private static func closedLid(frame: EyeFrame, yawn: CGFloat) -> NormalizedPath {
+        let t = min(max(yawn, 0), 1)
+        let p = zip(sleepingLidArc, yawningLidArc).map { mix($0, $1, t) }
+        return frame.path([
+            .move(p[0].u, p[0].v),
+            .curve(p[1].u, p[1].v, p[2].u, p[2].v, p[3].u, p[3].v),
+            .curve(p[4].u, p[4].v, p[5].u, p[5].v, p[6].u, p[6].v),
+            .curve(p[7].u, p[7].v, p[8].u, p[8].v, p[9].u, p[9].v),
+            .curve(p[10].u, p[10].v, p[11].u, p[11].v, p[0].u, p[0].v),
+            .close,
+        ])
+    }
+
+    /// まばたき・まぶたが閉じきる直前（closedArcStart を超えてから）に閉じた目の金色の弧を出し始める量（1 で不透明）。
+    /// 描画の弧の透明度（CatFaceRenderer）と、あくび中に目を閉じる CatFaceAppearance.eye(_:) が同じ坂を使う。
+    static let closedArcStart: CGFloat = 0.9
+    static func closedArcVisibility(_ closure: CGFloat) -> CGFloat {
+        min(1, max(0, (closure - closedArcStart) / (1 - closedArcStart)))
+    }
+
+    /// まぶたの縁・閉じた目の弧の点（目の局所座標）と、その線形補間。
+    private typealias LidPoint = (u: CGFloat, v: CGFloat)
+    private static func mix(_ a: LidPoint, _ b: LidPoint, _ t: CGFloat) -> LidPoint {
+        (a.u + (b.u - a.u) * t, a.v + (b.v - a.v) * t)
+    }
+
+    /// 閉じた目の弧の点列（目の局所座標、描く順）: 耳側の先端、上縁の制御点 2 つ、上縁の中央、制御点 2 つ、鼻側の先端、
+    /// 下縁の制御点 2 つ、下縁の中央、制御点 2 つ（最後は耳側の先端へ戻る）。
+    private typealias LidArc = [LidPoint]
+
+    /// sleeping の ∪: 目の枠の下半分に、外形と同じ横幅で置く（中央で太さ約 0.031、|u| 0.9 で約 0.06×縦半径、先端で 0）。
+    /// 各縁は中央で水平に接する左右対称の 2 本。値は下書き sleeping-draft.png の両目の弧を列ごとに実測して当てはめたもの
     /// （docs/design/sleeping-2026-10-26/visual-comparison.md。当てはめの残差は rms 0.3px、描画と下書きの縁の差は
     /// 先端の 1 列を除いて 1280×720 で 1px 以下）。
-    private static func closedLid(frame: EyeFrame) -> NormalizedPath {
+    private static let sleepingLidArc: LidArc = {
         let centerU: CGFloat = 0.017
         let tip = (u: CGFloat(0.988), v: CGFloat(0.265))
         // 各縁: 先端側の制御点（先端からの u・v のずれ）、中央側の制御点の u のずれ、中央の v。
@@ -337,23 +428,25 @@ enum CatFaceGeometry {
         let lower = (tipHandle: (u: CGFloat(0.144), v: CGFloat(0.180)), centerHandle: CGFloat(0.502), v: CGFloat(0.714))
         let ear = centerU - tip.u
         let nose = centerU + tip.u
-        return frame.path([
-            .move(ear, tip.v),
-            .curve(ear + upper.tipHandle.u, tip.v + upper.tipHandle.v,
-                   centerU - upper.centerHandle, upper.v,
-                   centerU, upper.v),
-            .curve(centerU + upper.centerHandle, upper.v,
-                   nose - upper.tipHandle.u, tip.v + upper.tipHandle.v,
-                   nose, tip.v),
-            .curve(nose - lower.tipHandle.u, tip.v + lower.tipHandle.v,
-                   centerU + lower.centerHandle, lower.v,
-                   centerU, lower.v),
-            .curve(centerU - lower.centerHandle, lower.v,
-                   ear + lower.tipHandle.u, tip.v + lower.tipHandle.v,
-                   ear, tip.v),
-            .close,
-        ])
-    }
+        return [
+            (ear, tip.v),
+            (ear + upper.tipHandle.u, tip.v + upper.tipHandle.v), (centerU - upper.centerHandle, upper.v), (centerU, upper.v),
+            (centerU + upper.centerHandle, upper.v), (nose - upper.tipHandle.u, tip.v + upper.tipHandle.v), (nose, tip.v),
+            (nose - lower.tipHandle.u, tip.v + lower.tipHandle.v), (centerU + lower.centerHandle, lower.v), (centerU, lower.v),
+            (centerU - lower.centerHandle, lower.v), (ear + lower.tipHandle.u, tip.v + lower.tipHandle.v),
+        ]
+    }()
+
+    /// あくびの ∩: 頂点は目の中心より上（u 0.056、太さ 0.188 = キャンバス高さの 0.042）、外側の先端は短く、鼻側の先端は
+    /// 目の中心の少し下まで長く垂れる。各縁は頂点で水平に接する非対称の 2 本。値は参考 yawn-reference.png の両目の弧を
+    /// neutral の目の枠の局所座標に写して平均し、列ごとの上縁・下縁に当てはめたもの（trace_yawn.py。残差 rms ≤ 1.6px @941）。
+    private static let yawningLidArc: LidArc = [
+        (-0.515, -0.064),
+        (-0.417, -0.269), (-0.161, -0.358), (0.056, -0.358),
+        (0.442, -0.358), (0.867, -0.215), (1.106, 0.098),
+        (0.808, -0.065), (0.419, -0.170), (0.056, -0.170),
+        (-0.137, -0.170), (-0.362, -0.089),
+    ]
 
     /// 局所座標 u でのまぶたの縁の v（u は縁の上で単調なので二分法で求める）。
     private static func lidEdgeV(at u: CGFloat, amount: CGFloat, tilt: CGFloat) -> CGFloat {
@@ -394,10 +487,11 @@ enum CatFaceGeometry {
     // MARK: 鼻
 
     /// 上辺がゆるく凸で角の丸い逆三角（neutral-b の輪郭の実測に合わせた）。
-    static func nose() -> NormalizedPath {
+    /// あくびでは下端を基準に上へ動き、少し小さくなる（`yawnNoseShift` / `yawnNoseScale`）。
+    static func nose(yawn: CGFloat) -> NormalizedPath {
         let shoulder = noseShoulder
         let half = 0.5 - shoulder.x
-        return NormalizedPath([
+        let path = NormalizedPath([
             .move(0.5, noseTop),
             .curve(to: shoulder,
                    control1: CGPoint(x: 0.5 - half * 0.70, y: noseTop),
@@ -406,6 +500,13 @@ enum CatFaceGeometry {
                    control1: CGPoint(x: shoulder.x, y: shoulder.y + 0.014),
                    control2: CGPoint(x: 0.5 - half * 0.32, y: noseBottom)),
         ]).closedWithMirror()
+        let amount = min(max(yawn, 0), 1)
+        guard amount > 0 else { return path }
+        let scale = 1 - (1 - yawnNoseScale) * amount
+        let shift = yawnNoseShift * amount
+        return path.mapped { point in
+            CGPoint(x: 0.5 + (point.x - 0.5) * scale, y: noseBottom + (point.y - noseBottom) * scale + shift)
+        }
     }
 
     // MARK: 口
@@ -423,14 +524,37 @@ enum CatFaceGeometry {
         let opening: CGFloat
         /// 0 で ω、1 で丸い口。間は重ねて切り替える。
         let roundness: CGFloat
+        /// あくびの口（yawn 0 では空）: 輪郭の中心線（クリーム色の線で描き、内側を暗く塗る閉じたパス）、
+        /// 舌（上縁の弧を下で閉じた形。輪郭の内側で切り抜いて描く）、左右の牙。
+        let yawnOutline: NormalizedPath
+        let yawnTongue: NormalizedPath
+        let yawnFangs: [NormalizedPath]
+        /// 0 で ω（または丸い口）だけ、1 であくびの口だけ。間は透明度で重ねて切り替える。
+        let yawnBlend: CGFloat
 
-        var showsLines: Bool { roundness < 1 }
-        var showsOpening: Bool { opening > 0 && roundness < 1 }
-        var showsRound: Bool { roundness > 0 }
+        var showsLines: Bool { roundness < 1 && yawnBlend < 1 }
+        var showsOpening: Bool { opening > 0 && roundness < 1 && yawnBlend < 1 }
+        var showsRound: Bool { roundness > 0 && yawnBlend < 1 }
+        var showsYawn: Bool { yawnBlend > 0 }
     }
 
     /// lineScale はコントラスト強調の線幅の倍率（縦棒の太さも同じ倍率で太る）。
+    /// あくび（yawn > 0）では ω・丸い口を鼻と一緒に上へ動かしながら透明度で消し、代わりに峰の口を鼻の下端に吊るして
+    /// yawn 倍の大きさで描く（鼻の下端の基準点 `yawnMouthAnchor` を中心に相似に縮め、線幅は変えない）。
     static func mouth(appearance: CatFaceAppearance, opening: CGFloat, lineScale: CGFloat = 1) -> MouthGeometry {
+        let yawn = min(max(appearance.yawn, 0), 1)
+        let yawnShift = yawnNoseShift * yawn
+        func raised(_ path: NormalizedPath) -> NormalizedPath {
+            yawn > 0 ? path.mapped { CGPoint(x: $0.x, y: $0.y + yawnShift) } : path
+        }
+        let anchorY = noseBottom + yawnShift + mouthLineWidth * lineScale / 2
+        func placed(_ path: NormalizedPath) -> NormalizedPath {
+            path.mapped { CGPoint(x: 0.5 + ($0.x - 0.5) * yawn, y: anchorY + ($0.y - yawnMouthAnchor) * yawn) }
+        }
+        let placedOutline = yawn > 0 ? placed(yawnOutline) : NormalizedPath([])
+        let placedTongue = yawn > 0 ? placed(yawnTongue) : NormalizedPath([])
+        let placedFangs = yawn > 0 ? [placed(yawnFangLeft), placed(yawnFangRight)] : []
+
         let width = appearance.mouthWidth
         let smile = appearance.mouthSmile
         let j = mouthJunction
@@ -473,9 +597,60 @@ enum CatFaceGeometry {
         let round = NormalizedPath.ellipse(center: CGPoint(x: 0.5, y: roundMouthTop + roundRadius.height),
                                            radii: roundRadius)
 
-        return MouthGeometry(neck: neck, lines: [leftArc, leftArc.mirrored], lowerLip: lowerLip, cavity: cavity,
-                             round: round, opening: opening, roundness: appearance.mouthRoundness)
+        return MouthGeometry(neck: raised(neck), lines: [raised(leftArc), raised(leftArc.mirrored)], lowerLip: raised(lowerLip),
+                             cavity: raised(cavity), round: raised(round), opening: opening, roundness: appearance.mouthRoundness,
+                             yawnOutline: placedOutline, yawnTongue: placedTongue, yawnFangs: placedFangs,
+                             yawnBlend: min(1, yawn / yawnMouthBlendEnd))
     }
+
+    /// あくびの峰の口の輪郭（クリーム色の線の中心線、キャンバス単位）。上中央の尖り（鼻の下）→ くぼみ → 口角の上向きの瘤 →
+    /// 最も幅の広い点 → 底中央の左半分を 9 本の 3 次ベジェで描き、右は鏡映。参考 yawn-reference.png のクリーム色の輪郭の
+    /// 外縁を追跡し、線幅の半分だけ内側へずらした中心線に当てはめた（trace_yawn.py。区間ごとの残差 rms ≤ 1.5px @941。
+    /// 線幅は参考の実測 0.018〜0.019 で製品の mouthLineWidth と同じ）。
+    /// 上中央の尖りとそこから出る制御点だけ `yawnMouthCuspRise` 上げる（最初の区間の終点から先は当てはめのまま）。
+    private static let yawnOutline = NormalizedPath([
+        .move(0.5, yawnMouthAnchor - yawnMouthCuspRise),
+        .curve(to: CGPoint(x: 0.4411, y: 0.5753), control1: CGPoint(x: 0.4836, y: 0.5484 - yawnMouthCuspRise),
+               control2: CGPoint(x: 0.4650, y: 0.5753)),
+        .curve(to: CGPoint(x: 0.4113, y: 0.5608), control1: CGPoint(x: 0.4306, y: 0.5753), control2: CGPoint(x: 0.4203, y: 0.5707)),
+        .curve(to: CGPoint(x: 0.4035, y: 0.5513), control1: CGPoint(x: 0.4095, y: 0.5587), control2: CGPoint(x: 0.4035, y: 0.5515)),
+        .curve(to: CGPoint(x: 0.4060, y: 0.5470), control1: CGPoint(x: 0.4035, y: 0.5513), control2: CGPoint(x: 0.4058, y: 0.5470)),
+        .curve(to: CGPoint(x: 0.4152, y: 0.5735), control1: CGPoint(x: 0.4087, y: 0.5470), control2: CGPoint(x: 0.4152, y: 0.5693)),
+        .curve(to: CGPoint(x: 0.3983, y: 0.6308), control1: CGPoint(x: 0.4152, y: 0.5903), control2: CGPoint(x: 0.4031, y: 0.6137)),
+        .curve(to: CGPoint(x: 0.3815, y: 0.7434), control1: CGPoint(x: 0.3886, y: 0.6648), control2: CGPoint(x: 0.3815, y: 0.7050)),
+        .curve(to: CGPoint(x: 0.3852, y: 0.7907), control1: CGPoint(x: 0.3815, y: 0.7591), control2: CGPoint(x: 0.3827, y: 0.7755)),
+        .curve(to: CGPoint(x: 0.5, y: 0.9026), control1: CGPoint(x: 0.3997, y: 0.8812), control2: CGPoint(x: 0.4531, y: 0.9026)),
+    ]).closedWithMirror()
+
+    /// 舌: 上縁の弧（輪郭の中心線上の接点 → 中央で水平な頂点 → 鏡映の接点）を、口より下まで広げた長方形で閉じた形。
+    /// 描くときは輪郭の内側で切り抜くので、見えるのは弧より下の口の中だけ。参考の舌の上縁の当てはめ（残差 rms 1.8px @941）。
+    private static let yawnTongue: NormalizedPath = {
+        let contact = CGPoint(x: 0.3876, y: 0.8034)
+        let apex = CGPoint(x: 0.5, y: 0.7024)
+        let control1 = CGPoint(x: 0.4059, y: 0.7279)
+        let control2 = CGPoint(x: 0.4544, y: 0.7024)
+        let right = CatFaceSide.right
+        return NormalizedPath([
+            .move(contact),
+            .curve(to: apex, control1: control1, control2: control2),
+            .curve(to: right.point(contact), control1: right.point(control2), control2: right.point(control1)),
+            .line(0.70, contact.y),
+            .line(0.70, 0.96),
+            .line(0.30, 0.96),
+            .line(0.30, contact.y),
+            .close,
+        ])
+    }()
+
+    /// 左の牙: 上唇のくぼみの底から垂れる小さな三角（根元は唇の線の中心線上に隠し、先端はわずかに鼻側へ向く）。
+    /// 参考の牙の左右の縁の当てはめ（残差 rms ≤ 0.7px @941）。右は鏡映。
+    private static let yawnFangLeft = NormalizedPath([
+        .move(0.4243, 0.5749),
+        .curve(to: CGPoint(x: 0.4405, y: 0.6281), control1: CGPoint(x: 0.4279, y: 0.5952), control2: CGPoint(x: 0.4315, y: 0.6153)),
+        .curve(to: CGPoint(x: 0.4496, y: 0.5749), control1: CGPoint(x: 0.4474, y: 0.6155), control2: CGPoint(x: 0.4464, y: 0.5932)),
+        .close,
+    ])
+    private static let yawnFangRight = yawnFangLeft.mirrored
 
     /// 縦棒の上端の半幅（線幅に対する比）、外側の輪郭が弧の外側の縁へ接する位置（弧の最初の 3 次ベジェの t）、
     /// 輪郭の制御点の長さ（上端側・接点側、上端と接点の距離に対する比）。neutral-b の縦棒の輪郭の行ごとの追跡に当てはめた。
@@ -527,6 +702,8 @@ enum CatFaceGeometry {
         let control1: CGPoint
         let control2: CGPoint
         let tip: CGPoint
+        /// 中央の太さ（キャンバス高さに対する比）。
+        var thickness: CGFloat = whiskerThickness
     }
 
     private static let leftWhiskerSpecs: [WhiskerSpec] = [
@@ -537,6 +714,18 @@ enum CatFaceGeometry {
         WhiskerSpec(root: CGPoint(x: 0.2571, y: 0.7872), control1: CGPoint(x: 0.2004, y: 0.7879),
                     control2: CGPoint(x: 0.1429, y: 0.8112), tip: CGPoint(x: 0.0993, y: 0.8761)),
     ]
+    /// あくびの峰のひげ（根元 → 先端の中心線と中央の太さ）。参考 yawn-reference.png の左右のひげ（端の白っぽい画素も含めて
+    /// 測る）の端の位置と中心線を平均して当てはめた（trace_yawn.py。残差 rms ≤ 0.5px @941。左右の外接は 0.001 以内で一致）。
+    /// 通常より上にあるだけで長さはほぼ同じ、下の 1 本は少し太い。既存の表情は yawn 0 なので触らず、yawn > 0 のときだけ
+    /// ここへ補間する。
+    private static let yawnWhiskerSpecs: [WhiskerSpec] = [
+        WhiskerSpec(root: CGPoint(x: 0.2460, y: 0.5221), control1: CGPoint(x: 0.1809, y: 0.4913),
+                    control2: CGPoint(x: 0.1066, y: 0.4937), tip: CGPoint(x: 0.0453, y: 0.5433), thickness: 0.0149),
+        WhiskerSpec(root: CGPoint(x: 0.2630, y: 0.5553), control1: CGPoint(x: 0.1929, y: 0.5539),
+                    control2: CGPoint(x: 0.1224, y: 0.5793), tip: CGPoint(x: 0.0651, y: 0.6514), thickness: 0.0149),
+        WhiskerSpec(root: CGPoint(x: 0.2627, y: 0.5964), control1: CGPoint(x: 0.2049, y: 0.6132),
+                    control2: CGPoint(x: 0.1503, y: 0.6498), tip: CGPoint(x: 0.1099, y: 0.7279), thickness: 0.0169),
+    ]
     /// ひげの中央の太さ（キャンバス高さに対する比）、両端の丸い端の太さ（中央に対する比）、
     /// 端から中央への太り方（1 で直線的、大きいほど早く太る）。
     static let whiskerThickness: CGFloat = 0.0146
@@ -545,16 +734,30 @@ enum CatFaceGeometry {
 
     /// 中央が太く両端へ細る丸い端のひげ（中心線を 2 分割し、上下に太さ分ずらした 4 本の 3 次ベジェと
     /// 両端の半円で閉じる）。
-    /// lift は外側の先端を上げる角度（度）、spread は扇の開き（度/本）。
+    /// lift は外側の先端を上げる角度（度）、spread は扇の開き（度/本）。あくび（yawn > 0）では、表情の角度を付けた
+    /// 通常のひげから峰のひげ（`yawnWhiskerSpecs`）へ根元・制御点・先端・太さを線形に補間する。
     static func whiskers(side: CatFaceSide, appearance: CatFaceAppearance, lineScale: CGFloat = 1) -> [NormalizedPath] {
         let settings = appearance.whiskers(side)
         let a = CGFloat(aspectRatio)
+        let yawn = min(max(appearance.yawn, 0), 1)
         return leftWhiskerSpecs.enumerated().map { index, spec in
             let angle = (settings.lift + settings.spread * CGFloat(1 - index)) * .pi / 180
-            let root = spec.root
-            let c1 = rotated(spec.control1, around: root, by: angle)
-            let c2 = rotated(spec.control2, around: root, by: angle)
-            let tip = rotated(spec.tip, around: root, by: angle)
+            var root = spec.root
+            var c1 = rotated(spec.control1, around: root, by: angle)
+            var c2 = rotated(spec.control2, around: root, by: angle)
+            var tip = rotated(spec.tip, around: root, by: angle)
+            var thickness = spec.thickness
+            if yawn > 0 {
+                let peak = yawnWhiskerSpecs[index]
+                func mix(_ from: CGPoint, _ to: CGPoint) -> CGPoint {
+                    CGPoint(x: from.x + (to.x - from.x) * yawn, y: from.y + (to.y - from.y) * yawn)
+                }
+                root = mix(root, peak.root)
+                c1 = mix(c1, peak.control1)
+                c2 = mix(c2, peak.control2)
+                tip = mix(tip, peak.tip)
+                thickness += (peak.thickness - thickness) * yawn
+            }
             // 中心線を t = 0.5 で分割（de Casteljau）
             let q1 = mid(root, c1), q2 = mid(c1, c2), q3 = mid(c2, tip)
             let r1 = mid(q1, q2), r2 = mid(q2, q3)
@@ -564,7 +767,7 @@ enum CatFaceGeometry {
             let length = max(0.000_1, hypot(chord.x, chord.y))
             let normal = CGPoint(x: -chord.y / length, y: chord.x / length)
             let along = CGPoint(x: chord.x / length, y: chord.y / length)
-            let half = whiskerThickness * lineScale / 2
+            let half = thickness * lineScale / 2
             let end = half * whiskerEndRatio
             let shoulder = end + (half - end) * whiskerFullness
             func offset(_ point: CGPoint, _ amount: CGFloat, forward: CGFloat = 0) -> CGPoint {
@@ -686,8 +889,9 @@ enum CatFaceGeometry {
     static func drawingPoints(for appearance: CatFaceAppearance, mouthPose: MouthPose) -> [CGPoint] {
         let mouth = mouth(appearance: appearance, opening: mouthOpening(for: mouthPose))
         let paths = CatFaceSide.allCases.flatMap { eye(side: $0, appearance: appearance).all }
-            + [nose()]
+            + [nose(yawn: appearance.yawn)]
             + [mouth.neck] + mouth.lines + [mouth.lowerLip, mouth.cavity, mouth.round]
+            + [mouth.yawnOutline, mouth.yawnTongue] + mouth.yawnFangs
             + CatFaceSide.allCases.flatMap { whiskers(side: $0, appearance: appearance) }
             + (appearance.sleepMarks > 0 ? sleepMarks() : [])
         return paths.flatMap(\.points)
@@ -726,10 +930,13 @@ enum CatFaceGeometry {
             path.path(in: rect).cgPath.copy(strokingWithWidth: lineWidth, lineCap: .round, lineJoin: .round, miterLimit: 10)
         }
         let mouth = mouth(appearance: appearance, opening: mouthOpening(for: mouthPose), lineScale: lineScale)
-        var result = CatFaceSide.allCases.map {
-            FeaturePath(kind: .eye($0), name: "\($0) eye", path: eye(side: $0, appearance: appearance).outline.path(in: rect))
+        var result = CatFaceSide.allCases.map { side in
+            let eye = eye(side: side, appearance: appearance)
+            // 完全に閉じた目は金色の弧だけが見える（外形はまぶたの下）。
+            let visible = appearance.eye(side).closed >= 1 ? eye.closedLid : eye.outline
+            return FeaturePath(kind: .eye(side), name: "\(side) eye", path: visible.path(in: rect))
         }
-        result.append(FeaturePath(kind: .nose, name: "nose", path: nose().path(in: rect)))
+        result.append(FeaturePath(kind: .nose, name: "nose", path: nose(yawn: appearance.yawn).path(in: rect)))
         if mouth.showsLines {
             result.append(FeaturePath(kind: .mouthLine, name: "mouth stem", path: mouth.neck.path(in: rect)))
             result += zip(["left mouth arc", "right mouth arc"], mouth.lines).map {
@@ -743,6 +950,17 @@ enum CatFaceGeometry {
         if mouth.showsRound {
             let round = mouth.round.path(in: rect).cgPath
             result.append(FeaturePath(kind: .mouthOpening, name: "round mouth", path: Path(round.union(stroked(mouth.round)))))
+        }
+        if mouth.showsYawn {
+            let inside = mouth.yawnOutline.path(in: rect).cgPath
+            result.append(FeaturePath(kind: .mouthLine, name: "yawn mouth outline", path: Path(stroked(mouth.yawnOutline))))
+            result.append(FeaturePath(kind: .mouthOpening, name: "yawn mouth inside", path: Path(inside)))
+            // 舌は描画と同じく輪郭の内側で切り抜いた形。
+            result.append(FeaturePath(kind: .mouthOpening, name: "yawn tongue",
+                                      path: Path(inside.intersection(mouth.yawnTongue.path(in: rect).cgPath))))
+            result += zip(["left yawn fang", "right yawn fang"], mouth.yawnFangs).map {
+                FeaturePath(kind: .mouthOpening, name: $0, path: $1.path(in: rect))
+            }
         }
         for side in CatFaceSide.allCases {
             result += whiskers(side: side, appearance: appearance, lineScale: lineScale).enumerated().map {
@@ -800,17 +1018,6 @@ struct NormalizedPath: Sendable {
             }
         }
 
-        var mirrored: Self {
-            switch self {
-            case let .move(point): .move(CatFaceSide.right.point(point))
-            case let .line(point): .line(CatFaceSide.right.point(point))
-            case let .curve(to, control1, control2):
-                .curve(to: CatFaceSide.right.point(to),
-                       control1: CatFaceSide.right.point(control1),
-                       control2: CatFaceSide.right.point(control2))
-            case .close: .close
-            }
-        }
     }
 
     let commands: [Command]
@@ -836,7 +1043,20 @@ struct NormalizedPath: Sendable {
     }
 
     var points: [CGPoint] { commands.flatMap(\.points) }
-    var mirrored: Self { Self(commands.map(\.mirrored)) }
+    var mirrored: Self { mapped(CatFaceSide.right.point) }
+
+    /// 全てのアンカーと制御点を transform で写したパス（鏡映・平行移動・相似の拡大縮小に使う）。
+    func mapped(_ transform: (CGPoint) -> CGPoint) -> Self {
+        Self(commands.map { command in
+            switch command {
+            case let .move(point): .move(transform(point))
+            case let .line(point): .line(transform(point))
+            case let .curve(to, control1, control2):
+                .curve(to: transform(to), control1: transform(control1), control2: transform(control2))
+            case .close: .close
+            }
+        })
+    }
 
     /// 左半分（中心線上の点から始まり中心線上の点で終わる開いたパス）を反転してつなぎ、閉じる。
     func closedWithMirror() -> Self {

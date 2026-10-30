@@ -1,0 +1,11 @@
+{
+  "sourceManifest": "../../../validation/2026-10-30-idle-cat-life/source-hashes.json",
+  "video": "iOS Simulator actual ConversationView, verified-final-ui.xcresult, original video73.0s..79.2s; rotated to landscape only and scaled1000px wide; no audio",
+  "phoneImages": "iPhone16Pro iOS27.2, verified-final-iphone.xcresult XCTest attachments",
+  "artifacts": {
+    "iphone-interrupted-speaking.png": "58a3da8507121e784d4044a7ba2f4f3237681dd863125e3c2b9eef04ad9a07fe",
+    "iphone-sleepy.png": "7848077a73117a88ce4e07fada3ba13d8bcae3996eb47c3e3900d2e112f10690",
+    "iphone-yawn.png": "54de091d366b1e2880b65413dce7562a3cfb0716d94b967cfc83405602f5a57e",
+    "yawn-preview.mp4": "5ed7956d4bb3eedcca347af1de2202fdae072559702738f68a142af18baba3db"
+  }
+}

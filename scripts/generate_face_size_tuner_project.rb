@@ -18,7 +18,7 @@ tests = project.new_target(:unit_test_bundle, "FaceSizeTunerTests", :ios, "27.0"
 sources = project.main_group.new_group("Sources", "Sources")
 shared = project.main_group.new_group("Shared Face", "../../CatRobot/Conversation/UI")
 app.add_file_references(Dir[tool.join("Sources/*.swift")].sort.map { |file| sources.new_file(File.basename(file)) })
-app.add_file_references(%w[CatFaceView.swift CatFaceAppearance.swift CatFaceShapes.swift].map { |file| shared.new_file(file) })
+app.add_file_references(%w[CatFaceView.swift CatFaceAppearance.swift CatFaceShapes.swift CatFaceRenderer.swift].map { |file| shared.new_file(file) })
 app.add_file_references([project.main_group.new_file("../../scripts/face-render/Stubs.swift")])
 app.add_resources([project.main_group.new_file("../../CatRobot/Resources/Assets.xcassets")])
 project.main_group.new_file("Resources/Info.plist")

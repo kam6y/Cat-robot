@@ -49,6 +49,17 @@ protocol RobotMotionControlling: ReplyTurnObserving {
     func stopAll(reason: MotionCancellationReason)
     func setTrackingState(_ state: RobotTrackingState)
     func setAutomaticMotionSuspended(_ suspended: Bool)
+    func setIdleFaceDriven(_ enabled: Bool)
+    func requestIdleFaceMotion(yaw: Double, pitch: Double)
+    func requestYawnMotion(pitch: Double)
+    func cancelIdleFaceMotion()
+}
+
+extension RobotMotionControlling {
+    func setIdleFaceDriven(_ enabled: Bool) {}
+    func requestIdleFaceMotion(yaw: Double, pitch: Double) {}
+    func requestYawnMotion(pitch: Double) {}
+    func cancelIdleFaceMotion() {}
 }
 
 @MainActor

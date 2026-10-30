@@ -22,6 +22,7 @@ enum ConversationInactivityState: Equatable, Sendable {
 @MainActor @Observable
 final class ConversationInactivity {
     private(set) var state: ConversationInactivityState = .awake
+    private(set) var activityGeneration: UInt64 = 0
     let settings: ConversationIdleSettings
     @ObservationIgnored var onStateChange: @MainActor () -> Void = {}
     @ObservationIgnored private let clock: any RobotClock
@@ -49,6 +50,7 @@ final class ConversationInactivity {
 
     func recordActivity() {
         guard state != .sleeping else { return }
+        activityGeneration &+= 1
         lastActivity = clock.now
         setState(.awake)
         evaluate()
@@ -56,6 +58,7 @@ final class ConversationInactivity {
 
     /// Called only for an explicit face tap; lifecycle and settings never clear sleeping.
     func wake() {
+        activityGeneration &+= 1
         lastActivity = clock.now
         setState(.awake)
         evaluate()

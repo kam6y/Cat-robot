@@ -184,6 +184,23 @@ extension XCTestCase {
         }
     }
 
+    /// sRGB の RGBA8 画素と幅・高さ（画素の色を数える試験が共有する）。
+    func rgbaPixels(of image: UIImage) -> ([UInt8], Int, Int)? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        return drawn ? (pixels, width, height) : nil
+    }
+
     /// 押し込み・戻りは要求した時点で viewControllers が変わり、表示の入れ替えはその後に起きる。
     /// 一番上の画面がウィンドウに載り、下の画面がウィンドウから外れるまで待つ。
     func waitForNavigation(_ navigation: UINavigationController, toShow count: Int, in view: UIView,

@@ -56,7 +56,7 @@ final class MotionCoordinator: RobotMotionControlling {
         var writtenAt: TimeInterval?
         var startedAt: TimeInterval?
     }
-    private enum AutoKind { case idle, acknowledgement, tracking, settling }
+    private enum AutoKind { case idle, yawn, acknowledgement, tracking, settling }
     private struct StrengthAttempt: Equatable { let connection: UUID; let strength: RobotMotionStrength }
 
     private let link: any RobotLinkControlling
@@ -80,9 +80,11 @@ final class MotionCoordinator: RobotMotionControlling {
     private var autoToken: UUID?
     private var autoKind: AutoKind?
     private var nextIdleAt: TimeInterval?
+    private var idleFaceDriven = false
     private var trackingState: RobotTrackingState = .disabled
     private var automaticOwnerConnection: UUID?
     private var automaticOwnerToken: UUID?
+    private var yawnOwnerToken: UUID?
     private var lastTrackingCommand: RobotCommand?
     private var lastTrackingWriteAt = -TimeInterval.infinity
     private var lastTrackingAttemptAt = -TimeInterval.infinity
@@ -242,9 +244,73 @@ final class MotionCoordinator: RobotMotionControlling {
     func setConversationPhase(_ phase: ConversationPhase) {
         refreshLinkState()
         self.phase = phase
-        if !isWaiting, autoKind == .idle { cancelAuto() }
+        if !isWaiting { cancelDecorativeMotion() }
         if !permitsTrackingPhase, autoKind == .tracking { cancelAuto(); settleOwnedAutomaticMotion() }
         service()
+    }
+
+    /// The app's face planner owns quiet intervals; tracking remains autonomous.
+    func setIdleFaceDriven(_ enabled: Bool) {
+        guard idleFaceDriven != enabled else { return }
+        cancelDecorativeMotion()
+        idleFaceDriven = enabled
+        nextIdleAt = nil
+        service()
+    }
+
+    /// Admit a cue only now. Rejected cues are not saved for later.
+    func requestIdleFaceMotion(yaw: Double, pitch: Double) {
+        guard yaw.isFinite, pitch.isFinite else { return }
+        refreshLinkState()
+        guard idleFaceDriven, mode == .conversation, isWaiting, atRest,
+              preferences.idleEnabled, !automaticMotionSuspended,
+              active == nil, autoTask == nil, strengthTask == nil, stopTask == nil,
+              turn?.pending.isEmpty != false else { return }
+        if preferences.trackingEnabled {
+            switch trackingState {
+            case .following, .holding, .returnToCenter: return
+            case .disabled, .searching: break
+            }
+        }
+        clearAutomaticOwnership()
+        startColumn(kind: .idle, duration: 3, yaw: max(-3, min(3, yaw)), pitch: max(-2, min(2, pitch)))
+    }
+
+    func requestYawnMotion(pitch: Double) {
+        guard pitch.isFinite else { return }
+        refreshLinkState()
+        guard idleFaceDriven, mode == .conversation, isWaiting, atRest || ownsTracking || ownsIdle,
+              preferences.idleEnabled, !automaticMotionSuspended,
+              active == nil, strengthTask == nil, stopTask == nil,
+              turn?.pending.isEmpty != false,
+              autoTask == nil || autoKind == .tracking || autoKind == .settling || autoKind == .idle,
+              let status = snapshot.status else { return }
+        let yaw = Double(status.yawDeci) / 10
+        let currentPitch = Double(status.pitchDeci) / 10
+        guard abs(yaw) <= 45, abs(currentPitch) <= 10 else { return }
+        // Keep the previous written owner until the yawn writes, so an early cancellation can settle it.
+        cancelAuto()
+        if trackingState == .returnToCenter { trackingReturnIssued = false }
+        startColumn(kind: .yawn, duration: 3, yaw: yaw, pitch: max(-10, min(10, pitch)))
+        yawnOwnerToken = autoToken
+    }
+
+    func cancelIdleFaceMotion() {
+        guard idleFaceDriven else { return }
+        // A tracking write may already be replacing the last idle ownership ticket.
+        // The face must never cancel that higher-priority task while it waits to send.
+        guard autoKind == .idle || autoKind == .yawn || (autoTask == nil && (ownsIdle || ownsYawn)) else { return }
+        cancelAuto()
+        settleOwnedAutomaticMotion(includingIdle: true)
+    }
+
+    /// Stop a running face-driven column: a yawn settles the pose it owns, an ordinary idle column just stops.
+    private func cancelDecorativeMotion() {
+        switch autoKind {
+        case .yawn: cancelIdleFaceMotion()
+        case .idle: cancelAuto()
+        default: break
+        }
     }
 
     func utteranceConfirmed() {
@@ -303,6 +369,8 @@ final class MotionCoordinator: RobotMotionControlling {
         let enteringHold = state == .holding && trackingState != .holding
         if state != .returnToCenter { trackingReturnIssued = false }
         trackingState = state
+        // Keep the newest camera state, but let the yawn finish before tracking sends again.
+        if autoKind == .yawn { return }
         let interruptsIdle: Bool
         switch state {
         case .following, .holding, .returnToCenter: interruptsIdle = true
@@ -325,6 +393,7 @@ final class MotionCoordinator: RobotMotionControlling {
 
     private var ownsTracking: Bool { ownsAutomaticMotion && snapshot.automaticWrite?.priority == .tracking }
     private var ownsIdle: Bool { ownsAutomaticMotion && snapshot.automaticWrite?.priority == .idleMotion }
+    private var ownsYawn: Bool { ownsAutomaticMotion && automaticOwnerToken == yawnOwnerToken }
     private var ownsAutomaticMotion: Bool {
         ready && automaticOwnerConnection != nil && automaticOwnerConnection == snapshot.connectionID
             && automaticOwnerToken != nil && automaticOwnerToken == snapshot.automaticWrite?.token
@@ -334,6 +403,7 @@ final class MotionCoordinator: RobotMotionControlling {
     private func clearAutomaticOwnership() {
         automaticOwnerConnection = nil
         automaticOwnerToken = nil
+        yawnOwnerToken = nil
         lastTrackingCommand = nil
     }
 
@@ -464,7 +534,7 @@ final class MotionCoordinator: RobotMotionControlling {
         // A read continuation may resume before the snapshot observer. Use the authoritative value first.
         let current = link.snapshot
         if current != snapshot { receive(current); return }
-        if !preferences.idleEnabled, autoKind == .idle { cancelAuto() }
+        if !preferences.idleEnabled { cancelDecorativeMotion() }
         if active == nil, autoTask == nil, stopTask == nil, atRest, strengthTask == nil,
            mode == .conversation || mode == .settings { applyStrengthIfNeeded() }
         if active == nil, autoTask == nil, stopTask == nil, strengthTask == nil,
@@ -685,7 +755,7 @@ final class MotionCoordinator: RobotMotionControlling {
             case .disabled, .searching: break
             }
         }
-        guard isWaiting, atRest, preferences.idleEnabled else { nextIdleAt = nil; return }
+        guard !idleFaceDriven, isWaiting, atRest, preferences.idleEnabled else { nextIdleAt = nil; return }
         if nextIdleAt == nil { nextIdleAt = clock.now + random.next(in: 4...10) }
         if clock.now + 0.000_001 >= nextIdleAt! {
             nextIdleAt = nil
@@ -720,11 +790,21 @@ final class MotionCoordinator: RobotMotionControlling {
         let start = clock.now
         let currentYaw = Double(snapshot.status?.yawDeci ?? 0) / 10
         let currentPitch = Double(snapshot.status?.pitchDeci ?? 0) / 10
-        let fromYaw = max(-3, min(3, currentYaw))
-        let fromPitch = max(-2, min(2, currentPitch))
+        // Face-driven columns: ordinary idle motion stays within ±3° yaw / ±2° pitch, speed 10.
+        // The yawn alone keeps the actual yaw and may dip to −10° pitch.
+        let decorative = kind == .idle || kind == .yawn
+        let pitchLimit: Double = kind == .yawn ? 10 : 2
+        let fromYaw = kind == .yawn ? currentYaw : max(-3, min(3, currentYaw))
+        let fromPitch = max(-pitchLimit, min(pitchLimit, currentPitch))
         // A small acknowledgement can start at a manual endpoint. Recenter gently.
         let needsSlowApproach = abs(currentYaw) > 3 || abs(currentPitch) > 2
-        let speed: UInt8 = facePose != nil ? 20 : (kind == .idle || needsSlowApproach ? 10 : 100)
+        let speed: UInt8 = facePose != nil ? 20 : (decorative || needsSlowApproach ? 10 : 100)
+        // A yawn temporarily owns the tracking lane so it can replace an in-flight tracking MOVE.
+        let priority: RobotCommandPriority = switch kind {
+        case .yawn: .tracking
+        case .idle: .idleMotion
+        default: facePose == nil ? .motion : .tracking
+        }
         let link = link, clock = clock, connection = snapshot.connectionID
         autoTask = Task { [weak self] in
             do {
@@ -746,11 +826,10 @@ final class MotionCoordinator: RobotMotionControlling {
                         p = fromPitch + (pitch - fromPitch) * Self.smooth(u)
                     }
                     let command = RobotCommand.move(yawDeci: self.deci(y, cap: kind == .idle ? 3 : 45),
-                                                    pitchDeci: self.deci(p, cap: kind == .idle ? 2 : 20),
+                                                    pitchDeci: self.deci(p, cap: decorative ? pitchLimit : 20),
                                                     speed: speed)
-                    let priority: RobotCommandPriority = kind == .idle ? .idleMotion : (facePose == nil ? .motion : .tracking)
                     try await link.send(command, priority: priority, token: token, expiresAt: clock.now + 0.3)
-                    if (kind == .idle || facePose != nil), self.autoToken == token {
+                    if decorative || facePose != nil, self.autoToken == token {
                         self.automaticOwnerConnection = connection
                         self.automaticOwnerToken = token
                         if facePose != nil {

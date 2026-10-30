@@ -14,6 +14,9 @@ struct ConversationView: View {
     let state: ConversationViewState
     let actions: ConversationActions
     var isOpeningVoiceSettings = false
+    var isFaceLifeVisible = true
+    @State private var faceLife = CatFaceLifeRunner()
+    @State private var lifeAppearance: CatFaceAppearance?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -24,6 +27,13 @@ struct ConversationView: View {
         ConversationAccessibility(phase: state.phase, inactivity: state.inactivity)
     }
 
+    private var lifeContext: CatFaceLifeContext {
+        .init(expression: state.faceExpression,
+              enabled: state.allowsIdleFaceLife && isFaceLifeVisible && !isOpeningVoiceSettings
+                  && scenePhase == .active && !reduceMotion,
+              activityGeneration: state.activityGeneration)
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -32,6 +42,19 @@ struct ConversationView: View {
         .foregroundStyle(.primary)
         .preferredColorScheme(.dark)
         .statusBarHidden(ConversationPresentationPolicy.isStatusBarHidden)
+        .task(id: lifeContext) {
+            let context = lifeContext
+            actions.cancelIdleFaceMotion()
+            await faceLife.run(context: context, onFrame: { frame in
+                withAnimation(frame.duration > 0 ? .easeInOut(duration: frame.duration) : nil) {
+                    lifeAppearance = frame.appearance
+                }
+            }, onNeck: { cue in actions.idleFaceMotion(cue) })
+        }
+        .onDisappear {
+            faceLife.suspend()
+            actions.cancelIdleFaceMotion()
+        }
         .onChange(of: state) { oldState, newState in
             guard let announcement = ConversationAnnouncementPolicy.announcement(from: oldState, to: newState) else { return }
             AccessibilityNotification.Announcement(announcement).post()
@@ -191,7 +214,7 @@ struct ConversationView: View {
                 expression: state.faceExpression,
                 mouthPose: state.mouthPose,
                 reduceMotion: reduceMotion,
-                isAnimating: state.phase == .idle && scenePhase == .active
+                appearanceOverride: lifeContext.permitsLife ? lifeAppearance : nil
             )
         }
         .buttonStyle(.plain)

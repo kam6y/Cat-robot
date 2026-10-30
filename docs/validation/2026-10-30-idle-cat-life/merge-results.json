@@ -1,0 +1,76 @@
+{
+  "base": "6aa4050ab7b699a68ab2a7dc8e28f76ccbaaf48c",
+  "reviewedFeature": "1c114160ae690df0f94e6c3892659d9c3c2aa5c4",
+  "tree": "main after squash, identical to reviewed feature before documentation updates",
+  "reciprocalReview": {
+    "critical": 0,
+    "important": 0,
+    "minor": 0
+  },
+  "tests": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "40C29D25-C8EC-42C7-8145-65AB37A2BB7D",
+          "deviceName": "iPhone 18 Pro",
+          "modelName": "iPhone 18 Pro",
+          "osBuildNumber": "24A5408d",
+          "osVersion": "27.0",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 897,
+        "skippedTests": 2,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "CatRobot · Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1793354582.686,
+    "passedTests": 897,
+    "result": "Passed",
+    "runtimeWarnings": [],
+    "skippedTests": 2,
+    "startTime": 1793354386.501,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - CatRobot",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "72% of duration",
+        "text": "14 longest test runs with outlier durations exceeding 3.26s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 899
+  },
+  "pngComparison": {
+    "images": {
+      "total": 37,
+      "byteIdentical": 37,
+      "differences": []
+    },
+    "yawn": {
+      "total": 16,
+      "byteIdentical": 16,
+      "differences": []
+    }
+  },
+  "projectGeneratorContract": "passed",
+  "faceSizeTunerBuild": "passed",
+  "signedIPhoneBuild": "passed",
+  "sourceStability": {
+    "files": 253,
+    "unchanged": true,
+    "changed": []
+  },
+  "evidenceDirectory": "/private/tmp/cat-idle-merge-20261030",
+  "testResultBundle": "/private/tmp/cat-idle-life-20261030/idle-merge-final-full.xcresult",
+  "physicalServoObserved": false
+}

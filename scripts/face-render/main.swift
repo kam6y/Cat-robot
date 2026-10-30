@@ -11,6 +11,7 @@ import Foundation
 //   face-render preview DIR [SCALE] 試し描き。作業用の DIR へ同じ画像を出す（round には書かない。SCALE は画面モックの倍率、既定 2）
 //   face-render render-sleeping --round N [--overwrite]
 //                                  docs/design/sleeping-2026-10-26/renders/round-N/ へ下書きとの比較画像を出力
+//   face-render yawn DIR           あくび（CatFaceAppearance.yawning）の描画と、参考 yawn-reference.png との比較画像・IoU を DIR へ
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 let root = FileManager.default.currentDirectoryPath
@@ -32,7 +33,8 @@ MainActor.assumeIsolated {
             if failures.isEmpty {
                 print("check: OK (\(FaceExpression.allCases.count) presets x 4 mouth poses: points in 0...1, mouth opening order, mirror symmetry, "
                       + "happy eye size, sleeping closed eyes, gold arc and Zs (sleeping only), pupils and highlights visible, "
-                      + "no unintended path intersections at line scale 1 and 1.35)")
+                      + "no unintended path intersections at line scale 1 and 1.35; yawning: presets unchanged at yawn 0, shut eyes under "
+                      + "the inverted gold arc, big mouth with tongue and fangs under the raised nose, raised whiskers, mouth grows with yawn)")
             } else {
                 failures.forEach { print("check: FAIL \($0)") }
                 fail("check: \(failures.count) failure(s)")
@@ -44,6 +46,12 @@ MainActor.assumeIsolated {
             let scale = arguments.count >= 3 ? CGFloat(Double(arguments[2]) ?? 2) : 2
             let written = try FaceRender.preview(directory: arguments[1], root: root, screenScale: scale)
             print("preview: wrote \(written.count) files to \(arguments[1])")
+        case "yawn":
+            guard arguments.count == 2, !arguments[1].contains("/renders/round-") else {
+                fail("usage: face-render yawn DIR (DIR must not be a round directory)")
+            }
+            let written = try FaceRender.runYawn(directory: arguments[1], root: root)
+            print("yawn: wrote \(written.count) files to \(arguments[1])")
         case "render", "render-sleeping":
             let overwrite = arguments.count == 4 && arguments[3] == "--overwrite"
             guard arguments.count == 3 || overwrite, arguments[1] == "--round",
@@ -59,7 +67,7 @@ MainActor.assumeIsolated {
             }
         default:
             fail("usage: face-render measure [--rendered | --sleeping] | check | render --round N [--overwrite] "
-                 + "| render-sleeping --round N [--overwrite] | preview DIR [SCALE]")
+                 + "| render-sleeping --round N [--overwrite] | preview DIR [SCALE] | yawn DIR")
         }
     } catch {
         fail("face-render: \(error)")

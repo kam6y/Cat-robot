@@ -10,12 +10,14 @@ enum ToneClass: String, CaseIterable {
     case deep = "D"         // 濃い琥珀
     case white = "W"        // ハイライト
     case cream = "C"        // 口・ひげ・四つ星
-    case coral = "P"        // 鼻
+    case coral = "P"        // 鼻（あくびでは舌も）
+    case mouthInside = "I"  // 開いた口の暗い内側
     case other = "."
 
     static let prototypes: [(ToneClass, Double, Double, Double)] = [
         (.black, 8, 6, 4), (.brightIris, 253, 205, 63), (.litInner, 241, 152, 35), (.cap, 218, 138, 25),
         (.deep, 193, 108, 17), (.white, 252, 251, 249), (.cream, 249, 234, 204), (.coral, 252, 138, 106),
+        (.mouthInside, 58, 26, 30),
     ]
 
     /// 最も近い代表色。どれからも遠い（縁のにじみ等）なら .other。

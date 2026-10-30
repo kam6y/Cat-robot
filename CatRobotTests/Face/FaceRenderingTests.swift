@@ -21,6 +21,34 @@ final class FaceRenderingTests: XCTestCase {
         }
     }
 
+    func testSleepyBlinkNeverLosesEitherEyeBeforeTheClosedLidAppears() throws {
+        // Sample the real renderer, including its lid mask and closed-eye opacity.
+        // This catches a blank eye between the disappearing iris and the closed arc.
+        for step in 0...20 {
+            var appearance = CatFaceAppearance.sleepy
+            appearance.leftEye.blink = CGFloat(step) / 20
+            appearance.rightEye.blink = CGFloat(step) / 20
+            let renderer = ImageRenderer(content: ZStack {
+                Color.black
+                CatFaceView(expression: .sleepy, mouthPose: .closed, reduceMotion: true, appearanceOverride: appearance)
+            }.frame(width: 640, height: 360))
+            renderer.proposedSize = ProposedViewSize(width: 640, height: 360)
+            let image = try XCTUnwrap(renderer.cgImage)
+            let (pixels, width, height) = try XCTUnwrap(rgbaPixels(of: UIImage(cgImage: image)))
+            for side in CatFaceSide.allCases {
+                let bounds = CatFaceGeometry.eye(side: side, appearance: appearance).outline.bounds
+                var goldPixels = 0
+                for y in Int(bounds.minY * CGFloat(height))...Int(bounds.maxY * CGFloat(height)) {
+                    for x in Int(bounds.minX * CGFloat(width))...Int(bounds.maxX * CGFloat(width)) {
+                        let i = (y * width + x) * 4
+                        if pixels[i] > 80, pixels[i + 1] > 50, pixels[i + 2] < 100 { goldPixels += 1 }
+                    }
+                }
+                XCTAssertGreaterThan(goldPixels, 100, "\(side), blink \(step)/20: eye disappears")
+            }
+        }
+    }
+
     private func capture(expression: FaceExpression, mouthPose: MouthPose) async throws {
         // Mac のモック（scripts/face-render）と同じく、852×393 の矩形全体に 16:9 のキャンバスを高さ基準で置く。
         // Simulator の実画面（例: iPhone 18 Pro の横向き 874×402）の原点に 852×393 の窓を置くと、窓の安全領域は
@@ -29,7 +57,7 @@ final class FaceRenderingTests: XCTestCase {
         // この試験の土台では安全領域を無視し、「指定した矩形 = 顔を置く矩形 = キャプチャする矩形」にそろえる。
         let face = ZStack {
             Color.black
-            CatFaceView(expression: expression, mouthPose: mouthPose, reduceMotion: true, isAnimating: false)
+            CatFaceView(expression: expression, mouthPose: mouthPose, reduceMotion: true)
         }
         .ignoresSafeArea()
         let host = UIHostingController(rootView: face)
@@ -112,22 +140,5 @@ final class FaceRenderingTests: XCTestCase {
         let total = Double(width * height)
         let noseCenter = noseCount > 0 ? noseSum / Double(noseCount) / Double(width) : nil
         return (Double(visible) / total, noseCenter, Double(blue) / total)
-    }
-
-    /// sRGB の RGBA8 画素と幅・高さ。
-    private func rgbaPixels(of image: UIImage) -> ([UInt8], Int, Int)? {
-        guard let cgImage = image.cgImage else { return nil }
-        let width = cgImage.width
-        let height = cgImage.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
-                                          bitsPerComponent: 8, bytesPerRow: width * 4,
-                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
-        }
-        return drawn ? (pixels, width, height) : nil
     }
 }
