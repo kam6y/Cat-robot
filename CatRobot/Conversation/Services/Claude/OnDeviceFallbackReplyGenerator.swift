@@ -56,6 +56,11 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
         await secondary.reset()
     }
 
+    func interruptReply(_ interruption: ReplyInterruption) async {
+        await primary.interruptReply(interruption)
+        await secondary.interruptReply(interruption)
+    }
+
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
         try Task.checkCancellation()
         let limit = await configuration().dailyTurnLimit
@@ -131,7 +136,7 @@ actor OnDeviceFallbackReplyGenerator: ReplyGenerating, ModelAvailabilityChecking
         if let turn = MotionTurnContext.current { await motion.cancelTurn(turn, reason: .fallback) }
         try Task.checkCancellation()
         // 日次上限の経路でも記憶を準備する。Claude のセッション生成やネットワーク送信は行わない。
-        try await primary.prepareMemory()
+        try await primary.beginExternalReply(prompt: utterance)
         try Task.checkCancellation()
         Self.logger.notice("event=fallbackStarted kind=\(cause.rawValue, privacy: .public) reason=\(cause.reason, privacy: .public) consecutiveFailures=\(failureCount, privacy: .public)")
         let streamsStablePrefix = secondary.supportsStableReplyPrefix

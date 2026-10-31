@@ -29,6 +29,29 @@ final class FoundationModelReplyServiceTests: XCTestCase {
         XCTAssertEqual(factory.creationCount, 1)
     }
 
+    func testInterruptingAnActiveDeliveryJoinsGenerationAndRebuildsItsClient() async throws {
+        let first = FakeReplyModelClient(behaviors: [.waiting])
+        let replacement = FakeReplyModelClient(streams: [["訂正を聞くよ。"]])
+        let factory = FakeReplyClientFactory(queuedClients: [first, replacement])
+        let service = FoundationModelReplyService(clientFactory: factory.make)
+        let id = UUID()
+        let stream = try await ReplyDeliveryContext.$current.withValue(id) {
+            try await service.streamReply(to: "古い質問")
+        }
+        let consumer = Task { _ = try? await collect(stream) }
+        await service.interruptReply(.init(id: id, prompt: "古い質問", completedText: "", interruptedSentence: false))
+        do {
+            let next = try await service.streamReply(to: "新しい質問")
+            let values = try await collect(next)
+            XCTAssertEqual(values, ["訂正を聞くよ。"])
+            XCTAssertEqual(factory.creationCount, 2)
+        } catch {
+            XCTFail("Interruption must finish cancellation before admitting the next turn: \(error)")
+        }
+        consumer.cancel()
+        await consumer.value
+    }
+
     func testResetReplacesClientAndPrewarmsReplacement() async {
         let factory = FakeReplyClientFactory()
         let service = FoundationModelReplyService(clientFactory: factory.make)

@@ -46,6 +46,14 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         let model: ConversationModelChoice
     }
 
+    private struct Delivery {
+        let id: UUID
+        let prompt: String
+        let epoch: UInt64
+        let startRevision: UInt64
+        var committedRevision: UInt64?
+    }
+    private var delivery: Delivery?
     private var memory = ShortTermMemory()
     private var session: CachedSession?
     /// セッションを無効化するたびに進む世代。生成途中に無効化が入った古いセッションは登録しない。
@@ -117,8 +125,10 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         let prompt = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
         guard prompt.count <= budget.maximumPromptCharacters else { throw ConversationServiceError.inputTooLong }
 
+        registerDelivery(prompt: prompt)
+        let deliveryID = delivery?.id
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
-        let worker = Task { await self.generate(prompt, epoch: epoch, into: continuation) }
+        let worker = Task { await self.generate(prompt, epoch: epoch, deliveryID: deliveryID, into: continuation) }
         generation = worker
         continuation.onTermination = { termination in
             if case .cancelled = termination { worker.cancel() }
@@ -137,6 +147,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         await generation?.value
         // 待機中に forget が始まった場合は、削除の後に空の記憶を書き戻さない。
         guard forgetting == nil, operationEpoch == epoch else { return }
+        delivery = nil
         memory = ShortTermMemory()
         prepared = true
         invalidateSession()
@@ -154,8 +165,45 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         if case .forgetFailed = persistenceState { return }
         memory.turns.append(ConversationMemoryTurn(prompt: prompt, response: response))
         revision &+= 1
+        if delivery?.id == ReplyDeliveryContext.current { delivery?.committedRevision = revision }
         invalidateSession()
         try? await saveMemory(epoch: epoch)
+    }
+
+    /// The on-device route shares this service's persistent history, even before it produces text.
+    func beginExternalReply(prompt: String) async throws {
+        try await prepareMemory()
+        await awaitCancelledGeneration()
+        try Task.checkCancellation()
+        guard forgetting == nil, !isGenerating else { throw ConversationServiceError.modelBusy }
+        registerDelivery(prompt: prompt)
+    }
+
+    private func registerDelivery(prompt: String) {
+        delivery = ReplyDeliveryContext.current.map {
+            Delivery(id: $0, prompt: prompt, epoch: operationEpoch, startRevision: revision)
+        }
+    }
+
+    func interruptReply(_ interruption: ReplyInterruption) async {
+        guard delivery?.id == interruption.id else { return }
+        generation?.cancel()
+        await generation?.value
+        guard let owned = delivery, owned.id == interruption.id,
+              owned.epoch == operationEpoch, forgetting == nil, prepared,
+              owned.prompt == interruption.prompt else { return }
+        if case .forgetFailed = persistenceState { return }
+        if let committed = owned.committedRevision {
+            guard revision == committed, memory.turns.last?.prompt == owned.prompt else { return }
+            memory.turns.removeLast()
+        } else {
+            guard revision == owned.startRevision else { return }
+        }
+        delivery = nil
+        memory.turns.append(ConversationMemoryTurn(prompt: owned.prompt, response: interruption.memoryResponse))
+        revision &+= 1
+        invalidateSession()
+        try? await saveMemory(epoch: owned.epoch)
     }
 
     /// 取り消し済みのターンが後始末（generation = nil）を終えるまで待つ。
@@ -165,7 +213,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         if isGenerating, let generation, generation.isCancelled { await generation.value }
     }
 
-    private func generate(_ prompt: String, epoch: UInt64, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
+    private func generate(_ prompt: String, epoch: UInt64, deliveryID: UUID?, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
         var failure: ConversationServiceError?
         // 設定で消した事実を生きているセッションが知り続けないよう、削除があれば作り直す（要約と直近の往復は残る）。
         if await longTermMemory.factsRevision != sessionFactsRevision { invalidateSession() }
@@ -195,6 +243,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             guard !Task.isCancelled, epoch == operationEpoch else { throw ConversationServiceError.cancelled }
             memory = candidate
             revision &+= 1
+            if delivery?.id == deliveryID { delivery?.committedRevision = revision }
             // This reply may use its tool image; the next reply rebuilds from text memory only.
             if containsImage { invalidateSession() }
             // 集計はこのターンを生成したセッションのモデルで行う（設定変更は次のセッションから）。
@@ -398,6 +447,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     func forgetConversation() async throws {
         if let forgetting { try await forgetting.value; return }
         operationEpoch &+= 1
+        delivery = nil
         publishMemory(.forgetting)
         let oldGeneration = generation
         let oldPreparation = preparation

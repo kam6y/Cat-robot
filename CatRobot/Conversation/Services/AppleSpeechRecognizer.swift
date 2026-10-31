@@ -44,25 +44,36 @@ actor AppleSpeechRecognizer: SpeechRecognizing {
 
     private let assetPreparer: SpeechAssetPreparer
     private let driverFactory: @Sendable () -> any SpeechCaptureDriving
+    /// 再生と共有する engine。テスト用の driverFactory 構成だけが nil を取り、そのときは再生中の収録を許さない。
+    private let engine: ConversationAudioEngine?
     private var state: State = .unprepared
     private var shutdownOwnedPreparationIDs: Set<UUID> = []
     private var startTeardownOwnership = SpeechStartTeardownOwnership()
     private var failureOwnedStarts: [UUID: ConversationServiceError] = [:]
     private var lifecycleWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
-    init(assetPreparer: SpeechAssetPreparer = SpeechAssetPreparer()) {
+    init(assetPreparer: SpeechAssetPreparer = SpeechAssetPreparer(), engine: ConversationAudioEngine) {
         self.assetPreparer = assetPreparer
+        self.engine = engine
         driverFactory = {
-            LiveSpeechCaptureDriver()
+            LiveSpeechCaptureDriver(engine: engine)
         }
     }
 
     init(
         assetPreparer: SpeechAssetPreparer = SpeechAssetPreparer(),
-        driverFactory: @escaping @Sendable () -> any SpeechCaptureDriving
+        driverFactory: @escaping @Sendable () -> any SpeechCaptureDriving,
+        engine: ConversationAudioEngine? = nil
     ) {
         self.assetPreparer = assetPreparer
         self.driverFactory = driverFactory
+        self.engine = engine
+    }
+
+    /// 再生中の収録（声での割り込み）を許してよいか。共有 engine の echo cancellation が有効なときだけ true。
+    /// セッションの activate ごとに変わり得るので、ターンの開始時に読み直す。
+    var supportsConcurrentPlayback: Bool {
+        engine?.isEchoCancelled ?? false
     }
 
     func prepare() async throws {
@@ -548,13 +559,13 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
     ) throws -> any SpeechAudioConverting
 
     private let converterFactory: ConverterFactory
-    private let audioEngine = AVAudioEngine()
+    /// 再生と共有する engine。収録は tap の lease を受け取るだけで、engine の起動・停止はしない。
+    private let shared: ConversationAudioEngine
 
-    private var inputNode: AVAudioInputNode?
+    private var captureLease: AudioCaptureLease?
     private var transcriber: SpeechTranscriber?
     private var analyzer: SpeechAnalyzer?
     private var analyzerInputs: AsyncStream<AnalyzerInput>?
-    private var sourceFormat: AVAudioFormat?
     private var tapBridge: SpeechTapBridge?
     private var analysisTask: Task<Void, Error>?
     private var resultTask: Task<Void, Error>?
@@ -562,9 +573,9 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
     private var failureHandler: (@Sendable (ConversationServiceError) -> Void)?
     private var runPhase = SpeechCaptureRunPhase()
     private let cancellationCoordinator = SpeechCaptureCancellationCoordinator()
-    private var tapInstalled = false
 
     init(
+        engine: ConversationAudioEngine,
         converterFactory: @escaping ConverterFactory = { sourceFormat, analyzerFormat in
             try SpeechAudioConverter(
                 sourceFormat: sourceFormat,
@@ -572,6 +583,7 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
             )
         }
     ) {
+        shared = engine
         self.converterFactory = converterFactory
     }
 
@@ -588,8 +600,9 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
                 modelRetention: .lingering
             )
         )
-        let inputNode = audioEngine.inputNode
-        let sourceFormat = inputNode.outputFormat(forBus: 0)
+        // 共有 engine の入力（voice processing 有効後のフォーマット）を使う。
+        // 止まっている engine や、入力を持たない playback-only の engine では収録できない。
+        guard let sourceFormat = shared.inputFormat else { throw ConversationServiceError.speechCaptureFailed }
         guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
             compatibleWith: [transcriber],
             considering: sourceFormat
@@ -618,8 +631,6 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
 
         self.transcriber = transcriber
         self.analyzer = analyzer
-        self.inputNode = inputNode
-        self.sourceFormat = sourceFormat
         analyzerInputs = inputs
         self.tapBridge = tapBridge
         runPhase.didPrepare()
@@ -630,11 +641,9 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
         onFailure: @escaping @Sendable (ConversationServiceError) -> Void
     ) async throws {
         guard runPhase.canStart,
-              let inputNode,
               let transcriber,
               let analyzer,
               let analyzerInputs,
-              let sourceFormat,
               let tapBridge else {
             throw ConversationServiceError.speechCaptureFailed
         }
@@ -643,14 +652,10 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
         failureHandler = onFailure
         runPhase.didStart()
 
-        inputNode.installTap(
-            onBus: 0,
-            bufferSize: 1_024,
-            format: sourceFormat
-        ) { buffer, time in
+        // 共有 engine は動いたまま。tap の lease を受け取るだけで、engine の起動・停止はしない。
+        captureLease = try shared.beginCapture(bufferSize: 1_024) { buffer, time in
             tapBridge.consume(buffer, at: time)
         }
-        tapInstalled = true
 
         analysisTask = Task { [weak self, analyzer, analyzerInputs] in
             do {
@@ -676,22 +681,13 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
                 throw mapped
             }
         }
-
-        audioEngine.prepare()
-        do {
-            try audioEngine.start()
-        } catch {
-            throw ConversationServiceError.speechCaptureFailed
-        }
     }
 
     func stop() async throws {
         guard runPhase.canFinalize else { return }
         runPhase.beginGracefulFinalization()
 
-        removeTapIfNeeded()
-        audioEngine.stop()
-        audioEngine.reset()
+        releaseInput()
 
         guard let tapBridge, let analyzer else {
             throw ConversationServiceError.speechCaptureFailed
@@ -719,9 +715,7 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
     }
 
     private func performImmediateCancellation() async {
-        removeTapIfNeeded()
-        audioEngine.stop()
-        audioEngine.reset()
+        releaseInput()
         tapBridge?.finishWithoutFlush()
         analysisTask?.cancel()
         resultTask?.cancel()
@@ -741,18 +735,16 @@ private actor LiveSpeechCaptureDriver: SpeechCaptureDriving {
         failureHandler?(error)
     }
 
-    private func removeTapIfNeeded() {
-        guard tapInstalled else { return }
-        inputNode?.removeTap(onBus: 0)
-        tapInstalled = false
+    /// 入力を手放す。tap の lease を返すだけで、共有 engine は動いたまま。
+    private func releaseInput() {
+        if let captureLease { shared.endCapture(captureLease) }
+        captureLease = nil
     }
 
     private func clearRunState() {
-        inputNode = nil
         transcriber = nil
         analyzer = nil
         analyzerInputs = nil
-        sourceFormat = nil
         tapBridge = nil
         analysisTask = nil
         resultTask = nil

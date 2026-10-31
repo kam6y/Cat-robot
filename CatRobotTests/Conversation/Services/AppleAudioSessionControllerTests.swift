@@ -57,6 +57,140 @@ final class AppleAudioSessionControllerTests: XCTestCase {
         XCTAssertTrue(session.isActive)
     }
 
+    func testActivateStartsSharedEngineAfterSessionActivation() async throws {
+        let session = FakeAudioSession()
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+
+        try await controller.activate()
+
+        XCTAssertTrue(session.isActive)
+        XCTAssertTrue(engine.isActive)
+        XCTAssertTrue(engine.isEchoCancelled)
+        XCTAssertEqual(driver.calls, [.configure(duplex: true), .start])
+    }
+
+    func testSessionActivationFailureLeavesSharedEngineStopped() async {
+        let session = FakeAudioSession(activationShouldFail: true)
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+
+        do {
+            try await controller.activate()
+            XCTFail("activation must fail with the session")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .audioSessionFailed)
+        }
+        XCTAssertFalse(engine.isActive)
+        XCTAssertEqual(driver.calls, [], "the engine must not start on an inactive session")
+    }
+
+    func testSharedEngineStartFailureFailsActivation() async {
+        let session = FakeAudioSession()
+        let driver = FakeAudioEngineDriver()
+        driver.startFails = true
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+
+        do {
+            try await controller.activate()
+            XCTFail("activation must fail when the shared engine cannot start")
+        } catch {
+            XCTAssertEqual(error as? ConversationServiceError, .audioSessionFailed)
+        }
+        XCTAssertFalse(engine.isActive)
+    }
+
+    func testActivatePlaybackOnlyUsesPlaybackCategoryAndNeverEnablesInput() async throws {
+        let session = FakeAudioSession()
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+
+        try await controller.activatePlaybackOnly()
+
+        XCTAssertEqual(session.categoryCalls, [.init(category: .playback, mode: .default, options: [])])
+        XCTAssertEqual(session.activationCalls, [.init(isActive: true, options: [])])
+        XCTAssertEqual(engine.mode, .playbackOnly)
+        XCTAssertEqual(driver.calls, [.configure(duplex: false), .start])
+        XCTAssertEqual(driver.inputAccesses, 0, "a paused typed-only reply must not enable the microphone")
+    }
+
+    func testActivateAfterPlaybackOnlyReconfiguresToDuplex() async throws {
+        let session = FakeAudioSession()
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+        try await controller.activatePlaybackOnly()
+
+        try await controller.activate()
+
+        XCTAssertEqual(session.categoryCalls.last,
+                       .init(category: .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP]))
+        XCTAssertEqual(engine.mode, .duplex)
+        XCTAssertTrue(engine.isEchoCancelled)
+        XCTAssertEqual(Array(driver.calls.suffix(3)), [.stop, .configure(duplex: true), .start],
+                       "the playback-only engine must stop before the duplex graph starts")
+    }
+
+    func testVoiceProcessingFallbackDoesNotFailActivation() async throws {
+        let session = FakeAudioSession()
+        let driver = FakeAudioEngineDriver()
+        driver.voiceProcessingFails = true
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+
+        try await controller.activate()
+
+        XCTAssertTrue(session.isActive)
+        XCTAssertTrue(engine.isActive)
+        XCTAssertFalse(engine.isEchoCancelled)
+    }
+
+    func testDeactivateStopsSharedEngineEvenWhenSessionDeactivationFails() async throws {
+        let session = FakeAudioSession(deactivationShouldFail: true)
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let controller = AppleAudioSessionController(
+            session: session,
+            notifications: NotificationCenter(),
+            engine: engine
+        )
+        try await controller.activate()
+
+        await controller.deactivate()
+
+        XCTAssertFalse(engine.isActive)
+        XCTAssertEqual(driver.calls.last, .stop)
+        XCTAssertEqual(session.activationCalls.last, .init(isActive: false, options: [.notifyOthersOnDeactivation]))
+    }
+
     func testBlockingActivationLeavesMainActorResponsive() async throws {
         let activationGate = BlockingActivationGate()
         let session = FakeAudioSession(activationGate: activationGate)
@@ -307,6 +441,86 @@ final class AppleAudioSessionControllerTests: XCTestCase {
         )
     }
 
+    func testUnownedSharedEngineConfigurationDoesNotCancelStartupOrRequestTapAfterTeardown() async throws {
+        let center = NotificationCenter()
+        let session = FakeAudioSession()
+        let engine = ConversationAudioEngine(driver: FakeAudioEngineDriver())
+        let controller = AppleAudioSessionController(session: session, notifications: center, engine: engine)
+        let events = controller.events
+        try await controller.activate()
+
+        for afterTeardown in [false, true] {
+            if afterTeardown { await controller.deactivate() }
+            center.post(name: AVAudioSession.routeChangeNotification, object: session.object, userInfo: [
+                AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.routeConfigurationChange.rawValue,
+            ])
+        }
+        center.post(name: AVAudioSession.interruptionNotification, object: session.object, userInfo: [
+            AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue,
+        ])
+        let received = try await collect(events, count: 1)
+        XCTAssertEqual(received, [.interruptionBegan], "Unowned graph configuration must not interrupt startup or change resume intent")
+    }
+
+    func testUnchangedConfigurationNotificationAfterCaptureStartsDoesNotInterruptNewSession() async throws {
+        let center = NotificationCenter()
+        let session = FakeAudioSession()
+        let engine = ConversationAudioEngine(driver: FakeAudioEngineDriver())
+        let controller = AppleAudioSessionController(session: session, notifications: center, engine: engine)
+        let events = controller.events
+        try await controller.activate()
+        await controller.deactivate()
+        try await controller.activate()
+        _ = try engine.beginCapture(bufferSize: 1_024) { _, _ in }
+        center.post(name: AVAudioSession.routeChangeNotification, object: session.object, userInfo: [
+            AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.routeConfigurationChange.rawValue,
+        ])
+        center.post(name: AVAudioSession.interruptionNotification, object: session.object, userInfo: [
+            AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue,
+        ])
+        let received = try await collect(events, count: 1)
+        XCTAssertEqual(received, [.interruptionBegan], "A delayed internal notification must not cancel the new session when its configuration is unchanged")
+        await controller.deactivate()
+    }
+
+    func testConfigurationChangesStillPublishForActiveCaptureAndPlayback() async throws {
+        for capturing in [false, true] {
+            let center = NotificationCenter()
+            let session = FakeAudioSession()
+            let engine = ConversationAudioEngine(driver: FakeAudioEngineDriver())
+            let controller = AppleAudioSessionController(session: session, notifications: center, engine: engine)
+            let events = controller.events
+            try await controller.activate()
+            if capturing {
+                _ = try engine.beginCapture(bufferSize: 1_024) { _, _ in }
+            } else {
+                _ = try engine.beginPlayback(makeTestBuffer(frames: 1)) {}
+            }
+            session.currentConfiguration.sampleRate = 44_100
+            center.post(name: AVAudioSession.routeChangeNotification, object: session.object, userInfo: [
+                AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.routeConfigurationChange.rawValue,
+            ])
+            let received = try await collect(events, count: 1)
+            XCTAssertEqual(received, [.routeChanged])
+            await controller.deactivate()
+        }
+    }
+
+    func testPhysicalRouteChangesPublishEvenWhenSharedEngineHasNoOwners() async throws {
+        let center = NotificationCenter()
+        let session = FakeAudioSession()
+        let controller = AppleAudioSessionController(session: session, notifications: center,
+            engine: ConversationAudioEngine(driver: FakeAudioEngineDriver()))
+        let events = controller.events
+        for reason in [AVAudioSession.RouteChangeReason.newDeviceAvailable, .oldDeviceUnavailable, .override, .unknown] {
+            center.post(name: AVAudioSession.routeChangeNotification, object: session.object, userInfo: [
+                AVAudioSessionRouteChangeReasonKey: reason.rawValue,
+            ])
+        }
+        let received = try await collect(events, count: 4)
+        XCTAssertEqual(received, Array(repeating: .routeChanged, count: 4))
+    }
+
     func testNotificationsFromAnotherSessionObjectAreIgnored() async throws {
         let center = NotificationCenter()
         let session = FakeAudioSession()
@@ -499,6 +713,14 @@ private final class FakeAudioSession: AudioSessionDriving, @unchecked Sendable {
         var categoryCalls: [FakeCategoryCall] = []
         var activationCalls: [FakeActivationCall] = []
         var isActive = false
+        var configuration = AudioSessionConfiguration(sampleRate: 48_000, inputChannels: 1, outputChannels: 2,
+            inputs: [.init(uid: "mic", type: "MicrophoneBuiltIn", dataSourceID: "front", channelNumbers: [1])],
+            outputs: [.init(uid: "speaker", type: "Speaker", dataSourceID: nil, channelNumbers: [1, 2])])
+    }
+
+    var currentConfiguration: AudioSessionConfiguration {
+        get { lock.withLock { state.configuration } }
+        set { lock.withLock { state.configuration = newValue } }
     }
 
     private let lock = NSLock()

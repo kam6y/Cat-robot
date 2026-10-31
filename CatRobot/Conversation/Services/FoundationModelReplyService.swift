@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModels
 
 protocol ReplyModelClient: Sendable {
@@ -9,6 +10,8 @@ actor FoundationModelReplyService: ReplyGenerating {
     private let clientFactory: @Sendable () -> any ReplyModelClient
     private var client: (any ReplyModelClient)?
     private var isGenerating = false
+    private var generationTask: Task<Void, Never>?
+    private var deliveryID: UUID?
 
     init() {
         clientFactory = { LiveReplyModelClient() }
@@ -31,6 +34,7 @@ actor FoundationModelReplyService: ReplyGenerating {
         }
 
         let client = currentClient()
+        deliveryID = ReplyDeliveryContext.current
         isGenerating = true
         let source = await client.snapshots(for: utterance)
 
@@ -45,13 +49,24 @@ actor FoundationModelReplyService: ReplyGenerating {
             let forwardingTask = Task {
                 await self.forward(source, to: continuation)
             }
+            generationTask = forwardingTask
             continuation.onTermination = { _ in
                 forwardingTask.cancel()
             }
         }
     }
 
+    func interruptReply(_ interruption: ReplyInterruption) async {
+        guard deliveryID == interruption.id else { return }
+        generationTask?.cancel()
+        await generationTask?.value
+        guard deliveryID == interruption.id else { return }
+        deliveryID = nil
+        client = nil
+    }
+
     func reset() async {
+        deliveryID = nil
         let replacement = clientFactory()
         client = replacement
         await replacement.prewarm()
@@ -74,6 +89,7 @@ actor FoundationModelReplyService: ReplyGenerating {
         var completionError: ConversationServiceError?
         defer {
             isGenerating = false
+            generationTask = nil
             if let completionError {
                 continuation.finish(throwing: completionError)
             } else {

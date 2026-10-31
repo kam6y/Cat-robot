@@ -31,6 +31,11 @@ struct SpeechRecognitionEvent: Equatable, Sendable {
     }
 }
 
+extension Character {
+    /// 認識結果のうち、句読点や雑音ではなく言葉として数える文字（文字と数字）。
+    var isLexical: Bool { isLetter || isNumber }
+}
+
 enum SpeechEvent: Equatable, Sendable {
     case started
     case willSpeak(range: Range<Int>)

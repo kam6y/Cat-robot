@@ -12,6 +12,7 @@ struct MotionReplyGenerator: ReplyGenerating {
     }
     func prewarm() async { await base.prewarm() }
     func reset() async { await base.reset() }
+    func interruptReply(_ interruption: ReplyInterruption) async { await base.interruptReply(interruption) }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
         // Capture before the actor hop or relay task, and never substitute the coordinator's current turn.

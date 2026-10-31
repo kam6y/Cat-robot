@@ -55,6 +55,53 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         XCTAssertEqual(cancelCallCount, 0)
     }
 
+    func testSupportsConcurrentPlaybackOnlyWhileSharedEngineIsEchoCancelled() async throws {
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() }, engine: engine)
+
+        var supports = await recognizer.supportsConcurrentPlayback
+        XCTAssertFalse(supports, "no echo cancellation before the session activates the engine")
+
+        try engine.activate()
+        supports = await recognizer.supportsConcurrentPlayback
+        XCTAssertTrue(supports)
+
+        engine.deactivate()
+        supports = await recognizer.supportsConcurrentPlayback
+        XCTAssertFalse(supports, "the capability must be re-read per activation")
+    }
+
+    func testSupportsConcurrentPlaybackIsFalseWhenVoiceProcessingIsUnavailable() async throws {
+        let driver = FakeAudioEngineDriver()
+        driver.voiceProcessingFails = true
+        let engine = ConversationAudioEngine(driver: driver)
+        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() }, engine: engine)
+
+        try engine.activate()
+
+        let supports = await recognizer.supportsConcurrentPlayback
+        XCTAssertFalse(supports, "a raw microphone over speaker output must keep half-duplex behavior")
+    }
+
+    func testSupportsConcurrentPlaybackIsFalseInPlaybackOnlyMode() async throws {
+        let driver = FakeAudioEngineDriver()
+        let engine = ConversationAudioEngine(driver: driver)
+        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() }, engine: engine)
+
+        try engine.activate(mode: .playbackOnly)
+
+        let supports = await recognizer.supportsConcurrentPlayback
+        XCTAssertFalse(supports, "a playback-only engine has no echo-cancelled capture path")
+    }
+
+    func testSupportsConcurrentPlaybackIsFalseWithoutSharedEngine() async {
+        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() })
+
+        let supports = await recognizer.supportsConcurrentPlayback
+        XCTAssertFalse(supports)
+    }
+
     func testSecondStartDoesNotCreateParallelCapture() async throws {
         let factory = FakeSpeechCaptureDriverFactory()
         let recognizer = makeRecognizer(driverFactory: factory.make)
@@ -749,13 +796,15 @@ private func captureStartOutcome(
 }
 
 private func makeRecognizer(
-    driverFactory: @escaping @Sendable () -> any SpeechCaptureDriving
+    driverFactory: @escaping @Sendable () -> any SpeechCaptureDriving,
+    engine: ConversationAudioEngine? = nil
 ) -> AppleSpeechRecognizer {
     let locale = Locale(identifier: "ja-JP")
     let inventory = TaskFiveSpeechAssetInventory(locale: locale)
     return AppleSpeechRecognizer(
         assetPreparer: SpeechAssetPreparer(locale: locale, inventory: inventory),
-        driverFactory: driverFactory
+        driverFactory: driverFactory,
+        engine: engine
     )
 }
 

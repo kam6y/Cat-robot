@@ -32,7 +32,7 @@ final class SentenceReplyPlayback {
                     }
                 }
                 group.addTask {
-                    do { try await self.enqueue(snapshots.stream, channel, trace); return nil }
+                    do { try await self.enqueue(snapshots.stream, channel, trace, onUpdate); return nil }
                     catch { throw Failure(error: error, outcome: .generationFailure) }
                 }
                 group.addTask {
@@ -83,7 +83,8 @@ final class SentenceReplyPlayback {
         trace?.mark(.streamFinished, outcome: .success)
         return final
     }
-    private func enqueue(_ snapshots: AsyncThrowingStream<String, Error>, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?) async throws {
+    private func enqueue(_ snapshots: AsyncThrowingStream<String, Error>, _ channel: SpeechSentenceChannel, _ trace: ReplyTrace?,
+                         _ onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws {
         var buffer = ReplySentenceStreamBuffer()
         var final = ""
         var pending: Task<Void, Never>?
@@ -114,13 +115,13 @@ final class SentenceReplyPlayback {
                             }
                         }
                     }
-                    try await commit(sentences, to: channel, trace: trace)
+                    try await commit(sentences, to: channel, trace: trace, onUpdate: onUpdate)
                 }
             }
             pending?.cancel()
             await pending?.value
             try Task.checkCancellation()
-            try await commit(buffer.receive(final, final: true), to: channel, trace: trace)
+            try await commit(buffer.receive(final, final: true), to: channel, trace: trace, onUpdate: onUpdate)
             await channel.finish()
         } catch {
             pending?.cancel()
@@ -128,10 +129,12 @@ final class SentenceReplyPlayback {
             throw error
         }
     }
-    private func commit(_ sentences: [SpeechSentence], to channel: SpeechSentenceChannel, trace: ReplyTrace?) async throws {
+    private func commit(_ sentences: [SpeechSentence], to channel: SpeechSentenceChannel, trace: ReplyTrace?,
+                        onUpdate: @MainActor @Sendable (ReplyPlaybackUpdate) -> Void) async throws {
         for sentence in sentences {
             trace?.mark(.firstSentence)
             trace?.mark(.speechEnqueued, part: sentence.ordinal == 0 ? .first : .remainder, sentenceOrdinal: sentence.ordinal)
+            onUpdate(.sentenceQueued(sentence))
             try await channel.send(sentence)
         }
     }

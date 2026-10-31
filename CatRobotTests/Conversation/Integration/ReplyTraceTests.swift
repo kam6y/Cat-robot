@@ -61,6 +61,17 @@ final class ReplyTraceTests: XCTestCase {
         XCTAssertEqual(sink.events.last?.outcome, .cancelled)
     }
 
+    func testInterruptionStopRequiresDetectionAndCanFinishAfterCancellation() {
+        let sink = RecordingReplyTraceSink()
+        let trace = ReplyTrace(sink: sink, now: { 0 })
+        trace.mark(.interruptionPlaybackStopped)
+        trace.mark(.interruptionDetected)
+        trace.finish(.cancelled)
+        trace.mark(.interruptionPlaybackStopped)
+        trace.mark(.interruptionPlaybackStopped)
+        XCTAssertEqual(sink.events.map(\.point), [.interruptionDetected, .finished, .interruptionPlaybackStopped])
+    }
+
     func testFirstCaptionAndTerminalAreRecordedOnce() {
         let sink = RecordingReplyTraceSink()
         let trace = ReplyTrace(sink: sink, now: { 12.5 })

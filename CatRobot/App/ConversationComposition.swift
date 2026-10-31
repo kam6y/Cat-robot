@@ -65,11 +65,14 @@ struct ConversationComposition {
                                                  onDeviceAvailability: onDeviceAvailability,
                                                  claude: FoundationModelAddressClassifier(client: ClaudeAddressModelClient(auth: auth)))
 
-        let concreteRecognizer = AppleSpeechRecognizer()
+        // 収録と再生は 1 つの engine を共有し、voice processing で自分の再生音を入力から除く（声での割り込みの前提）。
+        let audioEngine = ConversationAudioEngine(driver: LiveAudioEngineDriver())
+        let concreteRecognizer = AppleSpeechRecognizer(engine: audioEngine)
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let engine = SupertonicEngine(root: resources.appendingPathComponent("Supertonic"),
                                       manifest: resources.appendingPathComponent("supertonic-manifest.json"))
-        let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voiceSettings.selected })
+        let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voiceSettings.selected },
+                                                player: PCMPlayer(engine: audioEngine))
         let dependencies = ConversationDependencies(
             microphonePermission: MicrophonePermissionService(),
             modelAvailability: fallback,
@@ -77,7 +80,7 @@ struct ConversationComposition {
             classifier: classifier,
             reply: reply,
             speaker: speaker,
-            audioSession: AppleAudioSessionController(),
+            audioSession: AppleAudioSessionController(engine: audioEngine),
             latency: ConversationLatencyTracker.live(),
             replyTraceSink: OSReplyTraceSink(),
             motion: motion,

@@ -99,7 +99,7 @@ struct ReplySentenceBuffer {
     }
 
     static func isContent(_ character: Character) -> Bool {
-        character.isLetter || character.isNumber || character.unicodeScalars.contains {
+        character.isLexical || character.unicodeScalars.contains {
             $0.properties.isEmojiPresentation
         }
     }

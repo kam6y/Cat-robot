@@ -11,7 +11,7 @@ final class AppleServiceCompositionTests: XCTestCase {
         let classifier: any AddressClassifying =
             FoundationModelAddressClassifier()
         let replies: any ReplyGenerating = FoundationModelReplyService()
-        let concreteRecognizer = AppleSpeechRecognizer()
+        let concreteRecognizer = AppleSpeechRecognizer(engine: ConversationAudioEngine(driver: FakeAudioEngineDriver()))
         let recognizer: any SpeechRecognizing = concreteRecognizer
         let shutdown: @Sendable () async -> Void = {
             await concreteRecognizer.shutdown()
