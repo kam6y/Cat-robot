@@ -1,0 +1,39 @@
+{
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "install",
+      "app",
+      "--device",
+      "00008140-000610311A90801C",
+      "/private/tmp/cat-smart-turn-clean-20261105/NormalDerived/Build/Products/Debug-iphoneos/CatRobot.app",
+      "--json-output",
+      "/private/tmp/cat-smart-turn-clean-20261105/normal-install.json",
+      "--timeout",
+      "60"
+    ],
+    "commandType" : "devicectl.device.install.app",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 5,
+    "outcome" : "success",
+    "version" : "651.32"
+  },
+  "result" : {
+    "deviceIdentifier" : "59199D1B-26D5-5063-8A43-BE38E8008EAD",
+    "installedApplications" : [
+      {
+        "bundleID" : "com.kamby.CatRobot",
+        "databaseSequenceNumber" : 3184,
+        "databaseUUID" : "11A9D239-5AE0-4701-B308-28613904DFA5",
+        "installationURL" : "file:///private/var/containers/Bundle/Application/9D8C755A-8B56-464F-A195-92A8BCF98F30/CatRobot.app/",
+        "launchServicesIdentifier" : "unknown",
+        "options" : {
+
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "buildCommit": "a3cfa832c0f9b4ae0aa9b330b6594276b18e6454",
+  "sourceDigest": "3ae82889ac1bb64d60a612f87ed789db557c21bdcb1d57d70eae2bc2f99c3204",
+  "modelsVerified": 8,
+  "testPlugins": 0,
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "installed": true,
+  "launched": true,
+  "processPresent": true,
+  "pid": 6812,
+  "arguments": [],
+  "environmentVariables": {
+    "TERM": "dumb"
+  }
+}

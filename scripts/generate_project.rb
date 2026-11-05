@@ -130,6 +130,20 @@ validation.always_out_of_date = "1"
 app_target.build_phases.delete(validation)
 app_target.build_phases.insert(0, validation)
 
+app_target.add_resources([resources_group.new_file("smart-turn-manifest.json")])
+endpoint_assets = app_group.new_file("LocalAssets/SmartTurn")
+endpoint_assets.last_known_file_type = "folder"
+app_target.add_resources([endpoint_assets])
+endpoint_validation = app_target.new_shell_script_build_phase("Validate Smart Turn assets")
+endpoint_validation.shell_script = 'PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 "$SRCROOT/scripts/prepare_smart_turn_assets.py"'
+endpoint_validation.input_paths = ["$(SRCROOT)/scripts/prepare_smart_turn_assets.py", "$(SRCROOT)/CatRobot/Resources/smart-turn-manifest.json"]
+JSON.parse(ROOT.join("CatRobot/Resources/smart-turn-manifest.json").read).fetch("files").each do |entry|
+  endpoint_validation.input_paths << "$(SRCROOT)/CatRobot/LocalAssets/SmartTurn/#{entry.fetch('path')}"
+end
+endpoint_validation.always_out_of_date = "1"
+app_target.build_phases.delete(endpoint_validation)
+app_target.build_phases.insert(0, endpoint_validation)
+
 native_reference = app_group.new_file("LocalAssets/JPreprocess/CJPPronunciation.xcframework")
 native_reference.last_known_file_type = "wrapper.xcframework"
 app_target.frameworks_build_phase.add_file_reference(native_reference, true)

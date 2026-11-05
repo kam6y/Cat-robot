@@ -22,6 +22,9 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .speechUnrecognized:
             message = "うまく聞き取れませんでした"
             recoveries = [.retry, .typedInput]
+        case .speechEndpointingFailed:
+            message = "発話の終了判定に失敗しました。"
+            recoveries = [.retry]
         case .speechCaptureFailed:
             message = "マイクの聞き取りを続けられませんでした。"
             recoveries = [.retry, .typedInput]

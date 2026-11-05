@@ -111,7 +111,7 @@ struct AboutSettingsPane: View {
                 Button("はじめの説明をもう一度見る") { showsOnboarding = true }
             }
             Section {
-                Text("音声合成: Supertonic 3（MIT / OpenRAIL-M）。推論: ONNX Runtime 1.24.2。Claude 連携: ClaudeForFoundationModels 0.2.3（Apache-2.0）。")
+                Text("音声の終了判定: Smart Turn v3.2（BSD-2-Clause）、Silero VAD（MIT）。音声合成: Supertonic 3（MIT / OpenRAIL-M）。推論: ONNX Runtime 1.24.2。Claude 連携: ClaudeForFoundationModels 0.2.3（Apache-2.0）。")
                     .font(.footnote)
             } header: { Text("ライセンス") }
         }

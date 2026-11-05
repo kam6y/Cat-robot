@@ -5,21 +5,19 @@ import XCTest
 
 @MainActor
 final class PlaybackIntegrationHarness {
-    let infrastructure: ConversationHarness
+    let infrastructure = ConversationHarness()
     let reply = ControlledReply()
     let speaker: ControlledSpeaker
     let viewModel: ConversationViewModel
     let traces = RecordingReplyTraceSink()
     var recognizer: FakeSpeechRecognizer { infrastructure.recognizer }
-    init(infrastructure: ConversationHarness = ConversationHarness(),
-         service: (any ReplyGenerating)? = nil,
+    init(service: (any ReplyGenerating)? = nil,
          memory: (any ConversationMemoryManaging)? = nil,
          speaker: ControlledSpeaker = ControlledSpeaker(), sentenceSpeaker: (any SentenceSpeechSpeaking)? = nil,
          motion: any RobotMotionControlling = NoopRobotMotionController(),
          expressions: any FaceExpressionControlling = NoopFaceExpressionController(),
          replyTurnObserver: (any ReplyTurnObserving)? = nil,
          look: any LookControlling = NoopLookController()) {
-        self.infrastructure = infrastructure
         self.speaker = speaker
         let base = infrastructure
         viewModel = ConversationViewModel(dependencies: ConversationDependencies(

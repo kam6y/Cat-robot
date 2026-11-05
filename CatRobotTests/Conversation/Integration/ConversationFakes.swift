@@ -305,8 +305,6 @@ actor FakeModelAvailability: ModelAvailabilityChecking {
 }
 
 actor FakeSpeechRecognizer: SpeechRecognizing {
-    private(set) var supportsConcurrentPlayback = false
-    func setConcurrentPlaybackSupported(_ value: Bool) { supportsConcurrentPlayback = value }
     typealias Continuation = AsyncThrowingStream<SpeechRecognitionEvent, Error>.Continuation
 
     private let log: ConversationTestCallLog
@@ -586,7 +584,6 @@ actor FakeConversationAudioSession: AudioSessionControlling {
     private let log: ConversationTestCallLog
     private let deactivateGate: ConversationTestGate?
     private(set) var activateCount = 0
-    private(set) var playbackOnlyActivateCount = 0
     private(set) var deactivateCount = 0
     private(set) var isActive = false
 
@@ -605,11 +602,6 @@ actor FakeConversationAudioSession: AudioSessionControlling {
         activateCount += 1
         isActive = true
         log.append(.activateAudio)
-    }
-
-    func activatePlaybackOnly() async throws {
-        playbackOnlyActivateCount += 1
-        try await activate()
     }
 
     func deactivate() async {
@@ -663,6 +655,7 @@ final class ConversationHarness {
     let sut: ConversationViewModel
 
     init(
+        recognizerOverride: (any SpeechRecognizing)? = nil,
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
@@ -742,7 +735,7 @@ final class ConversationHarness {
         let dependencies = ConversationDependencies(
             microphonePermission: microphone,
             modelAvailability: modelAvailability,
-            recognizer: recognizer,
+            recognizer: recognizerOverride ?? recognizer,
             classifier: classifier,
             reply: reply,
             speaker: speaker,

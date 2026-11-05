@@ -23,9 +23,8 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
          synthesize: @escaping @Sendable (String, SpeechVoicePreset) async throws -> SpeechPCM) {
         self.player = player; prepareModel = prepare; self.normalize = normalize; self.voice = voice; self.synthesize = synthesize
     }
-    convenience init(engine: SupertonicEngine, voice: @escaping @MainActor @Sendable () -> SpeechVoicePreset,
-                     player: any PCMPlaying = PCMPlayer()) {
-        self.init(player: player, prepare: {
+    convenience init(engine: SupertonicEngine, voice: @escaping @MainActor @Sendable () -> SpeechVoicePreset) {
+        self.init(player: PCMPlayer(), prepare: {
             do { try await engine.prepare(); try await JapanesePronunciationService.shared.prepare() }
             catch is CancellationError { throw ConversationServiceError.cancelled }
             catch { throw SupertonicErrorMapper.map(error) }

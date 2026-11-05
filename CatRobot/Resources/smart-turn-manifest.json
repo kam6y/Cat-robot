@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "coreMLRevision": "75f069717f500947195fa1945c46ddb472559cff",
+  "upstreamRevision": "f766f81d3cfdf7737ac64aad813d91bbfd56bf93",
+  "sileroRevision": "066409f3d9db45a30d21dfcbf9147826ffdd7052",
+  "files": [
+    {
+      "path": "LICENSE",
+      "size": 1406,
+      "sha256": "db31415d226689aaf6fa6274da0416171edb70ca7ebf97bd3d99d8d8b88cd34e",
+      "url": "https://huggingface.co/aufklarer/Smart-Turn-v3.2-CoreML/resolve/75f069717f500947195fa1945c46ddb472559cff/LICENSE"
+    },
+    {
+      "path": "config.json",
+      "size": 1029,
+      "sha256": "bc09d1b40285465b389dc42cef54290fa1db7b4928348018bc61d819b4914402",
+      "url": "https://huggingface.co/aufklarer/Smart-Turn-v3.2-CoreML/resolve/75f069717f500947195fa1945c46ddb472559cff/config.json"
+    },
+    {
+      "path": "smart_turn.mlmodelc/analytics/coremldata.bin",
+      "size": 243,
+      "sha256": "1646746d0029e78d26be065e62602d4f89e51013ec238b653adf7d7d21057f89",
+      "url": "https://huggingface.co/aufklarer/Smart-Turn-v3.2-CoreML/resolve/75f069717f500947195fa1945c46ddb472559cff/smart_turn.mlmodelc/analytics/coremldata.bin"
+    },
+    {
+      "path": "smart_turn.mlmodelc/coremldata.bin",
+      "size": 643,
+      "sha256": "9245ac99889c9d738cba6c89da9e851fd16488bf8effbc15a109d06b401c9383",
+      "url": "https://huggingface.co/aufklarer/Smart-Turn-v3.2-CoreML/resolve/75f069717f500947195fa1945c46ddb472559cff/smart_turn.mlmodelc/coremldata.bin"
+    },
+    {
+      "path": "smart_turn.mlmodelc/model.mil",
+      "size": 69968,
+      "sha256": "41a6d9ac0f7d01d738e56ecdf4435e55f139591541b7cf1a4dba6b9ce2f1c9ef",
+      "url": "https://huggingface.co/aufklarer/Smart-Turn-v3.2-CoreML/resolve/75f069717f500947195fa1945c46ddb472559cff/smart_turn.mlmodelc/model.mil"
+    },
+    {
+      "path": "smart_turn.mlmodelc/weights/weight.bin",
+      "size": 16714240,
+      "sha256": "b6295316741a0149e1fcab7cdf030e1b9bfb0eef778207accee91a2a9703a39c",
+      "url": "https://huggingface.co/aufklarer/Smart-Turn-v3.2-CoreML/resolve/75f069717f500947195fa1945c46ddb472559cff/smart_turn.mlmodelc/weights/weight.bin"
+    },
+    {
+      "path": "silero_vad.onnx",
+      "size": 2327524,
+      "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
+      "url": "https://raw.githubusercontent.com/snakers4/silero-vad/066409f3d9db45a30d21dfcbf9147826ffdd7052/src/silero_vad/data/silero_vad.onnx"
+    },
+    {
+      "path": "silero-LICENSE",
+      "size": 1075,
+      "sha256": "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b",
+      "url": "https://raw.githubusercontent.com/snakers4/silero-vad/066409f3d9db45a30d21dfcbf9147826ffdd7052/LICENSE"
+    }
+  ]
+}

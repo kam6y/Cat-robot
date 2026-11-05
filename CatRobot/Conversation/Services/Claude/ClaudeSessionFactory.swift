@@ -4,7 +4,8 @@ import FoundationModels
 
 struct ClaudeSessionFactory: ConversationSessionFactory {
     static let replyTimeout: TimeInterval = 30
-    static let maximumResponseTokens = 600
+    // Thinking and the visible answer share this output budget.
+    static let maximumResponseTokens = 4_096
     private let auth: ClaudeAuthConfiguration
 
     init(auth: ClaudeAuthConfiguration) { self.auth = auth }

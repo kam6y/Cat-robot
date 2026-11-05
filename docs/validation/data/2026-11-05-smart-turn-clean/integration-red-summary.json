@@ -1,0 +1,84 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "40C29D25-C8EC-42C7-8145-65AB37A2BB7D",
+        "deviceName" : "iPhone 18 Pro",
+        "modelName" : "iPhone 18 Pro",
+        "osBuildNumber" : "24A5408d",
+        "osVersion" : "27.0",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 5,
+      "passedTests" : 2,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "CatRobot · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 5,
+  "finishTime" : 1793888054.667,
+  "passedTests" : 2,
+  "result" : "Failed",
+  "runtimeWarnings" : [
+
+  ],
+  "skippedTests" : 0,
+  "startTime" : 1793887944.536,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "CatRobotTests",
+      "testIdentifier" : 1,
+      "testIdentifierString" : "ConversationSmartTurnTests/testASRFallbackUsesThreeSecondsWhenAudioModelIsUnavailable()",
+      "testIdentifierURL" : "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationSmartTurnTests/testASRFallbackUsesThreeSecondsWhenAudioModelIsUnavailable",
+      "testName" : "testASRFallbackUsesThreeSecondsWhenAudioModelIsUnavailable()"
+    },
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "CatRobotTests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "ConversationSmartTurnTests/testFinalizedPrefixAndStopFinalTailAreJoinedOnce()",
+      "testIdentifierURL" : "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationSmartTurnTests/testFinalizedPrefixAndStopFinalTailAreJoinedOnce",
+      "testName" : "testFinalizedPrefixAndStopFinalTailAreJoinedOnce()"
+    },
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "CatRobotTests",
+      "testIdentifier" : 5,
+      "testIdentifierString" : "ConversationSmartTurnTests/testPauseRetiresOldAudioSignalsAndResumeCanClose()",
+      "testIdentifierURL" : "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationSmartTurnTests/testPauseRetiresOldAudioSignalsAndResumeCanClose",
+      "testName" : "testPauseRetiresOldAudioSignalsAndResumeCanClose()"
+    },
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "CatRobotTests",
+      "testIdentifier" : 6,
+      "testIdentifierString" : "ConversationSmartTurnTests/testProvisionalWordsCloseWithoutAnEndingRuleAndStopFinalIsUsedOnce()",
+      "testIdentifierURL" : "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationSmartTurnTests/testProvisionalWordsCloseWithoutAnEndingRuleAndStopFinalIsUsedOnce",
+      "testName" : "testProvisionalWordsCloseWithoutAnEndingRuleAndStopFinalIsUsedOnce()"
+    },
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "CatRobotTests",
+      "testIdentifier" : 7,
+      "testIdentifierString" : "ConversationSmartTurnTests/testReplyStaysHalfDuplexAndNextCaptureAcceptsANewAudioTurn()",
+      "testIdentifierURL" : "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationSmartTurnTests/testReplyStaysHalfDuplexAndNextCaptureAcceptsANewAudioTurn",
+      "testName" : "testReplyStaysHalfDuplexAndNextCaptureAcceptsANewAudioTurn()"
+    }
+  ],
+  "title" : "Test - CatRobot",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 7
+}

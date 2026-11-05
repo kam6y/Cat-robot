@@ -16,6 +16,7 @@ struct UtteranceSegmenter: Sendable {
 
     private let configuration: Configuration
     private var finalizedSegments: [String] = []
+    private var hasAudioEndpointActivity = false
     private var firstActivityAt: TimeInterval?
     private var latestActivityAt: TimeInterval?
 
@@ -37,19 +38,29 @@ struct UtteranceSegmenter: Sendable {
         // Provisional-only speech cannot close on silence. Schedule its hard expiry;
         // an early no-op flush would otherwise leave it pending with no future timer.
         if finalizedSegments.isEmpty { return hardRemaining }
-        return min(configuration.silenceInterval, hardRemaining)
+        return min(silenceInterval, hardRemaining)
     }
 
     mutating func receive(_ event: SpeechRecognitionEvent, at timestamp: TimeInterval) {
         let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
+        hasAudioEndpointActivity = hasAudioEndpointActivity || text.contains { $0.isLetter || $0.isNumber }
         firstActivityAt = firstActivityAt ?? timestamp
         latestActivityAt = timestamp
 
         if event.isFinal {
             finalizedSegments.append(text)
         }
+    }
+
+    /// Close on audio evidence; provisional words are finalized by recognizer.stop().
+    /// Punctuation alone cannot authorize a new audio-triggered turn.
+    mutating func closeForAudioEndpoint() -> String? {
+        guard hasAudioEndpointActivity else { return nil }
+        let prefix = finalizedSegments.joined()
+        reset()
+        return prefix
     }
 
     mutating func utteranceIfReady(at timestamp: TimeInterval) -> String? {
@@ -64,7 +75,7 @@ struct UtteranceSegmenter: Sendable {
         }
 
         guard let latestActivityAt else { return nil }
-        let silenceElapsed = timestamp >= latestActivityAt + configuration.silenceInterval
+        let silenceElapsed = timestamp >= latestActivityAt + silenceInterval
         guard silenceElapsed || maximumDurationElapsed else { return nil }
 
         let utterance = finalizedSegments.joined()
@@ -74,6 +85,7 @@ struct UtteranceSegmenter: Sendable {
 
     private mutating func reset() {
         finalizedSegments.removeAll(keepingCapacity: true)
+        hasAudioEndpointActivity = false
         firstActivityAt = nil
         latestActivityAt = nil
     }

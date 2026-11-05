@@ -1,0 +1,8 @@
+{
+  "build": "passed",
+  "gitCommit": "a3cfa832c0f9b4ae0aa9b330b6594276b18e6454",
+  "sourceDigest": "3ae82889ac1bb64d60a612f87ed789db557c21bdcb1d57d70eae2bc2f99c3204",
+  "app": "/private/tmp/cat-smart-turn-clean-20261105/NormalDerived/Build/Products/Debug-iphoneos/CatRobot.app",
+  "codesignVerified": true,
+  "testPlugins": 0
+}

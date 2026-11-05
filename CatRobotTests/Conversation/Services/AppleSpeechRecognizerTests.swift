@@ -4,6 +4,62 @@ import XCTest
 @testable import CatRobot
 
 final class AppleSpeechRecognizerTests: XCTestCase {
+    @MainActor
+    func testVMStopAndShutdownCancelRequiredModelPreparationBeforeJoiningPreflight() async {
+        for shutsDown in [false, true] {
+            let gate = EndpointInitializationGate()
+            let service = SmartTurnService(
+                makeScorer: { gate.wait(); return EndpointPreparationScorer() },
+                makeVAD: { EndpointPreparationVAD() })
+            let driver = OptionalEndpointPreparingDriver(service: service)
+            let recognizer = makeRecognizer(driverFactory: { driver })
+            let h = ConversationHarness(recognizerOverride: recognizer)
+            let starting = Task { await h.sut.startConversation() }
+            let began = await endpointWait { gate.entered }
+            XCTAssertTrue(began)
+            let returned = expectation(description: shutsDown ? "VM shutdown returns" : "VM stop returns")
+            let stopping = Task {
+                if shutsDown { await h.sut.shutdown() }
+                else { await h.sut.toggleListening() }
+                returned.fulfill()
+            }
+            await fulfillment(of: [returned], timeout: 0.3)
+            // Release after the assertion so a broken cancellation chain cannot hang the suite.
+            gate.release()
+            await stopping.value
+            await starting.value
+            XCTAssertEqual(h.sut.viewState.phase, .paused)
+            let prompts = await h.reply.prompts
+            XCTAssertTrue(prompts.isEmpty)
+            await h.sut.shutdown()
+            await recognizer.shutdown()
+        }
+    }
+
+    func testOptionalEndpointInitializationDoesNotHoldStopOrShutdown() async throws {
+        for shutsDown in [false, true] {
+            let gate = EndpointInitializationGate()
+            let service = SmartTurnService(
+                makeScorer: { gate.wait(); return EndpointPreparationScorer() },
+                makeVAD: { EndpointPreparationVAD() })
+            let driver = OptionalEndpointPreparingDriver(service: service)
+            let recognizer = makeRecognizer(driverFactory: { driver })
+            let preparing = Task { try? await recognizer.prepare() }
+            let started = await endpointWait { gate.entered }
+            XCTAssertTrue(started)
+            let returned = expectation(description: shutsDown ? "shutdown returns" : "stop returns")
+            let stopping = Task {
+                if shutsDown { await recognizer.shutdown() } else { await recognizer.stop() }
+                returned.fulfill()
+            }
+            await fulfillment(of: [returned], timeout: 0.3)
+            gate.release()
+            await stopping.value
+            _ = await preparing.value
+        }
+    }
+
+
     func testStartForwardsUntrimmedProgressiveAndFinalResultsWithoutClosingAtFinal() async throws {
         let driver = FakeSpeechCaptureDriver(results: [
             .init(text: " こん。", isFinal: false),
@@ -53,53 +109,6 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         XCTAssertEqual(events, [tail])
         let cancelCallCount = await driver.cancelCallCount
         XCTAssertEqual(cancelCallCount, 0)
-    }
-
-    func testSupportsConcurrentPlaybackOnlyWhileSharedEngineIsEchoCancelled() async throws {
-        let driver = FakeAudioEngineDriver()
-        let engine = ConversationAudioEngine(driver: driver)
-        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() }, engine: engine)
-
-        var supports = await recognizer.supportsConcurrentPlayback
-        XCTAssertFalse(supports, "no echo cancellation before the session activates the engine")
-
-        try engine.activate()
-        supports = await recognizer.supportsConcurrentPlayback
-        XCTAssertTrue(supports)
-
-        engine.deactivate()
-        supports = await recognizer.supportsConcurrentPlayback
-        XCTAssertFalse(supports, "the capability must be re-read per activation")
-    }
-
-    func testSupportsConcurrentPlaybackIsFalseWhenVoiceProcessingIsUnavailable() async throws {
-        let driver = FakeAudioEngineDriver()
-        driver.voiceProcessingFails = true
-        let engine = ConversationAudioEngine(driver: driver)
-        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() }, engine: engine)
-
-        try engine.activate()
-
-        let supports = await recognizer.supportsConcurrentPlayback
-        XCTAssertFalse(supports, "a raw microphone over speaker output must keep half-duplex behavior")
-    }
-
-    func testSupportsConcurrentPlaybackIsFalseInPlaybackOnlyMode() async throws {
-        let driver = FakeAudioEngineDriver()
-        let engine = ConversationAudioEngine(driver: driver)
-        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() }, engine: engine)
-
-        try engine.activate(mode: .playbackOnly)
-
-        let supports = await recognizer.supportsConcurrentPlayback
-        XCTAssertFalse(supports, "a playback-only engine has no echo-cancelled capture path")
-    }
-
-    func testSupportsConcurrentPlaybackIsFalseWithoutSharedEngine() async {
-        let recognizer = makeRecognizer(driverFactory: { FakeSpeechCaptureDriver() })
-
-        let supports = await recognizer.supportsConcurrentPlayback
-        XCTAssertFalse(supports)
     }
 
     func testSecondStartDoesNotCreateParallelCapture() async throws {
@@ -796,15 +805,13 @@ private func captureStartOutcome(
 }
 
 private func makeRecognizer(
-    driverFactory: @escaping @Sendable () -> any SpeechCaptureDriving,
-    engine: ConversationAudioEngine? = nil
+    driverFactory: @escaping @Sendable () -> any SpeechCaptureDriving
 ) -> AppleSpeechRecognizer {
     let locale = Locale(identifier: "ja-JP")
     let inventory = TaskFiveSpeechAssetInventory(locale: locale)
     return AppleSpeechRecognizer(
         assetPreparer: SpeechAssetPreparer(locale: locale, inventory: inventory),
-        driverFactory: driverFactory,
-        engine: engine
+        driverFactory: driverFactory
     )
 }
 
@@ -1090,4 +1097,17 @@ private func eventually(
         try? await Task.sleep(for: .milliseconds(1))
     }
     return await condition()
+}
+
+private actor OptionalEndpointPreparingDriver: SpeechCaptureDriving {
+    let service: SmartTurnService
+    var capture: AudioTurnEndCapture?
+    init(service: SmartTurnService) { self.service = service }
+    func prepare(with transcriber: SpeechTranscriber) async throws {
+        capture = try await service.makeCapture(sourceFormat: endpointTestFormat(), onEndpoint: { _ in }, onFailure: { _ in })
+    }
+    func start(onEvent: @escaping @Sendable (SpeechRecognitionEvent) -> Void,
+               onFailure: @escaping @Sendable (ConversationServiceError) -> Void) async throws {}
+    func stop() async throws { capture?.cancel(); capture = nil }
+    func cancel() async { capture?.cancel(); capture = nil }
 }

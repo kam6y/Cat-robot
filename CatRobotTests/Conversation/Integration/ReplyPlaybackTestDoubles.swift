@@ -5,14 +5,11 @@ import XCTest
 
 actor ControlledReply: ReplyGenerating {
     nonisolated let supportsStableReplyPrefix: Bool
-    private var continuations: [AsyncThrowingStream<String, Error>.Continuation] = []
-    private(set) var prompts: [String] = []
+    private var continuation: AsyncThrowingStream<String, Error>.Continuation?
     private var requests = 0
     private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
     let cancellation = ConversationTestGate()
     private(set) var resetCount = 0
-    private(set) var interruptions: [ReplyInterruption] = []
-    func interruptReply(_ interruption: ReplyInterruption) async { interruptions.append(interruption) }
     init(stablePrefix: Bool = true) { supportsStableReplyPrefix = stablePrefix }
     func prewarm() async {}
     func reset() async { resetCount += 1 }
@@ -21,8 +18,7 @@ actor ControlledReply: ReplyGenerating {
         pair.continuation.onTermination = { [cancellation] reason in
             if case .cancelled = reason { Task { await cancellation.open() } }
         }
-        continuations.append(pair.continuation)
-        prompts.append(utterance)
+        continuation = pair.continuation
         requests += 1
         let ready = waiters.filter { $0.0 <= requests }
         waiters.removeAll { $0.0 <= requests }
@@ -33,12 +29,8 @@ actor ControlledReply: ReplyGenerating {
         if requests >= count { return }
         await withCheckedContinuation { waiters.append((count, $0)) }
     }
-    func yield(_ text: String, request: Int? = nil) { continuation(request)?.yield(text) }
-    func finish(throwing error: Error? = nil, request: Int? = nil) { continuation(request)?.finish(throwing: error) }
-    private func continuation(_ request: Int?) -> AsyncThrowingStream<String, Error>.Continuation? {
-        let index = request ?? continuations.count - 1
-        return continuations.indices.contains(index) ? continuations[index] : nil
-    }
+    func yield(_ text: String) { continuation?.yield(text) }
+    func finish(throwing error: Error? = nil) { continuation?.finish(throwing: error) }
 }
 
 actor ControlledSpeaker: TestSentenceSpeaker {
@@ -93,7 +85,6 @@ final class PlaybackUpdates {
     private var waiters: [(predicate: @MainActor () -> Bool, continuation: CheckedContinuation<Void, Never>)] = []
     func record(_ update: ReplyPlaybackUpdate) {
         switch update {
-        case .sentenceQueued: break
         case .caption(let text): captions.append(text)
         case .speechStarted(let part, _): starts.append(part)
         case .speechFinished(let part): finishes.append(part)
@@ -105,7 +96,6 @@ final class PlaybackUpdates {
         ready.forEach { $0.continuation.resume() }
     }
     func waitForCaption(_ text: String) async { await wait { self.captions.last == text } }
-    func waitForSentenceStarts(_ count: Int) async { await wait { self.sentenceStarts.count >= count } }
     func waitForSentenceFinishes(_ count: Int) async { await wait { self.sentenceFinishes.count >= count } }
     private func wait(_ predicate: @escaping @MainActor () -> Bool) async {
         if predicate() { return }

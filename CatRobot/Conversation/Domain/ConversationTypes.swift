@@ -21,6 +21,11 @@ enum AddressTarget: Equatable, Sendable {
 struct SpeechRecognitionEvent: Equatable, Sendable {
     var text: String
     var isFinal: Bool
+    var audioTurnEnd: AudioTurnEndSignal? = nil
+
+    static func audioEnded(_ signal: AudioTurnEndSignal) -> Self {
+        .init(text: "", isFinal: false, audioTurnEnd: signal)
+    }
 
     static func provisional(_ text: String) -> Self {
         .init(text: text, isFinal: false)
@@ -29,11 +34,6 @@ struct SpeechRecognitionEvent: Equatable, Sendable {
     static func finalized(_ text: String) -> Self {
         .init(text: text, isFinal: true)
     }
-}
-
-extension Character {
-    /// 認識結果のうち、句読点や雑音ではなく言葉として数える文字（文字と数字）。
-    var isLexical: Bool { isLetter || isNumber }
 }
 
 enum SpeechEvent: Equatable, Sendable {
@@ -62,6 +62,7 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case speechLocaleUnsupported
     case speechUnrecognized
     case speechCaptureFailed
+    case speechEndpointingFailed
     case speechCaptureAlreadyRunning
     case speechVoiceUnavailable
     case speechSynthesisFailed
@@ -89,7 +90,7 @@ extension ConversationServiceError {
         switch self {
         case .modelUnreachable, .modelGenerationFailed:
             return true
-        case .microphoneDenied, .speechAssetsUnavailable, .speechLocaleUnsupported, .speechUnrecognized, .speechCaptureFailed,
+        case .microphoneDenied, .speechAssetsUnavailable, .speechLocaleUnsupported, .speechUnrecognized, .speechCaptureFailed, .speechEndpointingFailed,
              .speechCaptureAlreadyRunning, .speechVoiceUnavailable, .speechSynthesisFailed, .audioSessionFailed,
              .modelUnavailable, .modelLocaleUnsupported, .modelAssetsUnavailable, .guardrailViolation, .refusal,
              .contextExceeded, .inputTooLong, .modelBusy, .dailyLimitReached, .cancelled:

@@ -7,7 +7,6 @@ enum ReplyTracePoint: String, Codable, Sendable {
     case saveStarted, saveFinished, speechEnqueued, speechStarted, speechFinished, finished
     case firstCandidate, preparationStarted, preparationFinished, preparationUsed, preparationDiscarded
     case synthesisStarted, synthesisFinished, toolStarted, toolFinished
-    case interruptionDetected, interruptionPlaybackStopped
 }
 enum ReplyTraceTool: String, Codable, Sendable {
     case remember, express, look
@@ -44,8 +43,7 @@ final class ReplyTrace: @unchecked Sendable {
         .classificationFinished: .classificationStarted, .compactionFinished: .compactionStarted,
         .sessionFinished: .sessionStarted, .saveFinished: .saveStarted,
         .preparationFinished: .preparationStarted, .synthesisFinished: .synthesisStarted,
-        .toolFinished: .toolStarted,
-        .interruptionPlaybackStopped: .interruptionDetected
+        .toolFinished: .toolStarted
     ]
 
     init(id: UUID = UUID(), sink: any ReplyTraceSink, now: @escaping @Sendable () -> TimeInterval) {

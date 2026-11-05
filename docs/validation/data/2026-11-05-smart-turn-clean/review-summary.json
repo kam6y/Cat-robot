@@ -1,0 +1,16 @@
+{
+  "reviewedRange": "6ddf6ba..c22e017",
+  "reviewer": "clean_smart_turn_final_review",
+  "critical": 0,
+  "important": 1,
+  "minor": 0,
+  "reviewedFinding": "UI cancellation did not forward to required model preparation before preflight join",
+  "additionalReproducedFinding": "A new pause was dropped while an older inference remained in flight",
+  "redTests": 2,
+  "redAssertions": 4,
+  "focusedGreen": 81,
+  "finalPassed": 959,
+  "finalSkipped": 2,
+  "fixesVerified": true,
+  "reReviewPerformed": false
+}

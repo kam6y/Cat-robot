@@ -4,11 +4,10 @@ import FoundationModels
 
 func makeClaudeService(_ factory: StubSessionFactory = StubSessionFactory(),
                        store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
-                       usage: ConversationUsageSpy = ConversationUsageSpy(),
-                       budget: ConversationBudget = .default) -> ClaudeConversationService {
+                       usage: ConversationUsageSpy = ConversationUsageSpy()) -> ClaudeConversationService {
     ClaudeConversationService(factory: factory, memoryStore: store,
                               longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                              tools: StaticToolProvider([]), configuration: { .init() }, usage: usage, budget: budget)
+                              tools: StaticToolProvider([]), configuration: { .init() }, usage: usage)
 }
 
 actor ConversationUsageSpy: ConversationUsageMetering {

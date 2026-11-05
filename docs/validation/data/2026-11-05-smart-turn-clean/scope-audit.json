@@ -1,0 +1,42 @@
+{
+  "base": "6ddf6ba",
+  "backup": "0249e34",
+  "restoredByteIdentical": [
+    "CatRobot/App/CatRobotApp.swift",
+    "CatRobot/Conversation/Domain/ConversationServices.swift",
+    "CatRobot/Conversation/Domain/ReplySentenceBuffer.swift",
+    "CatRobot/Conversation/Domain/ReplyTrace.swift",
+    "CatRobot/Conversation/Integration/ConversationDependencies.swift",
+    "CatRobot/Conversation/Integration/MotionReplyGenerator.swift",
+    "CatRobot/Conversation/Integration/ReplyPlaybackCoordinator.swift",
+    "CatRobot/Conversation/Integration/SentenceReplyPlayback.swift",
+    "CatRobot/Conversation/Services/AppleAudioSessionController.swift",
+    "CatRobot/Conversation/Services/Claude/ClaudeConversationService.swift",
+    "CatRobot/Conversation/Services/Claude/OnDeviceFallbackReplyGenerator.swift",
+    "CatRobot/Conversation/Services/FoundationModelReplyService.swift",
+    "CatRobot/Conversation/Services/Supertonic/PCMPlayer.swift",
+    "CatRobot/Conversation/Services/Supertonic/SupertonicSentenceSpeaker.swift"
+  ],
+  "deletedPostBaseFiles": [
+    "CatRobot/Conversation/Domain/JapaneseTurnEndHeuristics.swift",
+    "CatRobot/Conversation/Domain/ReplyDelivery.swift",
+    "CatRobot/Conversation/Domain/TurnEndJudging.swift",
+    "CatRobot/Conversation/Services/ConversationAudioEngine.swift",
+    "CatRobot/Conversation/Services/FoundationModelTurnEndJudge.swift"
+  ],
+  "smartTurnOrIntegrationFiles": [
+    "CatRobot/App/ConversationComposition.swift",
+    "CatRobot/App/SettingsPanes.swift",
+    "CatRobot/Conversation/Domain/AudioTurnEndSignal.swift",
+    "CatRobot/Conversation/Domain/AudioTurnEndState.swift",
+    "CatRobot/Conversation/Domain/ConversationTypes.swift",
+    "CatRobot/Conversation/Domain/UtteranceSegmenter.swift",
+    "CatRobot/Conversation/Integration/ConversationErrorPresentation.swift",
+    "CatRobot/Conversation/Integration/ConversationViewModel.swift",
+    "CatRobot/Conversation/Services/AppleSpeechRecognizer.swift",
+    "CatRobot/Conversation/Services/AudioTurnEndCapture.swift",
+    "CatRobot/Conversation/Services/SmartTurnModels.swift",
+    "CatRobot/Conversation/Services/SmartTurnService.swift",
+    "CatRobot/Resources/smart-turn-manifest.json"
+  ]
+}

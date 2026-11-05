@@ -1,0 +1,59 @@
+{
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "process",
+      "launch",
+      "--device",
+      "00008140-000610311A90801C",
+      "--terminate-existing",
+      "com.kamby.CatRobot",
+      "--json-output",
+      "/private/tmp/cat-smart-turn-clean-20261105/normal-launch.json",
+      "--timeout",
+      "30"
+    ],
+    "commandType" : "devicectl.device.process.launch",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 5,
+    "outcome" : "success",
+    "version" : "651.32"
+  },
+  "result" : {
+    "deviceIdentifier" : "59199D1B-26D5-5063-8A43-BE38E8008EAD",
+    "launchOptions" : {
+      "activatedWhenStarted" : true,
+      "arguments" : [
+
+      ],
+      "environmentVariables" : {
+        "TERM" : "dumb"
+      },
+      "platformSpecificOptions" : {
+
+      },
+      "startStopped" : false,
+      "terminateExistingInstances" : true,
+      "user" : {
+        "active" : true
+      }
+    },
+    "process" : {
+      "auditToken" : [
+        4294967295,
+        501,
+        501,
+        501,
+        501,
+        6812,
+        0,
+        17756
+      ],
+      "executable" : "file:///private/var/containers/Bundle/Application/9D8C755A-8B56-464F-A195-92A8BCF98F30/CatRobot.app/CatRobot",
+      "processIdentifier" : 6812
+    }
+  }
+}
