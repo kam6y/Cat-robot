@@ -1,0 +1,315 @@
+{
+  "htmlSha256": "40000a65dbe2357ab9efbf02bf14d4a8ef102c7c45af9d37ae77db99131c793f",
+  "svg": [
+    {
+      "id": "inline-icon",
+      "sha256": "58fc3219816ab511f7b5ae1b4d5e516b44d6feeec98782d3e10da90ed335eb9d",
+      "bytes": 156,
+      "nodes": []
+    },
+    {
+      "id": "map-overview",
+      "sha256": "6a17f98ccc156531cb9d7f775cbe3dac619985308002163b499247ed7f220320",
+      "bytes": 78988,
+      "nodes": [
+        {
+          "key": "O_OPEN",
+          "label": "アプリを開く"
+        },
+        {
+          "key": "O_READY",
+          "label": "会話の準備ができた？"
+        },
+        {
+          "key": "O_LISTEN",
+          "label": "聞き取りながら待つ"
+        },
+        {
+          "key": "O_HELP",
+          "label": "理由を表示する／再試行・設定・文字入力を案内"
+        },
+        {
+          "key": "O_END",
+          "label": "話し終わった？"
+        },
+        {
+          "key": "O_ROUTE",
+          "label": "猫への発話かを確認 ↗"
+        },
+        {
+          "key": "O_REPLY",
+          "label": "返答をつくる ↗"
+        },
+        {
+          "key": "O_ASK",
+          "label": "今の、ぼくに言った？"
+        },
+        {
+          "key": "O_TYPED",
+          "label": "文字で送信する"
+        },
+        {
+          "key": "O_OUTPUT",
+          "label": "字幕・音声・表情で返す"
+        }
+      ]
+    },
+    {
+      "id": "inline-icon",
+      "sha256": "58fc3219816ab511f7b5ae1b4d5e516b44d6feeec98782d3e10da90ed335eb9d",
+      "bytes": 156,
+      "nodes": []
+    },
+    {
+      "id": "map-address",
+      "sha256": "29e534c3e953ce5766b593d3a300ccfc48a148060f59e07047064bbbb8da493e",
+      "bytes": 81491,
+      "nodes": [
+        {
+          "key": "D_START",
+          "label": "聞き取った発話"
+        },
+        {
+          "key": "D_FILL",
+          "label": "空・「えっと」などだけ？"
+        },
+        {
+          "key": "D_WAIT",
+          "label": "返答せず、聞き取りへ戻る"
+        },
+        {
+          "key": "D_PENDING",
+          "label": "聞き返しへの返事待ち？"
+        },
+        {
+          "key": "D_CONFIRM",
+          "label": "下の「聞き返した後」の分岐へ"
+        },
+        {
+          "key": "D_FACE",
+          "label": "こちら向きの有効な顔が1人以上？"
+        },
+        {
+          "key": "D_FAST",
+          "label": "宛先判定を省略"
+        },
+        {
+          "key": "D_ENGAGE",
+          "label": "会話継続の30秒以内？"
+        },
+        {
+          "key": "D_ACCEPT",
+          "label": "返答をつくる"
+        },
+        {
+          "key": "D_CLASSIFY",
+          "label": "猫への発話かをモデルで判定"
+        },
+        {
+          "key": "D_ASK",
+          "label": "「今の、ぼくに言った？」と聞く"
+        }
+      ]
+    },
+    {
+      "id": "inline-icon",
+      "sha256": "58fc3219816ab511f7b5ae1b4d5e516b44d6feeec98782d3e10da90ed335eb9d",
+      "bytes": 156,
+      "nodes": []
+    },
+    {
+      "id": "map-reply",
+      "sha256": "02f9f9e0186d8ceef6fbd9f383f107835fee13e3a6de3a99cd3522a948395dcd",
+      "bytes": 120965,
+      "nodes": [
+        {
+          "key": "R_START",
+          "label": "返答をつくる"
+        },
+        {
+          "key": "R_LIMIT",
+          "label": "Claudeの日次上限に達した？"
+        },
+        {
+          "key": "R_CLAUDE",
+          "label": "Claudeで返答を生成"
+        },
+        {
+          "key": "R_LOCAL",
+          "label": "端末内モデルを使える？"
+        },
+        {
+          "key": "R_OUTPUT",
+          "label": "字幕と音声で返す／会話を記録"
+        },
+        {
+          "key": "R_ERROR",
+          "label": "理由を示して停止／再試行などを案内"
+        },
+        {
+          "key": "R_SIMPLE",
+          "label": "案内を添えて、端末内で簡単に答える"
+        },
+        {
+          "key": "R_TOOLS",
+          "label": "覚える／前を見る／首・表情を動かす"
+        },
+        {
+          "key": "R_RETURN",
+          "label": "音声会話なら、聞き取りへ戻る"
+        }
+      ]
+    },
+    {
+      "id": "inline-icon",
+      "sha256": "58fc3219816ab511f7b5ae1b4d5e516b44d6feeec98782d3e10da90ed335eb9d",
+      "bytes": 156,
+      "nodes": []
+    },
+    {
+      "id": "map-standby",
+      "sha256": "aa09c63d3ea2d55de651a820ac38033035ae18f98d89836ffc95b24737eed991",
+      "bytes": 80287,
+      "nodes": [
+        {
+          "key": "S_ACTIVE",
+          "label": "会話画面で起きている"
+        },
+        {
+          "key": "S_IDLE",
+          "label": "聞き取り／待機を続ける"
+        },
+        {
+          "key": "S_SLEEPY",
+          "label": "眠そうな表情になる"
+        },
+        {
+          "key": "S_SLEEP",
+          "label": "眠る／マイク・カメラを止める"
+        },
+        {
+          "key": "S_RESTART",
+          "label": "起きて、会話の準備から再開"
+        },
+        {
+          "key": "S_PAUSE",
+          "label": "聞き取り・返答を一時停止"
+        },
+        {
+          "key": "S_TEMP",
+          "label": "会話・カメラの処理を中断"
+        },
+        {
+          "key": "S_BACK",
+          "label": "眠っている？"
+        }
+      ]
+    },
+    {
+      "id": "inline-icon",
+      "sha256": "58fc3219816ab511f7b5ae1b4d5e516b44d6feeec98782d3e10da90ed335eb9d",
+      "bytes": 156,
+      "nodes": []
+    },
+    {
+      "id": "map-face",
+      "sha256": "ca05dbed58c5787a3ea9ee04a6ec1c64ddc68f0a9cfbf0b3330af2126e44b79e",
+      "bytes": 75207,
+      "nodes": [
+        {
+          "key": "F_START",
+          "label": "首の動作を決める"
+        },
+        {
+          "key": "F_READY",
+          "label": "ハードが接続され、動作できる？"
+        },
+        {
+          "key": "F_NO",
+          "label": "首は動かさず、会話を続ける"
+        },
+        {
+          "key": "F_TOOL",
+          "label": "返答の中で首の動きを要求中？"
+        },
+        {
+          "key": "F_MOVE",
+          "label": "要求された首の動きを優先"
+        },
+        {
+          "key": "F_TRACK",
+          "label": "追尾ONで、対象の顔が見える？"
+        },
+        {
+          "key": "F_FOLLOW",
+          "label": "顔の方向へ、首を追尾"
+        },
+        {
+          "key": "F_IDLE",
+          "label": "待機中で、小さな動きがON？"
+        },
+        {
+          "key": "F_SMALL",
+          "label": "待機の小さな動き・あくびに連動"
+        },
+        {
+          "key": "F_STILL",
+          "label": "首の自動動作を行わない"
+        },
+        {
+          "key": "F_LOST",
+          "label": "一旦保持し、10秒見つからなければ中央へ"
+        }
+      ]
+    },
+    {
+      "id": "inline-icon",
+      "sha256": "58fc3219816ab511f7b5ae1b4d5e516b44d6feeec98782d3e10da90ed335eb9d",
+      "bytes": 156,
+      "nodes": []
+    },
+    {
+      "id": "map-speech",
+      "sha256": "c2d618f24bab0859ee9d3db8689b2d7855033d6d85c2f2093adcc9507b4767dd",
+      "bytes": 75062,
+      "nodes": [
+        {
+          "key": "V_START",
+          "label": "返答の原文"
+        },
+        {
+          "key": "V_DISPLAY",
+          "label": "字幕・会話の記録は原文のまま"
+        },
+        {
+          "key": "V_KIND",
+          "label": "読み上げる表記は？"
+        },
+        {
+          "key": "V_QUANTITY",
+          "label": "漢数字に整える"
+        },
+        {
+          "key": "V_LIBRARY",
+          "label": "ライブラリの読みを使う"
+        },
+        {
+          "key": "V_CLOCK",
+          "label": "時・分の表記に整える"
+        },
+        {
+          "key": "V_ID",
+          "label": "辞書で各桁を読み、別区間で合成"
+        },
+        {
+          "key": "V_KEEP",
+          "label": "日本語は原文を基本に保つ"
+        },
+        {
+          "key": "V_PLAY",
+          "label": "声を合成して再生"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "inputSourceDigest": "b1a195b013b5ece18419e1eac363324d1afa6bb7b818922ff1be68b70641cf5a",
+  "phase": "red",
+  "stage": "red",
+  "exitCode": 65,
+  "timedOut": false,
+  "head": "b59f0b9dc93d97ee79204e824961bafdd390cb19",
+  "workingPatchSha256": "aa308aae8f4bd5243aabaf71cb437a9ca55990f15cdbe938aecf8c31623f53bb",
+  "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+  "dedicatedHardwareAndPaidTestsExcluded": true,
+  "result": "Failed",
+  "passedTests": 0,
+  "failedTests": 3,
+  "skippedTests": 0,
+  "testFailures": [
+    {
+      "failureText": "XCTAssertTrue failed",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 1,
+      "testIdentifierString": "FacingAddressingTests/testFacingExpiresAtFourHundredMilliseconds()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/FacingAddressingTests/testFacingExpiresAtFourHundredMilliseconds",
+      "testName": "testFacingExpiresAtFourHundredMilliseconds()"
+    },
+    {
+      "failureText": "XCTAssertTrue failed",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 2,
+      "testIdentifierString": "FacingAddressingTests/testLiveCompositionWiresFacingWithoutRobotOrTracking()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/FacingAddressingTests/testLiveCompositionWiresFacingWithoutRobotOrTracking",
+      "testName": "testLiveCompositionWiresFacingWithoutRobotOrTracking()"
+    },
+    {
+      "failureText": "XCTAssertEqual failed: (\"[\"\u4eca\u65e5\u3069\u3046\uff1f \u3053\u306e\u8cea\u554f\u306b\u7b54\u3048\u3066\u306d\u3002\"]\") is not equal to (\"[]\")",
+      "targetName": "CatRobotTests",
+      "testIdentifier": 3,
+      "testIdentifierString": "FacingAddressingTests/testMultipleFacesBypassClassifierWhenAnyEligibleFaceLooksTowardScreen()",
+      "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/FacingAddressingTests/testMultipleFacesBypassClassifierWhenAnyEligibleFaceLooksTowardScreen",
+      "testName": "testMultipleFacesBypassClassifierWhenAnyEligibleFaceLooksTowardScreen()"
+    }
+  ]
+}

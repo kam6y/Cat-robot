@@ -81,18 +81,51 @@ final class FacingAddressingTests: XCTestCase {
         h.camera.shutdown()
     }
 
+    func testMultipleFacesBypassClassifierWhenAnyEligibleFaceLooksTowardScreen() async throws {
+        let offCenterFacing = FaceRectangle(x: 0.1, y: 0.35, width: 0.12, height: 0.18,
+            yawRadians: -8.5 * .pi / 180, pitchRadians: 0)
+        let largerCentralTurned = FaceRectangle(x: 0.25, y: 0.25, width: 0.5, height: 0.5,
+            yawRadians: 1, pitchRadians: 0)
+        let malformed = FaceRectangle(x: -0.1, y: 0.4, width: 0.2, height: 0.2,
+            yawRadians: 0, pitchRadians: 0)
+        let cases: [[FaceRectangle]] = [
+            [FacingCameraHarness.face(), FacingCameraHarness.face(yaw: 1)],
+            [FacingCameraHarness.face(yaw: 1), FacingCameraHarness.face()],
+            [FacingCameraHarness.face(), offCenterFacing],
+            [largerCentralTurned, offCenterFacing],
+            [FacingCameraHarness.face(yaw: 22 * .pi / 180), offCenterFacing],
+            [malformed, offCenterFacing]
+        ]
+        for faces in cases {
+            let camera = FacingCameraHarness()
+            let conversation = ConversationHarness(classification: .notAddressed,
+                isFacingScreen: { camera.isFacing })
+            try await camera.emit(faces: faces)
+            await conversation.completeTurn("今日どう？ この質問に答えてね。", at: 0)
+            let classified = await conversation.classifier.calls
+            let replies = await conversation.reply.prompts
+            XCTAssertEqual(classified, [])
+            XCTAssertEqual(replies, ["今日どう？ この質問に答えてね。"])
+            await conversation.sut.shutdown()
+            camera.camera.shutdown()
+        }
+    }
+
     func testFacingExpiresAtFourHundredMilliseconds() async throws {
-        let h = FacingCameraHarness()
-        try await h.frame()
-        await h.clock.advance(by: 0.399)
-        XCTAssertTrue(h.isFacing)
-        await h.clock.advance(by: 0.001)
-        XCTAssertFalse(h.isFacing)
-        h.camera.shutdown()
+        for faces in [[FacingCameraHarness.face()], [FacingCameraHarness.face(), FacingCameraHarness.face()]] {
+            let h = FacingCameraHarness()
+            try await h.emit(faces: faces)
+            await h.clock.advance(by: 0.399)
+            XCTAssertTrue(h.isFacing)
+            await h.clock.advance(by: 0.001)
+            XCTAssertFalse(h.isFacing)
+            h.camera.shutdown()
+        }
     }
 
     func testLatestEmptyOrTurnedFaceRevokesFacingAndOlderFrameCannotRestoreIt() async throws {
-        for faces in [[], [FacingCameraHarness.face(yaw: 1)]] {
+        for faces in [[], [FacingCameraHarness.face(yaw: 1)],
+                      [FacingCameraHarness.face(yaw: 1), FacingCameraHarness.face(yaw: -1)]] {
             let h = FacingCameraHarness()
             try await h.frame()
             XCTAssertTrue(h.isFacing)
@@ -105,9 +138,12 @@ final class FacingAddressingTests: XCTestCase {
         }
     }
 
-    func testMultipleFacesAndUnknownOrMalformedHeadPoseFallBack() async throws {
+    func testNoEligibleFaceUnknownOrMalformedHeadPoseFallBack() async throws {
         let invalid: [[FaceRectangle]] = [
-            [FacingCameraHarness.face(), FacingCameraHarness.face()],
+            [FacingCameraHarness.face(yaw: 1), FacingCameraHarness.face(yaw: -1)],
+            [FacingCameraHarness.face(yaw: .nan), FacingCameraHarness.face(yaw: 1)],
+            [.init(x: -0.1, y: 0.4, width: 0.2, height: 0.2, yawRadians: 0, pitchRadians: 0),
+             FacingCameraHarness.face(yaw: 1)],
             [.init(x: 0.4, y: 0.4, width: 0.2, height: 0.2)],
             [FacingCameraHarness.face(yaw: .nan)],
             [FacingCameraHarness.face(pitch: .infinity)],
@@ -245,6 +281,14 @@ final class FacingAddressingTests: XCTestCase {
     }
 
     func testLiveCompositionWiresFacingWithoutRobotOrTracking() async throws {
+        for faces in [[FacingCameraHarness.face()],
+                      [FacingCameraHarness.face(yaw: 1), FacingCameraHarness.face()],
+                      [FacingCameraHarness.face(), FacingCameraHarness.face()]] {
+            try await assertLiveCompositionWiresFacing(faces: faces)
+        }
+    }
+
+    private func assertLiveCompositionWiresFacing(faces: [FaceRectangle]) async throws {
         let defaults = UserDefaults(suiteName: "FacingComposition.\(UUID().uuidString)")!
         let preferences = RobotPreferences(defaults: defaults)
         preferences.trackingEnabled = false
@@ -256,7 +300,7 @@ final class FacingAddressingTests: XCTestCase {
             mode: .conversation, phase: .listening)
         let generation = try XCTUnwrap(source.starts.last?.generation)
         source.emit(.observation(.init(generation: generation, capturedAt: 0, completedAt: 0,
-            horizontalFieldOfView: 90, aspectRatio: 4.0 / 3, faces: [FacingCameraHarness.face()])))
+            horizontalFieldOfView: 90, aspectRatio: 4.0 / 3, faces: faces)))
         await robotDrain()
         XCTAssertTrue(composition.dependencies.isFacingScreen())
         XCTAssertFalse(preferences.trackingEnabled)

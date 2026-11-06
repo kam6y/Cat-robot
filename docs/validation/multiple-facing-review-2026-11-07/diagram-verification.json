@@ -1,0 +1,58 @@
+{
+  "offlineOpen": true,
+  "diagrams": [
+    {
+      "id": "overview",
+      "viewBox": "4 4 716 974.7999877929688",
+      "nodes": 10,
+      "foreignObjects": 10
+    },
+    {
+      "id": "address",
+      "viewBox": "4 4 936.9362182617188 1133",
+      "nodes": 11,
+      "foreignObjects": 11
+    },
+    {
+      "id": "reply",
+      "viewBox": "4 4 1005.666748046875 973.7999877929688",
+      "nodes": 9,
+      "foreignObjects": 9
+    },
+    {
+      "id": "standby",
+      "viewBox": "4 4 1221.0078125 798.6000366210938",
+      "nodes": 8,
+      "foreignObjects": 8
+    },
+    {
+      "id": "face",
+      "viewBox": "4 4 1088.333251953125 915",
+      "nodes": 11,
+      "foreignObjects": 11
+    },
+    {
+      "id": "speech",
+      "viewBox": "4 4 1281.1507568359375 478",
+      "nodes": 9,
+      "foreignObjects": 9
+    }
+  ],
+  "tabNavigation": true,
+  "keyboardNavigation": true,
+  "diagramDrilldown": true,
+  "exampleHighlighting": true,
+  "zoom": true,
+  "printAllSix": true,
+  "mobilePageOverflow": false,
+  "directHashNavigation": true,
+  "javascriptErrors": [],
+  "externalRequests": [],
+  "htmlSha256": "40000a65dbe2357ab9efbf02bf14d4a8ef102c7c45af9d37ae77db99131c793f",
+  "renderer": "Mermaid12.3.0, pre-rendered SVG",
+  "sourceInputDigest": "4e99d6b42c5cf3684b7e1d02c9e74ee51f6504aa95490d88f9033973a4f8494f",
+  "restoredPreviousDeliverable": true,
+  "browserCheckedHTMLSha256": "9352e92c9e29ffe340798f6b7c3aada771948ba3ca6754ba8f99086d4e23f844",
+  "postBrowserChanges": "only seven verified source-link anchors",
+  "postBrowserAnchorOnlyProof": true
+}
