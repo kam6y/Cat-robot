@@ -2,10 +2,7 @@ import AVFAudio
 import Foundation
 
 struct AudioTurnEndObservation: Equatable, Sendable {
-    let requestedAt: TimeInterval
-    let completedAt: TimeInterval
     let probability: Float?
-    let inferenceMilliseconds: Double
     let accepted: Bool
 }
 
@@ -74,7 +71,7 @@ final class AudioTurnEndCapture: @unchecked Sendable {
         guard buffer.frameLength > 0, gate.beginAudio() else { return }
         progress.noteEnqueued()
         guard buffer.format == sourceFormat, let copy = Self.copy(buffer) else {
-            finishAudio(invalidating: true)
+            rejectAudio()
             return
         }
         switch continuation.yield(AudioTurnEndChunk(buffer: copy, timestamp: timestamp)) {
@@ -82,9 +79,9 @@ final class AudioTurnEndCapture: @unchecked Sendable {
             break
         case .dropped, .terminated:
             // 落ちた音声を無音扱いにしないため、この capture をエラーで止める。
-            finishAudio(invalidating: true)
+            rejectAudio()
         @unknown default:
-            finishAudio(invalidating: true)
+            rejectAudio()
         }
     }
 
@@ -95,10 +92,8 @@ final class AudioTurnEndCapture: @unchecked Sendable {
         continuation.finish()
     }
 
-    private func finishAudio(invalidating: Bool) {
-        if invalidating {
-            fail(AudioTurnModelError.invalidInput)
-        }
+    private func rejectAudio() {
+        fail(AudioTurnModelError.invalidInput)
         gate.endAudio()
         progress.noteProcessed()
     }
@@ -198,9 +193,7 @@ private actor AudioTurnEndWorker {
     private struct PendingSignal {
         let probability: Float
         let requestedAt: TimeInterval
-        var requiredScoredSamples: Int?
     }
-    private var scoredSamples = 0
     private var pendingSignal: PendingSignal?
 
     init(sourceFormat: AVAudioFormat, targetFormat: AVAudioFormat,
@@ -240,7 +233,7 @@ private actor AudioTurnEndWorker {
             invalidate(error)
             return
         }
-        while pendingSamples.count >= AudioTurnEndState.frameLength {
+        while !progress.isStopped, pendingSamples.count >= AudioTurnEndState.frameLength {
             let frame = Array(pendingSamples.prefix(AudioTurnEndState.frameLength))
             pendingSamples.removeFirst(AudioTurnEndState.frameLength)
             let probability: Float
@@ -250,11 +243,11 @@ private actor AudioTurnEndWorker {
                 invalidate(error)
                 return
             }
+            guard !progress.isStopped else { return }
             guard probability.isFinite, (0...1).contains(probability), frame.allSatisfy(\.isFinite) else {
                 invalidate(AudioTurnModelError.invalidInput)
                 return
             }
-            scoredSamples += AudioTurnEndState.frameLength
             if probability >= AudioTurnEndState.speechOnsetProbability {
                 gate.noteSpeech()
                 pendingSignal = nil
@@ -266,6 +259,7 @@ private actor AudioTurnEndWorker {
     }
 
     private func startInference(_ request: AudioTurnEndRequest) {
+        guard !progress.isStopped else { return }
         // 推論を積まず、再発話で古くなった結果を破棄する。
         guard !inferenceInFlight else {
             deferredRequest = request
@@ -273,26 +267,22 @@ private actor AudioTurnEndWorker {
         }
         inferenceInFlight = true
         let scorer = self.scorer
+        let progress = self.progress
         Task.detached(priority: .userInitiated) { [weak self] in
-            let started = ContinuousClock.now
+            guard !progress.isStopped else { return }
             let outcome = Result { try scorer.completionProbability(samples: request.samples) }
-            let elapsed = ContinuousClock.now - started
-            await self?.apply(outcome, for: request, inferenceMilliseconds: Self.milliseconds(elapsed))
+            await self?.apply(outcome, for: request)
         }
     }
 
-    private func apply(_ outcome: Result<Float, any Error>, for request: AudioTurnEndRequest,
-                       inferenceMilliseconds: Double) {
+    private func apply(_ outcome: Result<Float, any Error>, for request: AudioTurnEndRequest) {
         inferenceInFlight = false
         defer { inferDeferredPauseIfCurrent() }
         guard !progress.isStopped else { return }
         let completedAt = now()
         let probability = try? outcome.get()
         let accepted = probability.map { state.accept(probability: $0, for: request, at: completedAt) } ?? false
-        onObservation(AudioTurnEndObservation(
-            requestedAt: request.requestedAt, completedAt: completedAt, probability: probability,
-            inferenceMilliseconds: inferenceMilliseconds, accepted: accepted
-        ))
+        onObservation(AudioTurnEndObservation(probability: probability, accepted: accepted))
         if case .failure(let error) = outcome { invalidate(error); return }
         guard let probability, probability.isFinite, (0...1).contains(probability) else {
             invalidate(AudioTurnModelError.invalidOutput)
@@ -312,25 +302,37 @@ private actor AudioTurnEndWorker {
 
     /// queue に未処理の音声が残っている間は通知しない。残りが声なら pendingSignal は消える。
     private func emitPendingSignalIfDrained() {
-        guard var pendingSignal else { return }
+        guard let pendingSignal else { return }
         // Snapshot before checking admission: a tap racing this check must
         // invalidate this exact signal, including while its buffer awaits VAD.
         let signal = AudioTurnEndSignal(probability: pendingSignal.probability,
                                         requestedAt: pendingSignal.requestedAt, gate: gate,
                                         configuration: configuration)
         guard progress.isDrained, signal.isValid(at: now()) else { return }
-        // Once all already-admitted chunks are converted, remember the end of
-        // their residual PCM. Score that frontier in a full VAD frame first.
-        // Later sub-frame audio has the VAD's 32 ms resolution limit; new raw
-        // chunks also invalidate any signal already handed to the VM.
-        if pendingSignal.requiredScoredSamples == nil {
-            pendingSignal.requiredScoredSamples = scoredSamples + pendingSamples.count
-            self.pendingSignal = pendingSignal
+        if !pendingSamples.isEmpty {
+            let probability: Float
+            do {
+                guard pendingSamples.allSatisfy(\.isFinite) else { throw AudioTurnModelError.invalidInput }
+                probability = try vad.speechProbabilityOfTail(samples: pendingSamples)
+            } catch {
+                invalidate(error)
+                return
+            }
+            guard !progress.isStopped else { return }
+            guard probability.isFinite, (0...1).contains(probability) else {
+                invalidate(AudioTurnModelError.invalidOutput)
+                return
+            }
+            if probability >= AudioTurnEndState.speechOnsetProbability {
+                gate.noteSpeech()
+                self.pendingSignal = nil
+                return
+            }
         }
-        guard scoredSamples >= pendingSignal.requiredScoredSamples! else { return }
+        // A raw chunk or cancellation during the synchronous preview retires
+        // this exact snapshot. Keep real PCM/state unchanged for later frames.
+        guard !progress.isStopped, progress.isDrained, signal.isValid(at: now()) else { return }
         self.pendingSignal = nil
-        guard !progress.isStopped,
-              now() <= pendingSignal.requestedAt + AudioTurnEndState.decisionWindow else { return }
         onEndpoint(signal)
     }
 
@@ -340,11 +342,6 @@ private actor AudioTurnEndWorker {
         pendingSignal = nil
         pendingSamples.removeAll()
         onFailure(error)
-    }
-
-    private static func milliseconds(_ duration: Duration) -> Double {
-        let components = duration.components
-        return Double(components.seconds) * 1_000 + Double(components.attoseconds) / 1e15
     }
 }
 

@@ -37,6 +37,47 @@ final class SmartTurnModelsTests: XCTestCase {
         XCTAssertThrowsError(try CoreMLTurnScorer(modelURL: missing))
         XCTAssertThrowsError(try SileroVADScorer(modelURL: missing))
     }
+
+    func testTailProbePreservesStreamingStateAndContext() throws {
+        let scorer = try SileroVADScorer(modelURL: assets.appendingPathComponent("silero_vad.onnx"))
+        let control = try SileroVADScorer(modelURL: assets.appendingPathComponent("silero_vad.onnx"))
+        let frame = (0..<512).map { Float(sin(Double($0) * 0.13) * 0.1) }
+        _ = try scorer.speechProbability(samples: frame)
+        _ = try control.speechProbability(samples: frame)
+        for count in [1, 127, 256, 511] {
+            let tail = Array(frame.prefix(count))
+            do {
+                let first = try scorer.speechProbabilityOfTail(samples: tail)
+                let repeated = try scorer.speechProbabilityOfTail(samples: tail)
+                XCTAssertTrue(first.isFinite && (0...1).contains(first))
+                XCTAssertEqual(first, repeated, accuracy: 0.000001)
+                XCTAssertEqual(try scorer.speechProbability(samples: frame),
+                               try control.speechProbability(samples: frame), accuracy: 0.000001,
+                               "A tail probe must not advance recurrent state or context")
+            } catch {
+                XCTFail("A valid partial tail must be scored without committing state: \(error)")
+            }
+        }
+        XCTAssertThrowsError(try scorer.speechProbabilityOfTail(samples: []))
+        XCTAssertThrowsError(try scorer.speechProbabilityOfTail(samples: frame))
+        XCTAssertThrowsError(try scorer.speechProbabilityOfTail(samples: [.nan]))
+    }
+
+    func testQuietPartialTailsStayBelowTheExistingSpeechOnset() throws {
+        let scorer = try SileroVADScorer(modelURL: assets.appendingPathComponent("silero_vad.onnx"))
+        _ = try scorer.speechProbability(samples: [Float](repeating: 0, count: 512))
+        for count in [1, 127, 256, 511] {
+            do {
+                let probability = try scorer.speechProbabilityOfTail(samples: [Float](repeating: 0, count: count))
+                print("Silero quiet-tail samples=\(count) probability=\(probability)")
+                XCTAssertTrue(probability.isFinite)
+                XCTAssertGreaterThanOrEqual(probability, 0)
+                XCTAssertLessThan(probability, 0.5)
+            } catch {
+                XCTFail("A quiet partial tail must produce a probability: \(error)")
+            }
+        }
+    }
 }
 
 
@@ -93,6 +134,77 @@ final class SmartTurnServiceTests: XCTestCase {
             XCTAssertTrue(cancelled)
         }
     }
+
+    func testCancelledPreparationDoesNotStartLaterStagesAndAllowsRetry() async throws {
+        for blocksWarmup in [false, true] {
+            let gate = EndpointInitializationGate()
+            let counts = EndpointPreparationCounts()
+            let service = SmartTurnService(makeScorer: {
+                let first = counts.initialize() == 1
+                if first && !blocksWarmup { gate.wait() }
+                return EndpointCountingScorer(counts: counts, gate: first && blocksWarmup ? gate : nil)
+            }, makeVAD: {
+                counts.makeVAD()
+                return EndpointPreparationVAD()
+            })
+            let returned = expectation(description: "cancelled preparation returns without joining")
+            let task = Task {
+                defer { returned.fulfill() }
+                do {
+                    let capture = try await service.makeCapture(sourceFormat: endpointTestFormat(), onEndpoint: { _ in }, onFailure: { _ in })
+                    capture.cancel()
+                    return false
+                } catch is CancellationError { return true }
+                catch { return false }
+            }
+            defer { task.cancel(); gate.release() }
+            let entered = await endpointWait { gate.entered }
+            XCTAssertTrue(entered)
+            task.cancel()
+            await fulfillment(of: [returned], timeout: 0.3)
+            gate.release()
+            let cancelled = await task.value
+            XCTAssertTrue(cancelled)
+
+            var next: AudioTurnEndCapture?
+            for _ in 0..<100 {
+                do {
+                    next = try await service.makeCapture(sourceFormat: endpointTestFormat(), onEndpoint: { _ in }, onFailure: { _ in })
+                    break
+                } catch AudioTurnModelError.busy {
+                    try await Task.sleep(for: .milliseconds(2))
+                }
+            }
+            let capture = try XCTUnwrap(next, "Retired preparation must release its ownership")
+            defer { capture.cancel() }
+            XCTAssertEqual(counts.initializations, 2)
+            XCTAssertEqual(counts.warmups, blocksWarmup ? 2 : 1, "Cancellation must skip warmup unless it was already running")
+            XCTAssertEqual(counts.vads, 1, "Only the retry may begin VAD construction")
+        }
+    }
+}
+
+private final class EndpointPreparationCounts: @unchecked Sendable {
+    private let lock = NSLock()
+    private var initializationCount = 0
+    private var warmupCount = 0
+    private var vadCount = 0
+    var initializations: Int { lock.withLock { initializationCount } }
+    var warmups: Int { lock.withLock { warmupCount } }
+    var vads: Int { lock.withLock { vadCount } }
+    func initialize() -> Int { lock.withLock { initializationCount += 1; return initializationCount } }
+    func warmup() { lock.withLock { warmupCount += 1 } }
+    func makeVAD() { lock.withLock { vadCount += 1 } }
+}
+
+private struct EndpointCountingScorer: AudioTurnScoring {
+    let counts: EndpointPreparationCounts
+    let gate: EndpointInitializationGate?
+    func completionProbability(samples: [Float]) throws -> Float {
+        counts.warmup()
+        gate?.wait()
+        return 0.1
+    }
 }
 
 private final class EndpointReturnFlag: @unchecked Sendable {
@@ -123,6 +235,7 @@ struct EndpointPreparationScorer: AudioTurnScoring {
 }
 struct EndpointPreparationVAD: VoiceActivityScoring {
     func speechProbability(samples: [Float]) throws -> Float { 0 }
+    func speechProbabilityOfTail(samples: [Float]) throws -> Float { 0 }
 }
 func endpointTestFormat() -> AVAudioFormat { AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)! }
 func endpointWait(_ predicate: @Sendable () -> Bool) async -> Bool {

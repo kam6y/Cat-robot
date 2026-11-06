@@ -47,7 +47,7 @@ struct AudioTurnEndSignal: Equatable, Sendable {
 
     func isValid(at timestamp: TimeInterval) -> Bool {
         return configuration.accepts(probability) && requestedAt.isFinite && timestamp.isFinite
-            && timestamp >= requestedAt && timestamp <= requestedAt + 0.3
+            && timestamp >= requestedAt && timestamp <= requestedAt + AudioTurnEndState.decisionWindow
             && gate.isCurrent(revision)
     }
 

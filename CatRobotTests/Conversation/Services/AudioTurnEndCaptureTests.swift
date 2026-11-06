@@ -108,6 +108,40 @@ final class AudioTurnEndCaptureTests: XCTestCase {
         XCTAssertEqual(h.signals.count, 0)
     }
 
+    func testRetiringCaptureDuringLastSilentVADFrameDoesNotStartInference() async throws {
+        for cancels in [true, false] {
+            let h = try AudioCaptureHarness()
+            defer { h.capture.cancel(); h.vad.release() }
+            await h.feed(1, frames: 16)
+            await h.feed(0, frames: 6)
+            h.vad.block()
+            h.submit(0)
+            let entered = await eventually { h.vad.entered }
+            XCTAssertTrue(entered)
+            if cancels {
+                h.capture.cancel()
+            } else {
+                for _ in 0..<20 { h.submit(0) }
+                XCTAssertEqual(h.failures, 1)
+            }
+            h.vad.release()
+            let finishedVAD = await eventually { h.vad.count == 23 }
+            XCTAssertTrue(finishedVAD)
+            let started = await eventually { h.scorer.started }
+            XCTAssertFalse(started, "Retired VAD work must not acquire the shared completion scorer")
+            XCTAssertTrue(h.signals.isEmpty)
+
+            let next = try AudioCaptureHarness(scorerOverride: h.scorer)
+            defer { next.capture.cancel() }
+            await next.feed(1, frames: 16)
+            await next.feed(0, frames: 7)
+            let delivered = await eventually { next.signals.count == 1 }
+            XCTAssertTrue(delivered)
+            XCTAssertEqual(next.failures, 0)
+            XCTAssertEqual(h.scorer.calls, 1, "Only the next active capture may start inference")
+        }
+    }
+
     func testDeadlineIncludesQueuedWorkAndInference() async throws {
         let h = try AudioCaptureHarness(blockModel: true)
         await h.feed(1, frames: 16); await h.feed(0, frames: 7)
@@ -177,23 +211,79 @@ final class AudioTurnEndCaptureTests: XCTestCase {
         // A rejected chunk may never reach VAD; admission must invalidate synchronously.
         XCTAssertFalse(h.signals.first?.isValid(at: h.clock.value) ?? true)
         let becameValidAgain = await eventually { h.signals.first?.isValid(at: h.clock.value) == true }
-        XCTAssertFalse(becameValidAgain, "Invalid input must disable this optional capture permanently")
+        XCTAssertFalse(becameValidAgain, "Invalid input must disable this capture permanently")
         h.capture.cancel()
     }
 
-    func testResidualSilenceIsScoredBeforeAnAcceptedResultIsDelivered() async throws {
+    func testQuietResidualIsProbedBeforeAnAcceptedResultIsDelivered() async throws {
         let h = try AudioCaptureHarness(blockModel: true)
+        defer { h.capture.cancel(); h.scorer.release(); h.vad.releaseProbe() }
         await h.feed(1, frames: 16); await h.feed(0, frames: 7)
-        _ = await eventually { h.scorer.started }
+        let started = await eventually { h.scorer.started }
+        XCTAssertTrue(started)
+        h.vad.blockProbe()
         h.submit(0, sampleCount: 256)
         h.scorer.release()
-        _ = await eventually { h.observations.count == 1 }
-        let premature = await eventually { !h.signals.isEmpty }
-        XCTAssertFalse(premature)
-        h.submit(0, sampleCount: 256)
+        let probing = await eventually { h.vad.probeEntered }
+        XCTAssertTrue(probing)
+        XCTAssertTrue(h.signals.isEmpty, "The partial tail must be checked before publication")
+        h.vad.releaseProbe()
         let delivered = await eventually { h.signals.count == 1 }
-        XCTAssertTrue(delivered, "Confirmed residual silence should not disable early endpointing")
-        h.capture.cancel()
+        XCTAssertTrue(delivered, "Probed residual silence must preserve early endpointing")
+        XCTAssertEqual(h.vad.count, 23, "Preview padding must not become a streaming VAD frame")
+        XCTAssertEqual(h.vad.probes, 1)
+    }
+
+    func testNewResidualSpeechCannotRenewAnOlderDecision() async throws {
+        for residualCount in [1, 127, 256, 511] {
+            let h = try AudioCaptureHarness(blockModel: true)
+            defer { h.capture.cancel(); h.scorer.release(); h.vad.releaseProbe() }
+            await h.feed(1, frames: 16)
+            await h.feed(0, frames: 7)
+            let started = await eventually { h.scorer.started }
+            XCTAssertTrue(started)
+            h.vad.blockProbe()
+            h.submit(0, sampleCount: residualCount)
+            h.scorer.release()
+            let probing = await eventually { h.vad.probeEntered }
+            XCTAssertTrue(probing)
+            // This finishes the old silent frontier but leaves newly admitted voice unscored.
+            h.submit([Float](repeating: 0, count: 512 - residualCount)
+                     + [Float](repeating: 1, count: residualCount))
+            h.vad.releaseProbe()
+            let scored = await eventually { h.vad.count == 24 }
+            XCTAssertTrue(scored)
+            let probedNewTail = await eventually { h.vad.probes == 2 }
+            XCTAssertTrue(probedNewTail)
+            let delivered = await eventually(attempts: 20) { !h.signals.isEmpty }
+            XCTAssertFalse(delivered, "A fresh residual must not inherit the old decision's authorization")
+            h.submit(0, sampleCount: 512 - residualCount)
+            let resumed = await eventually { h.vad.count == 25 }
+            XCTAssertTrue(resumed)
+            XCTAssertTrue(h.signals.isEmpty)
+            XCTAssertEqual(h.failures, 0)
+        }
+    }
+
+    func testWaitingForResidualProbeDoesNotExtendDecisionDeadline() async throws {
+        let h = try AudioCaptureHarness(blockModel: true)
+        defer { h.capture.cancel(); h.scorer.release(); h.vad.releaseProbe() }
+        await h.feed(1, frames: 16)
+        await h.feed(0, frames: 7)
+        let started = await eventually { h.scorer.started }
+        XCTAssertTrue(started)
+        h.vad.blockProbe()
+        h.submit(0, sampleCount: 256)
+        h.scorer.release()
+        let probing = await eventually { h.vad.probeEntered }
+        XCTAssertTrue(probing)
+        h.clock.set(h.clock.value + 0.301)
+        h.vad.releaseProbe()
+        let probed = await eventually { h.vad.probes == 1 }
+        XCTAssertTrue(probed)
+        let delivered = await eventually(attempts: 20) { !h.signals.isEmpty }
+        XCTAssertFalse(delivered)
+        XCTAssertEqual(h.failures, 0)
     }
 
     func testBackwardTimestampDisablesTheCapture() async throws {
@@ -206,7 +296,7 @@ final class AudioTurnEndCaptureTests: XCTestCase {
         h.capture.cancel()
     }
 
-    func test48kStereoConversionStillDeliversAfterResidualSilenceIsChecked() async throws {
+    func test48kStereoConversionCanDeliverWithAQuietPartialFrame() async throws {
         let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2)!
         let h = try AudioCaptureHarness(format: format)
         h.submit(1, sampleCount: 48000)
@@ -215,15 +305,90 @@ final class AudioTurnEndCaptureTests: XCTestCase {
         h.submit(0, sampleCount: 24000)
         let inferred = await eventually { h.observations.count == 1 }
         XCTAssertTrue(inferred)
-        h.submit(0, sampleCount: 3072)
         let delivered = await eventually { h.signals.count == 1 }
         XCTAssertTrue(delivered)
+        XCTAssertTrue(h.signals.first?.isValid(at: h.clock.value) ?? false)
         XCTAssertEqual(h.scorer.inputCount, 128000)
         h.capture.cancel()
     }
 
-    private func eventually(_ predicate: () -> Bool) async -> Bool {
-        for _ in 0..<200 {
+    func test48kProductionTapChunksCanCloseDuringAnOrdinaryPause() async throws {
+        for channels: AVAudioChannelCount in [1, 2] {
+            let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: channels)!
+            let h = try AudioCaptureHarness(format: format)
+            defer { h.capture.cancel() }
+            for _ in 0..<48 {
+                h.submit(1, sampleCount: 1024)
+                try await Task.sleep(for: .milliseconds(3))
+            }
+            for _ in 0..<24 {
+                h.submit(0, sampleCount: 1024)
+                try await Task.sleep(for: .milliseconds(3))
+                if !h.signals.isEmpty { break }
+            }
+            let inferred = await eventually { !h.observations.isEmpty }
+            XCTAssertTrue(inferred)
+            let delivered = await eventually(attempts: 20) { h.signals.count == 1 }
+            XCTAssertTrue(delivered, "Normal 1024-frame taps must not disable Smart Turn early endpointing")
+            XCTAssertTrue(h.signals.first?.isValid(at: h.clock.value) ?? false)
+            XCTAssertEqual(h.failures, 0)
+        }
+    }
+
+    func testCancellationDuringTailProbeDoesNotDeliverItsLateAnswer() async throws {
+        let h = try AudioCaptureHarness(blockModel: true)
+        defer { h.capture.cancel(); h.scorer.release(); h.vad.releaseProbe() }
+        await h.feed(1, frames: 16); await h.feed(0, frames: 7)
+        let started = await eventually { h.scorer.started }
+        XCTAssertTrue(started)
+        h.vad.blockProbe()
+        h.submit(0, sampleCount: 256)
+        h.scorer.release()
+        let probing = await eventually { h.vad.probeEntered }
+        XCTAssertTrue(probing)
+        h.capture.cancel()
+        h.vad.releaseProbe()
+        let probed = await eventually { h.vad.probes == 1 }
+        XCTAssertTrue(probed)
+        let delivered = await eventually(attempts: 20) { !h.signals.isEmpty }
+        XCTAssertFalse(delivered)
+        XCTAssertEqual(h.failures, 0)
+    }
+
+    func testTailProbabilityAndErrorsControlEndpointPublication() async throws {
+        let cases: [(result: Result<Float, AudioTurnModelError>, delivered: Bool, failures: Int)] = [
+            (.success(0.49), true, 0), (.success(0.5), false, 0),
+            (.failure(.unavailable), false, 1), (.success(.nan), false, 1), (.success(1.1), false, 1)
+        ]
+        for testCase in cases {
+            let h = try AudioCaptureHarness(blockModel: true)
+            defer { h.capture.cancel(); h.scorer.release() }
+            await h.feed(1, frames: 16); await h.feed(0, frames: 7)
+            let started = await eventually { h.scorer.started }
+            XCTAssertTrue(started)
+            h.vad.setProbeResult(testCase.result)
+            h.submit(0, sampleCount: 256)
+            h.scorer.release()
+            let probed = await eventually { h.vad.probes == 1 }
+            XCTAssertTrue(probed)
+            if testCase.delivered {
+                let delivered = await eventually { h.signals.count == 1 }
+                XCTAssertTrue(delivered)
+            } else {
+                let delivered = await eventually(attempts: 20) { !h.signals.isEmpty }
+                XCTAssertFalse(delivered)
+            }
+            XCTAssertEqual(h.failures, testCase.failures)
+            XCTAssertEqual(h.vad.count, 23)
+            if testCase.failures > 0 {
+                h.submit(0)
+                XCTAssertEqual(h.failures, 1, "A failed tail probe must report only once")
+            }
+        }
+    }
+
+    private func eventually(attempts: Int = 200, _ predicate: () -> Bool) async -> Bool {
+        for _ in 0..<attempts {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(5))
         }
@@ -245,11 +410,12 @@ private final class AudioCaptureHarness {
     var failures: Int { storage.failures }
 
     init(blockModel: Bool = false, blockVAD: Bool = false, failModel: Bool = false, failVAD: Bool = false,
+         scorerOverride: TestCompletionScorer? = nil,
          configuration: AudioTurnEndConfiguration = .init(),
          format: AVAudioFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!) throws {
         self.format = format
         vad = TestFrameVAD(block: blockVAD, fail: failVAD)
-        scorer = TestCompletionScorer(block: blockModel, fail: failModel)
+        scorer = scorerOverride ?? TestCompletionScorer(block: blockModel, fail: failModel)
         let storage = self.storage, clock = self.clock
         capture = try AudioTurnEndCapture(sourceFormat: format, vad: vad, scorer: scorer, configuration: configuration,
             now: { clock.value }, onEndpoint: { storage.add($0) }, onFailure: { _ in storage.fail() }, onObservation: { storage.add($0) })
@@ -261,8 +427,23 @@ private final class AudioCaptureHarness {
         for channel in 0..<Int(format.channelCount) {
             buffer.floatChannelData![channel].update(repeating: value, count: sampleCount)
         }
+        consume(buffer, timestamp: timestamp)
+    }
+
+    func submit(_ samples: [Float]) {
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { source in
+            for channel in 0..<Int(format.channelCount) {
+                buffer.floatChannelData![channel].update(from: source.baseAddress!, count: source.count)
+            }
+        }
+        consume(buffer)
+    }
+
+    private func consume(_ buffer: AVAudioPCMBuffer, timestamp: TimeInterval? = nil) {
         submitted += 1
-        clock.set(clock.value + Double(sampleCount) / format.sampleRate)
+        clock.set(clock.value + Double(buffer.frameLength) / format.sampleRate)
         capture.consume(buffer, at: timestamp ?? clock.value)
     }
 
@@ -296,17 +477,34 @@ private final class TestFrameVAD: VoiceActivityScoring, @unchecked Sendable {
     private let fail: Bool
     private var total = 0
     private var didEnter = false
+    private var probeBlocked = false
+    private var didEnterProbe = false
+    private var probeTotal = 0
+    private var probeResult: Result<Float, AudioTurnModelError>?
     init(block: Bool, fail: Bool = false) { blocked = block; self.fail = fail }
     var count: Int { condition.withLock { total } }
     var entered: Bool { condition.withLock { didEnter } }
+    var probeEntered: Bool { condition.withLock { didEnterProbe } }
+    var probes: Int { condition.withLock { probeTotal } }
     func block() { condition.withLock { blocked = true; didEnter = false } }
     func release() { condition.withLock { blocked = false; condition.broadcast() } }
+    func blockProbe() { condition.withLock { probeBlocked = true; didEnterProbe = false } }
+    func releaseProbe() { condition.withLock { probeBlocked = false; condition.broadcast() } }
+    func setProbeResult(_ result: Result<Float, AudioTurnModelError>) { condition.withLock { probeResult = result } }
     func speechProbability(samples: [Float]) throws -> Float {
         condition.lock(); defer { condition.unlock() }
         didEnter = true
         while blocked { condition.wait() }
         total += 1
         if fail { throw AudioTurnModelError.unavailable }
+        return samples.contains(where: { $0 > 0.5 }) ? 0.9 : 0.1
+    }
+    func speechProbabilityOfTail(samples: [Float]) throws -> Float {
+        condition.lock(); defer { condition.unlock() }
+        didEnterProbe = true
+        while probeBlocked { condition.wait() }
+        probeTotal += 1
+        if let probeResult { return try probeResult.get() }
         return samples.contains(where: { $0 > 0.5 }) ? 0.9 : 0.1
     }
 }
@@ -318,14 +516,16 @@ private final class TestCompletionScorer: AudioTurnScoring, @unchecked Sendable 
     private var didStart = false
     private var didFinish = false
     private var receivedCount = 0
+    private var callCount = 0
     init(block: Bool, fail: Bool) { blocked = block; self.fail = fail }
     var started: Bool { condition.withLock { didStart } }
     var finished: Bool { condition.withLock { didFinish } }
     var inputCount: Int { condition.withLock { receivedCount } }
+    var calls: Int { condition.withLock { callCount } }
     func release() { condition.withLock { blocked = false; condition.broadcast() } }
     func completionProbability(samples: [Float]) throws -> Float {
         condition.lock(); defer { condition.unlock() }
-        didStart = true; receivedCount = samples.count
+        didStart = true; receivedCount = samples.count; callCount += 1
         while blocked { condition.wait() }
         didFinish = true
         if fail { throw AudioTurnModelError.unavailable }

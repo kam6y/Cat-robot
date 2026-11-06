@@ -41,13 +41,17 @@ actor SmartTurnService {
         let (stream, continuation) = AsyncThrowingStream<AudioTurnEndCapture, Error>.makeStream(bufferingPolicy: .bufferingNewest(1))
         let preparation = Task.detached { [self] in
             do {
+                try Task.checkCancellation()
                 let model: any AudioTurnScoring
                 if let cachedScorer { model = cachedScorer }
                 else {
                     model = try makeScorer()
-                    _ = try model.completionProbability(samples: [Float](repeating: 0, count: 128000))
+                    try Task.checkCancellation()
+                    _ = try model.completionProbability(samples: [Float](repeating: 0, count: AudioTurnEndState.windowLength))
                 }
+                try Task.checkCancellation()
                 let vad = try makeVAD()
+                try Task.checkCancellation()
                 let capture = try AudioTurnEndCapture(sourceFormat: sourceFormat, vad: vad, scorer: model,
                     configuration: configuration, now: now, onEndpoint: onEndpoint,
                     onFailure: onFailure, onObservation: onObservation)

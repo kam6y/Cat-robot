@@ -7,6 +7,8 @@ protocol AudioTurnScoring: Sendable {
 }
 protocol VoiceActivityScoring: Sendable {
     func speechProbability(samples: [Float]) throws -> Float
+    /// Scores 1..<512 pending samples without advancing streaming state or context.
+    func speechProbabilityOfTail(samples: [Float]) throws -> Float
 }
 enum AudioTurnModelError: Error { case invalidInput, invalidOutput, unavailable, busy }
 
@@ -25,19 +27,19 @@ final class CoreMLTurnScorer: AudioTurnScoring, @unchecked Sendable {
         config.computeUnits = .cpuAndNeuralEngine
 #endif
         model = try MLModel(contentsOf: modelURL, configuration: config)
-        guard model.modelDescription.inputDescriptionsByName["audio"]?.multiArrayConstraint?.shape == [1, 128000],
+        guard model.modelDescription.inputDescriptionsByName["audio"]?.multiArrayConstraint?.shape == [1, NSNumber(value: AudioTurnEndState.windowLength)],
               model.modelDescription.outputDescriptionsByName["probability"] != nil else {
             throw AudioTurnModelError.invalidInput
         }
     }
 
     func completionProbability(samples: [Float]) throws -> Float {
-        guard samples.count == 128000, samples.allSatisfy(\.isFinite) else {
+        guard samples.count == AudioTurnEndState.windowLength, samples.allSatisfy(\.isFinite) else {
             throw AudioTurnModelError.invalidInput
         }
         guard lock.try() else { throw AudioTurnModelError.busy }
         defer { lock.unlock() }
-        let audio = try MLMultiArray(shape: [1, 128000], dataType: .float32)
+        let audio = try MLMultiArray(shape: [1, NSNumber(value: AudioTurnEndState.windowLength)], dataType: .float32)
         samples.withUnsafeBufferPointer { source in
             audio.dataPointer.assumingMemoryBound(to: Float.self).update(from: source.baseAddress!, count: samples.count)
         }
@@ -69,33 +71,47 @@ final class SileroVADScorer: VoiceActivityScoring, @unchecked Sendable {
     }
 
     func speechProbability(samples: [Float]) throws -> Float {
-        guard samples.count == 512, samples.allSatisfy(\.isFinite) else {
+        guard samples.count == AudioTurnEndState.frameLength, samples.allSatisfy(\.isFinite) else {
             throw AudioTurnModelError.invalidInput
         }
-        return try lock.withLock {
-            let input = context + samples
-            let rate: [Int64] = [16000]
-            let inputValue = try ORTValue(tensorData: NSMutableData(bytes: input, length: input.count * 4),
-                                         elementType: .float, shape: [1, 576])
-            let stateValue = try ORTValue(tensorData: NSMutableData(bytes: state, length: state.count * 4),
-                                         elementType: .float, shape: [2, 1, 128])
-            let rateValue = try ORTValue(tensorData: NSMutableData(bytes: rate, length: MemoryLayout<Int64>.size),
-                                        elementType: .int64, shape: [])
-            let outputs = try session.run(withInputs: ["input": inputValue, "state": stateValue, "sr": rateValue],
-                                          outputNames: ["output", "stateN"], runOptions: nil)
-            guard let output = outputs["output"], let next = outputs["stateN"] else { throw AudioTurnModelError.invalidOutput }
-            let data = try output.tensorData() as Data
-            let nextData = try next.tensorData() as Data
-            guard data.count == 4, nextData.count == 256 * 4 else { throw AudioTurnModelError.invalidOutput }
-            let probability = data.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }
-            let nextState = nextData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-            guard probability.isFinite, (0...1).contains(probability), nextState.allSatisfy(\.isFinite) else {
-                throw AudioTurnModelError.invalidOutput
-            }
+        return try lock.withLock { try predict(samples: samples, committing: true) }
+    }
+
+    func speechProbabilityOfTail(samples: [Float]) throws -> Float {
+        guard !samples.isEmpty, samples.count < AudioTurnEndState.frameLength,
+              samples.allSatisfy(\.isFinite) else { throw AudioTurnModelError.invalidInput }
+        // The pinned upstream wrapper pads final partial frames. This preview
+        // does not commit its padding or returned recurrent state to the stream.
+        let frame = samples + [Float](repeating: 0, count: AudioTurnEndState.frameLength - samples.count)
+        return try lock.withLock { try predict(samples: frame, committing: false) }
+    }
+
+    /// Caller holds lock; inputs/state are private copies, so a preview can discard stateN.
+    private func predict(samples: [Float], committing: Bool) throws -> Float {
+        let input = context + samples
+        let rate: [Int64] = [16000]
+        let inputValue = try ORTValue(tensorData: NSMutableData(bytes: input, length: input.count * 4),
+                                     elementType: .float, shape: [1, 576])
+        let stateValue = try ORTValue(tensorData: NSMutableData(bytes: state, length: state.count * 4),
+                                     elementType: .float, shape: [2, 1, 128])
+        let rateValue = try ORTValue(tensorData: NSMutableData(bytes: rate, length: MemoryLayout<Int64>.size),
+                                    elementType: .int64, shape: [])
+        let outputs = try session.run(withInputs: ["input": inputValue, "state": stateValue, "sr": rateValue],
+                                      outputNames: ["output", "stateN"], runOptions: nil)
+        guard let output = outputs["output"], let next = outputs["stateN"] else { throw AudioTurnModelError.invalidOutput }
+        let data = try output.tensorData() as Data
+        let nextData = try next.tensorData() as Data
+        guard data.count == 4, nextData.count == 256 * 4 else { throw AudioTurnModelError.invalidOutput }
+        let probability = data.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }
+        let nextState = nextData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+        guard probability.isFinite, (0...1).contains(probability), nextState.allSatisfy(\.isFinite) else {
+            throw AudioTurnModelError.invalidOutput
+        }
+        if committing {
             state = nextState
             context = Array(samples.suffix(64))
-            return probability
         }
+        return probability
     }
 
     func reset() {

@@ -1,0 +1,9 @@
+# built: xcrun swiftc -O -parse-as-library align-probe.swift -o align-probe ; run 2026-11-06T03:06:45Z
+# resampler source: git show f206a1e:CatRobot/Conversation/Services/AudioTurnEndCapture.swift | sed -n '351,428p' (verbatim)
+48000 Hz ch=1 chunk= 1024 (21.3 ms) x600 | residual==0 after 0/600 chunks | longest gap 600 chunks = 12800 ms | distinct residuals 3 | converter hold min/max = 5/6 samples(16k) = 0.4 ms max
+48000 Hz ch=2 chunk= 1024 (21.3 ms) x600 | residual==0 after 0/600 chunks | longest gap 600 chunks = 12800 ms | distinct residuals 3 | converter hold min/max = 5/6 samples(16k) = 0.4 ms max
+48000 Hz ch=1 chunk= 4096 (85.3 ms) x600 | residual==0 after 0/600 chunks | longest gap 600 chunks = 51200 ms | distinct residuals 3 | converter hold min/max = 5/6 samples(16k) = 0.4 ms max
+48000 Hz ch=1 chunk= 4800 (100.0 ms) x600 | residual==0 after 2/600 chunks | longest gap 265 chunks = 26500 ms | distinct residuals 346 | converter hold min/max = 6/272 samples(16k) = 17.0 ms max
+48000 Hz ch=1 chunk= 1536 (32.0 ms) x600 | residual==0 after 0/600 chunks | longest gap 600 chunks = 19200 ms | distinct residuals 1 | converter hold min/max = 6/6 samples(16k) = 0.4 ms max
+44100 Hz ch=1 chunk= 1024 (23.2 ms) x600 | residual==0 after 1/600 chunks | longest gap 379 chunks = 8800 ms | distinct residuals 441 | converter hold min/max = 5/6 samples(16k) = 0.4 ms max
+44100 Hz ch=1 chunk= 4410 (100.0 ms) x600 | residual==0 after 2/600 chunks | longest gap 313 chunks = 31300 ms | distinct residuals 256 | converter hold min/max = 6/150 samples(16k) = 9.4 ms max

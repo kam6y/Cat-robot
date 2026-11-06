@@ -1,0 +1,264 @@
+{
+  "date": "2026-11-06 JST",
+  "reviewBase": "6ddf6ba4b8e217c70d2c9cfff4f50773a1ee232c",
+  "implementationBase": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+  "preservedIssue25Head": "e6023e77e8742aa18581b33167f36551b10fa171",
+  "finalCodeDiff": {
+    "base": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+    "sha256": "d51f44954b94be39ca8a2d29da7ea03d05a0ead24284fc0f6b689300d321c7e4",
+    "nativeReceipt": "sr2-probe-pipeline-green-receipt.json",
+    "nativeTests": 62,
+    "failures": 0
+  },
+  "documentationSha256": "1f47f80b16fb284741cf503bc6fa82c2d2e716a64fc559c625fb111087733d1a",
+  "stages": {
+    "sr1-red": {
+      "stage": "sr1-red",
+      "exitCode": 1,
+      "tests": 1,
+      "failures": 4,
+      "allSelectedPassed": false,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr1-green": {
+      "stage": "sr1-green",
+      "exitCode": 0,
+      "tests": 18,
+      "failures": 0,
+      "allSelectedPassed": true,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr3-red": {
+      "stage": "sr3-red",
+      "exitCode": 1,
+      "tests": 1,
+      "failures": 5,
+      "allSelectedPassed": false,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr3-green": {
+      "stage": "sr3-green",
+      "exitCode": 0,
+      "tests": 4,
+      "failures": 0,
+      "allSelectedPassed": true,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr2-red": {
+      "stage": "sr2-red",
+      "exitCode": 1,
+      "tests": 1,
+      "failures": 8,
+      "allSelectedPassed": false,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr2-production-red": {
+      "stage": "sr2-production-red",
+      "exitCode": 1,
+      "tests": 1,
+      "failures": 2,
+      "allSelectedPassed": false,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr2-tail-model-red": {
+      "stage": "sr2-tail-model-red",
+      "exitCode": 1,
+      "tests": 5,
+      "failures": 8,
+      "allSelectedPassed": false,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr2-tail-model-green": {
+      "stage": "sr2-tail-model-green",
+      "exitCode": 0,
+      "tests": 5,
+      "failures": 0,
+      "allSelectedPassed": true,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr2-probe-pipeline-red": {
+      "stage": "sr2-probe-pipeline-red",
+      "exitCode": 1,
+      "tests": 2,
+      "failures": 7,
+      "allSelectedPassed": false,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    },
+    "sr2-probe-pipeline-green": {
+      "stage": "sr2-probe-pipeline-green",
+      "exitCode": 0,
+      "tests": 62,
+      "failures": 0,
+      "allSelectedPassed": true,
+      "unchangedProductionCopies": true,
+      "testAdaptations": [
+        "asset locator",
+        "exact existing clock extraction"
+      ]
+    }
+  },
+  "nativeInputs": [
+    {
+      "source": "CatRobot/Conversation/Domain/AudioTurnEndSignal.swift",
+      "sha256": "b0a574d4daa44b5225bd6c90eaaf24f6b4b47309bbeaa6af29d298b93250c94a",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobot/Conversation/Domain/AudioTurnEndState.swift",
+      "sha256": "abf1aeba14b9e6bc922a90ebbb4bc0b124f50f66de2a63d608a9f9db4e978657",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobot/Conversation/Services/AudioTurnEndCapture.swift",
+      "sha256": "224ad2b4e798394bca426cf6cb2609755081e4ea9d53398caf20f4a8b9819d2e",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobot/Conversation/Services/SmartTurnModels.swift",
+      "sha256": "77817f968423e9fb68e6c620f9f75673f2a35aa34e43a36488448a6c3cef9d35",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobot/Conversation/Services/SmartTurnService.swift",
+      "sha256": "182164e61d47ff17110622fa78bca8e9739d2ac0872bd459ada1ef43c09272d2",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobotTests/Conversation/Domain/AudioTurnEndSignalTests.swift",
+      "sha256": "5d6ee637685dbc5caa07d56ffd113cd7e06f0fef984315ff38b4d78b5bae574f",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobotTests/Conversation/Domain/AudioTurnEndStateTests.swift",
+      "sha256": "7ddaddbcbc365e2818e64ec34a949f0cc4bbd4eab6d626ad53fba9577563280c",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobotTests/Conversation/Services/AudioTurnEndCaptureTests.swift",
+      "sha256": "85b5d83be166745c6c2c4048c1a825962a327d467f88b80efa2876238409c8b2",
+      "adaptation": null
+    },
+    {
+      "source": "CatRobotTests/Conversation/Services/SmartTurnModelsTests.swift",
+      "sha256": "8fbb9f53c3ec48a32ec123080503799fba50619dc857fd48122040766ef26799",
+      "adaptation": "Only test asset locator; identical pinned model files"
+    },
+    {
+      "source": "CatRobotTests/Conversation/Integration/ConversationFakes.swift",
+      "sha256": "3c2230da5a04bc6c0032f2f954d9b74e8dffd3188aad007ce11b40562b2c33ee",
+      "adaptation": "Exact existing ConversationTestNow extracted; Foundation import only"
+    }
+  ],
+  "ios": {
+    "build": {
+      "phase": "smart-turn-simulator",
+      "stage": "build",
+      "exitCode": 0,
+      "timedOut": false,
+      "head": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+      "workingPatchSha256": "7586a2b2e28d4a16241351c7df007d8d3ed74f2b115140e1b3e7b22c5460bc10",
+      "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+      "dedicatedHardwareAndPaidTestsExcluded": true,
+      "testHost": "Existing SUPER_INTEGRATION_TESTS=1 disables live composition; no stage/run ID, explicit device-test exclusions"
+    },
+    "focused": {
+      "phase": "smart-turn-simulator",
+      "stage": "focused",
+      "exitCode": 0,
+      "timedOut": false,
+      "head": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+      "workingPatchSha256": "7586a2b2e28d4a16241351c7df007d8d3ed74f2b115140e1b3e7b22c5460bc10",
+      "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+      "dedicatedHardwareAndPaidTestsExcluded": true,
+      "result": "Passed",
+      "passedTests": 151,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "testFailures": []
+    },
+    "full": {
+      "phase": "smart-turn-simulator",
+      "stage": "full",
+      "exitCode": 0,
+      "timedOut": false,
+      "head": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+      "workingPatchSha256": "7586a2b2e28d4a16241351c7df007d8d3ed74f2b115140e1b3e7b22c5460bc10",
+      "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+      "dedicatedHardwareAndPaidTestsExcluded": true,
+      "result": "Passed",
+      "passedTests": 968,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "testFailures": []
+    }
+  },
+  "python": {
+    "head": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+    "nativeDomainXCTestPassed": 30,
+    "nativeDomainFailed": 0,
+    "nativeDomainSourcesUnmodified": true,
+    "pythonPassed": 34,
+    "pythonFailed": 0
+  },
+  "bundledModelsVerified": 8,
+  "reviewReportSha256": {
+    "codex-review.md": "5b2d6ab23d5444611964f97c7312a10b9c64ea988eea2467438b527256cee43e",
+    "claude-simplify.md": "e79b4486d7255f43617d02a554c4b7d2adccf0de50f3bb713592cfbdadc6de03",
+    "codex-reception.md": "9fcda6eb2c7480cc0c452265000d10d584c624e3a2b1e6dcb3e02e80b1c8b9ac",
+    "codex-reception-addendum.md": "87d22e6acc2ad2e56b07220115461a8f10957ad8ff5138d787434c23696d5c95",
+    "claude-reception.md": "30ae748dc5ec95d5b5821581db4e041eee0ef54b2ef1b9380cabb59a5edcf442",
+    "parent-reception.md": "f755902af762c9ebb7f5a52d0b787c67a94851391bf6c1b40dad06daa9e236df",
+    "codex-b-fix-review.md": "92a7c9f87787c0f567dfd3142f334ce8f9987f359bab6493533f571dd3f65173",
+    "claude-b-fix-review.md": "a92902f67bf4a36240bb6f45959882d88eb36b12721139f8811e5978944e4d12",
+    "codex-b-reception.md": "d0defb997af1a3e09b818dee0b722d2fd195eaf9c76d0fa711c4398d7aafd200"
+  },
+  "dedicatedDeviceTestsExcluded": [
+    "SupertonicIntegrationDeviceTests",
+    "RobotMotionIntegrationDeviceTests"
+  ],
+  "finalCritical": 0,
+  "finalImportant": 0,
+  "limits": [
+    "Synthetic and model smoke/state checks do not establish human/noise accuracy or acoustic latency",
+    "Partial human-speech onset sensitivity is unmeasured",
+    "Quiet-tail sizes all pad to one all-zero512 frame",
+    "Slow CI can overflow the synthetic fixed-sleep test producer; optional harness pacing work deferred",
+    "Physical iPhone unavailable; test runs used a fresh Simulator"
+  ]
+}

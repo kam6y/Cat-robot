@@ -11,7 +11,7 @@ final class AppleSpeechRecognizerTests: XCTestCase {
             let service = SmartTurnService(
                 makeScorer: { gate.wait(); return EndpointPreparationScorer() },
                 makeVAD: { EndpointPreparationVAD() })
-            let driver = OptionalEndpointPreparingDriver(service: service)
+            let driver = RequiredEndpointPreparingDriver(service: service)
             let recognizer = makeRecognizer(driverFactory: { driver })
             let h = ConversationHarness(recognizerOverride: recognizer)
             let starting = Task { await h.sut.startConversation() }
@@ -36,13 +36,13 @@ final class AppleSpeechRecognizerTests: XCTestCase {
         }
     }
 
-    func testOptionalEndpointInitializationDoesNotHoldStopOrShutdown() async throws {
+    func testRequiredEndpointInitializationDoesNotHoldStopOrShutdown() async throws {
         for shutsDown in [false, true] {
             let gate = EndpointInitializationGate()
             let service = SmartTurnService(
                 makeScorer: { gate.wait(); return EndpointPreparationScorer() },
                 makeVAD: { EndpointPreparationVAD() })
-            let driver = OptionalEndpointPreparingDriver(service: service)
+            let driver = RequiredEndpointPreparingDriver(service: service)
             let recognizer = makeRecognizer(driverFactory: { driver })
             let preparing = Task { try? await recognizer.prepare() }
             let started = await endpointWait { gate.entered }
@@ -1099,7 +1099,7 @@ private func eventually(
     return await condition()
 }
 
-private actor OptionalEndpointPreparingDriver: SpeechCaptureDriving {
+private actor RequiredEndpointPreparingDriver: SpeechCaptureDriving {
     let service: SmartTurnService
     var capture: AudioTurnEndCapture?
     init(service: SmartTurnService) { self.service = service }
