@@ -18,6 +18,19 @@ final class ConversationModelSettingsTests: XCTestCase {
         )
     }
 
+    func testEveryEffortOptionPersistsUsingItsAPIName() {
+        XCTAssertEqual(ConversationEffort.allCases.map(\.rawValue), ["low", "medium", "high", "xhigh"])
+        let defaults = suite()
+
+        for effort in ConversationEffort.allCases {
+            let settings = ConversationModelSettings(defaults: defaults)
+            settings.effort = effort
+
+            XCTAssertEqual(defaults.string(forKey: "conversation.claude.effort"), effort.rawValue)
+            XCTAssertEqual(ConversationModelSettings(defaults: defaults).configuration.effort, effort)
+        }
+    }
+
     func testSelectionsPersistAndInvalidValuesFallBack() {
         let defaults = suite()
         let first = ConversationModelSettings(defaults: defaults)

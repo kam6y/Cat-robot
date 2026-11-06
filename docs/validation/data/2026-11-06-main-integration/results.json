@@ -1,0 +1,93 @@
+{
+  "date": "2026-11-06 JST",
+  "scope": {
+    "smartTurnMainCommit": "b0bfba465517f6c0b245e24b41f4401c10f42f64",
+    "reviewedIssue25Head": "e6023e77e8742aa18581b33167f36551b10fa171",
+    "issueFilesMatchReviewedVersion": {
+      "CatRobot/App/SettingsPanes.swift": true,
+      "CatRobot/Conversation/Services/Claude/ClaudeSessionFactory.swift": true,
+      "CatRobot/Conversation/Services/Claude/ConversationModelSettings.swift": true,
+      "CatRobotTests/Conversation/Services/Claude/ClaudeConversationServiceTests.swift": true,
+      "CatRobotTests/Conversation/Services/Claude/ClaudeSessionFactoryTests.swift": true,
+      "CatRobotTests/Conversation/Services/Claude/ConversationModelSettingsTests.swift": true,
+      "docs/superpowers/plans/2026-11-06-effort-settings.md": true,
+      "docs/superpowers/specs/2026-11-06-effort-settings-design.md": true,
+      "docs/validation/2026-11-06-effort-cross-review.md": true,
+      "docs/validation/2026-11-06-effort-settings.md": true
+    },
+    "smartTurnCodeAndTestsUnchanged": {
+      "CatRobot/Conversation/Domain/AudioTurnEndSignal.swift": true,
+      "CatRobot/Conversation/Services/AudioTurnEndCapture.swift": true,
+      "CatRobot/Conversation/Services/SmartTurnModels.swift": true,
+      "CatRobot/Conversation/Services/SmartTurnService.swift": true,
+      "CatRobotTests/Conversation/Services/AppleSpeechRecognizerTests.swift": true,
+      "CatRobotTests/Conversation/Services/AudioTurnEndCaptureTests.swift": true,
+      "CatRobotTests/Conversation/Services/SmartTurnModelsTests.swift": true
+    },
+    "combinedCodeDiffSha256": "2114b8852713a6048c3a402b694238a2192960e10e9b45c28f8c3bbcd53bb339",
+    "readme": "Automatic three-way merge; current Smart Turn description plus reviewed effort labels",
+    "remoteMainAtIntegration": "f206a1e72afdbce96aee451b6887bf17c70feb9b",
+    "remotePush": "Not executed; auto-review requires explicit approval",
+    "combinedCodeDiffCommand": [
+      "git",
+      "--no-pager",
+      "diff",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--full-index",
+      "--no-color",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      "b0bfba465517f6c0b245e24b41f4401c10f42f64",
+      "--",
+      "CatRobot",
+      "CatRobotTests",
+      "README.md"
+    ],
+    "combinedCodeDiffFile": "combined-code.diff",
+    "earlierUnqualifiedHash": "ea9a20b17f6fd331e8dd320f3d09520dd232b837736dd80c5341977aacf9183e"
+  },
+  "build": {
+    "phase": "combined",
+    "stage": "build",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "b0bfba465517f6c0b245e24b41f4401c10f42f64",
+    "workingPatchSha256": "181d71c370f45ef73f051834f43bde78f84fbd05ba35c21a015ebed7e46cab07",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "testHost": "Existing SUPER_INTEGRATION_TESTS=1 disables live composition; no stage/run ID, explicit device-test exclusions"
+  },
+  "fullXCTest": {
+    "phase": "combined",
+    "stage": "full",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "b0bfba465517f6c0b245e24b41f4401c10f42f64",
+    "workingPatchSha256": "181d71c370f45ef73f051834f43bde78f84fbd05ba35c21a015ebed7e46cab07",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 969,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "dedicatedDeviceTestsExcluded": [
+    "SupertonicIntegrationDeviceTests",
+    "RobotMotionIntegrationDeviceTests"
+  ],
+  "generator": "xcodeproj1.27.0 deterministic contract PASS",
+  "expectedDisplayLabels": [
+    "low(推奨)",
+    "Claude Opus 5.5(推奨)"
+  ],
+  "effortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh"
+  ],
+  "sourceUnchangedSinceTests": true,
+  "remotePush": "Not executed; automatic approval review rejected remote publication without explicit approval"
+}

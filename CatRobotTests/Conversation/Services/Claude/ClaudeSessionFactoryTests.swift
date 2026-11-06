@@ -7,11 +7,14 @@ final class ClaudeSessionFactoryTests: XCTestCase {
         XCTAssertEqual(ClaudeSessionFactory.claudeModel(for: .opus5_5).id, "claude-opus-5-5")
         XCTAssertEqual(ClaudeSessionFactory.claudeModel(for: .sonnet5_5).id, "claude-sonnet-5-5")
         XCTAssertEqual(ClaudeSessionFactory.claudeModel(for: .haiku5_5).id, "claude-haiku-5-5")
-        XCTAssertEqual(ClaudeSessionFactory.claudeEffort(for: .low), .low)
-        XCTAssertEqual(ClaudeSessionFactory.claudeEffort(for: .medium), .medium)
+        for effort in ConversationEffort.allCases {
+            XCTAssertEqual(ClaudeSessionFactory.claudeEffort(for: effort).rawValue, effort.rawValue)
+        }
+        // 選べる全 effort を実際の写像で SDK 値にし、全モデルが受理することを確認する（SDK init の precondition 対策）。
+        let selectable = ConversationEffort.allCases.map(ClaudeSessionFactory.claudeEffort(for:))
         for choice in ConversationModelChoice.allCases {
             let capabilities = ClaudeSessionFactory.claudeModel(for: choice).capabilities
-            XCTAssertTrue(capabilities.effortLevels.isSuperset(of: [.low, .medium]))
+            XCTAssertTrue(capabilities.effortLevels.isSuperset(of: selectable), "\(choice)")
             XCTAssertTrue(capabilities.imageInput)
         }
     }

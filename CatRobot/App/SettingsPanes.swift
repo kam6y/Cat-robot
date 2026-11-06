@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定「会話」の右列。声・モデル・考える深さと、居眠りまでの時間。
+/// 設定「会話」の右列。声・モデル・エフォートと、居眠りまでの時間。
 struct ConversationSettingsPane: View {
     @Bindable var voiceSettings: SpeechVoiceSettings
     @Bindable var modelSettings: ConversationModelSettings
@@ -17,11 +17,11 @@ struct ConversationSettingsPane: View {
                     ForEach(ConversationModelChoice.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 .accessibilityIdentifier(ConversationSettingsIdentifier.modelPicker.rawValue)
-                Picker("考える深さ", selection: $modelSettings.effort) {
+                Picker("エフォート", selection: $modelSettings.effort) {
                     ForEach(ConversationEffort.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 .accessibilityIdentifier(ConversationSettingsIdentifier.effortPicker.rawValue)
-            } footer: { Text("声とモデルは次の会話から使います。") }
+            } footer: { Text("声・モデル・エフォートは次の会話から使います。") }
             Section {
                 Stepper("眠そうになるまで \(idleSettings.sleepyMinutes) 分", value: $idleSettings.sleepyMinutes, in: ConversationIdleSettings.sleepyRange)
                     .accessibilityIdentifier(ConversationSettingsIdentifier.sleepyMinutesStepper.rawValue)

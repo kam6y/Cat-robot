@@ -119,23 +119,27 @@ final class ClaudeConversationServiceTests: XCTestCase {
         XCTAssertEqual(sessions.count, 2, "作り直しは削除ごとに一度だけ")
     }
 
-    func testModelSettingChangeAppliesOnlyWhenSessionIsRebuilt() async throws {
-        let settings = Settings(.init(model: .opus5_5))
-        let factory = StubSessionFactory()
-        let usage = ConversationUsageSpy()
-        let service = makeService(factory: factory, settings: settings, usage: usage)
-        _ = try await collect(service.streamReply(to: "一回目"))
-        settings.set(.init(model: .sonnet5_5, effort: .medium))
-        _ = try await collect(service.streamReply(to: "二回目"))
-        var sessions = await factory.sessions
-        XCTAssertEqual(sessions.map(\.configuration.model), [.opus5_5], "進行中のセッションでは切り替えない")
-        await service.reset()
-        _ = try await collect(service.streamReply(to: "三回目"))
-        sessions = await factory.sessions
-        XCTAssertEqual(sessions.map(\.configuration.model), [.opus5_5, .sonnet5_5])
-        XCTAssertEqual(sessions.last?.configuration.effort, .medium)
-        let billed = await usage.turns.map { $0.0 }
-        XCTAssertEqual(billed, [.opus5_5, .opus5_5, .sonnet5_5], "集計はそのターンを生成したセッションのモデルで行う")
+    func testModelAndEffortChangesApplyOnlyWhenSessionIsRebuilt() async throws {
+        // low の行は effort の変更ではなく、モデルだけ変えたときに low がそのまま次のセッションへ渡る契約を確認する。
+        for effort in ConversationEffort.allCases {
+            let settings = Settings(.init(model: .opus5_5))
+            let factory = StubSessionFactory()
+            let usage = ConversationUsageSpy()
+            let service = makeService(factory: factory, settings: settings, usage: usage)
+            _ = try await collect(service.streamReply(to: "一回目"))
+            settings.set(.init(model: .sonnet5_5, effort: effort))
+            _ = try await collect(service.streamReply(to: "二回目"))
+            var sessions = await factory.sessions
+            XCTAssertEqual(sessions.map(\.configuration.model), [.opus5_5], "進行中のセッションでは切り替えない")
+            XCTAssertEqual(sessions.map(\.configuration.effort), [.low])
+            await service.reset()
+            _ = try await collect(service.streamReply(to: "三回目"))
+            sessions = await factory.sessions
+            XCTAssertEqual(sessions.map(\.configuration.model), [.opus5_5, .sonnet5_5])
+            XCTAssertEqual(sessions.map(\.configuration.effort), [.low, effort])
+            let billed = await usage.turns.map { $0.0 }
+            XCTAssertEqual(billed, [.opus5_5, .opus5_5, .sonnet5_5], "集計はそのターンを生成したセッションのモデルで行う")
+        }
     }
 
     func testResetDropsShortTermMemoryButKeepsLongTermFacts() async throws {

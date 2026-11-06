@@ -8,7 +8,7 @@ enum ConversationModelChoice: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .opus5_5: "Claude Opus 5.5（既定）"
+        case .opus5_5: "Claude Opus 5.5(推奨)"
         case .sonnet5_5: "Claude Sonnet 5.5"
         case .haiku5_5: "Claude Haiku 5.5"
         }
@@ -16,9 +16,9 @@ enum ConversationModelChoice: String, CaseIterable, Codable, Sendable {
 }
 
 enum ConversationEffort: String, CaseIterable, Codable, Sendable {
-    case low, medium
+    case low, medium, high, xhigh
 
-    var displayName: String { self == .low ? "速さ優先（既定）" : "少し考える" }
+    var displayName: String { self == .low ? "low(推奨)" : rawValue }
 }
 
 struct ConversationModelConfiguration: Equatable, Sendable {

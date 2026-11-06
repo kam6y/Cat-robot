@@ -22,6 +22,8 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
         switch effort {
         case .low: .low
         case .medium: .medium
+        case .high: .high
+        case .xhigh: .xhigh
         }
     }
 
