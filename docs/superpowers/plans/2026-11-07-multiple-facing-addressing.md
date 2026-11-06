@@ -41,7 +41,8 @@
 
 ## Whole-branch review and integration
 
-- [ ] Freeze the source and preserve actual Claude /simplify four independent reports and one fresh native whole-branch review before exchange.
-- [ ] Mutually receive findings, apply justified Important/Critical fixes, record any Minor deferrals and final scoped verification.
-- [ ] Build/install/launch the normal signed preview app with0XCTest/no test arguments and request the real multiple-person confirmation. Continue independent reviews while awaiting it.
+- [x] Freeze the source and preserve actual Claude /simplify four independent reports and one fresh native whole-branch review before exchange.
+- [x] Mutually receive findings, apply justified Important/Critical fixes, record any Minor deferrals and final scoped verification.
+- [x] Build/install/launch the normal signed preview app with0XCTest/no test arguments and request the real multiple-person confirmation. Continue independent reviews while awaiting it.
+- [ ] Receive the user's actual two-person result; do not infer acceptance from installation or elapsed time.
 - Post-commit gate: fetch latest main, squash to one commit with identical tree, build/install/launch normal final-main app before non-force push; verify remote hash, issue closure and clean worktree. Preserve branch/host, archive/remove only this plan's workspace. Record actual post-commit hashes/PID/status in task-private integration.json.

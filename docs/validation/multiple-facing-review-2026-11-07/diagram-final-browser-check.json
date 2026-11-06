@@ -1,0 +1,59 @@
+{
+  "offlineOpen": true,
+  "clarificationRow": "別の発話→有効でこちら向きの顔が1人以上なら返答。そうでなければ再判定し、曖昧でも再度は聞き返さない",
+  "revisionLabel": "2026.11.07時点issue#28対応版",
+  "snapshotFooter": true,
+  "sourceLinks": {
+    "count": 31,
+    "lineAnchors": 0,
+    "lineLabels": 0
+  },
+  "diagrams": [
+    {
+      "id": "overview",
+      "viewBox": "4 4 716 974.7999877929688",
+      "nodes": 10,
+      "foreignObjects": 10
+    },
+    {
+      "id": "address",
+      "viewBox": "4 4 936.9362182617188 1133",
+      "nodes": 11,
+      "foreignObjects": 11
+    },
+    {
+      "id": "reply",
+      "viewBox": "4 4 1005.666748046875 973.7999877929688",
+      "nodes": 9,
+      "foreignObjects": 9
+    },
+    {
+      "id": "standby",
+      "viewBox": "4 4 1221.0078125 798.6000366210938",
+      "nodes": 8,
+      "foreignObjects": 8
+    },
+    {
+      "id": "face",
+      "viewBox": "4 4 1088.333251953125 915",
+      "nodes": 11,
+      "foreignObjects": 11
+    },
+    {
+      "id": "speech",
+      "viewBox": "4 4 1281.1507568359375 478",
+      "nodes": 9,
+      "foreignObjects": 9
+    }
+  ],
+  "tabNavigation": true,
+  "keyboardNavigation": true,
+  "diagramDrilldown": true,
+  "exampleHighlighting": true,
+  "zoom": true,
+  "printAllSix": true,
+  "mobilePageOverflow": false,
+  "directHashNavigation": true,
+  "javascriptErrors": [],
+  "externalRequests": []
+}

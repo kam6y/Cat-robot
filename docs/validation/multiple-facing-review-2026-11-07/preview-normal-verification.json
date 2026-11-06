@@ -1,0 +1,17 @@
+{
+  "gitCommit": "07363aaae506ebe153b7580c7efbae7610e5ef46",
+  "sourceDigest": "465ac722319dca952e9b984260babebf4bc24642eb4e6f0e01fb72dcbee85da2",
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "installed": true,
+  "launched": true,
+  "processPresent": true,
+  "pid": 11428,
+  "codesignVerified": true,
+  "testPlugins": 0,
+  "nativeReceiptSha256": "2ee2883ca23745dc8729e88a780264d32a270c3b1d3faa4de42e657fe555d0ca",
+  "inputSourceDigest": "4e99d6b42c5cf3684b7e1d02c9e74ee51f6504aa95490d88f9033973a4f8494f",
+  "arguments": [],
+  "environmentVariableNames": [
+    "TERM"
+  ]
+}

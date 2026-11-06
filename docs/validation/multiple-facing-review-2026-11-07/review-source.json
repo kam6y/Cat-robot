@@ -1,0 +1,14 @@
+{
+  "base": "b59f0b9dc93d97ee79204e824961bafdd390cb19",
+  "head": "07363aaae506ebe153b7580c7efbae7610e5ef46",
+  "tree": "35f35475071401f49cc1d5ca642e9cc770cf11d9",
+  "fullDiffSha256": "e09ad99fd1fc2ad251e65231777325ecf04a736d6b4db7f96cf4cd78b1ffbe92",
+  "readableDiffSha256": "008b4066c75a40e866ecd5f7156aca04da9c485fbb75d9855ae4182674885d3c",
+  "inputSourceDigest": "4e99d6b42c5cf3684b7e1d02c9e74ee51f6504aa95490d88f9033973a4f8494f",
+  "HTMLSha256": "40000a65dbe2357ab9efbf02bf14d4a8ef102c7c45af9d37ae77db99131c793f",
+  "nativeReceiptSha256": "2ee2883ca23745dc8729e88a780264d32a270c3b1d3faa4de42e657fe555d0ca",
+  "focusedPassed": 94,
+  "fullPassed": 1004,
+  "physicalMultiplePeopleConfirmation": "pending",
+  "firstReportsIndependent": true
+}

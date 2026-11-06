@@ -1,0 +1,20 @@
+{
+  "candidateHead": "07363aaae506ebe153b7580c7efbae7610e5ef46",
+  "inputSourceDigest": "4e99d6b42c5cf3684b7e1d02c9e74ee51f6504aa95490d88f9033973a4f8494f",
+  "htmlSha256": "dcf5c78969b05a780302817356806c46d5b05fc4861e81492decf33012874ead",
+  "firstReportsIndependent": true,
+  "firstReportsPreserved": 6,
+  "mutualReceptionComplete": true,
+  "adoptedC1C2Resolved": true,
+  "remainingCriticalOrImportant": 0,
+  "minorDeferralsRecorded": true,
+  "tests": {
+    "passed": 1004,
+    "failed": 0,
+    "skipped": 0
+  },
+  "signedPreviewInstalledAndLaunched": true,
+  "physicalTwoPersonAcceptance": "pending-user-answer",
+  "mainIntegrated": false,
+  "pushed": false
+}

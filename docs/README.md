@@ -48,7 +48,8 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | [2026-11-06 中立発話の履歴](superpowers/specs/2026-11-06-neutral-history-design.md) | issue #23。元発話と正常完了した聞き返しを保存し、次のClaude応答へ渡す |
 | [2026-11-06 音量0の警告](superpowers/specs/2026-11-06-muted-audio-warning-design.md) | issue #26。再生音量0を警告チップで知らせ、音量を上げると消す |
 | [2026-11-07 複数人の顔向き](superpowers/specs/2026-11-07-multiple-facing-addressing-design.md) | issue #28。複数人でも1人以上がこちら向きなら宛先判定を省略 |
-| [アプリ全体の分岐図](application-flow.html) | 会話・応答条件・記憶・待機・顔と首・読み上げを条件と動作でたどるHTML |
+
+[アプリ全体の分岐図（2026-11-07時点の静的スナップショット）](application-flow.html) は、issue #28対応時点の会話・応答条件・記憶・待機・顔と首・読み上げを、条件と動作でたどるHTMLです。現役の仕様ではなく、以後の変更では自動更新されません。今の振る舞いは上の仕様とコードで確かめてください。
 
 進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。
 
@@ -94,7 +95,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | 2026-10-29 日本語読み上げの修復 | [記録](validation/2026-10-29-natural-japanese-speech-repair.md) | 利用者がC方式を自然と選択。全体846成功/2skip、native22成功、実機固定文再生成功。未対応漢字と全文章/全声の品質は制約が残る |
 | 2026-11-06 中立発話の履歴 | [記録](validation/2026-11-06-neutral-history.md)、[結果](validation/data/2026-11-06-neutral-history/results.json) | 履歴保存・次セッションの文脈は実VM/実記憶サービスで確認。実classifier・実モデルの意味解釈と実音声会話は未検証 |
 | 2026-11-06 音量0の警告 | [記録](validation/2026-11-06-muted-audio-warning.md)、[結果](validation/data/2026-11-06-muted-audio-warning/results.json) | 実機で音量0の表示・音量復帰の解除を利用者が確認。inactive/全出力経路/実機VoiceOverの受入は未実施 |
-| 2026-11-07 複数人の顔向き | [記録](validation/2026-11-07-multiple-facing-addressing.md)、[レビュー](validation/multiple-facing-review-2026-11-07/) | 自動1,004件成功。実機の複数人条件・最終レビュー・統合の結果は本文の後続記録を参照 |
+| 2026-11-07 複数人の顔向き | [記録](validation/2026-11-07-multiple-facing-addressing.md)、[レビュー](validation/multiple-facing-review-2026-11-07/) | 自動1,004件成功、相互レビュー・文書修正確認済み。通常署名版は実機で起動済み。人による複数人条件は回答待ち、mainへの統合は未実施 |
 
 ## 2026-10-28 main 整理の検証
 

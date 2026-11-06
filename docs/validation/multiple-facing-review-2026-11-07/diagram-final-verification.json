@@ -1,0 +1,72 @@
+{
+ "head": "07363aaae506ebe153b7580c7efbae7610e5ef46",
+ "trackedChanged": [
+  "README.md",
+  "docs/README.md",
+  "docs/application-flow.html"
+ ],
+ "gitDiffCheck": "pass",
+ "htmlBefore": "40000a65dbe2357ab9efbf02bf14d4a8ef102c7c45af9d37ae77db99131c793f",
+ "htmlAfter": "dcf5c78969b05a780302817356806c46d5b05fc4861e81492decf33012874ead",
+ "readme": "c3f7d67ea8c595182a66e34319588e3e1be5f6f1233c5e128f76826723f32609",
+ "docsReadme": "dfa65babb0771ee580b39111b6756cf9ad6e41fb57573be41b5afd7d72b94b9a",
+ "svgElementsTotal": 12,
+ "svgDiagrams": 6,
+ "svgPrintIcons": 6,
+ "svgAllMatchManifestShaAndBytes": true,
+ "diagramSvgSha256": [
+  "6a17f98ccc156531cb9d7f775cbe3dac619985308002163b499247ed7f220320",
+  "29e534c3e953ce5766b593d3a300ccfc48a148060f59e07047064bbbb8da493e",
+  "02f9f9e0186d8ceef6fbd9f383f107835fee13e3a6de3a99cd3522a948395dcd",
+  "aa09c63d3ea2d55de651a820ac38033035ae18f98d89836ffc95b24737eed991",
+  "ca05dbed58c5787a3ea9ee04a6ec1c64ddc68f0a9cfbf0b3330af2126e44b79e",
+  "c2d618f24bab0859ee9d3db8689b2d7855033d6d85c2f2093adcc9507b4767dd"
+ ],
+ "styleBlocksIdentical": true,
+ "styleBlocks": 8,
+ "interactionScriptIdentical": true,
+ "definitionsChangedKeys": [
+  "refs"
+ ],
+ "markupChangeKinds": {
+  "other": 4,
+  "refAnchorAndLabel": 31
+ },
+ "structureCompareNote": "structure-compare.json starts with 4 OTHER lines (the intended text edits) followed by the JSON summary",
+ "builderReproducedPreviousHtmlByteForByte": true,
+ "appInputSourceDigest": "4e99d6b42c5cf3684b7e1d02c9e74ee51f6504aa95490d88f9033973a4f8494f",
+ "browserCheck": {
+  "oldHtml40000a65": {
+   "exit": 1,
+   "error": "Clarification row is stale"
+  },
+  "probeRowOnly": {
+   "exit": 1,
+   "error": "Snapshot labelling missing"
+  },
+  "probeRowAndSnapshot": {
+   "exit": 1,
+   "error": "Source links still carry line numbers"
+  },
+  "newHtml": {
+   "exit": 0,
+   "receipt": "/tmp/cat-issue28-multiple-facing-20261107/handoff3/chrome-check/browser-check.json",
+   "receiptSha256": "6d2a7ff97dd56ed5a425a43e3edafbadfcccaa36215ac7052bfb5cee0c808eab",
+   "diagramsEqualPreviousReceipt": true,
+   "previousReceiptUnchanged": true
+  }
+ },
+ "consoles": {
+  "chrome-check-old.console": "0f1259d08f30471002eb8f0fd7d4baa0816780c1a74522e400a83ad78f96f9c4",
+  "chrome-check-probe-row-only.console": "26e5bccc6349756b8b357085bc1e5effed18d6b521f24e4f7d070db03e855f8b",
+  "chrome-check-probe-row-snapshot.console": "b3ea7345d7c4c2b9c705d075c9cbe71b44bec6485e98e66493eb5467bdb1d8d8",
+  "chrome-check.console": "4cf2e2e191f95719879f092fabe8e005af3944c7da36692a78105fc43b9ebc97"
+ },
+ "privateFlowDiffSha256": "c639413dd9cf5723659f977cdcfce50fc294deb733f9671a13c5a9d5ad48b30a",
+ "trackedDocsDiffSha256": "dca25b0cfe89e987c359b15c22928dfee98acbc8139ab9bdb677847642e4567f",
+ "notRun": [
+  "app build",
+  "XCTest",
+  "device"
+ ]
+}
