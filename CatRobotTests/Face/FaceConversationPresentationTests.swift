@@ -9,6 +9,28 @@ import XCTest
 final class FaceConversationPresentationTests: XCTestCase {
     private let longCaption = "今日はいい天気だね。窓から見える景色について、ゆっくり話そう。お昼には何を食べたの？楽しかったことも、気になったことも、ここで聞かせてね。最後までちゃんと聞いているよ。"
 
+    func testAudioOutputWarningRendersWithOtherWarningsAndClears() async throws {
+        var state = ConversationViewState.listening
+        state.isAudioOutputMuted = true
+        try await renderConversation(state, name: "audio-volume-zero") { view in
+            XCTAssertNotNil(accessibilityElement(in: view, label: "音量が0です"))
+            try assertChips([.listening, .audioOutputMuted], clearTheMenuIn: view, insets: Self.leftIslandInsets)
+        }
+        state.isRobotReconnecting = true
+        state.isFaceTrackingPausedForHeat = true
+        let chips = state.statusChips
+        try await renderConversation(state, name: "audio-volume-zero-all-warnings-large-type", typeSize: .accessibility5) { view in
+            try assertChips(chips, clearTheMenuIn: view, insets: Self.leftIslandInsets)
+            XCTAssertNotNil(accessibilityElement(in: view, label: "音量が0です"))
+        }
+        state.isAudioOutputMuted = false
+        try await renderConversation(state, name: "audio-volume-restored") { view in
+            XCTAssertNil(accessibilityElement(in: view, identifier: "statusChip.audioOutputMuted"))
+            XCTAssertNotNil(accessibilityElement(in: view, identifier: "statusChip.robotReconnecting"))
+            XCTAssertNotNil(accessibilityElement(in: view, identifier: "statusChip.trackingPausedForHeat"))
+        }
+    }
+
     func testListeningChipSitsAtTopLeadingAndClearsWhenSpeaking() async throws {
         for insets in [Self.leftIslandInsets, Self.rightIslandInsets] {
             try await renderConversation(.listening, name: "listening-chip-left-\(Int(insets.left))", insets: insets) { view in
@@ -175,11 +197,12 @@ final class FaceConversationPresentationTests: XCTestCase {
         allChips.isLooking = true
         allChips.isRobotReconnecting = true
         allChips.isFaceTrackingPausedForHeat = true
+        allChips.isAudioOutputMuted = true
         try await renderConversation(allChips, name: "chips-all") { view in
-            try assertChips([.looking, .robotReconnecting, .trackingPausedForHeat], clearTheMenuIn: view, insets: Self.leftIslandInsets)
+            try assertChips([.looking, .robotReconnecting, .trackingPausedForHeat, .audioOutputMuted], clearTheMenuIn: view, insets: Self.leftIslandInsets)
         }
         try await renderConversation(allChips, name: "largest-standard-type-chips", typeSize: .xxxLarge) { view in
-            try assertChips([.looking, .robotReconnecting, .trackingPausedForHeat], clearTheMenuIn: view, insets: Self.leftIslandInsets)
+            try assertChips([.looking, .robotReconnecting, .trackingPausedForHeat, .audioOutputMuted], clearTheMenuIn: view, insets: Self.leftIslandInsets)
         }
 
         var notice = ConversationViewState.listening
@@ -232,7 +255,7 @@ final class FaceConversationPresentationTests: XCTestCase {
         }
     }
 
-    /// 文字入力中に一時停止・首の再接続・熱の3つのチップが重なる最悪の組み合わせ。最大の標準文字と、
+    /// 文字入力中に一時停止・首の再接続・熱・音量0の4つのチップが重なる最悪の組み合わせ。最大の標準文字と、
     /// キーボードで狭くなった高さ（240pt）でも、チップは入力欄と「…」に重ならない。
     func testTypedInputKeepsChipsClearOfTheEditorInAShortViewport() async throws {
         var state = ConversationViewState.idle
@@ -243,7 +266,8 @@ final class FaceConversationPresentationTests: XCTestCase {
         state.typedText = "送信前の下書き"
         state.isRobotReconnecting = true
         state.isFaceTrackingPausedForHeat = true
-        let chips: [ConversationStatusChip] = [.paused, .robotReconnecting, .trackingPausedForHeat]
+        state.isAudioOutputMuted = true
+        let chips: [ConversationStatusChip] = [.paused, .robotReconnecting, .trackingPausedForHeat, .audioOutputMuted]
         XCTAssertEqual(state.statusChips, chips)
         try await renderConversation(state, name: "typed-paused-chips-largest-standard-type-short-viewport",
                                      typeSize: .xxxLarge, height: 240) { view in

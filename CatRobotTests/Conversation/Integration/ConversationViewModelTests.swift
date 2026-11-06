@@ -4,6 +4,75 @@ import XCTest
 @MainActor
 final class ConversationViewModelTests: XCTestCase {
 
+    func testInitiallyZeroOutputVolumeWarnsWithoutPausingCapture() async {
+        let harness = ConversationHarness()
+        await harness.audio.setOutputVolume(0)
+
+        await harness.sut.startConversation()
+
+        let warned = await harness.waitUntil {
+            harness.sut.viewState.statusChips.map(\.title) == ["聞き取り中", "音量が0です"]
+        }
+        XCTAssertTrue(warned, "Starting with zero output volume must show the warning without waiting for a volume change")
+        XCTAssertEqual(harness.sut.viewState.phase, .listening)
+        let starts = await harness.recognizer.startCount
+        XCTAssertEqual(starts, 1, "A warning must not restart capture")
+        await harness.sut.shutdown()
+    }
+
+    func testOutputVolumeChangesOnlyUpdateTheWarning() async {
+        let harness = ConversationHarness()
+        await harness.sut.startConversation()
+        for (volume, expectedMuted): (Float, Bool) in [(0, true), (.leastNonzeroMagnitude, false), (0, true), (1, false)] {
+            await harness.audio.setOutputVolume(volume)
+            harness.audio.emit(.outputVolumeChanged)
+            let updated = await harness.waitUntil { harness.sut.viewState.isAudioOutputMuted == expectedMuted }
+            XCTAssertTrue(updated, "volume=\(volume)")
+            XCTAssertEqual(harness.sut.viewState.phase, .listening)
+        }
+        let starts = await harness.recognizer.startCount
+        let activations = await harness.audio.activateCount
+        let deactivations = await harness.audio.deactivateCount
+        let stops = await harness.speaker.stopCount
+        XCTAssertEqual(starts, 1)
+        XCTAssertEqual(activations, 1)
+        XCTAssertEqual(deactivations, 0)
+        XCTAssertEqual(stops, 0)
+        await harness.sut.shutdown()
+    }
+
+    func testVolumeWarningAlsoTracksChangesDuringATypedReply() async {
+        let harness = ConversationHarness(speakerAutomaticallyFinishes: false)
+        let turn = Task { await harness.sut.submitTypedText("こんにちは") }
+        await harness.speaker.waitUntilTextCount(1)
+        await harness.speaker.yield(.started)
+        await harness.audio.setOutputVolume(0)
+        harness.audio.emit(.outputVolumeChanged)
+        let warned = await harness.waitUntil { harness.sut.viewState.isAudioOutputMuted }
+        XCTAssertTrue(warned)
+        XCTAssertEqual(harness.sut.viewState.phase, .speaking)
+        await harness.speaker.yield(.finished)
+        await harness.speaker.finish()
+        await turn.value
+        XCTAssertTrue(harness.sut.viewState.statusChips.contains(.audioOutputMuted))
+        await harness.sut.shutdown()
+    }
+
+    func testShutdownRejectsALateVolumeRead() async {
+        let gate = ConversationTestGate()
+        let harness = ConversationHarness(audioVolumeReadGate: gate)
+        await harness.audio.setOutputVolume(0)
+        await harness.sut.startConversation()
+        let reading = await harness.waitUntil { await harness.audio.volumeReadCount > 0 }
+        XCTAssertTrue(reading)
+        let shutdown = Task { await harness.sut.shutdown() }
+        let paused = await harness.waitUntil { harness.sut.viewState.phase == .paused }
+        XCTAssertTrue(paused)
+        await gate.open()
+        await shutdown.value
+        XCTAssertFalse(harness.sut.viewState.isAudioOutputMuted)
+    }
+
     func testTapPauseMarksUserPausedAndVoiceResumeClearsIt() async {
         let h = ConversationHarness()
         await h.sut.startConversation()

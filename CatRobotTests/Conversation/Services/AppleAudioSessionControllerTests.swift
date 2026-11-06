@@ -6,6 +6,38 @@ import XCTest
 
 @MainActor
 final class AppleAudioSessionControllerTests: XCTestCase {
+    func testVolumeObservationPublishesChangesWithoutDeactivatingAudio() async throws {
+        let session = FakeAudioSession()
+        let controller = AppleAudioSessionController(session: session, notifications: NotificationCenter())
+        try await controller.activate()
+        let collector = AudioEventCollector(stream: controller.events)
+
+        session.setOutputVolume(0)
+        let muted = await eventually { collector.events == [.outputVolumeChanged] }
+        XCTAssertTrue(muted)
+        XCTAssertEqual(controller.outputVolume, 0)
+        session.setOutputVolume(0.25)
+        let unmuted = await eventually { collector.events == [.outputVolumeChanged, .outputVolumeChanged] }
+        XCTAssertTrue(unmuted)
+        XCTAssertEqual(controller.outputVolume, 0.25)
+        XCTAssertTrue(session.isActive)
+        _ = await collector.cancelAndWait()
+    }
+
+    func testActivationPublishesCurrentVolumeEvenWithoutAKVOChange() async throws {
+        let session = FakeAudioSession()
+        session.setOutputVolume(0)
+        let controller = AppleAudioSessionController(session: session, notifications: NotificationCenter())
+        let collector = AudioEventCollector(stream: controller.events)
+
+        try await controller.activate()
+
+        let refreshed = await eventually { collector.events == [.outputVolumeChanged] }
+        XCTAssertTrue(refreshed, "Activation must refresh a volume that changed while observation was inactive")
+        XCTAssertEqual(controller.outputVolume, 0)
+        _ = await collector.cancelAndWait()
+    }
+
     func testConstructionDefersNotificationObserversUntilEventsAreRequested() {
         let center = CountingNotificationCenter()
         let session = FakeAudioSession()
@@ -33,6 +65,7 @@ final class AppleAudioSessionControllerTests: XCTestCase {
         _ = controller.events
 
         XCTAssertEqual(center.addObserverCallCount, 2)
+        XCTAssertEqual(session.volumeObservationCount, 1)
     }
 
     func testActivateUsesPlayAndRecordDefaultModeSpeakerAndBluetoothHFP() async throws {
@@ -71,6 +104,7 @@ final class AppleAudioSessionControllerTests: XCTestCase {
         }
         let didEnterActivation = await eventually { activationGate.didEnter }
         XCTAssertTrue(didEnterActivation)
+        XCTAssertEqual(controller.outputVolume, 1, "Volume reads must not queue behind blocking activation")
         activationGate.signalMainActorProgress()
 
         try await activation.value
@@ -418,12 +452,14 @@ final class AppleAudioSessionControllerTests: XCTestCase {
         )
         weak var weakController = controller
         let collector = AudioEventCollector(stream: controller!.events)
+        XCTAssertNotNil(session.lastVolumeObservation)
 
         controller = nil
 
         let didReleaseController = await eventually { weakController == nil }
         XCTAssertTrue(didReleaseController)
         XCTAssertEqual(center.removeObserverCallCount, 2)
+        XCTAssertNil(session.lastVolumeObservation, "Controller teardown must release its volume observation")
         let didFinishStream = await collector.waitUntilFinished()
         XCTAssertTrue(didFinishStream)
 
@@ -435,6 +471,7 @@ final class AppleAudioSessionControllerTests: XCTestCase {
                     AVAudioSession.InterruptionType.began.rawValue,
             ]
         )
+        session.setOutputVolume(0)
         XCTAssertTrue(collector.events.isEmpty)
     }
 }
@@ -494,11 +531,28 @@ private final class FakeAudioSession: AudioSessionDriving, @unchecked Sendable {
     let object = NSObject()
 
     var notificationObject: AnyObject { object }
+    private let volume = FakeOutputVolume()
+    var outputVolume: Float { volume.outputVolume }
+    var volumeObservationCount: Int { lock.withLock { state.volumeObservationCount } }
+    var lastVolumeObservation: NSKeyValueObservation? { lock.withLock { state.lastVolumeObservation } }
+
+    func setOutputVolume(_ value: Float) { volume.outputVolume = value }
+
+    func observeOutputVolume(_ handler: @escaping @Sendable () -> Void) -> NSKeyValueObservation {
+        let observation = volume.observe(\.outputVolume) { _, _ in handler() }
+        lock.withLock {
+            state.volumeObservationCount += 1
+            state.lastVolumeObservation = observation
+        }
+        return observation
+    }
 
     private struct State {
         var categoryCalls: [FakeCategoryCall] = []
         var activationCalls: [FakeActivationCall] = []
         var isActive = false
+        var volumeObservationCount = 0
+        weak var lastVolumeObservation: NSKeyValueObservation?
     }
 
     private let lock = NSLock()
@@ -569,6 +623,15 @@ private final class FakeAudioSession: AudioSessionDriving, @unchecked Sendable {
             throw FakeAudioSessionError.deactivationFailed
         }
         lock.withLock { state.isActive = active }
+    }
+}
+
+private final class FakeOutputVolume: NSObject, @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Float = 1
+    @objc dynamic var outputVolume: Float {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
     }
 }
 

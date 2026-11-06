@@ -585,19 +585,31 @@ actor FakeConversationAudioSession: AudioSessionControlling {
     private nonisolated let eventContinuation: AsyncStream<AudioSessionEvent>.Continuation
     private let log: ConversationTestCallLog
     private let deactivateGate: ConversationTestGate?
+    private let volumeReadGate: ConversationTestGate?
     private(set) var activateCount = 0
     private(set) var deactivateCount = 0
     private(set) var isActive = false
+    private var currentOutputVolume: Float = 1
+    private(set) var volumeReadCount = 0
+    var outputVolume: Float {
+        get async {
+            volumeReadCount += 1
+            await volumeReadGate?.wait()
+            return currentOutputVolume
+        }
+    }
 
     init(
         log: ConversationTestCallLog,
-        deactivateGate: ConversationTestGate? = nil
+        deactivateGate: ConversationTestGate? = nil,
+        volumeReadGate: ConversationTestGate? = nil
     ) {
         let pair = AsyncStream<AudioSessionEvent>.makeStream()
         events = pair.stream
         eventContinuation = pair.continuation
         self.log = log
         self.deactivateGate = deactivateGate
+        self.volumeReadGate = volumeReadGate
     }
 
     func activate() async throws {
@@ -605,6 +617,8 @@ actor FakeConversationAudioSession: AudioSessionControlling {
         isActive = true
         log.append(.activateAudio)
     }
+
+    func setOutputVolume(_ volume: Float) { currentOutputVolume = volume }
 
     func deactivate() async {
         deactivateCount += 1
@@ -677,6 +691,7 @@ final class ConversationHarness {
         replyResetGate: ConversationTestGate? = nil,
         serviceTeardownGate: ConversationTestGate? = nil,
         audioDeactivateGate: ConversationTestGate? = nil,
+        audioVolumeReadGate: ConversationTestGate? = nil,
         latency: FakeConversationLatencyTracker? = nil,
         clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
@@ -719,7 +734,8 @@ final class ConversationHarness {
         )
         let audio = FakeConversationAudioSession(
             log: calls,
-            deactivateGate: audioDeactivateGate
+            deactivateGate: audioDeactivateGate,
+            volumeReadGate: audioVolumeReadGate
         )
         let teardownProbe = FakeServiceTeardown(gate: serviceTeardownGate)
         let latency = latency ?? FakeConversationLatencyTracker()

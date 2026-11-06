@@ -3,6 +3,8 @@ import Foundation
 
 protocol AudioSessionDriving: AnyObject, Sendable {
     var notificationObject: AnyObject { get }
+    var outputVolume: Float { get }
+    func observeOutputVolume(_ handler: @escaping @Sendable () -> Void) -> NSKeyValueObservation
 
     func setCategory(
         _ category: AVAudioSession.Category,
@@ -19,6 +21,8 @@ actor AppleAudioSessionController: AudioSessionControlling {
     nonisolated var events: AsyncStream<AudioSessionEvent> {
         eventSource.makeStream()
     }
+
+    nonisolated var outputVolume: Float { session.outputVolume }
 
     private let session: any AudioSessionDriving
     private nonisolated let eventSource: AudioSessionEventSource
@@ -37,7 +41,7 @@ actor AppleAudioSessionController: AudioSessionControlling {
         self.session = session
         eventSource = AudioSessionEventSource(
             notifications: notifications,
-            object: session.notificationObject
+            session: session
         )
     }
 
@@ -49,6 +53,7 @@ actor AppleAudioSessionController: AudioSessionControlling {
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
             try session.setActive(true, options: [])
+            eventSource.publish(.outputVolumeChanged)
         } catch {
             throw ConversationServiceError.audioSessionFailed
         }
@@ -65,16 +70,16 @@ actor AppleAudioSessionController: AudioSessionControlling {
 private final class AudioSessionEventSource: @unchecked Sendable {
     private let lock = NSLock()
     private let notifications: NotificationCenter
-    private let object: AnyObject
+    private let session: any AudioSessionDriving
     private let eventHub = AudioSessionEventBroadcastHub()
     private var observation: AudioSessionNotificationObservation?
 
     init(
         notifications: NotificationCenter,
-        object: AnyObject
+        session: any AudioSessionDriving
     ) {
         self.notifications = notifications
-        self.object = object
+        self.session = session
     }
 
     func makeStream() -> AsyncStream<AudioSessionEvent> {
@@ -83,12 +88,14 @@ private final class AudioSessionEventSource: @unchecked Sendable {
             guard observation == nil else { return }
             observation = AudioSessionNotificationObservation(
                 notifications: notifications,
-                object: object,
+                session: session,
                 eventHub: eventHub
             )
         }
         return stream
     }
+
+    func publish(_ event: AudioSessionEvent) { eventHub.publish(event) }
 
     deinit {
         observation = nil
@@ -165,13 +172,18 @@ final class AudioSessionEventBroadcastHub: @unchecked Sendable {
 private final class AudioSessionNotificationObservation: @unchecked Sendable {
     private let notifications: NotificationCenter
     private let observerTokens: [NSObjectProtocol]
+    private let volumeObservation: NSKeyValueObservation
 
     init(
         notifications: NotificationCenter,
-        object: AnyObject,
+        session: any AudioSessionDriving,
         eventHub: AudioSessionEventBroadcastHub
     ) {
         self.notifications = notifications
+        let object = session.notificationObject
+        volumeObservation = session.observeOutputVolume { [eventHub] in
+            eventHub.publish(.outputVolumeChanged)
+        }
         observerTokens = [
             notifications.addObserver(
                 forName: AVAudioSession.interruptionNotification,
@@ -195,6 +207,7 @@ private final class AudioSessionNotificationObservation: @unchecked Sendable {
     }
 
     deinit {
+        volumeObservation.invalidate()
         for token in observerTokens {
             notifications.removeObserver(token)
         }
@@ -261,6 +274,11 @@ private final class LiveAudioSessionDriver: AudioSessionDriving {
     private let session: AVAudioSession
 
     var notificationObject: AnyObject { session }
+    var outputVolume: Float { session.outputVolume }
+
+    func observeOutputVolume(_ handler: @escaping @Sendable () -> Void) -> NSKeyValueObservation {
+        session.observe(\.outputVolume) { _, _ in handler() }
+    }
 
     init(session: AVAudioSession = .sharedInstance()) {
         self.session = session

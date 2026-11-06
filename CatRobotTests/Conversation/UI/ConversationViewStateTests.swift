@@ -99,8 +99,9 @@ final class ConversationViewStateTests: XCTestCase {
         state.isLooking = true
         state.isRobotReconnecting = true
         state.isFaceTrackingPausedForHeat = true
+        state.isAudioOutputMuted = true
         state.inactivity = .sleeping
-        XCTAssertEqual(state.statusChips, [.sleeping, .robotReconnecting, .trackingPausedForHeat])
+        XCTAssertEqual(state.statusChips, [.sleeping, .robotReconnecting, .trackingPausedForHeat, .audioOutputMuted])
         XCTAssertEqual(state.statusChips.first?.title, "待機中・タップで起こす")
     }
 
@@ -109,11 +110,12 @@ final class ConversationViewStateTests: XCTestCase {
         state.isLooking = true
         state.isRobotReconnecting = true
         state.isFaceTrackingPausedForHeat = true
-        XCTAssertEqual(state.statusChips, [.looking, .robotReconnecting, .trackingPausedForHeat])
-        XCTAssertEqual(state.statusChips.map(\.title), ["見ています", "ハードを再接続中", "熱のため顔追尾を一時停止"])
-        XCTAssertEqual(state.statusChips.map(\.isWarning), [false, true, true])
+        state.isAudioOutputMuted = true
+        XCTAssertEqual(state.statusChips, [.looking, .robotReconnecting, .trackingPausedForHeat, .audioOutputMuted])
+        XCTAssertEqual(state.statusChips.map(\.title), ["見ています", "ハードを再接続中", "熱のため顔追尾を一時停止", "音量が0です"])
+        XCTAssertEqual(state.statusChips.map(\.isWarning), [false, true, true, true])
         XCTAssertEqual(state.statusChips.map(\.accessibilityIdentifier),
-                       ["statusChip.looking", "statusChip.robotReconnecting", "statusChip.trackingPausedForHeat"])
+                       ["statusChip.looking", "statusChip.robotReconnecting", "statusChip.trackingPausedForHeat", "statusChip.audioOutputMuted"])
     }
 
     func testHeldExpressionReturnsToLatestPhaseWhenCleared() {

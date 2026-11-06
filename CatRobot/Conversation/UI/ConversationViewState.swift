@@ -36,7 +36,7 @@ enum RobotConnectionStatus: Equatable, Sendable {
 }
 
 enum ConversationStatusChip: String, CaseIterable, Sendable {
-    case listening, paused, looking, sleeping, robotReconnecting, trackingPausedForHeat
+    case listening, paused, looking, sleeping, robotReconnecting, trackingPausedForHeat, audioOutputMuted
 
     var title: String {
         switch self {
@@ -46,6 +46,7 @@ enum ConversationStatusChip: String, CaseIterable, Sendable {
         case .sleeping: ConversationViewState.standbyStatus
         case .robotReconnecting: RobotConnectionStatus.reconnecting.message
         case .trackingPausedForHeat: "熱のため顔追尾を一時停止"
+        case .audioOutputMuted: "音量が0です"
         }
     }
 
@@ -57,10 +58,11 @@ enum ConversationStatusChip: String, CaseIterable, Sendable {
         case .sleeping: "moon.fill"
         case .robotReconnecting: "arrow.triangle.2.circlepath"
         case .trackingPausedForHeat: "thermometer.high"
+        case .audioOutputMuted: "speaker.slash.fill"
         }
     }
 
-    var isWarning: Bool { self == .robotReconnecting || self == .trackingPausedForHeat }
+    var isWarning: Bool { self == .robotReconnecting || self == .trackingPausedForHeat || self == .audioOutputMuted }
     var accessibilityIdentifier: String { "statusChip.\(rawValue)" }
 }
 
@@ -76,6 +78,7 @@ struct ConversationViewState: Equatable, Sendable {
     var isAwaitingTapToResume = false
     var isRobotReconnecting = false
     var isFaceTrackingPausedForHeat = false
+    var isAudioOutputMuted = false
     var isSleeping: Bool { inactivity == .sleeping }
     /// Decoration yields immediately to a person, a held reply, or another screen.
     var allowsIdleFaceLife: Bool {
@@ -101,6 +104,7 @@ struct ConversationViewState: Equatable, Sendable {
         }
         if isRobotReconnecting { chips.append(.robotReconnecting) }
         if isFaceTrackingPausedForHeat { chips.append(.trackingPausedForHeat) }
+        if isAudioOutputMuted { chips.append(.audioOutputMuted) }
         return chips
     }
     var displaysTypedInput: Bool { showsTypedInput && !isSleeping }

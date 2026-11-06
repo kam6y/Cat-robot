@@ -1,0 +1,405 @@
+{
+  "baseline": {
+    "phase": "baseline",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 78,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "redInitial": {
+    "phase": "red-initial",
+    "stage": "focused",
+    "exitCode": 65,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "1fc4eec68a690967a0f9502a8bd68fba76b873db949599910acce7fea57cccb7",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Failed",
+    "passedTests": 78,
+    "failedTests": 1,
+    "skippedTests": 0,
+    "testFailures": [
+      {
+        "failureText": "XCTAssertTrue failed - Starting with zero output volume must show the warning without waiting for a volume change",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 45,
+        "testIdentifierString": "ConversationViewModelTests/testInitiallyZeroOutputVolumeWarnsWithoutPausingCapture()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationViewModelTests/testInitiallyZeroOutputVolumeWarnsWithoutPausingCapture",
+        "testName": "testInitiallyZeroOutputVolumeWarnsWithoutPausingCapture()"
+      }
+    ]
+  },
+  "greenInitial": {
+    "phase": "green-initial",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "44c9f8d7e08b7dc3a06b8edd91a6175614d9c306dd9594555918b78a2babe5d0",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 79,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "redObservation": {
+    "phase": "red-observation",
+    "stage": "focused",
+    "exitCode": 65,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "a5198fd68b4f2f854813178bedf2469f2212a6f9a240efd9644834103f2a0588",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Failed",
+    "passedTests": 79,
+    "failedTests": 5,
+    "skippedTests": 0,
+    "testFailures": [
+      {
+        "failureText": "XCTAssertTrue failed - Activation must refresh a volume that changed while observation was inactive",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 19,
+        "testIdentifierString": "AppleAudioSessionControllerTests/testActivationPublishesCurrentVolumeEvenWithoutAKVOChange()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/AppleAudioSessionControllerTests/testActivationPublishesCurrentVolumeEvenWithoutAKVOChange",
+        "testName": "testActivationPublishesCurrentVolumeEvenWithoutAKVOChange()"
+      },
+      {
+        "failureText": "XCTAssertNotNil failed",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 25,
+        "testIdentifierString": "AppleAudioSessionControllerTests/testControllerDeallocationRemovesObserversAndFinishesStreams()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/AppleAudioSessionControllerTests/testControllerDeallocationRemovesObserversAndFinishesStreams",
+        "testName": "testControllerDeallocationRemovesObserversAndFinishesStreams()"
+      },
+      {
+        "failureText": "XCTAssertEqual failed: (\"0\") is not equal to (\"1\")",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 30,
+        "testIdentifierString": "AppleAudioSessionControllerTests/testMultipleEventStreamsShareOneNotificationObservation()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/AppleAudioSessionControllerTests/testMultipleEventStreamsShareOneNotificationObservation",
+        "testName": "testMultipleEventStreamsShareOneNotificationObservation()"
+      },
+      {
+        "failureText": "XCTAssertTrue failed",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 33,
+        "testIdentifierString": "AppleAudioSessionControllerTests/testVolumeObservationPublishesChangesWithoutDeactivatingAudio()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/AppleAudioSessionControllerTests/testVolumeObservationPublishesChangesWithoutDeactivatingAudio",
+        "testName": "testVolumeObservationPublishesChangesWithoutDeactivatingAudio()"
+      },
+      {
+        "failureText": "XCTAssertEqual failed: (\"thinking\") is not equal to (\"speaking\")",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 64,
+        "testIdentifierString": "ConversationViewModelTests/testVolumeWarningAlsoTracksChangesDuringATypedReply()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationViewModelTests/testVolumeWarningAlsoTracksChangesDuringATypedReply",
+        "testName": "testVolumeWarningAlsoTracksChangesDuringATypedReply()"
+      }
+    ]
+  },
+  "fixtureCorrection": {
+    "phase": "fixture-correction",
+    "stage": "fixture",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "7cb08c4473ae148e0d336d77743dc683d7fe600db739e68d0301c5d4dbbe805e",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 1,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "greenFocused": {
+    "phase": "green-observation",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "0b3af2e779817f16f3b78a12d67403dfdfa07c3bf835f5098bd50df32d90bce4",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 84,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "presentation": {
+    "phase": "green-observation",
+    "stage": "presentation",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "workingPatchSha256": "0b3af2e779817f16f3b78a12d67403dfdfa07c3bf835f5098bd50df32d90bce4",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 2,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "previewBuild": {
+    "build": "passed",
+    "gitCommit": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "sourceDigest": "3a9bdacbe75e5ceefdb4879c3aa7d4dca93f8ba6e32513b8b3ff2aef6e25f20f",
+    "app": "/tmp/cat-issue26-muted-audio-20261106/preview-normal/Verified/CatRobot.app",
+    "bundleIdentifier": "com.kamby.CatRobot",
+    "codesignVerified": true,
+    "testPlugins": 0,
+    "modelsVerified": 8
+  },
+  "sourceScope": {
+    "base": "ce72201dca73c289de95085fa79f67bef7bf4b16",
+    "head": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "diffSha256": "33044186324b18e011791a750a0b65f5f71e7fca5f0cfd3129c23edab473708c",
+    "codePatchSha256": "0b3af2e779817f16f3b78a12d67403dfdfa07c3bf835f5098bd50df32d90bce4",
+    "matches84FocusedAnd2PresentationTestBuild": true
+  },
+  "visualFixtures": [
+    {
+      "file": "audio-volume-zero.png",
+      "sha256": "e65a78f31a8164977d4c4e63d76d3320edb4791d3ca8b9dd6264f124bcb0a33e"
+    },
+    {
+      "file": "audio-volume-zero-all-warnings-large-type.png",
+      "sha256": "29e820a44851abc24c3f724ec704b6ad68bf6d38a10adfdc15cbde36c14ce4bd"
+    },
+    {
+      "file": "audio-volume-zero-all-warnings-large-type-scrolled.png",
+      "sha256": "e3a50f9156a71c429790b46379a44c8d24243d2f615a86973c5097d2c9faf101"
+    },
+    {
+      "file": "audio-volume-restored.png",
+      "sha256": "7a515ccdb75ee9d0ff4961e693ca4a5ec4238aeef10e5c6619a3b3d66ee6da0a"
+    },
+    {
+      "file": "typed-paused-chips-largest-standard-type-short-viewport.png",
+      "sha256": "f5316dac51e252137bad255c1ff915a5669e09bc32fbdc5e046fbd9354607cf9"
+    },
+    {
+      "file": "typed-paused-chips-largest-standard-type-short-viewport-scrolled.png",
+      "sha256": "7473c52dd18f3e32efc009edcd32818cc6100d51a72bf4bdb2a3d298cd02a86c"
+    }
+  ],
+  "full": {
+    "phase": "green-observation",
+    "stage": "full",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "workingPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 983,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "previewDevice": {
+    "gitCommit": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "sourceDigest": "3a9bdacbe75e5ceefdb4879c3aa7d4dca93f8ba6e32513b8b3ff2aef6e25f20f",
+    "bundleIdentifier": "com.kamby.CatRobot",
+    "installed": true,
+    "launched": true,
+    "processPresent": true,
+    "pid": 10119,
+    "codesignVerified": true,
+    "testPlugins": 0,
+    "arguments": [],
+    "environmentVariableNames": [
+      "TERM"
+    ]
+  },
+  "manualDeviceVolumeCheck": {
+    "sourceHead": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "device": "iPhone16Pro/iOS27.2",
+    "result": "passed",
+    "reportedBy": "user",
+    "userAnswer": "表示され、音量を上げると消えた",
+    "scope": "Foreground listening: output volume0 warning appears; increasing output volume clears warning",
+    "recordedAt": "2026-11-06T10:34:00.153117+00:00"
+  },
+  "finalBuild": {
+    "phase": "final",
+    "stage": "build",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "workingPatchSha256": "65f93a063fa1d3c32223de5039b4905aeb1de8e061c2c6536f3f26682a0340fd",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "testHost": "Existing SUPER_INTEGRATION_TESTS=1 disables live composition; no stage/run ID, explicit device-test exclusions"
+  },
+  "finalFocused": {
+    "phase": "final",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "workingPatchSha256": "65f93a063fa1d3c32223de5039b4905aeb1de8e061c2c6536f3f26682a0340fd",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 84,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "finalPresentation": {
+    "phase": "final",
+    "stage": "presentation",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "workingPatchSha256": "65f93a063fa1d3c32223de5039b4905aeb1de8e061c2c6536f3f26682a0340fd",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 3,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "finalFull": {
+    "phase": "final",
+    "stage": "full",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "workingPatchSha256": "65f93a063fa1d3c32223de5039b4905aeb1de8e061c2c6536f3f26682a0340fd",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 983,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "finalAggregateCodePatchSha256": "944210b2a16aea8d4f8a8929a13ec4a9975ea457ac3bdd2204617de53330380c",
+  "reviewFixes": {
+    "baseReviewHead": "2b453e487348a9d4d13c88da68c6203d29ff95c4",
+    "fixDiffSha256": "1930b46d5f20bd1d39970c116dc020bfdb9e7fad19931e80d19ac4cf378b9ff6",
+    "preservesVolumeWarningBehavior": true,
+    "adopted": [
+      "C2 partial",
+      "C3",
+      "C4",
+      "C8",
+      "C10",
+      "C11 partial"
+    ],
+    "retained": [
+      "C1",
+      "C5",
+      "C6",
+      "C7",
+      "C9",
+      "D1",
+      "D2"
+    ]
+  },
+  "reviewReports": {
+    "codex-code-review.md": {
+      "sha256": "7436a069da5896b6a29a6af2aae0b06d40dd14683ad2152e0fa87610e09b63c4",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/codex-code-review.md"
+    },
+    "claude-simplify.md": {
+      "sha256": "f3639a2ba217a03b1688909ecb92ae24782dd8a19de9a136ba74f3b6dc0974d9",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/claude-simplify.md"
+    },
+    "codex-reception.md": {
+      "sha256": "024ee732a7a6dde4a0b3085762bd41015728595dfc025c492ba27ec0c6689617",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/codex-reception.md"
+    },
+    "claude-reception.md": {
+      "sha256": "1942db37297e9c45a3a1d1630dfe2cd4b6e8197268b836c30a9aed8421c2bf2f",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/claude-reception.md"
+    },
+    "codex-final-review.md": {
+      "sha256": "0737e0af224d5b62e4eb7d1f9dd763a9d65223cf8563cde189e4f9d531eb0712",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/codex-final-review.md"
+    },
+    "claude-final-review.md": {
+      "sha256": "9b233d43b0553a57c938a269ce826d267535b802cbea497ce56741f1038ed57e",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/claude-final-review.md"
+    },
+    "root-review-dispositions.md": {
+      "sha256": "de0169c4b5d0187172e8cbce266cf9e10a7f2b8b18ef42a0190c7d939622abe2",
+      "path": "/tmp/cat-issue26-muted-audio-20261106/root-review-dispositions.md"
+    }
+  },
+  "reviewSummary": {
+    "actualClaudeSimplify": true,
+    "parallelReadOnlyAngles": 4,
+    "independentNativeReview": true,
+    "initialReportsSavedBeforeExchange": true,
+    "bothReceivingCodeReview": true,
+    "claudeInitialImportant": 0,
+    "claudeInitialMinor": 4,
+    "claudeInitialNit": 7,
+    "finalActionableIssues": 0
+  },
+  "finalVisualFixtures": [
+    {
+      "file": "audio-volume-zero.png",
+      "sha256": "e65a78f31a8164977d4c4e63d76d3320edb4791d3ca8b9dd6264f124bcb0a33e"
+    },
+    {
+      "file": "audio-volume-zero-all-warnings-large-type.png",
+      "sha256": "29e820a44851abc24c3f724ec704b6ad68bf6d38a10adfdc15cbde36c14ce4bd"
+    },
+    {
+      "file": "audio-volume-zero-all-warnings-large-type-scrolled.png",
+      "sha256": "e3a50f9156a71c429790b46379a44c8d24243d2f615a86973c5097d2c9faf101"
+    },
+    {
+      "file": "audio-volume-restored.png",
+      "sha256": "7a515ccdb75ee9d0ff4961e693ca4a5ec4238aeef10e5c6619a3b3d66ee6da0a"
+    },
+    {
+      "file": "chips-all.png",
+      "sha256": "f66f5e6b9f9bccb0b9fc3371160fd50aa836046893ff807946941ca9c5b0bd9e"
+    },
+    {
+      "file": "largest-standard-type-chips.png",
+      "sha256": "855f85176fcb3c41f168a5e62bc7c2762a7dc5db02ede1ebfe1661bc0b802dbc"
+    },
+    {
+      "file": "typed-paused-chips-largest-standard-type-short-viewport.png",
+      "sha256": "f5316dac51e252137bad255c1ff915a5669e09bc32fbdc5e046fbd9354607cf9"
+    },
+    {
+      "file": "typed-paused-chips-largest-standard-type-short-viewport-scrolled.png",
+      "sha256": "7473c52dd18f3e32efc009edcd32818cc6100d51a72bf4bdb2a3d298cd02a86c"
+    }
+  ],
+  "observationProbe": {
+    "host": "macOS, Xcode27.2 Swift6.4.2",
+    "sourceSha256": "3c4dad9bd2dcff6c33b88d9dea0eb2da296fe3e1e7aaf1bfc352c42fb297756f",
+    "nestedEqualNotifications": 1,
+    "guardedNestedEqualNotifications": 0,
+    "isIOSBenchmark": false
+  },
+  "projectGenerator": "PASS deterministic CatRobot project contract",
+  "postCommitProofPaths": {
+    "integration": "/tmp/cat-issue26-muted-audio-20261106/integration.json",
+    "mainNormal": "/tmp/cat-issue26-muted-audio-20261106/main-normal/normal-verification.json"
+  }
+}

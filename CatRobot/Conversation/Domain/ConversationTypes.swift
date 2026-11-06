@@ -103,4 +103,5 @@ enum AudioSessionEvent: Equatable, Sendable {
     case interruptionBegan
     case interruptionEnded(shouldResume: Bool)
     case routeChanged
+    case outputVolumeChanged
 }

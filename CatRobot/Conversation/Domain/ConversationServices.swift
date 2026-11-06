@@ -33,6 +33,7 @@ protocol SpeechSpeaking: Sendable {
 
 protocol AudioSessionControlling: Sendable {
     var events: AsyncStream<AudioSessionEvent> { get }
+    var outputVolume: Float { get async }
     func activate() async throws
     func deactivate() async
 }

@@ -301,6 +301,14 @@ final class ConversationViewModel {
             await pauseConversation(awaitsTapResume: true)
         case .interruptionEnded:
             break
+        case .outputVolumeChanged:
+            guard !isShutdown, !isShuttingDown, !Task.isCancelled else { return }
+            let volume = await dependencies.audioSession.outputVolume
+            guard !isShutdown, !isShuttingDown, !Task.isCancelled else { return }
+            let isMuted = volume == 0
+            if viewState.isAudioOutputMuted != isMuted {
+                viewState.isAudioOutputMuted = isMuted
+            }
         }
     }
 
@@ -457,6 +465,7 @@ final class ConversationViewModel {
         guard audioEventTask == nil, !isShutdown else { return }
         let events = dependencies.audioSession.events
         audioEventTask = Task { @MainActor [weak self] in
+            await self?.handleAudioSessionEvent(.outputVolumeChanged)
             for await event in events {
                 guard let self else { return }
                 await self.handleAudioSessionEvent(event)
