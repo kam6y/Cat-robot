@@ -1,0 +1,10 @@
+{
+  "base": "812bbbf010cf9178562df00ad3592dbb716b1726",
+  "head": "working tree on same fixed HEAD",
+  "diffSha256": "fdaacfbb613453e1288a0768397cdae6d4e86781fe3f238c7300cf19af4d9cf0",
+  "inputSourceDigest": "c919e40823159289f385cf685b1f1e5f45400650904393706ca16f515f17d1cf",
+  "nativeReceiptSha256": "2ee2883ca23745dc8729e88a780264d32a270c3b1d3faa4de42e657fe555d0ca",
+  "nativeTests": 30,
+  "IDRepresentation": "user accepted upstream paragraph chunks; measured5.4s synthesis/17.4s playback tradeoff explicitly shown",
+  "sourceFrozen": true
+}

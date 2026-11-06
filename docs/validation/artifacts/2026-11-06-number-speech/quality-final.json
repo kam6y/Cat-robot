@@ -1,0 +1,42 @@
+{
+  "quantityStyle": "NJD kanji surfaces",
+  "quantityVariationAccepted": true,
+  "IDStyle": "genuine NJD digit pronunciations separated by upstream paragraphs, including context boundaries",
+  "IDAccepted": true,
+  "userAnswer": "C：各桁を別区間",
+  "acceptedCandidateRunID": "ED8A7E1E-DA31-48D4-A04A-DACD768A2AEB",
+  "acceptedText": "アイディーは\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\nキュー\n\nだよ。",
+  "acceptedChunks": [
+    "<ja>アイディーは.</ja>",
+    "<ja>イチ.</ja>",
+    "<ja>ニ.</ja>",
+    "<ja>サン.</ja>",
+    "<ja>ヨン.</ja>",
+    "<ja>ゴ.</ja>",
+    "<ja>ロク.</ja>",
+    "<ja>ナナ.</ja>",
+    "<ja>ハチ.</ja>",
+    "<ja>キュー.</ja>",
+    "<ja>だよ。</ja>"
+  ],
+  "fixedSettings": {
+    "voice": "F1",
+    "steps": 8,
+    "speed": 1.05,
+    "threads": 2
+  },
+  "measuredSynthesisSeconds": [
+    5.114505583333084,
+    5.392968750005821,
+    5.552042666677153
+  ],
+  "measuredDurationSeconds": [
+    17.38605442176871,
+    17.38605442176871,
+    17.38605442176871
+  ],
+  "latencyTradeoffShownBeforeChoice": true,
+  "productionConfirmation": "verified",
+  "productionRunID": "0FC49928-9DEC-4A0D-B4DD-7944F1965716",
+  "productionNormalizedTextAndChunksMatchAcceptedCandidate": true
+}

@@ -61,13 +61,8 @@ fn plus_operator_does_not_corrupt_cpp_or_identifiers() {
 }
 
 #[test]
-fn japanese_particles_numbers_and_counters_preserve_surface() {
-    for (input, expected) in [
-        ("私は猫です。", "私は猫です。"),
-        ("3人", "3人"),
-        ("3.14", "3.14"),
-        ("25%", "25%"),
-    ] {
+fn japanese_particles_and_small_counters_preserve_surface() {
+    for (input, expected) in [("私は猫です。", "私は猫です。"), ("3人", "3人")] {
         assert_eq!(
             frontend()
                 .pronounce(input)
@@ -143,9 +138,226 @@ fn missing_dictionary_cannot_silently_become_passthrough() {
 
 #[test]
 fn numeric_grouping_is_distinct_from_a_comma_separated_list() {
-    for (input, expected) in [("1,234", "1,234"), ("1,2", "1,2"), ("1,2,3", "1,2,3")] {
+    for (input, expected) in [
+        ("1,234", "千二百三十四"),
+        ("1,234+5", "1,234プラス5"),
+        ("1,2", "1,2"),
+        ("1,2,3", "1,2,3"),
+    ] {
         assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
     }
+}
+
+#[test]
+fn large_quantities_are_read_before_synthesis_without_changing_japanese() {
+    for (input, expected) in [
+        ("1500000円。", "百五十万円。"),
+        ("残高は1,500,000円だよ。", "残高は百五十万円だよ。"),
+        ("３億５０００万だよ。", "三億五千万だよ。"),
+        ("１，２３４個あるよ。", "千二百三十四個あるよ。"),
+        ("1，234", "千二百三十四"),
+        ("1500000人で分けるよ。", "百五十万人で分けるよ。"),
+        ("金額:1500000円", "金額:百五十万円"),
+        ("10000", "一万"),
+        ("1億5000万", "一億五千万"),
+        ("1500000cm", "ヒャクゴジューマンセンチメートル"),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+}
+
+#[test]
+fn number_admission_does_not_rewrite_identifiers_or_partial_expressions() {
+    for input in [
+        "3人で25個を分けるよ。",
+        "2026年7月30日",
+        "001500000",
+        "００１５０００００",
+        "1,50,000",
+        "1,234,56",
+        "1,500,000.5",
+        "1,500,000mAh",
+        "12345/67890",
+        "12345:67890",
+        "1.5万円",
+        "3〜5万円",
+        "3～5万円",
+        "-1500000",
+        "−1500000",
+        "α1500000",
+        "zzqx1500000",
+        "https://example.test/1,500,000",
+        "a1500000@example.test",
+        "`1,500,000円`",
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), input, "{input}");
+    }
+    for (input, expected) in [
+        (
+            "ID:123456789",
+            "アイディー:\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\nキュー\n\n",
+        ),
+        (
+            "IDは123456789だよ。",
+            "アイディーは\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\nキュー\n\nだよ。",
+        ),
+        (
+            "ID 12345678",
+            "アイディー \n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\n",
+        ),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+    // Preserve unsupported quantities as a whole, including upstream overflow.
+    let oversized = "1".repeat(73);
+    assert_eq!(frontend().pronounce(&oversized).unwrap(), oversized);
+}
+
+#[test]
+fn numerical_notation_conveys_decimal_unit_time_and_digit_sequence() {
+    for (input, expected) in [
+        ("3.14だよ。", "サンテンイチヨンだよ。"),
+        ("０．０７５％", "レーテンゼロナナゴーパーセント"),
+        ("25%だよ。", "ニジューゴパーセントだよ。"),
+        ("7:30に起こしてね。", "七時三十分に起こしてね。"),
+        ("０７：０５", "七時五分"),
+        ("0:00", "零時"),
+        (
+            "090-1234-5678だよ。",
+            "ゼロキューゼロ、イチニーサンヨン、ゴーロクナナハチだよ。",
+        ),
+        (
+            "IDは123456789だよ。",
+            "アイディーは\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\nキュー\n\nだよ。",
+        ),
+        (
+            "番号は12345678",
+            "番号は\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\n",
+        ),
+        (
+            "コード：12345678",
+            "コード：\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\n",
+        ),
+        (
+            "電話 12345678",
+            "電話 \n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\n",
+        ),
+        (
+            "郵便番号1500001",
+            "郵便番号\n\nイチ\n\nゴ\n\nゼロ\n\nゼロ\n\nゼロ\n\nゼロ\n\nイチ\n\n",
+        ),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+    let numbered = frontend().pronounce("No. 12345").unwrap();
+    assert!(
+        numbered.ends_with("\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\n"),
+        "{numbered}"
+    );
+    for original in [
+        "24:60",
+        "7:3",
+        "7:30:45",
+        "2026-07-30",
+        "バージョン3.14",
+        "バージョン 3.14",
+        "Ver 3.14",
+        "3.14.15",
+        "α3.14",
+        "`3.14と25%と7:30`",
+        "https://example.test/3.14/7:30",
+    ] {
+        let expected = original;
+        assert_eq!(
+            frontend().pronounce(original).unwrap(),
+            expected,
+            "{original}"
+        );
+    }
+}
+
+#[test]
+fn numeral_output_stays_in_the_bundled_synthesis_vocabulary() {
+    let supported = format!("1{}", "0".repeat(20));
+    assert_eq!(frontend().pronounce(&supported).unwrap(), "一垓");
+    let unsupported = format!("1{}", "0".repeat(24));
+    assert_eq!(frontend().pronounce(&unsupported).unwrap(), unsupported);
+}
+
+#[test]
+fn magnitude_chains_do_not_pronounce_a_valid_looking_prefix() {
+    for original in ["1万5000mAh", "1万5000.5", "1万0500", "1,500,000zzqx+foo"] {
+        assert_eq!(
+            frontend().pronounce(original).unwrap(),
+            original,
+            "{original}"
+        );
+    }
+}
+
+#[test]
+fn explicit_identifiers_override_phone_shape_but_phone_contexts_keep_the_library_reading() {
+    for (input, expected) in [
+        (
+            "IDは0123456789",
+            "アイディーは\n\nゼロ\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\nキュー\n\n",
+        ),
+        (
+            "IDは090-1234-5678",
+            "アイディーは\n\nゼロ\n\nキュー\n\nゼロ\n\nイチ\n\nニ\n\nサン\n\nヨン\n\nゴ\n\nロク\n\nナナ\n\nハチ\n\n",
+        ),
+        (
+            "電話は090-1234-5678",
+            "電話はゼロキューゼロ、イチニーサンヨン、ゴーロクナナハチ",
+        ),
+        (
+            "090-1234-5678",
+            "ゼロキューゼロ、イチニーサンヨン、ゴーロクナナハチ",
+        ),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+}
+
+#[test]
+fn complete_semantic_span_edges_preserve_ranges_and_numeric_chains() {
+    for original in [
+        "7:30〜8:30に集合",
+        "7:30,000",
+        "25%〜30%",
+        "12345%〜67890%",
+        "3.14:1.59",
+        "090-1234-5678:2",
+        "7:30/8:30",
+        "０７：３０～０８：３０",
+    ] {
+        assert_eq!(
+            frontend().pronounce(original).unwrap(),
+            original,
+            "{original}"
+        );
+    }
+    for (input, expected) in [
+        ("7:30。", "七時三十分。"),
+        ("25%、30%", "ニジューゴパーセント、サンジュッパーセント"),
+    ] {
+        assert_eq!(frontend().pronounce(input).unwrap(), expected, "{input}");
+    }
+}
+
+#[test]
+fn explicit_version_labels_keep_ordinary_delimiters_and_particles() {
+    for original in ["バージョン：3.14", "バージョンは3.14", "バージョン 12345"] {
+        assert_eq!(
+            frontend().pronounce(original).unwrap(),
+            original,
+            "{original}"
+        );
+    }
+    assert!(frontend()
+        .pronounce("Ver: 3.14")
+        .unwrap()
+        .ends_with(": 3.14"));
 }
 
 #[test]
@@ -230,7 +442,6 @@ fn japanese_surfaces_remain_intact_for_natural_speech() {
         "辛いカレーが好きだよ。",
         "3人で25個を分けるよ。",
         "今日は25℃だよ。",
-        "7:30に起こしてね。",
         "がか\u{3099}ｶﾞ。",
     ] {
         assert_eq!(

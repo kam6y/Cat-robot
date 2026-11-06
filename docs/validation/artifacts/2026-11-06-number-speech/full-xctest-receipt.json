@@ -1,0 +1,16 @@
+{
+  "inputSourceDigest": "c919e40823159289f385cf685b1f1e5f45400650904393706ca16f515f17d1cf",
+  "phase": "approved",
+  "stage": "full",
+  "exitCode": 0,
+  "timedOut": false,
+  "head": "812bbbf010cf9178562df00ad3592dbb716b1726",
+  "workingPatchSha256": "d98079bc0f5b4623af9bf6cb45f4e22e6000ed685cc483a8c5616e0e0b2e8e45",
+  "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+  "dedicatedHardwareAndPaidTestsExcluded": true,
+  "result": "Passed",
+  "passedTests": 1003,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "testFailures": []
+}

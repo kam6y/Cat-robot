@@ -7,6 +7,7 @@ import XCTest
 
 @MainActor
 final class SupertonicIntegrationDeviceTests: XCTestCase {
+    private static let pronunciationStages: Set<String> = ["pronunciation", "number-clarity", "id-clarity"]
     private var records: [[String: Any]] = []
     private var pronunciationPreparation: [String: Any] = [:]
     private var runID = ""
@@ -20,7 +21,8 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
 #else
         let env = ProcessInfo.processInfo.environment
         guard env["SUPER_INTEGRATION_TESTS"] == "1", let id = env["SUPER_RUN_ID"], UUID(uuidString: id) != nil,
-              let selectedStage = env["SUPER_STAGE"], ["voices", "fixed", "lifecycle", "pronunciation", "latency", "latency-cloud"].contains(selectedStage) else {
+              let selectedStage = env["SUPER_STAGE"],
+              (Self.pronunciationStages.contains(selectedStage) || ["voices", "fixed", "lifecycle", "latency", "latency-cloud"].contains(selectedStage)) else {
             throw XCTSkip("Use the dedicated device runner")
         }
         runID = id; stage = selectedStage; executionTimeAllowance = 3600
@@ -40,7 +42,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         defer { try? session.setActive(false, options: .notifyOthersOnDeactivation) }
         let root = Bundle.main.resourceURL!
         let engine = SupertonicEngine(root: root.appendingPathComponent("Supertonic"), manifest: root.appendingPathComponent("supertonic-manifest.json"))
-        if stage != "pronunciation" {
+        if !Self.pronunciationStages.contains(stage) {
             let preparation = ProcessInfo.processInfo.systemUptime
             try await engine.prepare()
             print("SUPER_PREPARED \(ProcessInfo.processInfo.systemUptime - preparation)")
@@ -68,7 +70,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
                     try await trial(fixture, repetition: repetition, voice: .f1, engine: engine)
                 }
             }
-        } else if stage == "pronunciation" {
+        } else if Self.pronunciationStages.contains(stage) {
             try await pronunciation(engine)
         } else if stage == "lifecycle" {
             try await lifecycle(engine)
@@ -142,7 +144,9 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         let modelStart = ProcessInfo.processInfo.systemUptime
         try await engine.prepare()
         print("SUPER_PREPARED \(ProcessInfo.processInfo.systemUptime - modelStart)")
-        let fixtures = [
+        let clarity = stage != "pronunciation"
+        let idOptions = stage == "id-clarity"
+        let allFixtures = [
             ("plus", "+ボタンを押してね。"),
             ("youtube", "YouTubeを見よう。"),
             ("counter", "3人で25個を分けるよ。"),
@@ -151,39 +155,93 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             ("ambiguous", "辛いカレーが好きだよ。"),
             ("temperature", "今日は25℃だよ。"),
             ("clock", "7:30に起こしてね。"),
+            ("number-million", "1500000円だよ。"),
+            ("number-grouped", "1,500,000円だよ。"),
+            ("number-oku", "３億５０００万だよ。"),
+            ("number-people", "1500000人で分けるよ。"),
+            ("number-decimal", "3.14だよ。"),
+            ("number-percent", "25%だよ。"),
+            ("number-year", "2026年だよ。"),
+            ("number-phone", "090-1234-5678だよ。"),
+            ("number-id", "IDは123456789だよ。"),
         ]
-        for (id, original) in fixtures {
-            let cooldown = try await coolDown()
-            let conversionStart = ProcessInfo.processInfo.systemUptime
-            let spoken = try await frontend.normalize(original)
-            let conversionSeconds = ProcessInfo.processInfo.systemUptime - conversionStart
-            var outputs: [[String: Any]] = []
-            for (variant, text) in [("original", original), ("jpreprocess", spoken)] {
-                let started = ProcessInfo.processInfo.systemUptime
-                let pcm = try await engine.synthesize(text: text, voiceID: "F1", steps: 8)
-                try pcm.validate()
-                let synthesisSeconds = ProcessInfo.processInfo.systemUptime - started
-                let filename = "\(id)-\(variant).wav"
-                try writeWAV(pcm, to: directory.appendingPathComponent(filename))
-                outputs.append(["variant": variant, "text": text, "file": filename,
-                                "synthesisSeconds": synthesisSeconds,
-                                "durationSeconds": Double(pcm.samples.count) / pcm.sampleRate,
-                                "processedChunks": SpeechTextAudit(input: text).processedChunks])
-            }
-            records.append(["runID": runID, "sourceRevision": revision, "stage": stage,
-                "mode": "pronunciationComparison", "fixture": id, "voice": "F1", "steps": 8,
-                "original": original, "spoken": spoken, "outputs": outputs,
-                "coldPreparationSeconds": coldSeconds, "conversionSeconds": conversionSeconds,
-                "beforeDictionary": before, "afterDictionary": after,
-                "footprintSamples": [before, after, sample()], "cooldownSeconds": cooldown,
-                "thermalAfter": String(describing: ProcessInfo.processInfo.thermalState),
-                "audibleAssessment": "pending", "outcome": "success"])
-            try save()
-            print("SUPER_PRONUNCIATION \(id) \(conversionSeconds) \(spoken)")
+        // Diagnostic literals compare candidate representations before selecting the
+        // implementation. They are never reported as the frontend's actual output.
+        let numberCandidates: [String: [(String, String)]] = [
+            "number-million": [("candidate-kana", "ヒャクゴジューマン円だよ。"), ("candidate-kanji", "百五十万円だよ。")],
+            "number-grouped": [("candidate-kana", "ヒャクゴジューマン円だよ。"), ("candidate-kanji", "百五十万円だよ。")],
+            "number-oku": [("candidate-kana", "サンオクゴセンマンだよ。"), ("candidate-kanji", "三億五千万だよ。")],
+            "number-people": [("candidate-kana", "ヒャクゴジューマン人で分けるよ。"), ("candidate-kanji", "百五十万人で分けるよ。")],
+            "number-decimal": [("candidate-kana", "サンテンイチヨンだよ。")],
+            "number-percent": [("candidate-kana", "ニジューゴパーセントだよ。")],
+            "clock": [("candidate-kana", "シチジサンジュップンに起こしてね。")],
+            "number-phone": [("candidate-kana", "ゼロキューゼロ、イチニーサンヨン、ゴーロクナナハチだよ。")],
+            "number-id": [("candidate-kana", "アイディーはイチニーサンヨンゴーロクナナハチキューだよ。")],
+        ]
+        // These are outputs of the pinned dictionary probe, not a reading table.
+        // Provenance: docs/validation/artifacts/2026-11-06-number-speech/id-representation-library-probe.txt.
+        let dictionaryReading = "イチ、ニ、サン、ヨン、ゴ、ロク、ナナ、ハチ、キュウ"
+        guard let hiraganaReading = dictionaryReading.applyingTransform(.hiraganaToKatakana, reverse: true) else {
+            throw ConversationServiceError.speechSynthesisFailed
         }
-        // Exercise the production speaker as well as the directly saved A/B PCM.
-        try await trial(.init(id: "pronunciation-speaker", text: "｢+ボタン｣でYouTubeを開くよ。", prompt: ""),
+        let paragraphReading = "イチ、ニ、サン、ヨン、ゴ、ロク、ナナ、ハチ、キュー"
+            .components(separatedBy: "、").joined(separator: "\n\n")
+        let paragraphCandidate = "アイディーは\n\n\(paragraphReading)\n\nだよ。"
+        let idCandidates = [
+            ("candidate-kanji", "アイディーは一、二、三、四、五、六、七、八、九だよ。"),
+            ("candidate-hiragana", "アイディーは\(hiraganaReading)だよ。"),
+            ("candidate-paragraph", paragraphCandidate),
+        ]
+        if idOptions {
+            XCTAssertEqual(SpeechTextAudit(input: paragraphCandidate).processedChunks.count, 11,
+                           "Use the existing paragraph chunker for real inter-digit silence")
+        }
+        let repeatedIDs = idOptions ? ["number-id"] : ["number-id", "number-million", "number-people"]
+        let fixtures = clarity ? allFixtures.filter { repeatedIDs.contains($0.0) } : allFixtures
+        for repetition in 0..<(clarity ? 3 : 1) {
+            for (id, original) in fixtures {
+                let cooldown = try await coolDown()
+                let conversionStart = ProcessInfo.processInfo.systemUptime
+                let spoken = try await frontend.normalize(original)
+                let conversionSeconds = ProcessInfo.processInfo.systemUptime - conversionStart
+                var outputs: [[String: Any]] = []
+                let variants = idOptions ? idCandidates : (clarity ? [("jpreprocess", spoken)]
+                    : [("original", original), ("jpreprocess", spoken)] + (numberCandidates[id] ?? []))
+                for (variant, text) in variants {
+                    let started = ProcessInfo.processInfo.systemUptime
+                    let pcm = try await engine.synthesize(text: text, voiceID: "F1", steps: 8)
+                    try pcm.validate()
+                    let synthesisSeconds = ProcessInfo.processInfo.systemUptime - started
+                    let filename = "\(id)-\(variant)-\(repetition).wav"
+                    try writeWAV(pcm, to: directory.appendingPathComponent(filename))
+                    outputs.append(["variant": variant, "text": text, "file": filename,
+                                    "inputOrigin": variant.hasPrefix("candidate-") ? "fixedComparisonCandidate" : "actualPipelineInput",
+                                    "synthesisSeconds": synthesisSeconds,
+                                    "durationSeconds": Double(pcm.samples.count) / pcm.sampleRate,
+                                    "processedChunks": SpeechTextAudit(input: text).processedChunks])
+                }
+                records.append(["runID": runID, "sourceRevision": revision, "stage": stage,
+                    "mode": "pronunciationComparison", "fixture": id, "repetition": repetition, "voice": "F1", "steps": 8,
+                    "original": original, "spoken": spoken, "outputs": outputs,
+                    "coldPreparationSeconds": coldSeconds, "conversionSeconds": conversionSeconds,
+                    "beforeDictionary": before, "afterDictionary": after,
+                    "footprintSamples": [before, after, sample()], "cooldownSeconds": cooldown,
+                    "thermalAfter": String(describing: ProcessInfo.processInfo.thermalState),
+                    "audibleAssessment": "pending", "outcome": "success"])
+                try save()
+                print("SUPER_PRONUNCIATION \(id) \(conversionSeconds) \(spoken)")
+            }
+        }
+        // Exercise the production speaker as well as the directly saved PCM.
+        if clarity {
+            try await trial(.init(id: "id-pause-speaker", text: "IDは123456789だよ。", prompt: ""),
+                            repetition: 0, voice: .f1, engine: engine)
+        } else {
+            try await trial(.init(id: "pronunciation-speaker", text: "｢+ボタン｣でYouTubeを開くよ。", prompt: ""),
                         repetition: 0, voice: .f1, engine: engine)
+            try await trial(.init(id: "number-speaker", text: "残高は1,500,000円だよ。", prompt: ""),
+                        repetition: 0, voice: .f1, engine: engine)
+        }
     }
     private func writeWAV(_ pcm: SpeechPCM, to url: URL) throws {
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: pcm.sampleRate,

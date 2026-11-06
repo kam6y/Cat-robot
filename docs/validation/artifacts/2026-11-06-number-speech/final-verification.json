@@ -1,0 +1,18 @@
+{
+  "inputSourceDigest": "c919e40823159289f385cf685b1f1e5f45400650904393706ca16f515f17d1cf",
+  "nativeReceiptSha256": "2ee2883ca23745dc8729e88a780264d32a270c3b1d3faa4de42e657fe555d0ca",
+  "nativePassed": 30,
+  "XCTestPassed": 1003,
+  "failed": 0,
+  "skipped": 0,
+  "hardwareAndPaidClassesExcludedFromUnitSuite": true,
+  "actualDeviceProductionConfirmed": true,
+  "acceptedIDRepresentation": "upstream paragraph chunks",
+  "unresolvedCritical": 0,
+  "unresolvedImportant": 0,
+  "minorDeferrals": [
+    "adjacent malformed magnitude notation",
+    "grouped percentages"
+  ],
+  "S1IDExceptionDisclosedAndAccepted": true
+}

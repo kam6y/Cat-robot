@@ -1,0 +1,16 @@
+{
+  "exitCode": 0,
+  "sourceFiles": {
+    "native/japanese-pronunciation/Cargo.lock": "ea865d1906bad80e0fcf32e17c8d43c89ef67d1e62d541d5e6aae7720f8d1932",
+    "native/japanese-pronunciation/Cargo.toml": "6f117829c21b7fa01ce44872ea05aed795966e1af090879949be151767d5619f",
+    "native/japanese-pronunciation/include/CJPPronunciation.h": "cae9812a745d8dbbff83f423e6011a1581d71655cba5379a91e2e95b0399eab5",
+    "native/japanese-pronunciation/include/module.modulemap": "a3e1458b1497bf6891bfa64778e5a568aada97d1c12758d6c104954c85019686",
+    "native/japanese-pronunciation/rust-toolchain.toml": "9cbde07377abdce69bc9580adb0315d52e2a09d6494a2005550a7e6733d9688b",
+    "native/japanese-pronunciation/src/ffi.rs": "4f86db3cdf0463d4396d58c78f061f9ed53a4512c6c69704c6168165f50dcee8",
+    "native/japanese-pronunciation/src/lib.rs": "5fbdbad3ea692d3588d25ab6a5760ebadd82e1f14bc9bc1cf27a6bc50c79fe73",
+    "native/japanese-pronunciation/src/numbers.rs": "a2421830e6733c045c4a2292405e6fff8332c16bafbf58cce5637f7ae8810ff6",
+    "native/japanese-pronunciation/tests/ffi.rs": "5131a8e56d14241c29468790630f1df7415fbb0de1d418c6e862bdc37ddcaebb",
+    "native/japanese-pronunciation/tests/pronunciation.rs": "ac0559bd30d56d591be03df5e9a4474d5a95a422e1beee74d21189ac92a02ec3",
+    "scripts/build_jpreprocess.sh": "a601ee4172a99a77d09423a012867b3b9ca7dc35efcef317682f17a35732cb5b"
+  }
+}

@@ -1,0 +1,20 @@
+surface	アイディーは一、二、三、四、五、六、七、八、九だよ。
+dictionary-reading	イチ、ニ、サン、ヨン、ゴ、ロク、ナナ、ハチ、キュウ
+pronunciation	イチ、ニ、サン、ヨン、ゴ、ロク、ナナ、ハチ、キュー
+standard-paragraph-chunks	アイディーはイチ
+
+ニ
+
+サン
+
+ヨン
+
+ゴ
+
+ロク
+
+ナナ
+
+ハチ
+
+キューだよ。

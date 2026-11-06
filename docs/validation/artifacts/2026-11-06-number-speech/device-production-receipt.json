@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "head": "812bbbf010cf9178562df00ad3592dbb716b1726",
+  "workingPatchSha256": "d98079bc0f5b4623af9bf6cb45f4e22e6000ed685cc483a8c5616e0e0b2e8e45",
+  "nativeReceiptSha256": "2ee2883ca23745dc8729e88a780264d32a270c3b1d3faa4de42e657fe555d0ca",
+  "productionFrontend": "agreed standard NJD surface/pronunciation; no app-owned reading table",
+  "publicFixedFixturesOnly": true,
+  "runID": "0FC49928-9DEC-4A0D-B4DD-7944F1965716",
+  "records": 10,
+  "allSuccessful": true
+}

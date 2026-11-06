@@ -9,4 +9,4 @@
 
 `prepare_jpreprocess_assets.py` verifies downloads and extracts only pinned normal files. `build_jpreprocess.sh` explicitly compiles device arm64 and Simulator arm64/x86_64 libraries. The build receipt records source and framework hashes; ordinary Xcode builds validate this receipt and dictionary, and do not download or build Rust. Generated assets are ignored under `CatRobot/LocalAssets/JPreprocess`.
 
-The adapter preserves Japanese surface text for Supertonic naturalness. It applies dictionary readings only to complete eligible Latin terms and verbalizes unprotected plus operators; model, dictionary and dependency versions are unchanged.
+The adapter preserves surrounding Japanese and the original display/memory text. Numerical spans use pinned NJD numeral surfaces or standard pronunciations, without an app-owned reading table. Explicit IDs use genuine single-digit dictionary inputs and the unchanged Supertonic paragraph chunker. Models, dictionary and dependency versions are unchanged. See `native/japanese-pronunciation/README.md` for boundaries and the dated issue #24 validation for the library comparison, listening selection and ID latency tradeoff.

@@ -1,0 +1,27 @@
+1500000円だよ。	1500000円だよ。	1500000円だよ。
+1,500,000円だよ。	1,500,000円だよ。	1,500,000円だよ。
+３億５０００万だよ。	３億５０００万だよ。	３億５０００万だよ。
+1500000人で分けるよ。	1500000人で分けるよ。	1500000人で分けるよ。
+3.14だよ。	3.14だよ。	3.14だよ。
+25%だよ。	25%だよ。	25%だよ。
+7:30に起こしてね。	7:30に起こしてね。	7:30に起こしてね。
+090-1234-5678だよ。	090-1234-5678だよ。	090-1234-5678だよ。
+IDは123456789だよ。	IDは123456789だよ。	IDは123456789だよ。
+3人で25個を分けるよ。	3人で25個を分けるよ。	3人で25個を分けるよ。
+2026年だよ。	2026年だよ。	2026年だよ。
+こんにちは。今日も一緒に遊ぼうね。	こんにちは。今日も一緒に遊ぼうね。	こんにちは。今日も一緒に遊ぼうね。
+YouTubeを見よう。	YouTubeを見よう。	YouTubeを見よう。
+https://example.test/1,500,000	h t t p s koron surasshu surasshu e x a m p l e dotto t e s t surasshu ichi go zero zero zero zero zero	h t t p s koron surasshu surasshu e x a m p l e dotto t e s t surasshu ichi go zero zero zero zero zero
+`1,500,000円`	`1,500,000円`	ichi en`
+001500000	hyaku go juu man	hyaku go juu man
+1,2,3	hyaku ni juu san	hyaku ni juu san
+1,50,000	juu go man	juu go man
+1,500,000.5	sen go hyaku man go	sen go hyaku man go
+12345/67890	12345/67890	12345/67890
+12345:67890	12345:67890	12345:67890
+バージョン3.14	バージョン3.14	バージョン3.14
+ID:123456789	ID:123456789	ID:123456789
+3.14	san ten ichi yon	san ten ichi yon
+25%	ni juu go paasento	ni juu go paasento
+7:30	shichi ji san juppun	shichi ji san juppun
+090-1234-5678	zero kyuu zero, ichi ni san yon, go roku nana hachi	zero kyuu zero, ichi ni san yon, go roku nana hachi

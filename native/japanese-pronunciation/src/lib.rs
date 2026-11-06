@@ -4,6 +4,8 @@ use regex::{Captures, Regex};
 use std::{ops::Range, path::Path, sync::LazyLock};
 use unicode_normalization::UnicodeNormalization;
 
+mod numbers;
+
 pub const MAX_INPUT_BYTES: usize = 32_768;
 const CANONICAL_ALIASES: [&str; 4] = ["YouTuber", "YouTube", "iPhone", "Bluetooth"];
 
@@ -71,23 +73,100 @@ impl Pronouncer {
 
     fn convert_plain(&self, text: &str, output: &mut String) -> Result<(), Error> {
         let mut cursor = 0;
-        for term in IDENTIFIERS.find_iter(text) {
+        let terms: Vec<_> = IDENTIFIERS.find_iter(text).collect();
+        let mut index = 0;
+        while index < terms.len() {
+            let term = terms[index];
             output.push_str(&text[cursor..term.start()].replace(['+', '＋'], "プラス"));
+            if let Some(number) = numbers::number_span(text, &terms, index) {
+                let original = &text[number.range.clone()];
+                if let Some(style) = number.style {
+                    output.push_str(&self.convert_number(original, style)?);
+                } else if terms[index..number.next_term]
+                    .iter()
+                    .all(|t| is_numeric_notation(t.as_str()))
+                {
+                    output.push_str(&original.replace(['+', '＋'], "プラス"));
+                } else {
+                    output.push_str(original);
+                }
+                cursor = number.range.end;
+                index = number.next_term;
+                continue;
+            }
             let word = term.as_str();
             if is_latin_word(word) {
                 output.push_str(&self.convert_run(word)?);
-            } else if word.chars().all(|c| {
-                is_digit(c) || matches!(c, '+' | '＋' | '.' | '．' | '-' | '－' | '\'' | '＇')
-            }) {
-                // Numeric expressions retain their notation; only plus is verbalized.
+            } else if is_numeric_notation(word) {
+                // Non-quantity numerical expressions retain their notation.
                 output.push_str(&word.replace(['+', '＋'], "プラス"));
             } else {
                 output.push_str(word);
             }
             cursor = term.end();
+            index += 1;
         }
         output.push_str(&text[cursor..].replace(['+', '＋'], "プラス"));
         Ok(())
+    }
+
+    fn spell_number(&self, original: &str) -> Result<String, Error> {
+        let folded = fold_width(original);
+        let text = folded.trim_start_matches('0');
+        if text.is_empty() {
+            return Ok("零".to_owned());
+        }
+        number_spelling(&self.preprocessed_number(text)?)
+    }
+
+    fn read_number(&self, text: &str) -> Result<String, Error> {
+        kana_reading(&self.preprocessed_number(text)?)
+    }
+
+    fn preprocessed_number(&self, text: &str) -> Result<NJD, Error> {
+        let mut njd = self
+            .frontend
+            .text_to_njd(text)
+            .map_err(|_| Error::Conversion)?;
+        njd.preprocess();
+        Ok(njd)
+    }
+
+    fn convert_number(&self, original: &str, style: numbers::NumberStyle) -> Result<String, Error> {
+        use numbers::NumberStyle;
+        let text = fold_width(original);
+        match style {
+            NumberStyle::Quantity => self.spell_number(&text),
+            NumberStyle::Decimal | NumberStyle::Percent | NumberStyle::Phone => {
+                self.read_number(&text)
+            }
+            NumberStyle::Digits => {
+                // ID mode selects genuine single-digit library inputs. The
+                // dictionary supplies every reading; there is no app-owned
+                // pronunciation table or synthetic context to force NJD scoring.
+                let mut readings = Vec::new();
+                for c in text.chars() {
+                    if c.is_ascii_digit() {
+                        readings.push(self.read_number(&c.to_string())?);
+                    } else if c != '-' {
+                        return Err(Error::Conversion);
+                    }
+                }
+                // Existing Supertonic paragraph chunks give every library-read
+                // digit its own inference and the upstream inter-chunk silence.
+                // Keep the original surrounding context in separate chunks too.
+                Ok(format!("\n\n{}\n\n", readings.join("\n\n")))
+            }
+            NumberStyle::Time => {
+                let (hour, minute) = text.split_once(':').ok_or(Error::Conversion)?;
+                let hour = self.spell_number(hour)?;
+                if minute == "00" {
+                    Ok(format!("{hour}時"))
+                } else {
+                    Ok(format!("{hour}時{}分", self.spell_number(minute)?))
+                }
+            }
+        }
     }
 
     fn known_single_word(&self, text: &str, expected_surface: &str) -> Result<Option<NJD>, Error> {
@@ -140,16 +219,7 @@ impl Pronouncer {
         }
         // Eligibility was checked on the original characters. Fold width only:
         // compatibility forms such as Roman numerals/ligatures stay untouched.
-        let composed: String = original
-            .chars()
-            .map(|c| {
-                if ('\u{ff01}'..='\u{ff5e}').contains(&c) {
-                    char::from_u32(c as u32 - 0xfee0).unwrap()
-                } else {
-                    c
-                }
-            })
-            .collect();
+        let composed = fold_width(original);
         let canonical = ALIASES.replace_all(&composed, |captures: &Captures<'_>| {
             CANONICAL_ALIASES
                 .iter()
@@ -188,23 +258,38 @@ impl Pronouncer {
             return Ok(original.to_owned());
         }
         njd.preprocess();
-        // Despite its name, upstream to_pure_string retains the U+2019
-        // devoicing marker. Supertonic accepts kana text, not Open JTalk marks.
-        let mut result: String = njd
-            .nodes
-            .iter()
-            .map(|node| node.get_pron().to_pure_string())
-            .collect();
-        result.retain(|c| c != '’');
-        if result.is_empty()
-            || !result
-                .chars()
-                .all(|c| matches!(c, '\u{30a1}'..='\u{30fa}' | 'ー' | '、' | '？'))
-        {
-            return Err(Error::Conversion);
-        }
-        Ok(result)
+        kana_reading(&njd)
     }
+}
+
+fn kana_reading(njd: &NJD) -> Result<String, Error> {
+    // Upstream to_pure_string retains the U+2019 devoicing marker.
+    let mut result: String = njd
+        .nodes
+        .iter()
+        .map(|node| node.get_pron().to_pure_string())
+        .collect();
+    result.retain(|c| c != '’');
+    if result.is_empty()
+        || !result
+            .chars()
+            .all(|c| matches!(c, '\u{30a1}'..='\u{30fa}' | 'ー' | '、' | '？'))
+    {
+        return Err(Error::Conversion);
+    }
+    Ok(result)
+}
+
+fn number_spelling(njd: &NJD) -> Result<String, Error> {
+    // NJD already expands positional digits to Japanese numeral surfaces.
+    // Keep those surfaces for Supertonic: the same-voice listening comparison
+    // preferred 百五十万 over the phonetic ヒャクゴジューマン candidate.
+    let result: String = njd.nodes.iter().map(|node| node.get_string()).collect();
+    const NUMERALS: &str = "零一二三四五六七八九十百千万億兆京垓";
+    if result.is_empty() || !result.chars().all(|c| NUMERALS.contains(c)) {
+        return Err(Error::Conversion);
+    }
+    Ok(result)
 }
 
 fn is_latin_word(text: &str) -> bool {
@@ -222,8 +307,24 @@ fn is_latin_word(text: &str) -> bool {
         })
 }
 
+fn fold_width(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if ('\u{ff01}'..='\u{ff5e}').contains(&c) {
+                char::from_u32(c as u32 - 0xfee0).unwrap()
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 fn is_digit(c: char) -> bool {
     c.is_ascii_digit() || ('０'..='９').contains(&c)
+}
+fn is_numeric_notation(text: &str) -> bool {
+    text.chars()
+        .all(|c| is_digit(c) || matches!(c, '+' | '＋' | '.' | '．' | '-' | '－' | '\'' | '＇'))
 }
 fn protected_ranges(text: &str) -> Vec<Range<usize>> {
     let mut ranges: Vec<Range<usize>> = PROTECTED.find_iter(text).map(|m| m.range()).collect();

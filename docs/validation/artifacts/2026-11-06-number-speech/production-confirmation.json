@@ -1,0 +1,23 @@
+{
+  "runID": "0FC49928-9DEC-4A0D-B4DD-7944F1965716",
+  "IDRepetitions": 3,
+  "allTenRecordsSuccessful": true,
+  "actualInputEqualsAcceptedCandidate": true,
+  "actualChunksEqualAcceptedCandidate": true,
+  "numberOfIDChunks": 11,
+  "originalResponsePreserved": "IDは123456789だよ。",
+  "IDDurationSeconds": [
+    17.38605442176871,
+    17.38605442176871,
+    17.38605442176871
+  ],
+  "IDSynthesisSeconds": [
+    5.128172916680342,
+    5.376695166662103,
+    5.523932583339047
+  ],
+  "nativeReceiptSha256": "2ee2883ca23745dc8729e88a780264d32a270c3b1d3faa4de42e657fe555d0ca",
+  "resultsSha256": "4f17103be49f7dab284fbb5fbd0d4dddda416d3cb2bc272b2376640fa8ffbc61",
+  "humanAuditionIsPriorAcceptedCandidate": true,
+  "newWaveformsNotClaimedHumanReviewed": true
+}

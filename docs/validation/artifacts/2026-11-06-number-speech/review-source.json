@@ -1,0 +1,12 @@
+{
+  "base": "b050575f88b6f14f520f3ee968c42c0ad6021e3c",
+  "head": "812bbbf010cf9178562df00ad3592dbb716b1726",
+  "tree": "434b28fea2b21f73a52e4c13cd585989eff933b6",
+  "diffSha256": "0873d43729bf3314a25a68be55e1299ad1cf74f87428f491a78d81fe0cf0c21b",
+  "inputSourceDigest": "8e037257b24ea980c25e245a44a494cf33ab582df281a69f0d24ed50693a1244",
+  "nativeReceiptSha256": "218405852e1ade0da2fc38a90981a03460acbfc2bccbd1d3cd020baf60648439",
+  "focusedTests": 44,
+  "nativeTests": 27,
+  "fullTests": "latest source pending; predecessor1000 passed",
+  "listening": "ID pauses/repeat variation acceptance pending"
+}
