@@ -86,6 +86,7 @@ struct ConversationComposition {
             look: look,
             replyTurnObserver: replyTurnObserver,
             memory: claude,
+            isFacingScreen: { camera.hasFreshFacingFace(yawCorrection: preferences.trackingYawCorrection) },
             serviceTeardown: {
                 await MainActor.run {
                     expressions.setVisible(false)

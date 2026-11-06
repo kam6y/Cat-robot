@@ -186,7 +186,7 @@
 | モジュール | 責務 | 既存コードの扱い |
 |---|---|---|
 | Speech | マイク取り込み、SpeechAnalyzer による日本語認識、発話区切り（無音 1.2 秒・最長 20 秒）、Supertonic 読み上げ（文単位先読み） | 流用（`AppleSpeechRecognizer`、`UtteranceSegmenter`、`Supertonic*`、`ReplyPlaybackCoordinator`） |
-| Addressee | 呼び名・会話中ウィンドウ・曖昧時の聞き返し | 流用（`AddresseePolicy`、`EngagementWindow`、`FoundationModelAddressClassifier`） |
+| Addressee | 顔の向き・会話中ウィンドウ・曖昧時の聞き返し（issue #22） | 流用（`AddresseePolicy`、`EngagementWindow`、`FoundationModelAddressClassifier`） |
 | Conversation | `LanguageModelSession` の生成・保持・再生成、ストリーミング、エラー写像 | 作り直し（`GemmaConversationService` を `ClaudeConversationService` に置換） |
 | Tools | 首・表情・見る・覚える の `Tool` 実装 | 新規 |
 | Motion | 動作の調停（ツール＞追尾＞待機）、軌道生成、BLE への送信 | 新規 |
@@ -221,7 +221,7 @@
 | ID | 要件 | 優先度 |
 |---|---|---|
 | FR-CONV-1 | 会話画面が前面にある間、端末内で連続して聞き取り、発話の終わりを無音 1.2 秒で確定する（既存値を初期値とし、設定可能な定数に置く） | 必須 |
-| FR-CONV-2 | 呼び名（ねこ、猫ちゃん、Cat Robot、キャットロボット）または会話中ウィンドウ内の発話は分類なしで受け付ける。それ以外は宛先判定にかける | 必須 |
+| FR-CONV-2 | [issue #22](2026-11-06-facing-addressing-design.md)として、こちらを向いた単一の顔の新しい観測、または返答後30秒の会話中ウィンドウ内の発話を分類なしで受け付ける。顔の向きを使い、瞳の視線は不要。呼び名による省略は廃止し、それ以外は通常の宛先判定にかける | 必須 |
 | FR-CONV-3 | 宛先判定は Apple の端末内モデルで行う。端末内モデルが利用不可（Apple Intelligence 非対応・未準備）の場合は Claude Haiku 5.5 のステートレス呼び出しで代替する | 必須 |
 | FR-CONV-4 | 曖昧な発話には「今の、ぼくに言った？」と一度だけ聞き返す（既存仕様を踏襲、15 秒で破棄） | 必須 |
 | FR-CONV-5 | 返答はストリーミングで字幕に反映し、一文が確定した時点で読み上げを始める（既存の文単位先読み方式） | 必須 |

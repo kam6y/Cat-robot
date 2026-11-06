@@ -12,7 +12,7 @@ final class ConversationSmartTurnTests: XCTestCase {
         let replied = await h.waitUntil { await h.reply.prompts.count == 1 && h.sut.viewState.phase == .listening }
         XCTAssertTrue(replied)
         let prompts = await h.reply.prompts
-        XCTAssertEqual(prompts, ["明日は"])
+        XCTAssertEqual(prompts, ["ねこ、明日は"])
         await h.sut.shutdown()
     }
 
@@ -26,7 +26,7 @@ final class ConversationSmartTurnTests: XCTestCase {
         let replied = await h.waitUntil { await h.reply.prompts.count == 1 && h.sut.viewState.phase == .listening }
         XCTAssertTrue(replied)
         let prompts = await h.reply.prompts
-        XCTAssertEqual(prompts, ["明日は昼から"])
+        XCTAssertEqual(prompts, ["ねこ、明日は昼から"])
         await h.sut.shutdown()
     }
 
@@ -90,7 +90,7 @@ final class ConversationSmartTurnTests: XCTestCase {
         let second = await h.waitUntil { await h.reply.prompts.count == 2 }
         XCTAssertTrue(second)
         let prompts = await h.reply.prompts
-        XCTAssertEqual(prompts, ["最初", "次の質問"])
+        XCTAssertEqual(prompts, ["ねこ、最初", "次の質問"])
         await h.sut.shutdown()
     }
 
@@ -109,7 +109,7 @@ final class ConversationSmartTurnTests: XCTestCase {
         let replied = await h.waitUntil { await h.reply.prompts.count == 1 }
         XCTAssertTrue(replied)
         let prompts = await h.reply.prompts
-        XCTAssertEqual(prompts, ["新しい"])
+        XCTAssertEqual(prompts, ["ねこ、新しい"])
         await h.sut.shutdown()
     }
 

@@ -1,0 +1,8 @@
+{
+  "scope": "Markdown and review receipts only; no production, test or project changes",
+  "reviewHead": "e6cbe28ce2f44648fd6856d9ea030eeda11c54ff",
+  "testedPatchSha256": "7b47dddc45e7a5907d60a0b66026c284bc333d8b51894b6773e1a6c1f0660c72",
+  "docsFixesSha256": "a588d89aed8654b5e21569e65b97a9bba7fcfb749639a47a4de3603dd0d594a6",
+  "originalS1Restored": true,
+  "userCheck": "質問への返答があった"
+}

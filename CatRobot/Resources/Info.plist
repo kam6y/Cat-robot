@@ -27,7 +27,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Cat Robotは、ハードに接続して動かすためにBluetoothを使用します。</string>
 	<key>NSCameraUsageDescription</key>
-	<string>顔の方向にハードを向けるためと、見る必要があるときに前面カメラの静止画像を1枚Claudeへ送るために使います。画像はアプリに保存しません。</string>
+	<string>顔がこちらを向いているかをiPhone内で確認して話しかけられたか判断し、顔の方向にハードを向けます。「見て」と頼んだときは前面カメラの静止画像を1枚Claudeへ送ります。画像はアプリに保存しません。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。音声は端末上で処理されます。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

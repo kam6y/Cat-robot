@@ -66,10 +66,11 @@ final class LookIntegrationTests: XCTestCase {
             else { run = Task { await playback.viewModel.submitTypedText("見て") } }
             let looking = await playback.infrastructure.waitUntil { look.isLooking }
             XCTAssertTrue(looking)
-            XCTAssertTrue(source.starts.isEmpty)
+            XCTAssertEqual(source.starts.count, 1, "Listening already used the camera for attention")
+            XCTAssertEqual(source.stops, 1, "Leaving listening releases attention before the look delay")
             await clock.advance(by: 0.1)
             let request = try XCTUnwrap(source.snapshotRequests.last)
-            XCTAssertEqual(source.starts.count, 1)
+            XCTAssertEqual(source.starts.count, 2, "Look requests its own capture after attention stopped")
             request.completion(.success(.init(generation: request.generation, capturedAt: clock.now,
                 image: try makeCameraTestImage())))
             await base.base.waitUntilRequested()
@@ -77,7 +78,7 @@ final class LookIntegrationTests: XCTestCase {
             XCTAssertEqual(scopes.compactMap { $0 }, motion.begins)
             let images = await base.imageCount
             XCTAssertEqual(images, 1)
-            XCTAssertEqual(source.stops, 1)
+            XCTAssertEqual(source.stops, 2)
             await base.base.yield("見えたよ。")
             await base.base.finish()
             await playback.speaker.waitUntilCallCount(1)

@@ -1,0 +1,7 @@
+{
+  "result": "passed",
+  "onlySemanticDifference": "Added FacingAddressingTests.swift to CatRobotTests",
+  "appSourcesResourcesFrameworksBuildSettingsScriptsUnchanged": true,
+  "testSettingsResourcesFrameworksScriptsUnchanged": true,
+  "uuidRegeneration": "project.predictabilize_uuids, with generated schemes updated to match"
+}

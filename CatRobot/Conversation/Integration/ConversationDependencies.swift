@@ -23,6 +23,7 @@ struct ConversationDependencies: Sendable {
     let replyTraceSink: any ReplyTraceSink
     let latency: any ConversationLatencyTracking
     let addresseePolicy: AddresseePolicy
+    let isFacingScreen: @MainActor @Sendable () -> Bool
     let now: @Sendable () -> TimeInterval
     let clarificationDelay: @Sendable (Duration) async -> Void
     /// 「新しい会話を始めました」などの通知を消すまでの待ち。テストでは差し替える。
@@ -46,6 +47,7 @@ struct ConversationDependencies: Sendable {
         replyTurnObserver: (any ReplyTurnObserving)? = nil,
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         addresseePolicy: AddresseePolicy = AddresseePolicy(),
+        isFacingScreen: @escaping @MainActor @Sendable () -> Bool = { false },
         now: @escaping @Sendable () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
         },
@@ -73,6 +75,7 @@ struct ConversationDependencies: Sendable {
         self.look = look
         self.replyTurnObserver = replyTurnObserver ?? motion
         self.addresseePolicy = addresseePolicy
+        self.isFacingScreen = isFacingScreen
         self.now = now
         self.clarificationDelay = clarificationDelay
         self.noticeDelay = noticeDelay

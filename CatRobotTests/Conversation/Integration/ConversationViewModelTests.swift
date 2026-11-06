@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class ConversationViewModelTests: XCTestCase {
+    func testNameWithoutFacingGoesThroughClassifierWithFullTranscript() async {
+        let h = ConversationHarness(classification: .notAddressed)
+        await h.completeTurn("猫ちゃん、今日どう？", at: 0)
+        let classified = await h.classifier.calls
+        let replies = await h.reply.prompts
+        XCTAssertEqual(classified, ["猫ちゃん、今日どう？"])
+        XCTAssertTrue(replies.isEmpty)
+        XCTAssertEqual(h.sut.viewState.phase, .listening)
+        await h.sut.shutdown()
+    }
+
 
     func testInitiallyZeroOutputVolumeWarnsWithoutPausingCapture() async {
         let harness = ConversationHarness()
@@ -169,11 +180,12 @@ final class ConversationViewModelTests: XCTestCase {
         await h.sut.shutdown()
     }
 
-    func testWakeTurnSkipsClassifierReplacesCumulativeCaptionSpeaksFinalAndResumesOnce() async {
+    func testFacingTurnSkipsClassifierReplacesCumulativeCaptionSpeaksFinalAndResumesOnce() async {
         let harness = ConversationHarness(replySnapshots: ["やあ", "やあ、元気だよ"])
+        harness.attention.isFacingScreen = true
         await harness.sut.startConversation()
 
-        await harness.emitCompletedUtterance("猫ちゃん、元気？", at: 0)
+        await harness.emitCompletedUtterance("元気？", at: 0)
 
         let classifierCalls = await harness.classifier.calls
         let replyPrompts = await harness.reply.prompts
@@ -189,7 +201,9 @@ final class ConversationViewModelTests: XCTestCase {
 
     func testEngagedFollowUpAlsoSkipsClassifier() async {
         let harness = ConversationHarness()
-        await harness.completeTurn("ねこ、質問", at: 0)
+        harness.attention.isFacingScreen = true
+        await harness.completeTurn("質問", at: 0)
+        harness.attention.isFacingScreen = false
         await harness.completeTurn("もう少し教えて", at: 10)
 
         let classifierCalls = await harness.classifier.calls
@@ -198,21 +212,7 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(replyPrompts, ["質問", "もう少し教えて"])
     }
 
-    func testExplicitWakeDuringEngagementResetsFiveMinuteHardDeadline() async {
-        let harness = ConversationHarness()
-        await harness.completeTurn("ねこ、開始", at: 0)
-        for timestamp in stride(from: 29.0, through: 290.0, by: 29.0) {
-            await harness.completeTurn("続けて", at: timestamp)
-        }
-
-        await harness.completeTurn("ねこ、リセット", at: 295)
-        await harness.completeTurn("まだ続けて", at: 310)
-
-        let classifierCalls = await harness.classifier.calls
-        XCTAssertTrue(classifierCalls.isEmpty)
-    }
-
-    func testWakeOnlyAcknowledgesLocallyAndArmsFastFollowUp() async {
+    func testNameOnlyUsesNormalClassifierAndGeneratedReplyThenArmsFollowUp() async {
         let harness = ConversationHarness()
         await harness.sut.startConversation()
         await harness.emitCompletedUtterance("猫ちゃん", at: 0)
@@ -220,16 +220,16 @@ final class ConversationViewModelTests: XCTestCase {
         let firstSpokenTexts = await harness.speaker.texts
         let firstClassifierCalls = await harness.classifier.calls
         let firstReplyPrompts = await harness.reply.prompts
-        XCTAssertEqual(firstSpokenTexts, ["なあに？"])
-        XCTAssertTrue(firstClassifierCalls.isEmpty)
-        XCTAssertTrue(firstReplyPrompts.isEmpty)
+        XCTAssertEqual(firstSpokenTexts, ["わかったよ"])
+        XCTAssertEqual(firstClassifierCalls, ["猫ちゃん"])
+        XCTAssertEqual(firstReplyPrompts, ["猫ちゃん"])
 
         await harness.completeTurn("今日どう？", at: 10)
 
         let classifierCallCount = await harness.classifier.calls.count
         let replyPrompts = await harness.reply.prompts
-        XCTAssertEqual(classifierCallCount, 0)
-        XCTAssertEqual(replyPrompts, ["今日どう？"])
+        XCTAssertEqual(classifierCallCount, 1)
+        XCTAssertEqual(replyPrompts, ["猫ちゃん", "今日どう？"])
     }
 
     func testClassifiedAddressRepliesAndArmsFastFollowUp() async {
@@ -346,6 +346,7 @@ final class ConversationViewModelTests: XCTestCase {
             classification: .notAddressed,
             speakerAutomaticallyFinishes: false
         )
+        harness.attention.isFacingScreen = true
         await harness.sut.startConversation()
         let turn = Task { await harness.emitCompletedUtterance("ねこ、質問", at: 0) }
         await harness.speaker.waitUntilTextCount(1)
@@ -360,6 +361,7 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(recognizerStartsBeforeResume, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
 
+        harness.attention.isFacingScreen = false
         harness.now.set(2)
         await harness.sut.toggleListening()
         await harness.emitCompletedUtterance("続けて", at: 2)
@@ -371,6 +373,7 @@ final class ConversationViewModelTests: XCTestCase {
         let harness = ConversationHarness(
             recognizerTail: .finalized("元気？")
         )
+        harness.attention.isFacingScreen = true
         await harness.sut.startConversation()
 
         await harness.emitCompletedUtterance("猫ちゃん、", at: 0)
@@ -378,7 +381,7 @@ final class ConversationViewModelTests: XCTestCase {
 
         let replyPrompts = await harness.reply.prompts
         let classifierCalls = await harness.classifier.calls
-        XCTAssertEqual(replyPrompts, ["元気？"])
+        XCTAssertEqual(replyPrompts, ["猫ちゃん、元気？"])
         XCTAssertTrue(classifierCalls.isEmpty)
     }
 
@@ -522,7 +525,7 @@ final class ConversationViewModelTests: XCTestCase {
 
         let replyPrompts = await harness.reply.prompts
         XCTAssertTrue(didRoute)
-        XCTAssertEqual(replyPrompts, ["長い質問"])
+        XCTAssertEqual(replyPrompts, ["ねこ、長い質問"])
     }
 
     func testProvisionalOnlyHardExpiryDoesNotStealNextFinalSilenceTimer() async {
@@ -539,7 +542,7 @@ final class ConversationViewModelTests: XCTestCase {
 
         harness.now.set(22.2)
         let didRoute = await harness.waitUntil(timeout: .seconds(2)) {
-            await harness.reply.prompts == ["質問"]
+            await harness.reply.prompts == ["ねこ、質問"]
         }
 
         XCTAssertTrue(didRoute)
@@ -595,18 +598,13 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertEqual(recognizerStarts, 1)
     }
 
-    func testShortVoiceReplyOpensWideOnFirstWordAndClosesAfterFinish() async {
+    func testVoiceReplyOpensMouthOnSentenceStartAndClosesAfterFinish() async {
         let harness = ConversationHarness(speakerAutomaticallyFinishes: false)
         await harness.sut.startConversation()
         let turn = Task { await harness.emitCompletedUtterance("猫ちゃん", at: 0) }
         await harness.speaker.waitUntilTextCount(1)
 
         await harness.speaker.yield(.started)
-        let didShowSmall = await harness.waitUntil {
-            harness.sut.viewState.mouthPose == .small
-        }
-        XCTAssertTrue(didShowSmall)
-        await harness.speaker.yield(.willSpeak(range: 0..<3))
         let didShowWide = await harness.waitUntil {
             harness.sut.viewState.mouthPose == .wide
         }

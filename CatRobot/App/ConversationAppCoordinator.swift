@@ -51,6 +51,9 @@ final class ConversationAppCoordinator {
     @ObservationIgnored private var actionTasks: [UInt64: Task<Void, Never>] = [:]
     @ObservationIgnored private var didForwardPauseSinceActive = false
     @ObservationIgnored private var deferredPermissionPrompt = false
+    private var isAwaitingCameraPermission: Bool {
+        camera?.permissionInProgress == true || faceTracking?.isAwaitingPermission == true
+    }
     @ObservationIgnored private let beforeActionOperation: @MainActor @Sendable () async -> Void
 
     init(
@@ -156,6 +159,9 @@ final class ConversationAppCoordinator {
         guard !isSleeping else { return }
         updateFaceEnvironment()
         await faceTracking?.requestPermissionForConversation()
+        if !Task.isCancelled, canRunConversation, let camera, camera.authorization == .notDetermined {
+            _ = await camera.requestAuthorization()
+        }
         updateFaceEnvironment()
         // Returning from background/settings can precede the OS permission result. The old
         // start was cancelled, so the foreground owner must launch its replacement now.
@@ -177,7 +183,7 @@ final class ConversationAppCoordinator {
     private func resumeListeningIfNeeded() {
         updateInactivity()
         guard canRunConversation,
-              activeStartIntentID == nil, faceTracking?.isAwaitingPermission != true else { return }
+              activeStartIntentID == nil, !isAwaitingCameraPermission else { return }
         launchStart()
     }
 
@@ -229,7 +235,7 @@ final class ConversationAppCoordinator {
                 viewModel.deferMicrophonePermissionCompletion()
                 return
             }
-            if faceTracking?.isAwaitingPermission == true { return }
+            if isAwaitingCameraPermission { return }
             forwardPauseIfNeeded()
         case .background:
             invalidateActionTasksForSceneInactivity()

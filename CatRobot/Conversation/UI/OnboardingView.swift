@@ -67,7 +67,7 @@ struct OnboardingView: View {
             point("聞き取り・読み上げ・記憶はこのiPhoneの中。マイクは会話画面を開いている間だけ使います。記憶はいつでも消せます",
                   systemImage: "iphone")
             point("AIの返事は間違うことがあります。利用料は作者の負担です", systemImage: "exclamationmark.triangle")
-            Text("カメラの許可とこの説明は、あとから「設定」で確認できます")
+            Text("聞き取り中はカメラで顔の向きを確認し、こちらを向いていればすぐ返答します。顔の判定はiPhone内だけで行います。カメラの許可とこの説明は、あとから「設定」で確認できます")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

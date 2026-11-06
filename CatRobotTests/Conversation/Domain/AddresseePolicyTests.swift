@@ -2,9 +2,11 @@ import XCTest
 @testable import CatRobot
 
 final class AddresseePolicyTests: XCTestCase {
-    func testWakeNameAcceptsAndStripsOnlyLeadingAddress() {
-        let result = AddresseePolicy().route("猫ちゃん、今日どう？", at: 0, engagement: .inactive, pending: nil)
-        XCTAssertEqual(result, .accept("今日どう？"))
+    func testNamesAloneDoNotBypassClassifier() {
+        for utterance in ["ねこ、天気は？", "猫ちゃん", "Cat Robot: hello", "キャットロボット今日どう？"] {
+            XCTAssertEqual(AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
+                           .classify(utterance))
+        }
     }
 
     func testEngagedTurnSkipsClassifierButHardExpiryDoesNotExtend() {
@@ -32,81 +34,6 @@ final class AddresseePolicyTests: XCTestCase {
         engagement.arm(at: 100)
         engagement.clear()
         XCTAssertFalse(engagement.isActive(at: 100))
-    }
-
-    func testAllWakeNamesUseLeadingFastPath() {
-        let cases: [(utterance: String, accepted: String)] = [
-            ("ねこ、天気は？", "天気は？"),
-            ("猫ちゃん 今日どう？", "今日どう？"),
-            ("cAt rObOt: tell me", "tell me"),
-            ("キャットロボット、元気？", "元気？")
-        ]
-
-        for testCase in cases {
-            XCTAssertEqual(
-                AddresseePolicy().route(testCase.utterance, at: 0, engagement: .inactive, pending: nil),
-                .accept(testCase.accepted)
-            )
-        }
-    }
-
-    func testAllWakeNamesWithoutContentRouteToWakeOnly() {
-        for utterance in ["ねこ", "猫ちゃん。", "cAt rObOt？", "キャットロボット、、、"] {
-            XCTAssertEqual(
-                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-                .wakeOnly
-            )
-        }
-    }
-
-    func testAllWakeNamesAcceptUndelimitedJapaneseStarter() {
-        for utterance in [
-            "ねこ今日どう？",
-            "猫ちゃん今日どう？",
-            "cAt rObOt今日どう？",
-            "キャットロボット今日どう？"
-        ] {
-            XCTAssertEqual(
-                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-                .accept("今日どう？")
-            )
-        }
-    }
-
-    func testUndelimitedWakeNameUsesOnlyDocumentedConversationalStarters() {
-        let cases: [(utterance: String, accepted: String)] = [
-            ("ねこ今日の天気", "今日の天気"),
-            ("ねこ今何時", "今何時"),
-            ("ねこ明日の予定", "明日の予定"),
-            ("ねこどう思う", "どう思う"),
-            ("ねこ何してる", "何してる"),
-            ("ねこなにしてる", "なにしてる"),
-            ("ねこいつ会える", "いつ会える"),
-            ("ねこどこにいる", "どこにいる"),
-            ("ねこ誰が来る", "誰が来る"),
-            ("ねこだれが来る", "だれが来る"),
-            ("ねこなぜ空は青い", "なぜ空は青い"),
-            ("ねこなんで笑うの", "なんで笑うの"),
-            ("ねこ元気？", "元気？"),
-            ("ねこ教えて", "教えて"),
-            ("ねこ聞いて", "聞いて"),
-            ("ねこお願い", "お願い"),
-            ("ねこおはよう", "おはよう"),
-            ("ねここんにちは", "こんにちは"),
-            ("ねここんばんは", "こんばんは")
-        ]
-
-        for testCase in cases {
-            XCTAssertEqual(
-                AddresseePolicy().route(testCase.utterance, at: 0, engagement: .inactive, pending: nil),
-                .accept(testCase.accepted)
-            )
-        }
-
-        XCTAssertEqual(
-            AddresseePolicy().route("ねこ質問がある", at: 0, engagement: .inactive, pending: nil),
-            .classify("ねこ質問がある")
-        )
     }
 
     func testWakeNameDoesNotMatchLaterTextOrConcatenatedWord() {

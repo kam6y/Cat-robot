@@ -3,6 +3,15 @@ import XCTest
 
 @MainActor
 final class ConversationCameraTests: XCTestCase {
+    func testListeningCapturesWithoutTrackingOrLook() async {
+        let h = CameraHarness()
+        h.camera.setEnvironment(conversationVisible: true, sceneActive: true, mode: .conversation, phase: .listening)
+        XCTAssertEqual(h.source.starts.count, 1)
+        h.camera.setEnvironment(conversationVisible: true, sceneActive: true, mode: .conversation, phase: .thinking)
+        XCTAssertEqual(h.source.stops, 1)
+        h.camera.shutdown()
+    }
+
     func testSnapshotStartsAndStopsWithoutTrackingOrRobot() async throws {
         let h = CameraHarness()
         let task = Task { try await h.camera.captureSnapshot() }

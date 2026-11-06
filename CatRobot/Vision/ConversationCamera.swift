@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Shares one physical capture between tracking and explicitly requested images.
+/// Shares one physical capture between listening attention, tracking and requested images.
 @MainActor
 @Observable
 final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
@@ -18,6 +18,10 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
     @ObservationIgnored private var physicalGeneration: UUID?
     @ObservationIgnored private var validSnapshotID: UUID?
     @ObservationIgnored private var environmentPermitsCapture = false
+    @ObservationIgnored private var attentionRequested = false
+    @ObservationIgnored private var attentionStartedAt: TimeInterval = 0
+    @ObservationIgnored private var latestAttention: FaceObservation?
+    @ObservationIgnored private var latestAttentionTime: TimeInterval?
     @ObservationIgnored private var tooHot = false
     @ObservationIgnored private var captureFailed = false
     @ObservationIgnored private var isShutdown = false
@@ -48,6 +52,15 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
 
     func events() -> AsyncStream<FaceCaptureEvent> { stream }
 
+    /// A current head direction, independent of robot connection and tracking preference.
+    func hasFreshFacingFace(yawCorrection: Double) -> Bool {
+        guard eligible, attentionRequested, physicalGeneration != nil,
+              source.authorization == .authorized, let observation = latestAttention,
+              CameraSnapshot.isFresh(capturedAt: observation.capturedAt, now: clock.now),
+              observation.faces.count == 1 else { return false }
+        return FaceTrackingGeometry.selectFace(observation.faces, yawCorrection: yawCorrection) != nil
+    }
+
     func requestAuthorization() async -> FaceCameraAuthorization {
         guard !isShutdown else { return authorization }
         let task: Task<FaceCameraAuthorization, Never>
@@ -76,6 +89,13 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
         environmentPermitsCapture = FaceCaptureEnvironment(conversationVisible: conversationVisible,
                                                            sceneActive: sceneActive, mode: mode,
                                                            phase: phase).permitsCapture
+        let requested = environmentPermitsCapture && phase == .listening
+        if requested != attentionRequested {
+            attentionRequested = requested
+            clearAttention()
+            attentionStartedAt = clock.now
+            if requested { captureFailed = false }
+        }
         refreshAuthorization()
         if !eligible { revokeSnapshots(.cancelled) }
         reconcile()
@@ -93,7 +113,7 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
         reconcile()
     }
 
-    /// Ends tracking demand only; a pending look still owns capture.
+    /// Ends tracking demand only; listening attention or a pending look still owns capture.
     func stop() {
         trackingGeneration = nil
         reconcile()
@@ -154,7 +174,7 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
     }
 
     private func reconcile() {
-        guard eligible, !captureFailed, trackingGeneration != nil || pending != nil else {
+        guard eligible, !captureFailed, attentionRequested || trackingGeneration != nil || pending != nil else {
             stopPhysical()
             return
         }
@@ -165,9 +185,29 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
     }
 
     private func stopPhysical() {
+        clearAttention()
         guard physicalGeneration != nil else { return }
         physicalGeneration = nil
         source.stop()
+    }
+
+    private func clearAttention() {
+        latestAttention = nil
+        latestAttentionTime = nil
+    }
+
+    private func recordAttention(_ observation: FaceObservation) {
+        guard eligible, attentionRequested else { return }
+        guard observation.capturedAt.isFinite, observation.completedAt.isFinite,
+              observation.capturedAt >= attentionStartedAt,
+              observation.capturedAt <= observation.completedAt, observation.completedAt <= clock.now,
+              CameraSnapshot.isFresh(capturedAt: observation.capturedAt, now: clock.now) else {
+            latestAttention = nil
+            return
+        }
+        guard latestAttentionTime.map({ observation.capturedAt > $0 }) ?? true else { return }
+        latestAttentionTime = observation.capturedAt
+        latestAttention = observation
     }
 
     /// Global invalidation: every handed-out image stops being valid and any pending
@@ -206,7 +246,9 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
     private func receive(_ event: FaceCaptureEvent) {
         switch event {
         case let .observation(observation):
-            guard observation.generation == physicalGeneration, let generation = trackingGeneration else { return }
+            guard observation.generation == physicalGeneration else { return }
+            recordAttention(observation)
+            guard let generation = trackingGeneration else { return }
             continuation.yield(.observation(.init(generation: generation, capturedAt: observation.capturedAt,
                 completedAt: observation.completedAt,
                 horizontalFieldOfView: observation.horizontalFieldOfView, aspectRatio: observation.aspectRatio,

@@ -20,6 +20,7 @@ final class ConversationLatencyTests: XCTestCase {
 
     func testFastGeneratedTurnRecordsBoundaryCaptionAndSpeechWithoutText() async {
         let harness = ConversationHarness(replySnapshots: ["途中", "最終"])
+        harness.attention.isFacingScreen = true
         await harness.sut.startConversation()
 
         await harness.emitCompletedUtterance("猫ちゃん、元気？", at: 10)
@@ -51,8 +52,9 @@ final class ConversationLatencyTests: XCTestCase {
         XCTAssertTrue(events.contains(.speech(token: token, at: 21.2)))
     }
 
-    func testWakeOnlyUsesFastLocalCaptionAndSpeechMilestones() async {
+    func testFacingNameOnlyUsesFastGeneratedCaptionAndSpeechMilestones() async {
         let harness = ConversationHarness()
+        harness.attention.isFacingScreen = true
 
         await harness.completeTurn("猫ちゃん", at: 0)
 
@@ -88,6 +90,7 @@ final class ConversationLatencyTests: XCTestCase {
 
     func testReplyFailureCancelsTheSelectedTurn() async {
         let harness = ConversationHarness(replySnapshots: [])
+        harness.attention.isFacingScreen = true
 
         await harness.completeTurn("猫ちゃん、質問", at: 0)
 
@@ -161,7 +164,7 @@ final class ConversationLatencyTests: XCTestCase {
         let token = try! XCTUnwrap(events.first?.token)
         let prompts = await harness.reply.prompts
         XCTAssertTrue(events.contains(.asrActivity(token: token, at: 6.2)))
-        XCTAssertEqual(prompts, ["質問"])
+        XCTAssertEqual(prompts, ["猫ちゃん、質問"])
     }
 
     func testFinishedWithoutSpeechStartCancelsRemainingLatencyInterval() async {

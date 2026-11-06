@@ -1,0 +1,15 @@
+{
+  "gitCommit": "e6cbe28ce2f44648fd6856d9ea030eeda11c54ff",
+  "sourceDigest": "7fc67a24292b5220d57eda1f0dc04ad225f9af4bee2484d98f533be61a22a6b0",
+  "bundleIdentifier": "com.kamby.CatRobot",
+  "installed": true,
+  "launched": true,
+  "processPresent": true,
+  "pid": 10294,
+  "codesignVerified": true,
+  "testPlugins": 0,
+  "arguments": [],
+  "environmentVariableNames": [
+    "TERM"
+  ]
+}

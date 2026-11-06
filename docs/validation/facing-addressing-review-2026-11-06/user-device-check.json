@@ -1,0 +1,7 @@
+{
+  "answer": "質問への返答があった",
+  "conditions": "聞き取り中、猫へ顔を向け、呼び名なしで質問。すでに会話した場合は返答後30秒以上空けるよう案内。",
+  "sourceDigest": "7fc67a24292b5220d57eda1f0dc04ad225f9af4bee2484d98f533be61a22a6b0",
+  "installedRevision": "e6cbe28ce2f44648fd6856d9ea030eeda11c54ff",
+  "scope": "User speech/response sanity check; does not directly measure classifier invocation, pose accuracy across environments or end-to-end latency."
+}

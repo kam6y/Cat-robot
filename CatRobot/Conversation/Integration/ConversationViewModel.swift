@@ -956,44 +956,23 @@ final class ConversationViewModel {
         }
         let isCorrectingPending = pendingClarification != nil
         let wasEngaged = engagement.isActive(at: timestamp)
-        let explicitWakeRoute = dependencies.addresseePolicy.route(
-            utterance,
-            at: timestamp,
-            engagement: .inactive,
-            pending: nil
-        )
-        let isExplicitWake: Bool
-        switch explicitWakeRoute {
-        case .wakeOnly, .accept(_):
-            isExplicitWake = true
-        case .classify(_), .dismissPending, .ignore:
-            isExplicitWake = false
-        }
+        let isFacingScreen = dependencies.isFacingScreen()
         let route = dependencies.addresseePolicy.route(
             utterance,
             at: timestamp,
             engagement: engagement,
-            pending: pendingClarification
+            pending: pendingClarification,
+            isFacingScreen: isFacingScreen
         )
 
         switch route {
-        case .wakeOnly:
-            onAddressedActivity()
-            clearPendingClarification()
-            voiceLatency.selectPath(.fast, generation: generation, turnID: turnID)
-            await speakAndResume(
-                "なあに？",
-                engagementUpdate: .arm,
-                generation: generation,
-                turnID: turnID
-            )
         case .accept(let accepted):
             onAddressedActivity()
             clearPendingClarification()
             voiceLatency.selectPath(.fast, generation: generation, turnID: turnID)
             await generateReply(
                 to: accepted,
-                engagementUpdate: isExplicitWake || !wasEngaged ? .arm : .refresh,
+                engagementUpdate: isFacingScreen || !wasEngaged ? .arm : .refresh,
                 generation: generation,
                 turnID: turnID
             )

@@ -655,7 +655,13 @@ actor ConversationCompletionProbe {
 }
 
 @MainActor
+final class ConversationTestAttention {
+    var isFacingScreen = false
+}
+
+@MainActor
 final class ConversationHarness {
+    let attention = ConversationTestAttention()
     let calls: ConversationTestCallLog
     let now: ConversationTestNow
     let microphone: FakeMicrophonePermission
@@ -676,6 +682,7 @@ final class ConversationHarness {
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
+        isFacingScreen: (@MainActor @Sendable () -> Bool)? = nil,
         microphoneAllowed: Bool = true,
         modelAvailabilityResult: ModelAvailability = .available,
         permissionGate: ConversationTestGate? = nil,
@@ -751,6 +758,7 @@ final class ConversationHarness {
         self.audio = audio
         self.teardownProbe = teardownProbe
         self.latency = latency
+        let attention = self.attention
         let dependencies = ConversationDependencies(
             microphonePermission: microphone,
             modelAvailability: modelAvailability,
@@ -762,6 +770,7 @@ final class ConversationHarness {
             latency: latency,
             replyTraceSink: replyTraceSink,
             memory: memory,
+            isFacingScreen: isFacingScreen ?? { attention.isFacingScreen },
             now: { now.value },
             clarificationDelay: clarificationDelay,
             noticeDelay: noticeDelay,

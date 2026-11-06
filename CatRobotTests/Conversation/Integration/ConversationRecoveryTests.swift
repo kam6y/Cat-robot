@@ -154,11 +154,13 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(classifierCalls, ["明日の予定は？"])
     }
 
-    func testNewExplicitWakeSupersedesPendingBeforeFreshEngagement() async {
+    func testNewFacingQuestionSupersedesPendingBeforeFreshEngagement() async {
         let harness = ConversationHarness(classification: .ambiguous)
         await harness.completeUnengagedTurn("明日の予定は？", at: 0)
 
-        await harness.completeUnengagedTurn("猫ちゃん、今日どう？", at: 3)
+        harness.attention.isFacingScreen = true
+        await harness.completeUnengagedTurn("今日どう？", at: 3)
+        harness.attention.isFacingScreen = false
         await harness.completeTurn("もう少し教えて", at: 10)
 
         let replyPrompts = await harness.reply.prompts
@@ -422,7 +424,7 @@ final class ConversationRecoveryTests: XCTestCase {
         let replyPrompts = await harness.reply.prompts
         let spokenTexts = await harness.speaker.texts
         XCTAssertEqual(resetCount, 1)
-        XCTAssertEqual(replyPrompts, ["長い話の続き"])
+        XCTAssertEqual(replyPrompts, ["猫ちゃん、長い話の続き"])
         XCTAssertTrue(spokenTexts.isEmpty)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.contextExceeded))
         XCTAssertEqual(
@@ -598,7 +600,7 @@ final class ConversationRecoveryTests: XCTestCase {
         await harness.emitCompletedUtterance("猫ちゃん、新しい質問", at: 3)
 
         let prompts = await harness.reply.prompts
-        XCTAssertEqual(prompts, ["文字の質問", "新しい質問"])
+        XCTAssertEqual(prompts, ["文字の質問", "猫ちゃん、新しい質問"])
     }
 
     func testTypedNoResumeRetainsOwnershipUntilAudioDeactivationCompletes() async {
