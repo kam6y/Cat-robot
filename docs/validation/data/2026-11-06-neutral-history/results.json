@@ -1,0 +1,219 @@
+{
+  "baseline": {
+    "phase": "baseline",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "7c03f693a6e3360bb03f32fa77ea07592c009451",
+    "workingPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 100,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "red": {
+    "phase": "red",
+    "stage": "focused",
+    "exitCode": 65,
+    "timedOut": false,
+    "head": "7c03f693a6e3360bb03f32fa77ea07592c009451",
+    "workingPatchSha256": "8e18b77b355b6077465822dd725e0d6271e16a8432bf7406c10b4b0f1c85f16b",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Failed",
+    "passedTests": 100,
+    "failedTests": 1,
+    "skippedTests": 0,
+    "testFailures": [
+      {
+        "failureText": "XCTAssertEqual failed: (\"nil\") is not equal to (\"Optional([CatRobot.ConversationMemoryTurn(prompt: \"今日の天気はどう？\", response: \"今の、ぼくに言った？\")])\")",
+        "targetName": "CatRobotTests",
+        "testIdentifier": 55,
+        "testIdentifierString": "ConversationMemoryIntegrationTests/testClarificationHistoryReachesTheNaturalConfirmationSession()",
+        "testIdentifierURL": "test://com.apple.xcode/CatRobot/CatRobotTests/ConversationMemoryIntegrationTests/testClarificationHistoryReachesTheNaturalConfirmationSession",
+        "testName": "testClarificationHistoryReachesTheNaturalConfirmationSession()"
+      }
+    ]
+  },
+  "centralGreen": {
+    "phase": "green",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "7c03f693a6e3360bb03f32fa77ea07592c009451",
+    "workingPatchSha256": "5d4a0476c27906f592ed346a30e460cd193cb039af5163b36df981c5df87faf5",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 101,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "boundariesGreen": {
+    "phase": "boundaries-fixed",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "7c03f693a6e3360bb03f32fa77ea07592c009451",
+    "workingPatchSha256": "140d5df6463b71524294f9d194eb534862a6f65383bbfe443975e4526da59515",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 107,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "fullGreen": {
+    "phase": "boundaries-fixed",
+    "stage": "full",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "workingPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 976,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "normalBuild": {
+    "build": "passed",
+    "gitCommit": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "sourceDigest": "6ccf9cb2f9868a4b5fca04809cd0103ecd5d2bc5cae4a0cd8978f4ab317d8c38",
+    "app": "/tmp/cat-issue23-neutral-history-20261106/normal/Verified/CatRobot.app",
+    "bundleIdentifier": "com.kamby.CatRobot",
+    "codesignVerified": true,
+    "testPlugins": 0,
+    "modelsVerified": 8,
+    "originalApp": "/tmp/cat-smart-turn-clean-20261105/NormalDerived/Build/Products/Debug-iphoneos/CatRobot.app"
+  },
+  "normalInstall": {
+    "gitCommit": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "sourceDigest": "6ccf9cb2f9868a4b5fca04809cd0103ecd5d2bc5cae4a0cd8978f4ab317d8c38",
+    "bundleIdentifier": "com.kamby.CatRobot",
+    "installed": true,
+    "launched": true,
+    "processPresent": true,
+    "pid": 9789,
+    "codesignVerified": true,
+    "testPlugins": 0,
+    "arguments": [],
+    "environmentVariableNames": [
+      "TERM"
+    ],
+    "note": "Pre-review-cleanup source3cce146; later production delta is contract comment only. Final main build/install receipts stored separately after integration."
+  },
+  "base": "7c03f693a6e3360bb03f32fa77ea07592c009451",
+  "sourceReviewHead": "3cce14649e898f9428064f3c93bc0e948153e82e",
+  "codePatchSha256": "140d5df6463b71524294f9d194eb534862a6f65383bbfe443975e4526da59515",
+  "projectGenerator": "PASS: deterministic CatRobot project contract",
+  "finalBuild": {
+    "phase": "final",
+    "stage": "build",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "workingPatchSha256": "e87ba229247210ba95573fc83727b7e3b91e0041050ef787ce666279bb35b98a",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "testHost": "Existing SUPER_INTEGRATION_TESTS=1 disables live composition; no stage/run ID, explicit device-test exclusions"
+  },
+  "finalFocused": {
+    "phase": "final",
+    "stage": "focused",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "workingPatchSha256": "e87ba229247210ba95573fc83727b7e3b91e0041050ef787ce666279bb35b98a",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 107,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "finalFull": {
+    "phase": "final",
+    "stage": "full",
+    "exitCode": 0,
+    "timedOut": false,
+    "head": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "workingPatchSha256": "e87ba229247210ba95573fc83727b7e3b91e0041050ef787ce666279bb35b98a",
+    "destination": "iPhone 18 Pro / iOS 27.0 Simulator",
+    "dedicatedHardwareAndPaidTestsExcluded": true,
+    "result": "Passed",
+    "passedTests": 976,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "testFailures": []
+  },
+  "finalRuntimeInput": {
+    "head": "3cce14649e898f9428064f3c93bc0e948153e82e",
+    "patchSha256": "e87ba229247210ba95573fc83727b7e3b91e0041050ef787ce666279bb35b98a",
+    "scope": [
+      "CatRobot",
+      "CatRobotTests",
+      "CatRobot.xcodeproj"
+    ]
+  },
+  "reviewReports": {
+    "codex-code-review.md": {
+      "sha256": "5a3d4cba013e23bd6c80ea26cd071d141c33b584789eb0c84344f86d5db21aa7",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/codex-code-review.md"
+    },
+    "claude-simplify.md": {
+      "sha256": "940438fbd5ced8009216470d17063b355c3325276037bc7144b6e9173b615b32",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/claude-simplify.md"
+    },
+    "codex-reception.md": {
+      "sha256": "7f81012002ec6a7d530ede25da1a1ac6afac9e28f0a033198b3ac4106e6cf70b",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/codex-reception.md"
+    },
+    "claude-reception.md": {
+      "sha256": "576e8712cb7d429cdafae475c1ee01ce27a1c2bd3b5c1fed75ec68f85d203cc0",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/claude-reception.md"
+    },
+    "codex-final-review.md": {
+      "sha256": "a10c76ba25b9b6e35c26d1e12985d91c4a61ed7a2754cce0647d78af496142a2",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/codex-final-review.md"
+    },
+    "claude-final-review.md": {
+      "sha256": "c19759cb17b324032e51cbd43dbe44e4ccb267871ade3043382db6566ad48dec",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/claude-final-review.md"
+    },
+    "root-review-dispositions.md": {
+      "sha256": "8ca4e912d0b3aab7b7157d333ca3c2d68ec2e72a57adbebf224427625564d33e",
+      "path": "/tmp/cat-issue23-neutral-history-20261106/root-review-dispositions.md"
+    }
+  },
+  "reviews": {
+    "independentInitial": "no findings; C1 documentation omission corrected in reception",
+    "simplify": {
+      "actualSkillInvoked": true,
+      "parallelReadOnlyAngles": [
+        "reuse",
+        "simplification",
+        "efficiency",
+        "altitude"
+      ],
+      "important": 1,
+      "importantResolved": "C1 README plus living requirements privacy wording"
+    },
+    "reciprocalReception": true,
+    "finalRemainingCritical": 0,
+    "finalRemainingImportant": 0,
+    "finalRemainingMinor": 0,
+    "fixDiffSha256": "22e4646f01f8a2cf3bab76d23e7da68854fc1341d2e774ec913738f8a4c75639"
+  },
+  "testAuthoringCorrection": "Boundary-test build found a test-only gate API typo (release vs existing open); corrected, then rebuilt and all107 related plus976 full tests passed.",
+  "integrationProofAfterCommit": "/tmp/cat-issue23-neutral-history-20261106/integration.json",
+  "mainNormalProofAfterCommit": "/tmp/cat-issue23-neutral-history-20261106/main-normal/normal-verification.json"
+}

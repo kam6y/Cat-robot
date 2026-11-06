@@ -44,6 +44,7 @@ protocol ConversationMemoryStore: Sendable {
 
 protocol ConversationMemoryManaging: Sendable {
     func prepareMemory() async throws
+    func recordExternalTurn(prompt: String, response: String) async
     func memoryState() async -> ConversationMemoryState
     func memoryUpdates() async -> AsyncStream<ConversationMemoryState>
     func retryMemoryOperation() async throws

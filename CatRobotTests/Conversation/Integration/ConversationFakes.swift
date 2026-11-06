@@ -404,7 +404,7 @@ actor FakeSpeechRecognizer: SpeechRecognizing {
 }
 
 actor FakeAddressClassifier: AddressClassifying {
-    private let result: AddressTarget
+    private var result: AddressTarget
     private let log: ConversationTestCallLog
     private(set) var calls: [String] = []
 
@@ -418,6 +418,8 @@ actor FakeAddressClassifier: AddressClassifying {
         log.append(.classify(utterance))
         return result
     }
+
+    func setResult(_ result: AddressTarget) { self.result = result }
 }
 
 actor FakeReplyService: ReplyGenerating {
@@ -656,6 +658,7 @@ final class ConversationHarness {
 
     init(
         recognizerOverride: (any SpeechRecognizing)? = nil,
+        replyOverride: (any ReplyGenerating)? = nil,
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
@@ -737,7 +740,7 @@ final class ConversationHarness {
             modelAvailability: modelAvailability,
             recognizer: recognizerOverride ?? recognizer,
             classifier: classifier,
-            reply: reply,
+            reply: replyOverride ?? reply,
             speaker: speaker,
             audioSession: audio,
             latency: latency,

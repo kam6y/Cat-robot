@@ -45,6 +45,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | [2026-10-28 日本語の読み変換](superpowers/specs/2026-10-28-jpreprocess-pronunciation-design.md) | jpreprocessによる読み変換と旧2語置換の廃止 |
 | [2026-10-29 話し始めるまでの短縮](superpowers/specs/2026-10-29-response-latency-design.md) | モデル・声を維持し、短い一文目の音声を確定待ち中に準備 |
 | [2026-10-29 日本語読み上げの修復](superpowers/specs/2026-10-29-natural-japanese-speech-repair-design.md) | 日本語の原表記を保ち、Latin語/+だけを補正する現行仕様 |
+| [2026-11-06 中立発話の履歴](superpowers/specs/2026-11-06-neutral-history-design.md) | issue #23。元発話と正常完了した聞き返しを保存し、次のClaude応答へ渡す |
 
 進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。
 
@@ -88,6 +89,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | 2026-10-29 日本語読み変換の相互レビュー | [記録](validation/2026-10-29-jpreprocess-cross-review.md) | 双方の受領評価、補正漏れ/ビルド検査の修正、mmapの実機測定。発音・自然さの聴取評価は未確認 |
 | 2026-10-29 話し始めるまでの短縮 | [仕上げと相互レビュー](validation/2026-10-29-response-latency-finish.md)、[旧54試行の履歴](validation/2026-10-29-response-latency.md)、[計画](superpowers/plans/2026-10-29-response-latency.md) | 日本語を残す現行方式66試行が基準合格。現モデル3件は再利用0件で、普段の会話の改善量・音声境界からの遅延・聴取評価は未確認 |
 | 2026-10-29 日本語読み上げの修復 | [記録](validation/2026-10-29-natural-japanese-speech-repair.md) | 利用者がC方式を自然と選択。全体846成功/2skip、native22成功、実機固定文再生成功。未対応漢字と全文章/全声の品質は制約が残る |
+| 2026-11-06 中立発話の履歴 | [記録](validation/2026-11-06-neutral-history.md)、[結果](validation/data/2026-11-06-neutral-history/results.json) | 履歴保存・次セッションの文脈は実VM/実記憶サービスで確認。実classifier・実モデルの意味解釈と実音声会話は未検証 |
 
 ## 2026-10-28 main 整理の検証
 

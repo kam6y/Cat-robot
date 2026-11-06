@@ -1,5 +1,6 @@
 struct UnsupportedConversationMemoryManager: ConversationMemoryManaging {
     func prepareMemory() async throws {}
+    func recordExternalTurn(prompt: String, response: String) async {}
     func retryMemoryOperation() async throws {}
     func memoryState() async -> ConversationMemoryState { .unsupported }
     func memoryUpdates() async -> AsyncStream<ConversationMemoryState> {

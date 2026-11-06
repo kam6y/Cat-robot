@@ -144,7 +144,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         try? await saveMemory(epoch: epoch)
     }
 
-    /// 端末内モデルで答えた往復を記憶に加える。Claude の生きたセッションには無い内容なので、次回は作り直す。
+    /// Claude セッション外で生まれた往復を記憶に加え、次回は記憶からセッションを作り直す。
     func recordExternalTurn(prompt: String, response: String) async {
         guard prepared, forgetting == nil else { return }
         let epoch = operationEpoch

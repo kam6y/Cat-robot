@@ -1028,6 +1028,7 @@ final class ConversationViewModel {
                         )
                         await speakAndResume(
                             "今の、ぼくに言った？",
+                            memoryPrompt: candidate.trimmingCharacters(in: .whitespacesAndNewlines),
                             presentationPhase: .clarifying,
                             engagementUpdate: .none,
                             generation: generation,
@@ -1131,6 +1132,7 @@ final class ConversationViewModel {
 
     private func speakAndResume(
         _ text: String,
+        memoryPrompt: String? = nil,
         presentationPhase: ConversationPhase = .speaking,
         engagementUpdate: EngagementUpdate,
         generation: UInt64,
@@ -1167,6 +1169,11 @@ final class ConversationViewModel {
                   !Task.isCancelled else { return }
             guard finishedNormally else {
                 throw ConversationServiceError.speechSynthesisFailed
+            }
+
+            if let memoryPrompt {
+                await dependencies.memory.recordExternalTurn(prompt: memoryPrompt, response: text)
+                guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             }
 
             trace?.finish(.success)
