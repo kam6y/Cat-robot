@@ -53,11 +53,11 @@ final class ConversationCamera: FaceCaptureSource, CameraSnapshotProviding {
     func events() -> AsyncStream<FaceCaptureEvent> { stream }
 
     /// A current head direction, independent of robot connection and tracking preference.
+    /// Any valid facing face counts, even when other people are in the frame.
     func hasFreshFacingFace(yawCorrection: Double) -> Bool {
         guard eligible, attentionRequested, physicalGeneration != nil,
               source.authorization == .authorized, let observation = latestAttention,
-              CameraSnapshot.isFresh(capturedAt: observation.capturedAt, now: clock.now),
-              observation.faces.count == 1 else { return false }
+              CameraSnapshot.isFresh(capturedAt: observation.capturedAt, now: clock.now) else { return false }
         return FaceTrackingGeometry.selectFace(observation.faces, yawCorrection: yawCorrection) != nil
     }
 
