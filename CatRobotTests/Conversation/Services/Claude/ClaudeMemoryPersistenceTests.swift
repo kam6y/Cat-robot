@@ -89,6 +89,45 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         let recovered = await sut.memoryState()
         XCTAssertEqual(recovered, .ready)
     }
+
+    func testNoContentCompactionSaveFailureRetriesAndRestoresTheCommittedMemory() async {
+        for previous in ["", "- 好きな飲み物は紅茶"] {
+            let store = MemoryStoreFake(snapshot: ClarificationSummaryFixture.snapshot(summary: previous))
+            await store.setSaveFailure(true)
+            let usage = ConversationUsageSpy()
+            let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [ClarificationSummaryFixture.nextTurn.response])],
+                                             summaries: [.noContent])
+            let service = makeClaudeService(factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+            do { try await drain(service.streamReply(to: ClarificationSummaryFixture.nextTurn.prompt)) }
+            catch { XCTFail("noContent must still commit the generated reply before save retry: \(error)"); continue }
+            let unsaved = await service.memoryState()
+            let chargedTurns = await usage.turns.count
+            XCTAssertEqual(unsaved, .unsaved)
+            XCTAssertEqual(chargedTurns, 1)
+            await store.setSaveFailure(false)
+            do { try await service.retryMemoryOperation() }
+            catch { XCTFail("Retry must persist the latest compacted memory: \(error)"); continue }
+            let saved = await store.snapshot
+            let state = await service.memoryState()
+            XCTAssertEqual(state, .ready)
+            XCTAssertEqual(saved?.summary, previous)
+            XCTAssertEqual(saved?.turns, ClarificationSummaryFixture.retained() + [ClarificationSummaryFixture.nextTurn])
+            XCTAssertEqual(saved?.schemaVersion, 1)
+            XCTAssertEqual(saved?.memoryCompatibilityID, "claude-memory-v1")
+
+            let restoredFactory = StubSessionFactory()
+            let restored = makeClaudeService(restoredFactory, store: store)
+            do { try await drain(restored.streamReply(to: "保存を再試行した後の話")) }
+            catch { XCTFail("Retried noContent snapshot must restore normally: \(error)"); continue }
+            let instructions = await restoredFactory.sessions.first?.configuration.instructions ?? ""
+            XCTAssertTrue(instructions.contains("利用者: 次の話\n猫: 新しい返事。"))
+            XCTAssertFalse(instructions.contains(ClarificationSummaryFixture.original.prompt))
+            if !previous.isEmpty { XCTAssertTrue(instructions.contains(previous)) }
+            let events = await store.events
+            XCTAssertEqual(Array(events.prefix(2)), ["saveFailed", "save"])
+        }
+    }
+
     func testConcurrentPreparationLoadsOnce() async throws {
         let gate = ConversationTestGate()
         let store = MemoryStoreFake(snapshot: seed(), loadGate: gate)
@@ -118,7 +157,7 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
             revision: 1, savedAt: Date(), summary: "前の記憶",
             turns: (0..<4).map { .init(prompt: "\($0)" + String(repeating: "x", count: 4_100), response: "R") })
         let store = InMemoryConversationMemoryStore(snapshot: initial)
-        let factory = StubSessionFactory(summaries: ["memory-1"])
+        let factory = StubSessionFactory(summaries: [.text("memory-1")])
         try await drain(makeClaudeService(factory, store: store).streamReply(to: "続き"))
         let requests = await factory.summaryRequests
         XCTAssertEqual(requests.count, 1)

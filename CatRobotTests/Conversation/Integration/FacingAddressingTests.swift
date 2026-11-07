@@ -10,12 +10,12 @@ final class FacingAddressingTests: XCTestCase {
             pending: nil, isFacingScreen: true), .accept("猫ちゃん、今日どう？"))
     }
 
-    func testPendingYesAndNoTakePriorityOverFacingButFreshQuestionCanReplacePending() {
+    func testFacingDuringPendingAcceptsActualWordsAndStillIgnoresFiller() {
         let pending = PendingClarification(utterance: "明日の予定は？", at: 0)
         XCTAssertEqual(AddresseePolicy().route("はい", at: 2, engagement: .inactive,
-            pending: pending, isFacingScreen: true), .accept("明日の予定は？"))
+            pending: pending, isFacingScreen: true), .accept("はい"))
         XCTAssertEqual(AddresseePolicy().route("ううん", at: 2, engagement: .inactive,
-            pending: pending, isFacingScreen: true), .dismissPending)
+            pending: pending, isFacingScreen: true), .accept("ううん"))
         XCTAssertEqual(AddresseePolicy().route("今日どう？", at: 2, engagement: .inactive,
             pending: pending, isFacingScreen: true), .accept("今日どう？"))
         XCTAssertEqual(AddresseePolicy().route("えっと", at: 2, engagement: .inactive,
@@ -55,7 +55,7 @@ final class FacingAddressingTests: XCTestCase {
         }
     }
 
-    func testFreshFacingSupersedesPendingAndNegativeStillDismisses() async {
+    func testFacingDuringPendingGeneratesFromActualWordsWithoutClassifier() async {
         for answer in ["今日どう？", "いいえ"] {
             let h = ConversationHarness(classification: .ambiguous)
             await h.completeTurn("明日の予定は？", at: 0)
@@ -63,7 +63,7 @@ final class FacingAddressingTests: XCTestCase {
             await h.completeTurn(answer, at: 3)
             let replies = await h.reply.prompts
             let classified = await h.classifier.calls
-            XCTAssertEqual(replies, answer == "いいえ" ? [] : ["今日どう？"])
+            XCTAssertEqual(replies, [answer])
             XCTAssertEqual(classified, ["明日の予定は？"])
             await h.sut.shutdown()
         }

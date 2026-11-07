@@ -168,7 +168,7 @@ extension ConversationViewState {
     static let preparing = entering(.preparing)
     static let listening = entering(.listening)
     static let thinking = entering(.thinking)
-    static let clarifying = entering(.clarifying, caption: "今の、ぼくに言った？")
+    static let clarifying = entering(.clarifying, caption: ClarificationContext.question)
 
     static func speaking(caption: String) -> Self {
         entering(.speaking, caption: caption)

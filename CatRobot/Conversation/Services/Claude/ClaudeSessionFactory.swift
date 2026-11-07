@@ -6,6 +6,9 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
     static let replyTimeout: TimeInterval = 30
     // Thinking and the visible answer share this output budget.
     static let maximumResponseTokens = 4_096
+    // 要約だけの上限。構造化出力のJSONも同じ枠に入る（旧既定は characterLimit*2=2,400）。
+    // 打ち切られずに解析できることを保証する値ではなく、上限付近の実token使用量・打切り率は未計測。
+    static let summaryMaximumResponseTokens = 4_096
     private let auth: ClaudeAuthConfiguration
 
     init(auth: ClaudeAuthConfiguration) { self.auth = auth }
@@ -50,14 +53,12 @@ struct ClaudeSessionFactory: ConversationSessionFactory {
         }
     }
 
-    func summarize(_ request: ConversationSummaryRequest) async throws -> String {
+    func summarize(_ request: ConversationSummaryRequest) async throws -> ConversationSummaryResult {
         let session = LanguageModelSession(model: try languageModel(.haiku5_5, effort: .low),
                                            instructions: Instructions(ConversationSummaryRequest.instructions))
-        let response = try await session.respond(to: request.prompt,
-                                                 options: GenerationOptions(maximumResponseTokens: request.characterLimit * 2))
-        let summary = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !summary.isEmpty, summary.count <= request.characterLimit else { throw ConversationServiceError.modelGenerationFailed }
-        return summary
+        let response = try await session.respond(to: request.prompt, generating: GeneratedConversationSummary.self,
+                                                 options: GenerationOptions(maximumResponseTokens: Self.summaryMaximumResponseTokens))
+        return try response.content.result(characterLimit: request.characterLimit)
     }
 
     func consolidateFacts(_ facts: [LongTermFact]) async throws -> [LongTermFact] {

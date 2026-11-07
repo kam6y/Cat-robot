@@ -954,7 +954,9 @@ final class ConversationViewModel {
            timestamp >= pendingClarification.expiresAt {
             clearPendingClarification()
         }
-        let isCorrectingPending = pendingClarification != nil
+        // Keep the routing-start context even if the pending timer expires during classification.
+        let clarification = pendingClarification.map { ClarificationContext(originalUtterance: $0.utterance) }
+        let isCorrectingPending = clarification != nil
         let wasEngaged = engagement.isActive(at: timestamp)
         let isFacingScreen = dependencies.isFacingScreen()
         let route = dependencies.addresseePolicy.route(
@@ -977,7 +979,7 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         case .classify(let candidate):
-            clearPendingClarification()
+            let request = AddressClassificationRequest(utterance: candidate, clarification: clarification)
             voiceLatency.selectPath(.classified, generation: generation, turnID: turnID)
             transition(to: .classifying)
             do {
@@ -986,7 +988,7 @@ final class ConversationViewModel {
                 var classificationOutcome = ReplyTraceOutcome.generationFailure
                 let target = try await ReplyTraceContext.$current.withValue(trace) {
                     defer { trace?.mark(.classificationFinished, outcome: classificationOutcome) }
-                    let value = try await dependencies.classifier.classify(candidate)
+                    let value = try await dependencies.classifier.classify(request)
                     classificationOutcome = .success
                     return value
                 }
@@ -1015,7 +1017,7 @@ final class ConversationViewModel {
                             generation: generation
                         )
                         await speakAndResume(
-                            "今の、ぼくに言った？",
+                            ClarificationContext.question,
                             memoryPrompt: candidate.trimmingCharacters(in: .whitespacesAndNewlines),
                             presentationPhase: .clarifying,
                             engagementUpdate: .none,
@@ -1032,10 +1034,6 @@ final class ConversationViewModel {
                     owner: .turn(generation: generation, turnID: turnID)
                 )
             }
-        case .dismissPending:
-            clearPendingClarification()
-            voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
-            await resumeCapture(generation: generation, turnID: turnID)
         case .ignore:
             voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
             await resumeCapture(generation: generation, turnID: turnID)

@@ -4,10 +4,27 @@ import FoundationModels
 
 func makeClaudeService(_ factory: StubSessionFactory = StubSessionFactory(),
                        store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
-                       usage: ConversationUsageSpy = ConversationUsageSpy()) -> ClaudeConversationService {
+                       usage: ConversationUsageSpy = ConversationUsageSpy(),
+                       budget: ConversationBudget = .default) -> ClaudeConversationService {
     ClaudeConversationService(factory: factory, memoryStore: store,
                               longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                              tools: StaticToolProvider([]), configuration: { .init() }, usage: usage)
+                              tools: StaticToolProvider([]), configuration: { .init() }, usage: usage, budget: budget)
+}
+
+enum ClarificationSummaryFixture {
+    static let budget = ConversationBudget(compactionTriggerCharacters: 60, retainedCharacters: 45)
+    static let original = ConversationMemoryTurn(prompt: "私はピーナッツアレルギーです", response: ClarificationContext.question)
+    static let nextTurn = ConversationMemoryTurn(prompt: "次の話", response: "新しい返事。")
+
+    static func retained(confirmation: String = "うん、私のこと") -> [ConversationMemoryTurn] {
+        [.init(prompt: confirmation, response: "わかったよ。"),
+         .init(prompt: String(repeating: "後", count: 30), response: String(repeating: "返", count: 6))]
+    }
+
+    static func snapshot(summary: String = "", confirmation: String = "うん、私のこと") -> ConversationMemorySnapshot {
+        .init(schemaVersion: 1, memoryCompatibilityID: ClaudeMemoryCompatibility.current, revision: 1, savedAt: Date(),
+              summary: summary, turns: [original] + retained(confirmation: confirmation))
+    }
 }
 
 actor ConversationUsageSpy: ConversationUsageMetering {
@@ -41,17 +58,20 @@ actor StubSessionFactory: ConversationSessionFactory {
     private(set) var consolidations = 0
     /// セッション生成ごとに順に返す。足りなければ最後を使い回す。ScriptedSessionClient 以外（ゲート付きなど）も渡せる。
     private let scripts: [any ConversationSessionClient]
-    private let summaries: [String]
+    private let summaries: [ConversationSummaryResult]
     private let authenticationError: (any Error)?
     private let summaryError: (any Error)?
+    private let summaryGate: ConversationTestGate?
 
     init(scripts: [any ConversationSessionClient] = [ScriptedSessionClient(chunks: ["にゃ", "ん。"])],
-         summaries: [String] = ["要約1", "要約2"],
-         authenticationError: (any Error)? = nil, summaryError: (any Error)? = nil) {
+         summaries: [ConversationSummaryResult] = [.text("要約1"), .text("要約2")],
+         authenticationError: (any Error)? = nil, summaryError: (any Error)? = nil,
+         summaryGate: ConversationTestGate? = nil) {
         self.scripts = scripts
         self.summaries = summaries
         self.authenticationError = authenticationError
         self.summaryError = summaryError
+        self.summaryGate = summaryGate
     }
 
     func authenticateIfNeeded() async throws {
@@ -63,8 +83,9 @@ actor StubSessionFactory: ConversationSessionFactory {
         return scripts[min(sessions.count - 1, scripts.count - 1)]
     }
 
-    func summarize(_ request: ConversationSummaryRequest) async throws -> String {
+    func summarize(_ request: ConversationSummaryRequest) async throws -> ConversationSummaryResult {
         summaryRequests.append(request)
+        await summaryGate?.wait()
         if let summaryError { throw summaryError }
         return summaries[min(summaryRequests.count - 1, summaries.count - 1)]
     }

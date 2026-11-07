@@ -405,21 +405,50 @@ actor FakeSpeechRecognizer: SpeechRecognizing {
 
 actor FakeAddressClassifier: AddressClassifying {
     private var result: AddressTarget
+    private var error: ConversationServiceError?
     private let log: ConversationTestCallLog
     private(set) var calls: [String] = []
+    private(set) var requests: [AddressClassificationRequest] = []
 
     init(result: AddressTarget, log: ConversationTestCallLog) {
         self.result = result
         self.log = log
     }
 
-    func classify(_ utterance: String) async throws -> AddressTarget {
-        calls.append(utterance)
-        log.append(.classify(utterance))
+    func classify(_ request: AddressClassificationRequest) async throws -> AddressTarget {
+        requests.append(request)
+        calls.append(request.utterance)
+        log.append(.classify(request.utterance))
+        if let error { throw error }
         return result
     }
 
     func setResult(_ result: AddressTarget) { self.result = result }
+    func setError(_ error: ConversationServiceError?) { self.error = error }
+}
+
+/// 本物の FoundationModelAddressClassifier の下で、モデル呼び出しだけを置き換える。
+actor RecordingAddressModelClient: AddressModelClient {
+    private var result: GeneratedAddressTarget
+    private let error: ConversationServiceError?
+    /// 指定すると要求を記録した後にこのゲートで待つ（分類中の期限切れや停止を再現する）。
+    private let gate: ConversationTestGate?
+    private(set) var requests: [AddressClassificationRequest] = []
+
+    init(result: GeneratedAddressTarget, error: ConversationServiceError? = nil, gate: ConversationTestGate? = nil) {
+        self.result = result
+        self.error = error
+        self.gate = gate
+    }
+
+    func classify(_ request: AddressClassificationRequest) async throws -> GeneratedAddressTarget {
+        requests.append(request)
+        await gate?.wait()
+        if let error { throw error }
+        return result
+    }
+
+    func setResult(_ result: GeneratedAddressTarget) { self.result = result }
 }
 
 actor FakeReplyService: ReplyGenerating {
@@ -566,6 +595,12 @@ actor FakeSpeechSpeaker: TestSentenceSpeaker {
         continuations[index].finish()
     }
 
+    /// 指定の読み上げだけを途中で失敗させる（それまでの読み上げは成功させられる）。
+    func fail(run index: Int, with error: ConversationServiceError) {
+        guard continuations.indices.contains(index) else { return }
+        continuations[index].finish(throwing: error)
+    }
+
     func waitUntilTextCount(_ count: Int) async {
         guard texts.count < count else { return }
         await withCheckedContinuation { continuation in
@@ -682,6 +717,8 @@ final class ConversationHarness {
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         classification: AddressTarget = .addressed,
+        /// 指定すると fake の代わりにこの分類器（共有factoryの実routerなど）をVMへ渡す。
+        classifierOverride: (any AddressClassifying)? = nil,
         isFacingScreen: (@MainActor @Sendable () -> Bool)? = nil,
         microphoneAllowed: Bool = true,
         modelAvailabilityResult: ModelAvailability = .available,
@@ -763,7 +800,7 @@ final class ConversationHarness {
             microphonePermission: microphone,
             modelAvailability: modelAvailability,
             recognizer: recognizerOverride ?? recognizer,
-            classifier: classifier,
+            classifier: classifierOverride ?? classifier,
             reply: replyOverride ?? reply,
             speaker: speaker,
             audioSession: audio,

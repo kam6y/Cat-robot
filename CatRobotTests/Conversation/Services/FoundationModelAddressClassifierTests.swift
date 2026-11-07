@@ -31,6 +31,19 @@ final class FoundationModelAddressClassifierTests: XCTestCase {
             XCTAssertEqual(error as? ConversationServiceError, .guardrailViolation)
         }
     }
+
+    func testClassificationPreservesClarificationContext() async throws {
+        let client = FakeAddressModelClient(outputs: [.addressed])
+        let classifier = FoundationModelAddressClassifier(client: client)
+        let request = AddressClassificationRequest(utterance: "言ったよ",
+            clarification: .init(originalUtterance: "今日の天気はどう？"))
+
+        let target = try await classifier.classify(request)
+        let requests = await client.requests
+
+        XCTAssertEqual(target, .addressed)
+        XCTAssertEqual(requests, [request])
+    }
 }
 
 private enum FakeAddressModelError: Equatable, Sendable {
@@ -41,6 +54,7 @@ private actor FakeAddressModelClient: AddressModelClient {
     private var outputs: [GeneratedAddressTarget]
     private let error: FakeAddressModelError?
     private(set) var prompts: [String] = []
+    private(set) var requests: [AddressClassificationRequest] = []
 
     init(outputs: [GeneratedAddressTarget]) {
         self.outputs = outputs
@@ -56,8 +70,9 @@ private actor FakeAddressModelClient: AddressModelClient {
         prompts.count
     }
 
-    func classify(_ utterance: String) throws -> GeneratedAddressTarget {
-        prompts.append(utterance)
+    func classify(_ request: AddressClassificationRequest) throws -> GeneratedAddressTarget {
+        requests.append(request)
+        prompts.append(request.utterance)
 
         if error == .guardrailViolation {
             throw LanguageModelSession.GenerationError.guardrailViolation(

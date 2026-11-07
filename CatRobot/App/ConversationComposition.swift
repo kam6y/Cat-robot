@@ -61,9 +61,9 @@ struct ConversationComposition {
                                                       secondaryAvailability: onDeviceAvailability, usage: usage,
                                                       configuration: configuration, motion: replyTurnObserver)
         let reply = MotionReplyGenerator(base: fallback, motion: replyTurnObserver)
-        let classifier = RoutedAddressClassifier(onDevice: FoundationModelAddressClassifier(),
-                                                 onDeviceAvailability: onDeviceAvailability,
-                                                 claude: FoundationModelAddressClassifier(client: ClaudeAddressModelClient(auth: auth)))
+        let classifier = makeAddressClassifier(onDevice: FoundationModelAddressClassifier(),
+                                               onDeviceAvailability: onDeviceAvailability,
+                                               claudeClient: ClaudeAddressModelClient(auth: auth))
 
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let smartTurn = SmartTurnService(root: resources.appendingPathComponent("SmartTurn"))
@@ -101,5 +101,13 @@ struct ConversationComposition {
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
                     longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, faceTracking: faceTracking, camera: camera, robotSettings: robotSettings)
+    }
+
+    /// 宛先判定の組み立て。Claude側のclientを包むところまで、liveと試験で同じ経路を使う。
+    static func makeAddressClassifier(onDevice: any AddressClassifying,
+                                      onDeviceAvailability: any ModelAvailabilityChecking,
+                                      claudeClient: any AddressModelClient) -> RoutedAddressClassifier {
+        RoutedAddressClassifier(onDevice: onDevice, onDeviceAvailability: onDeviceAvailability,
+                                claude: FoundationModelAddressClassifier(client: claudeClient))
     }
 }

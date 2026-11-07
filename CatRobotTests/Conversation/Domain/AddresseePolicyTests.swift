@@ -18,10 +18,14 @@ final class AddresseePolicyTests: XCTestCase {
         XCTAssertEqual(AddresseePolicy().route("続けて", at: 301, engagement: engagement, pending: nil), .classify("続けて"))
     }
 
-    func testAffirmativeUsesPendingOriginalAndNegativeExplicitlyDismissesIt() {
+    func testPendingSpeechUsesActualWordsWithoutYesNoRewrite() {
         let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
-        XCTAssertEqual(AddresseePolicy().route("うん", at: 2, engagement: .inactive, pending: pending), .accept("明日の予定は？"))
-        XCTAssertEqual(AddresseePolicy().route("違う", at: 2, engagement: .inactive, pending: pending), .dismissPending)
+        // 短い肯定・否定も言い方の違う返事も、元の発言へ置き換えず、文脈つきの宛先判定へ渡す。
+        for reply in ["はい", "うん。", "そうだよ", "いいえ", "ううん", "違う", "そうじゃない。",
+                      "言ったよ", "違うよ、ママに言ったの", "猫ちゃん、別の質問"] {
+            XCTAssertEqual(AddresseePolicy().route(reply, at: 2, engagement: .inactive, pending: pending),
+                           .classify(reply), reply)
+        }
     }
 
     func testEngagementUsesThirtySecondSoftExpiryAndCanBeCleared() {
@@ -87,23 +91,6 @@ final class AddresseePolicyTests: XCTestCase {
         }
     }
 
-    func testPendingClarificationRecognizesShortJapaneseYesAndNoTokens() {
-        let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
-
-        for affirmative in ["はい", "ええ", "そう", "そうだよ", "そうです", "うん。"] {
-            XCTAssertEqual(
-                AddresseePolicy().route(affirmative, at: 2, engagement: .inactive, pending: pending),
-                .accept("明日の予定は？")
-            )
-        }
-        for negative in ["いいえ", "ううん", "いや", "ちがう", "違います", "そうじゃない。"] {
-            XCTAssertEqual(
-                AddresseePolicy().route(negative, at: 2, engagement: .inactive, pending: pending),
-                .dismissPending
-            )
-        }
-    }
-
     func testFillerDuringPendingIsIgnoredWithoutDismissingIt() {
         let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
 
@@ -126,14 +113,18 @@ final class AddresseePolicyTests: XCTestCase {
 
     func testPendingCreatedAtTrimsOriginalAndExpiresAfterFifteenSeconds() {
         let pending = PendingClarification(utterance: "  明日の予定は？ \n", at: 10)
+        var engagement = EngagementWindow()
+        engagement.arm(at: 0)
 
+        XCTAssertEqual(pending.utterance, "明日の予定は？")
+        // 確認待ちの間は会話継続中でも宛先判定へ回し、期限ちょうどからは従来の振り分けへ戻る。
         XCTAssertEqual(
-            AddresseePolicy().route("うん", at: 24.999, engagement: .inactive, pending: pending),
-            .accept("明日の予定は？")
+            AddresseePolicy().route("うん", at: 24.999, engagement: engagement, pending: pending),
+            .classify("うん")
         )
         XCTAssertEqual(
-            AddresseePolicy().route("うん", at: 25, engagement: .inactive, pending: pending),
-            .classify("うん")
+            AddresseePolicy().route("うん", at: 25, engagement: engagement, pending: pending),
+            .accept("うん")
         )
     }
 }

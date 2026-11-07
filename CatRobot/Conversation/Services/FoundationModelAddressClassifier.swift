@@ -14,7 +14,13 @@ enum GeneratedAddressTarget: Sendable {
 }
 
 protocol AddressModelClient: Sendable {
-    func classify(_ utterance: String) async throws -> GeneratedAddressTarget
+    func classify(_ request: AddressClassificationRequest) async throws -> GeneratedAddressTarget
+}
+
+extension AddressModelClient {
+    func classify(_ utterance: String) async throws -> GeneratedAddressTarget {
+        try await classify(AddressClassificationRequest(utterance: utterance))
+    }
 }
 
 struct FoundationModelAddressClassifier: AddressClassifying {
@@ -28,9 +34,9 @@ struct FoundationModelAddressClassifier: AddressClassifying {
         self.client = client
     }
 
-    func classify(_ utterance: String) async throws -> AddressTarget {
+    func classify(_ request: AddressClassificationRequest) async throws -> AddressTarget {
         do {
-            switch try await client.classify(utterance) {
+            switch try await client.classify(request) {
             case .addressed:
                 return .addressed
             case .ambiguous:
@@ -45,7 +51,7 @@ struct FoundationModelAddressClassifier: AddressClassifying {
 }
 
 private struct LiveAddressModelClient: AddressModelClient {
-    func classify(_ utterance: String) async throws -> GeneratedAddressTarget {
+    func classify(_ request: AddressClassificationRequest) async throws -> GeneratedAddressTarget {
         let model = SystemLanguageModel(useCase: .contentTagging, guardrails: .default)
         let session = LanguageModelSession(model: model, instructions: """
             あなたは発話の宛先だけを分類します。AIの猫に向けた発話は addressed、
@@ -53,7 +59,7 @@ private struct LiveAddressModelClient: AddressModelClient {
             内容への返答、説明、信頼度は生成しません。
             """)
         let response = try await session.respond(
-            to: utterance,
+            to: request.utterance,
             generating: AddressDecision.self,
             options: GenerationOptions(sampling: .greedy, temperature: 0)
         )

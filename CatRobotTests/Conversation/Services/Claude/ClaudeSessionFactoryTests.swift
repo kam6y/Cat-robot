@@ -3,6 +3,46 @@ import XCTest
 @testable import CatRobot
 
 final class ClaudeSessionFactoryTests: XCTestCase {
+    func testStructuredSummaryAcceptsOnlyExplicitNoContent() {
+        XCTAssertEqual(try GeneratedConversationSummary(items: []).result(characterLimit: 1_200), .noContent)
+        for items in [[""], [" \n"], ["残す項目", " "], ["", "残す項目"]] {
+            XCTAssertThrowsError(try GeneratedConversationSummary(items: items).result(characterLimit: 1_200)) {
+                XCTAssertEqual($0 as? ConversationServiceError, .modelGenerationFailed)
+            }
+        }
+    }
+
+    func testStructuredSummaryTrimsAndFormatsEveryItem() {
+        XCTAssertEqual(try GeneratedConversationSummary(items: [" 紅茶が好き ", "明日待ち合わせ\n"]).result(characterLimit: 1_200),
+                       .text("- 紅茶が好き\n- 明日待ち合わせ"))
+    }
+
+    func testStructuredSummaryCountsRenderedBulletCharacters() {
+        let item = String(repeating: "あ", count: 1_198)
+        XCTAssertEqual(try GeneratedConversationSummary(items: [item]).result(characterLimit: 1_200), .text("- " + item))
+        XCTAssertThrowsError(try GeneratedConversationSummary(items: [item + "あ"]).result(characterLimit: 1_200))
+    }
+
+    func testNoContentPreservesPreviousSummaryWithoutTrimmingIt() {
+        XCTAssertEqual(try ConversationSummaryResult.noContent.validatedText(characterLimit: 1_200), "")
+        let previous = "\n- 好きな飲み物は紅茶\n"
+        XCTAssertEqual(try ConversationSummaryResult.noContent.validatedText(previousSummary: previous, characterLimit: 1_200), previous)
+        XCTAssertThrowsError(try ConversationSummaryResult.noContent.validatedText(
+            previousSummary: String(repeating: "あ", count: 1_201), characterLimit: 1_200))
+    }
+
+    func testSummaryTextValidationKeepsLimitsAndAllowsReplacingPreviousSummary() {
+        let limit = String(repeating: "あ", count: 1_200)
+        XCTAssertEqual(try ConversationSummaryResult.text(" \n" + limit + "\n").validatedText(characterLimit: 1_200), limit)
+        for text in ["", " \n", limit + "あ"] {
+            XCTAssertThrowsError(try ConversationSummaryResult.text(text).validatedText(characterLimit: 1_200)) {
+                XCTAssertEqual($0 as? ConversationServiceError, .modelGenerationFailed)
+            }
+        }
+        XCTAssertEqual(try ConversationSummaryResult.text("- 好きな飲み物はコーヒー").validatedText(
+            previousSummary: "- 好きな飲み物は紅茶", characterLimit: 1_200), "- 好きな飲み物はコーヒー")
+    }
+
     func testChoicesMapToPackageConstantsAndEffort() {
         XCTAssertEqual(ClaudeSessionFactory.claudeModel(for: .opus5_5).id, "claude-opus-5-5")
         XCTAssertEqual(ClaudeSessionFactory.claudeModel(for: .sonnet5_5).id, "claude-sonnet-5-5")

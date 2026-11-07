@@ -88,4 +88,23 @@ final class ConversationInstructionsTests: XCTestCase {
         更新後の記憶だけを120文字以内で出力してください。
         """)
     }
+
+    func testSummaryRequestIncludesFullReferenceTurnsAfterTheEvictedTurns() {
+        let evicted = ConversationMemoryTurn(prompt: "私はピーナッツアレルギーです", response: ClarificationContext.question)
+        let reference = ConversationMemoryTurn(prompt: "うん、私のこと" + String(repeating: "参", count: 5_002), response: "わかったよ。")
+        let request = ConversationSummaryRequest(previousSummary: "前の記憶", evictedTurns: [evicted],
+                                                  referenceTurns: [reference], characterLimit: 600)
+        let prompt = request.prompt
+        let evictedText = "利用者: \(evicted.prompt)\nAI: \(evicted.response)"
+        let referenceText = "利用者: \(reference.prompt)\nAI: \(reference.response)"
+        XCTAssertEqual(request.referenceTurns, [reference])
+        XCTAssertTrue(prompt.hasPrefix("これまでの記憶:\n前の記憶\n追加の会話:\n" + evictedText))
+        XCTAssertTrue(prompt.hasSuffix("更新後の記憶だけを600文字以内で出力してください。"))
+        guard let evictedRange = prompt.range(of: evictedText), let referenceRange = prompt.range(of: referenceText) else {
+            XCTFail("Both sections must include their complete turns, without truncating the reference")
+            return
+        }
+        XCTAssertLessThan(evictedRange.upperBound, referenceRange.lowerBound)
+        XCTAssertEqual(prompt.components(separatedBy: referenceText).count - 1, 1)
+    }
 }

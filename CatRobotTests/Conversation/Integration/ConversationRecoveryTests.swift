@@ -69,9 +69,10 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState, visibleState)
         await harness.completeUnengagedTurn("うん", at: 2)
 
-        let classifierCalls = await harness.classifier.calls
+        let classifierRequests = await harness.classifier.requests
         let replyPrompts = await harness.reply.prompts
-        XCTAssertEqual(classifierCalls, ["明日の予定は？", "うん"])
+        XCTAssertEqual(classifierRequests, [.init(utterance: "明日の予定は？"), .init(utterance: "うん")],
+                       "An expired clarification adds no context")
         XCTAssertTrue(replyPrompts.isEmpty)
 
         await harness.sut.sceneBecameInactive()
@@ -117,8 +118,8 @@ final class ConversationRecoveryTests: XCTestCase {
         }
         XCTAssertTrue(didScheduleFirstExpiry)
 
-        await harness.completeUnengagedTurn("ううん", at: 3)
-        await harness.completeUnengagedTurn("次の予定は？", at: 4)
+        // 最初の期限 (1.2+15) を過ぎてから振り分ける発言は、開始時の確認で古い確認待ちを外し、同じ会話の中で2つ目を作る。
+        await harness.completeUnengagedTurn("次の予定は？", at: 20)
         let didScheduleSecondExpiry = await harness.waitUntil {
             await sleeper.durations.count == 2
         }
@@ -126,18 +127,23 @@ final class ConversationRecoveryTests: XCTestCase {
 
         await sleeper.release(0)
         for _ in 0..<20 { await Task.yield() }
-        await harness.completeUnengagedTurn("うん", at: 5)
+        await harness.classifier.setResult(.addressed)
+        await harness.completeUnengagedTurn("言ったよ", at: 23)
 
-        let classifierCalls = await harness.classifier.calls
+        let classifierRequests = await harness.classifier.requests
         let replyPrompts = await harness.reply.prompts
-        XCTAssertEqual(classifierCalls, ["最初の予定は？", "次の予定は？"])
-        XCTAssertEqual(replyPrompts, ["次の予定は？"])
+        XCTAssertEqual(classifierRequests, [
+            .init(utterance: "最初の予定は？"),
+            .init(utterance: "次の予定は？"),
+            .init(utterance: "言ったよ", clarification: .init(originalUtterance: "次の予定は？"))
+        ])
+        XCTAssertEqual(replyPrompts, ["言ったよ"])
 
         await harness.sut.sceneBecameInactive()
         await sleeper.releaseAll()
     }
 
-    func testAmbiguousSpeechAsksOnceThenAffirmativeUsesOriginal() async {
+    func testAmbiguousSpeechAsksOnceThenShortAffirmativeIsClassifiedAndRepliedAsSaid() async {
         let harness = ConversationHarness(classification: .ambiguous)
 
         await harness.completeUnengagedTurn("明日の予定は？", at: 0)
@@ -146,12 +152,16 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(clarificationTexts, ["今の、ぼくに言った？"])
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
 
+        await harness.classifier.setResult(.addressed)
         await harness.completeUnengagedTurn("うん", at: 3)
 
         let replyPrompts = await harness.reply.prompts
-        let classifierCalls = await harness.classifier.calls
-        XCTAssertEqual(replyPrompts, ["明日の予定は？"])
-        XCTAssertEqual(classifierCalls, ["明日の予定は？"])
+        let classifierRequests = await harness.classifier.requests
+        XCTAssertEqual(replyPrompts, ["うん"])
+        XCTAssertEqual(classifierRequests, [
+            .init(utterance: "明日の予定は？"),
+            .init(utterance: "うん", clarification: .init(originalUtterance: "明日の予定は？"))
+        ])
     }
 
     func testNewFacingQuestionSupersedesPendingBeforeFreshEngagement() async {
@@ -178,9 +188,12 @@ final class ConversationRecoveryTests: XCTestCase {
 
         await harness.completeUnengagedTurn("違った、天気を教えて", at: 3)
 
-        let classifierCalls = await harness.classifier.calls
+        let classifierRequests = await harness.classifier.requests
         let spokenTexts = await harness.speaker.texts
-        XCTAssertEqual(classifierCalls, ["明日の予定は？", "違った、天気を教えて"])
+        XCTAssertEqual(classifierRequests, [
+            .init(utterance: "明日の予定は？"),
+            .init(utterance: "違った、天気を教えて", clarification: .init(originalUtterance: "明日の予定は？"))
+        ])
         XCTAssertEqual(spokenTexts.filter { $0 == "今の、ぼくに言った？" }.count, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
     }
@@ -288,9 +301,10 @@ final class ConversationRecoveryTests: XCTestCase {
         await harness.sut.retryRecovery()
         await harness.emitCompletedUtterance("うん", at: 3)
 
-        let classifierCalls = await harness.classifier.calls
+        let classifierRequests = await harness.classifier.requests
         let replyPrompts = await harness.reply.prompts
-        XCTAssertEqual(classifierCalls, ["明日の予定は？", "うん"])
+        XCTAssertEqual(classifierRequests, [.init(utterance: "明日の予定は？"), .init(utterance: "うん")],
+                       "An unheard clarification adds no context")
         XCTAssertTrue(replyPrompts.isEmpty)
     }
 

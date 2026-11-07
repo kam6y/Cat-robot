@@ -86,6 +86,167 @@ final class ClaudeConversationServiceTests: XCTestCase {
         XCTAssertEqual(before, after)
     }
 
+    func testCompactionReferencesConfirmationAndDenialAcrossBoundary() async throws {
+        for confirmation in ["うん、私のこと", "ううん、ママに言ったの"] {
+            let factory = StubSessionFactory(summaries: [.text("- 更新後の記憶")])
+            let store = InMemoryConversationMemoryStore(snapshot: ClarificationSummaryFixture.snapshot(confirmation: confirmation))
+            let service = makeService(factory: factory, store: store, budget: ClarificationSummaryFixture.budget)
+            _ = try await collect(service.streamReply(to: "次の話"))
+
+            let requests = await factory.summaryRequests
+            XCTAssertEqual(requests.count, 1, confirmation)
+            XCTAssertEqual(requests.first?.evictedTurns, [ClarificationSummaryFixture.original], confirmation)
+            XCTAssertEqual(requests.first?.referenceTurns, ClarificationSummaryFixture.retained(confirmation: confirmation), confirmation)
+            let saved = await store.load()
+            XCTAssertEqual(saved?.turns.dropLast().map { $0 }, ClarificationSummaryFixture.retained(confirmation: confirmation))
+        }
+    }
+
+    func testCompactionDoesNotTruncateLargeReferenceTurn() async throws {
+        let retained = ConversationMemoryTurn(prompt: String(repeating: "参", count: 5_001), response: "返")
+        let initial = ConversationMemorySnapshot(schemaVersion: 1, memoryCompatibilityID: ClaudeMemoryCompatibility.current,
+            revision: 1, savedAt: Date(), summary: "", turns: [ClarificationSummaryFixture.original, retained])
+        let store = InMemoryConversationMemoryStore(snapshot: initial)
+        let factory = StubSessionFactory(summaries: [.text("- 要約")])
+        let service = makeService(factory: factory, store: store, budget: ClarificationSummaryFixture.budget)
+        _ = try await collect(service.streamReply(to: "次の話"))
+
+        let request = await factory.summaryRequests.first
+        XCTAssertEqual(request?.evictedTurns, [ClarificationSummaryFixture.original])
+        XCTAssertEqual(request?.referenceTurns, [retained])
+        XCTAssertEqual(request?.referenceTurns.reduce(0) { $0 + $1.prompt.count + $1.response.count }, 5_002)
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns.first, retained)
+    }
+
+    func testNoContentCompactionCommitsReplyAndRestoresEmptySummary() async {
+        await assertNoContentCompaction(previousSummary: "")
+    }
+
+    func testNoContentPreservesExistingSummaryAndCommitsReply() async {
+        await assertNoContentCompaction(previousSummary: "- 好きな飲み物は紅茶")
+    }
+
+    private func assertNoContentCompaction(previousSummary: String, file: StaticString = #filePath, line: UInt = #line) async {
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [ClarificationSummaryFixture.nextTurn.response])],
+                                         summaries: [.noContent])
+        let store = InMemoryConversationMemoryStore(snapshot: ClarificationSummaryFixture.snapshot(summary: previousSummary))
+        let usage = ConversationUsageSpy()
+        let service = makeService(factory: factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+        do {
+            let snapshots = try await collect(service.streamReply(to: ClarificationSummaryFixture.nextTurn.prompt))
+            XCTAssertEqual(snapshots, [ClarificationSummaryFixture.nextTurn.response], file: file, line: line)
+        } catch {
+            XCTFail("Explicit noContent must allow compaction and the next reply: \(error)", file: file, line: line)
+            return
+        }
+        let saved = await store.load()
+        let chargedTurns = await usage.turns.count
+        XCTAssertEqual(saved?.summary, previousSummary, file: file, line: line)
+        XCTAssertEqual(saved?.turns, ClarificationSummaryFixture.retained() + [ClarificationSummaryFixture.nextTurn], file: file, line: line)
+        XCTAssertEqual(saved?.schemaVersion, 1, file: file, line: line)
+        XCTAssertEqual(saved?.memoryCompatibilityID, "claude-memory-v1", file: file, line: line)
+        XCTAssertEqual(chargedTurns, 1, file: file, line: line)
+
+        let restoredFactory = StubSessionFactory()
+        let restored = makeService(factory: restoredFactory, store: store)
+        do { _ = try await collect(restored.streamReply(to: "復元後の話")) }
+        catch { XCTFail("A noContent snapshot must restore normally: \(error)", file: file, line: line); return }
+        let instructions = await restoredFactory.sessions.first?.configuration.instructions ?? ""
+        XCTAssertFalse(instructions.contains(ClarificationSummaryFixture.original.prompt), file: file, line: line)
+        XCTAssertTrue(instructions.contains("利用者: うん、私のこと\n猫: わかったよ。"), file: file, line: line)
+        XCTAssertTrue(instructions.contains("利用者: 次の話\n猫: 新しい返事。"), file: file, line: line)
+        if previousSummary.isEmpty {
+            XCTAssertFalse(instructions.contains("これまでの会話の要約"), file: file, line: line)
+        } else {
+            XCTAssertTrue(instructions.contains("これまでの会話の要約（最近の利用者の訂正を優先）:\n" + previousSummary), file: file, line: line)
+        }
+    }
+
+    func testNonemptySummaryReplacesPreviousSummaryAfterCompaction() async throws {
+        let previous = "- 好きな飲み物は紅茶"
+        let replacement = "- 好きな飲み物はコーヒー"
+        let store = InMemoryConversationMemoryStore(snapshot: ClarificationSummaryFixture.snapshot(summary: previous))
+        let factory = StubSessionFactory(summaries: [.text(replacement)])
+        let service = makeService(factory: factory, store: store, budget: ClarificationSummaryFixture.budget)
+        _ = try await collect(service.streamReply(to: "次の話"))
+        let saved = await store.load()
+        let instructions = await factory.sessions.last?.configuration.instructions ?? ""
+        XCTAssertEqual(saved?.summary, replacement)
+        XCTAssertTrue(instructions.contains(replacement))
+        XCTAssertFalse(instructions.contains(previous))
+    }
+
+    func testInvalidOrFailedSummariesDoNotCommitCandidateOrUsage() async throws {
+        let parse = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Malformed structured summary"))
+        let truncated = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Incomplete structured summary at output limit"))
+        let scenarios: [(ConversationSummaryResult, (any Error)?, ConversationServiceError)] = [
+            (.text(""), nil, .modelGenerationFailed), (.text(" \n"), nil, .modelGenerationFailed),
+            (.text(String(repeating: "あ", count: 1_201)), nil, .modelGenerationFailed),
+            (.text("unused"), parse, .modelGenerationFailed), (.text("unused"), truncated, .modelGenerationFailed),
+            (.text("unused"), URLError(.notConnectedToInternet), .modelUnreachable),
+            (.text("unused"), CancellationError(), .cancelled)
+        ]
+        for (summary, failure, expectedError) in scenarios {
+            let client = ScriptedSessionClient(chunks: ["使われない返事。"])
+            let factory = StubSessionFactory(scripts: [client], summaries: [summary], summaryError: failure)
+            let initial = ClarificationSummaryFixture.snapshot(summary: "- 前回の記憶")
+            let store = InMemoryConversationMemoryStore(snapshot: initial)
+            let usage = ConversationUsageSpy()
+            let service = makeService(factory: factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+            do { _ = try await collect(service.streamReply(to: "次の話")); XCTFail("Invalid/failed summary must fail") }
+            catch { XCTAssertEqual(error as? ConversationServiceError, expectedError) }
+            let saved = await store.load()
+            let charges = await usage.turns.count
+            XCTAssertEqual(saved, initial, "No compaction candidate or new turn may commit on failure")
+            XCTAssertTrue(client.prompts.isEmpty)
+            XCTAssertEqual(charges, 0)
+        }
+    }
+
+    func testForgetDuringSummaryCannotRestoreCompactedCandidate() async throws {
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let factory = StubSessionFactory(summaries: [.noContent], summaryGate: gate)
+        let store = InMemoryConversationMemoryStore(snapshot: ClarificationSummaryFixture.snapshot(summary: "- 削除前の記憶"))
+        let usage = ConversationUsageSpy()
+        let service = makeService(factory: factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+        let turn = Task { () -> ConversationServiceError? in
+            do { _ = try await self.collect(service.streamReply(to: "削除される入力")); return nil }
+            catch { return error as? ConversationServiceError }
+        }
+        let entered = await waitForSummaryCondition { await factory.summaryRequests.count == 1 }
+        XCTAssertTrue(entered)
+        guard entered else { await gate.open(); _ = await turn.value; return }
+        let forgetting = Task { try await service.forgetConversation() }
+        let invalidated = await waitForSummaryCondition { await service.memoryState() == .forgetting }
+        XCTAssertTrue(invalidated)
+        await gate.open()
+        let error = await turn.value
+        try await forgetting.value
+        let erased = await store.load()
+        let charges = await usage.turns.count
+        XCTAssertEqual(error, .cancelled)
+        XCTAssertNil(erased)
+        XCTAssertEqual(charges, 0)
+
+        _ = try await collect(service.streamReply(to: "削除後の入力"))
+        let instructions = await factory.sessions.last?.configuration.instructions ?? ""
+        XCTAssertEqual(instructions, ConversationInstructions.fixedPrefix)
+        let saved = await store.load()
+        XCTAssertEqual(saved?.turns.map(\.prompt), ["削除後の入力"])
+    }
+
+    private func waitForSummaryCondition(_ condition: @escaping @MainActor () async -> Bool) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(1))
+        while clock.now < deadline {
+            if await condition() { return true }
+            await Task.yield()
+        }
+        return await condition()
+    }
+
     func testDefaultBudgetKeepsLongerContextThanTheFirstRelease() {
         let budget = ConversationBudget.default
         XCTAssertEqual(budget.compactionTriggerCharacters, 12_000)

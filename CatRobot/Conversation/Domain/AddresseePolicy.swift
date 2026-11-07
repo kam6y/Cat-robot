@@ -3,7 +3,6 @@ import Foundation
 enum AddresseeRoute: Equatable, Sendable {
     case accept(String)
     case classify(String)
-    case dismissPending
     case ignore
 }
 
@@ -25,8 +24,6 @@ struct PendingClarification: Equatable, Sendable {
 
 struct AddresseePolicy: Sendable {
     private static let fillerTokens: Set<String> = ["あ", "あの", "え", "えー", "えっと", "うーん", "ん", "んー"]
-    private static let affirmativeTokens: Set<String> = ["うん", "はい", "ええ", "そう", "そうだよ", "そうです"]
-    private static let negativeTokens: Set<String> = ["ううん", "いいえ", "いや", "違う", "ちがう", "違います", "そうじゃない"]
     private static let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
 
     func route(
@@ -41,12 +38,6 @@ struct AddresseePolicy: Sendable {
         guard !token.isEmpty, !Self.fillerTokens.contains(token) else { return .ignore }
 
         if let pending, timestamp < pending.expiresAt {
-            if Self.affirmativeTokens.contains(token) {
-                return .accept(pending.utterance)
-            }
-            if Self.negativeTokens.contains(token) {
-                return .dismissPending
-            }
             return isFacingScreen ? .accept(trimmed) : .classify(utterance)
         }
 
