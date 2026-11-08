@@ -33,9 +33,9 @@ struct CameraTrackingSettingsPane: View {
                     Toggle("顔に合わせてハードを向ける", isOn: Binding(get: { faceTracking.isEnabled }, set: { enabled in
                         Task { await faceTracking.setEnabled(enabled) }
                     }))
-                    .accessibilityIdentifier("faceTrackingEnabled")
+                    .accessibilityIdentifier(ConversationSettingsIdentifier.faceTrackingEnabled.rawValue)
                     LabeledContent("状態", value: faceTracking.status.text)
-                        .accessibilityIdentifier("faceTrackingStatus")
+                        .accessibilityIdentifier(ConversationSettingsIdentifier.faceTrackingStatus.rawValue)
                     // 通常はカメラの欄に同じボタンがある。カメラを持たない構成のときだけここに出す。
                     if camera == nil, faceTracking.needsSystemSettings { openSystemSettingsButton }
                     if let preferences { TrackingAimRows(preferences: preferences) }
@@ -77,7 +77,7 @@ private struct TrackingAimRows: View {
         }
         .accessibilityLabel("顔追尾の左右補正を微調整")
         .accessibilityValue(String(format: "%.1f度", preferences.trackingYawCorrection))
-        .accessibilityIdentifier("faceTrackingYawCorrectionStepper")
+        .accessibilityIdentifier(ConversationSettingsIdentifier.faceTrackingYawCorrectionStepper.rawValue)
         Button("\(Self.defaultAimText)°に戻す") { preferences.trackingYawCorrection = RobotPreferences.defaultTrackingYawCorrection }
             .disabled(preferences.trackingYawCorrection == RobotPreferences.defaultTrackingYawCorrection)
             .accessibilityLabel("顔追尾の補正を\(Self.defaultAimText)度に戻す")

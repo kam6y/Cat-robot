@@ -53,7 +53,7 @@ private enum FakeAddressModelError: Equatable, Sendable {
 private actor FakeAddressModelClient: AddressModelClient {
     private var outputs: [GeneratedAddressTarget]
     private let error: FakeAddressModelError?
-    private(set) var prompts: [String] = []
+    var prompts: [String] { requests.map(\.utterance) }
     private(set) var requests: [AddressClassificationRequest] = []
 
     init(outputs: [GeneratedAddressTarget]) {
@@ -67,12 +67,11 @@ private actor FakeAddressModelClient: AddressModelClient {
     }
 
     var requestCount: Int {
-        prompts.count
+        requests.count
     }
 
     func classify(_ request: AddressClassificationRequest) throws -> GeneratedAddressTarget {
         requests.append(request)
-        prompts.append(request.utterance)
 
         if error == .guardrailViolation {
             throw LanguageModelSession.GenerationError.guardrailViolation(

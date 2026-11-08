@@ -24,7 +24,8 @@ final class ClaudeSessionFactoryTests: XCTestCase {
     }
 
     func testNoContentPreservesPreviousSummaryWithoutTrimmingIt() {
-        XCTAssertEqual(try ConversationSummaryResult.noContent.validatedText(characterLimit: 1_200), "")
+        XCTAssertEqual(try ConversationSummaryResult.noContent.validatedText(
+            previousSummary: "", characterLimit: 1_200), "")
         let previous = "\n- 好きな飲み物は紅茶\n"
         XCTAssertEqual(try ConversationSummaryResult.noContent.validatedText(previousSummary: previous, characterLimit: 1_200), previous)
         XCTAssertThrowsError(try ConversationSummaryResult.noContent.validatedText(
@@ -33,9 +34,11 @@ final class ClaudeSessionFactoryTests: XCTestCase {
 
     func testSummaryTextValidationKeepsLimitsAndAllowsReplacingPreviousSummary() {
         let limit = String(repeating: "あ", count: 1_200)
-        XCTAssertEqual(try ConversationSummaryResult.text(" \n" + limit + "\n").validatedText(characterLimit: 1_200), limit)
+        XCTAssertEqual(try ConversationSummaryResult.text(" \n" + limit + "\n").validatedText(
+            previousSummary: "", characterLimit: 1_200), limit)
         for text in ["", " \n", limit + "あ"] {
-            XCTAssertThrowsError(try ConversationSummaryResult.text(text).validatedText(characterLimit: 1_200)) {
+            XCTAssertThrowsError(try ConversationSummaryResult.text(text).validatedText(
+                previousSummary: "", characterLimit: 1_200)) {
                 XCTAssertEqual($0 as? ConversationServiceError, .modelGenerationFailed)
             }
         }

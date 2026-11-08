@@ -1,6 +1,6 @@
 # アーキテクチャ
 
-この文書は、現在の main の構成と、コンポーネントの間の約束事をまとめたものです。2026-10-28 の文単位再生への一本化と ViewModel の責務整理を反映しています。手順は [README](../README.md)、仕様の一覧は [文書の索引](README.md) を見てください。
+この文書は、アプリの構成と、コンポーネントの間の約束事をまとめたものです。2026-10-28 の文単位再生への一本化と ViewModel の責務整理に加え、2026-11-07 の[挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md)を反映しています。手順は [README](../README.md)、仕様の一覧は [文書の索引](README.md) を見てください。
 
 ```
 iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
@@ -13,9 +13,13 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 ## 組み立て
 
 - **`ConversationComposition.live`**（App）: 本番の依存関係を 1 か所で組み立てる。組み立ての時点では、通信・マイクの起動・モデルの生成・記憶の読み書きをしない。
+- **`AppRootView(composition:onboardingSettings:)`**（App）: composition の全 field を、そのまま既存の init へ渡す。
 - **`ConversationAppCoordinator`**（App）: アプリ全体の状態を受け持つ。
   - scene の状態、画面遷移、設定画面の開閉、無操作時の待機（inactivity）、画面の wake lock、会話の開始意図。
   - 首の制御モードと、カメラ・表情・視線の表示状態を各コンポーネントへ配る。
+    - scene ごとの制御モード（`sceneControlMode`）は、設定画面のモードを設定した後に読む。
+    - 設定画面からの復帰（`resumeAfterSettings`）は、settingsDidClose → 制御の更新 → wake lock → 聞き取りの再開、の順。
+    - 操作を始めてよいかの判定（`permitsAction`）は、Task の中でも cancel の確認の後、scene の世代の確認の前に行う。
 - **`ConversationDependencies`**: ViewModel が外部とつながる境界。認識、分類、返答、話者、audio session、記憶、首、表情、視線、計測、時計、テスト用の checkpoint がすべてここを通る。
 
 ## 会話
@@ -24,12 +28,14 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - ライフサイクル（開始・一時停止・shutdown）
   - 聞き取りと発話の区切り（`UtteranceSegmenter`）
   - 宛先の判定（`AddresseePolicy`、`EngagementWindow`、聞き返し）
-  - 返答の再生の起動と、定型句（「なあに？」「今の、ぼくに言った？」）の発話
+  - 返答の再生の起動と、聞き返しの定型句「今の、ぼくに言った？」の発話（`askForClarification`）。字幕と発話は固定の質問で、話し終えたときだけ、trim した元の発言と質問を記憶に残す
   - 失敗の後始末と、記憶の操作
 - **`ConversationViewState`**: 表示状態を表す値型。
   - `enter(_:caption:)` は phase ごとの口の形と状態文言の表で、この表はここにしかない。
   - 失敗の表示は `presentFailure` が持つ。
+  - 記憶の表示値は `memoryPresentation`（計算 property で、cache しない）から読む。
 - **`VoiceTurnLatencyRecorder`**: 音声ターン 1 回分の latency token と `ReplyTrace` を持つ。記録と終了は、所有者（世代・ターン・キャプチャ）が一致したときだけ行う。
+  - 所有者（`ConversationTurnOwner`）による取り消しと ViewModel の失敗処理は、同じ `isOwned` の判定を使う。shutdown 中かどうかの確認は ViewModel 側に残す。milestone の記録は、従来どおり世代とターンを直接照合する。
 - **`ReplyPlaybackCoordinator`**: 1 回の返答の生成と再生を、1 つの所有タスクとしてまとめて待つ（join）。
   - 同時に動かせる返答は 1 つだけで、2 つ目は `modelBusy` になる。
   - `ReplyTurnObserving`（首・表情・視線を 1 つにまとめたもの）へ、beginTurn → speechStarted（1 回だけ）→ speechFinished／cancelTurn の順に知らせる。
@@ -42,6 +48,7 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - `SupertonicSentenceSpeaker` は 1 返答につき推論を 1 本だけ走らせ、先読みは次の 1 文だけ。定型句の単発の `speak` は先読みしない（`prefetch: false`）。
   - 読み上げ直前だけ `iPhone` →「アイフォーン」、`Bluetooth` →「ブルートゥース」に補正する。URL・メール・コード・識別子の一部と、保存・表示用の原文は変更しない。
   - `SupertonicEngine` は ONNX を動かす。`PCMPlayer` は `started` と `finished` だけを出す（`willSpeak` は出さない）。
+  - native の各段階（準備・読み変換・合成）は `SupertonicErrorMapper.mapping` を通す。`CancellationError` は `.cancelled` にし、それ以外のエラーは `map` で会話のエラーに変換する（`map` に直接渡した `CancellationError` は `.speechSynthesisFailed` になる）。
 - **聞き取り**: `AppleSpeechRecognizer`（Speech framework）、`SpeechAssetPreparer`、`AppleAudioSessionController`（割り込みと route の変更を知らせる）。
 
 ## 返答のモデルと記憶
@@ -72,8 +79,11 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - `ConversationCamera` と `AppleFaceCaptureSource` が前面カメラを扱う（画面の左に固定）。
   - `LookCoordinator` は `look` tool の撮影と、画像を保持する期間を受け持つ。
 - **`FaceTrackingCoordinator`**: 顔の位置から追尾の指令を作る。
+  - 画像の鮮度は `isFresh`（`now − capturedAt < 0.4 − 0.000001`）で判定する。
+  - 顔を見失ったとみなす 10 秒（`faceLossTimeout`）は、温度による休止の 10 秒とは別の値。
 - **`MotionCoordinator`**: 首の動作の調停。
   - 返答のジェスチャの予約（1 ターンあたりの予算は 4 秒）、待機時の微動、追尾との調停、STOP の規則、強度（SET_LIMITS）を扱う。
+  - 待機時の微動は、顔の計画からの要求（`requestIdleFaceMotion`）だけで動く。4〜10 秒ごとに乱数で動かす旧来の内蔵スケジューラは、2026-11-07 に撤去した。
 - **`RobotLink`**: BLE の通信。
   - 接続、暗号化、handshake、heartbeat、STATUS の鮮度。
   - コマンドを受け付けるかの判定と queue（同じグループは置き換え、motion 系は 0.3 秒で期限切れ、token を無効にすると queue から除く）。

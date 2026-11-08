@@ -8,12 +8,6 @@ protocol AddressClassifying: Sendable {
     func classify(_ request: AddressClassificationRequest) async throws -> AddressTarget
 }
 
-extension AddressClassifying {
-    func classify(_ utterance: String) async throws -> AddressTarget {
-        try await classify(AddressClassificationRequest(utterance: utterance))
-    }
-}
-
 protocol ReplyGenerating: Sendable {
     var supportsStableReplyPrefix: Bool { get }
     func prewarm() async

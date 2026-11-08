@@ -137,6 +137,53 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertEqual(idleTimer.writes, [])
     }
 
+    func testCompositionRootConstructionLeavesInjectedServicesAndCaptureLazy() async {
+        let store = MemoryStoreFake()
+        let harness = ConversationHarness(memory: makeClaudeService(store: store))
+        let defaults = UserDefaults(suiteName: "composition-root-\(UUID().uuidString)")!
+        let clock = ManualRobotClock()
+        let link = RecordingRobotLink(clock: clock)
+        let preferences = RobotPreferences(defaults: defaults)
+        preferences.trackingEnabled = true
+        let source = FakeFaceCaptureSource(authorization: .notDetermined)
+        let camera = ConversationCamera(source: source, clock: clock)
+        let tracking = FaceTrackingCoordinator(source: camera, link: link, clock: clock,
+                                               preferences: preferences, motion: harness.dependencies.motion)
+        let composition = ConversationComposition(
+            dependencies: harness.dependencies,
+            voiceSettings: SpeechVoiceSettings(defaults: defaults),
+            modelSettings: ConversationModelSettings(defaults: defaults),
+            longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
+            usage: ConversationUsageSpy(), robotLink: link, faceTracking: tracking, camera: camera,
+            robotSettings: RobotSettingsModel(link: link, preferences: preferences, clock: clock))
+        let onboarding = OnboardingSettings(defaults: defaults)
+        onboarding.markCompleted()
+        let root = AppRootView(composition: composition, onboardingSettings: onboarding)
+        await robotDrain()
+
+        let microphoneRequests = await harness.microphone.requestCount
+        let availabilityChecks = await harness.modelAvailability.checkCount
+        let speakerPreparations = await harness.speaker.prepareCount
+        let recognizerPreparations = await harness.recognizer.prepareCount
+        let recognizerStarts = await harness.recognizer.startCount
+        let audioActivations = await harness.audio.activateCount
+        let replyPrewarms = await harness.reply.prewarmCount
+        let memoryLoads = await store.loadCount
+        XCTAssertEqual(microphoneRequests, 0)
+        XCTAssertEqual(availabilityChecks, 0)
+        XCTAssertEqual(speakerPreparations, 0)
+        XCTAssertEqual(recognizerPreparations, 0)
+        XCTAssertEqual(recognizerStarts, 0)
+        XCTAssertEqual(audioActivations, 0)
+        XCTAssertEqual(replyPrewarms, 0)
+        XCTAssertEqual(memoryLoads, 0)
+        XCTAssertEqual(source.requests, 0)
+        XCTAssertTrue(source.starts.isEmpty)
+        XCTAssertEqual(link.startCount, 0)
+        withExtendedLifetime(root) {}
+        await harness.sut.shutdown()
+    }
+
     func testPermissionPromptInactiveIsDeferredAndOriginalStartFinishesExactlyOnce() async {
         let permissionGate = ConversationTestGate()
         let harness = ConversationHarness(permissionGate: permissionGate)

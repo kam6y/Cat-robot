@@ -27,8 +27,7 @@ struct ConversationComposition {
         let preferences = robotPreferences ?? RobotPreferences()
         let robotLink = RobotLink(transport: robotTransport ?? CoreBluetoothRobotTransport(),
                                   clock: clock, preferences: preferences)
-        let motion = MotionCoordinator(link: robotLink, clock: clock, preferences: preferences,
-                                       random: SystemRobotRandomSource())
+        let motion = MotionCoordinator(link: robotLink, clock: clock, preferences: preferences)
         let expressions = FaceExpressionCoordinator(clock: clock)
         let camera = ConversationCamera(source: faceCaptureSource ?? AppleFaceCaptureSource(clock: clock), clock: clock)
         let look = LookCoordinator(camera: camera, clock: clock)

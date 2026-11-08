@@ -53,7 +53,7 @@ final class RobotMotionIntegrationDeviceTests: XCTestCase {
         let clock = SystemRobotClock()
         let link = RobotLink(transport: CoreBluetoothRobotTransport(), clock: clock, preferences: preferences)
         let motion = MotionCoordinator(link: link, clock: clock, preferences: preferences,
-                                       random: SystemRobotRandomSource(), trace: { [weak self] in self?.traces.append($0) })
+                                       trace: { [weak self] in self?.traces.append($0) })
         motion.setConversationPhase(.thinking) // Suppress autonomous idle/tracking between fixtures.
         // This test owns a different link from the app UI. Cancel pending writes at the
         // lifecycle event, including while send/read is suspended under BLE backpressure.

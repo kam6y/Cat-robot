@@ -259,14 +259,15 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         var outcome = ReplyTraceOutcome.generationFailure
         defer { trace?.mark(.compactionFinished, outcome: outcome) }
         // 残す側は要約しないが、要約側の発言への確認・訂正を読めるよう、切り詰めずに参考として添える。
+        let retained = Array(original.turns[keepFrom...])
         let request = ConversationSummaryRequest(previousSummary: original.summary,
                                                  evictedTurns: Array(original.turns[..<keepFrom]),
-                                                 referenceTurns: Array(original.turns[keepFrom...]),
+                                                 referenceTurns: retained,
                                                  characterLimit: budget.summaryCharacterLimit)
         let result = try await factory.summarize(request)
         let summary = try result.validatedText(previousSummary: original.summary, characterLimit: budget.summaryCharacterLimit)
         outcome = .success
-        return ShortTermMemory(summary: summary, turns: Array(original.turns[keepFrom...]))
+        return ShortTermMemory(summary: summary, turns: retained)
     }
 
     // MARK: ConversationMemoryManaging（容量の検査は文字数で行う）

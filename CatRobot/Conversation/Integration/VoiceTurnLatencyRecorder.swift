@@ -5,6 +5,18 @@ enum ConversationTurnOwner {
     case lifecycle(generation: UInt64)
     case turn(generation: UInt64, turnID: UInt64)
     case capture(generation: UInt64, captureID: UInt64)
+
+    /// Whether this owner still matches the given generation and active turn or capture.
+    func isOwned(generation: UInt64, turnID: UInt64?, captureID: UInt64?) -> Bool {
+        switch self {
+        case .lifecycle(let ownerGeneration):
+            ownerGeneration == generation
+        case .turn(let ownerGeneration, let ownerTurnID):
+            ownerGeneration == generation && ownerTurnID == turnID
+        case .capture(let ownerGeneration, let ownerCaptureID):
+            ownerGeneration == generation && ownerCaptureID == captureID
+        }
+    }
 }
 
 /// Owns the latency token and reply trace of the one voice turn being measured.
@@ -100,19 +112,8 @@ final class VoiceTurnLatencyRecorder {
     }
 
     func cancel(reason: ConversationLatencyCancellation, ifOwnedBy owner: ConversationTurnOwner) {
-        guard let active else { return }
-        let isOwner: Bool
-        switch owner {
-        case .lifecycle(let generation):
-            isOwner = active.generation == generation
-        case .turn(let generation, let turnID):
-            isOwner = active.generation == generation
-                && active.turnID == turnID
-        case .capture(let generation, let captureID):
-            isOwner = active.generation == generation
-                && active.captureID == captureID
-        }
-        guard isOwner else { return }
+        guard let active,
+              owner.isOwned(generation: active.generation, turnID: active.turnID, captureID: active.captureID) else { return }
         cancel(reason: reason)
     }
 

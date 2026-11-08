@@ -170,6 +170,74 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         }
     }
 
+    func testClarificationFinishingAfterExpiryStillRecordsOriginal() async {
+        let client = ScriptedSessionClient(chunks: ["生成されない返答"])
+        let factory = StubSessionFactory(scripts: [client])
+        let store = MemoryStoreFake()
+        let usage = ConversationUsageSpy()
+        let service = makeClaudeService(factory, store: store, usage: usage)
+        let sink = RecordingReplyTraceSink()
+        let sleeper = ConversationTestSleeper()
+        let harness = ConversationHarness(replyOverride: service, replyTraceSink: sink, memory: service,
+            classification: .ambiguous, speakerAutomaticallyFinishes: false,
+            clarificationDelay: { await sleeper.sleep(for: $0) })
+        let turn = Task { await harness.completeUnengagedTurn("今日の天気はどう？ ", at: 0) }
+        let speaking = await harness.waitUntil { await harness.speaker.texts.count == 1 }
+        let scheduled = await harness.waitUntil { await sleeper.durations.count == 1 }
+        XCTAssertTrue(speaking)
+        XCTAssertTrue(scheduled)
+        guard speaking, scheduled else {
+            await harness.sut.shutdown()
+            await sleeper.releaseAll()
+            await turn.value
+            return
+        }
+        let durations = await sleeper.durations
+        XCTAssertEqual(durations, [.seconds(15)])
+        // The pending context expires while the question is still being spoken.
+        await sleeper.release(0)
+        for _ in 0..<20 { await Task.yield() }
+        let savesDuringSpeech = await store.saveCount
+        XCTAssertEqual(savesDuringSpeech, 0)
+        await harness.speaker.yield(.started)
+        await harness.speaker.yield(.finished)
+        await harness.speaker.finish()
+        await turn.value
+
+        let saved = await store.snapshot?.turns
+        let saves = await store.saveCount
+        let charges = await usage.turns.count
+        let starts = await harness.recognizer.startCount
+        XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: ClarificationContext.question)])
+        XCTAssertEqual(saves, 1)
+        XCTAssertTrue(client.prompts.isEmpty, "The clarification must not invoke generation")
+        XCTAssertEqual(charges, 0)
+        XCTAssertEqual(starts, 2, "Listening resumes after the question")
+        let events = harness.latency.events
+        guard case let .began(token, _, _, _, _) = events.first else {
+            await harness.sut.shutdown()
+            await sleeper.releaseAll()
+            return XCTFail("Expected a latency turn")
+        }
+        XCTAssertTrue(events.contains(.cancelled(token: token, reason: .ambiguous, at: 1.2)))
+        XCTAssertFalse(events.contains {
+            switch $0 {
+            case .caption, .speech: true
+            default: false
+            }
+        })
+        XCTAssertEqual(sink.events.filter { $0.point == .finished }.map(\.outcome), [.ambiguous])
+        XCTAssertFalse(sink.events.contains { [.firstCaption, .speechEnqueued, .speechStarted, .speechFinished].contains($0.point) })
+
+        // Before the 15-second deadline by the clock, so only the expiry task can have cleared the context.
+        await harness.classifier.setResult(.notAddressed)
+        await harness.completeUnengagedTurn("うん", at: 3)
+        let requests = await harness.classifier.requests
+        XCTAssertEqual(requests.last, .init(utterance: "うん"))
+        await harness.sut.shutdown()
+        await sleeper.releaseAll()
+    }
+
     func testPauseWhileSavingClarificationDoesNotResumeOldCapture() async {
         let gate = ConversationTestGate()
         let store = MemoryStoreFake(saveGate: gate)

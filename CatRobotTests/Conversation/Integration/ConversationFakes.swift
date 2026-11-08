@@ -2,6 +2,27 @@ import Foundation
 import XCTest
 @testable import CatRobot
 
+extension AddressClassifying {
+    func classify(_ utterance: String) async throws -> AddressTarget {
+        try await classify(AddressClassificationRequest(utterance: utterance))
+    }
+}
+
+@MainActor
+@discardableResult
+func pollUntil(
+    timeout: Duration = .seconds(1),
+    _ condition: @escaping @MainActor () async -> Bool
+) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while clock.now < deadline {
+        if await condition() { return true }
+        await Task.yield()
+    }
+    return await condition()
+}
+
 enum ConversationTestCall: Equatable, Sendable {
     case requestMicrophone
     case checkAvailability
@@ -407,7 +428,7 @@ actor FakeAddressClassifier: AddressClassifying {
     private var result: AddressTarget
     private var error: ConversationServiceError?
     private let log: ConversationTestCallLog
-    private(set) var calls: [String] = []
+    var calls: [String] { requests.map(\.utterance) }
     private(set) var requests: [AddressClassificationRequest] = []
 
     init(result: AddressTarget, log: ConversationTestCallLog) {
@@ -417,7 +438,6 @@ actor FakeAddressClassifier: AddressClassifying {
 
     func classify(_ request: AddressClassificationRequest) async throws -> AddressTarget {
         requests.append(request)
-        calls.append(request.utterance)
         log.append(.classify(request.utterance))
         if let error { throw error }
         return result
@@ -854,12 +874,6 @@ final class ConversationHarness {
         timeout: Duration = .seconds(1),
         _ condition: @escaping @MainActor () async -> Bool
     ) async -> Bool {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
-            if await condition() { return true }
-            await Task.yield()
-        }
-        return await condition()
+        await pollUntil(timeout: timeout, condition)
     }
 }

@@ -17,12 +17,6 @@ protocol AddressModelClient: Sendable {
     func classify(_ request: AddressClassificationRequest) async throws -> GeneratedAddressTarget
 }
 
-extension AddressModelClient {
-    func classify(_ utterance: String) async throws -> GeneratedAddressTarget {
-        try await classify(AddressClassificationRequest(utterance: utterance))
-    }
-}
-
 struct FoundationModelAddressClassifier: AddressClassifying {
     private let client: any AddressModelClient
 

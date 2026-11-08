@@ -5,7 +5,6 @@ import XCTest
 final class FaceTrackingMotionTests: XCTestCase {
     func testYawnResumesAnInterruptedReturnToCenter() async {
         let h = makeHarness()
-        h.motion.setIdleFaceDriven(true)
         h.motion.setConversationPhase(.listening)
         h.motion.setTrackingState(.returnToCenter)
         await h.drain()
@@ -22,7 +21,6 @@ final class FaceTrackingMotionTests: XCTestCase {
     func testFaceLossDuringYawnDoesNotCutItShortOrReplayAnExpiredTarget() async {
         for loseFace in [false, true] {
             let h = makeHarness()
-            h.motion.setIdleFaceDriven(true)
             h.motion.setConversationPhase(.listening)
             follow(h, yaw: 20, lifetime: 0.5)
             await h.drain()
@@ -45,7 +43,6 @@ final class FaceTrackingMotionTests: XCTestCase {
 
     func testCancellingYawnInvalidatesQueuedSamplesAndAllowsFreshTracking() async {
         let h = makeHarness()
-        h.motion.setIdleFaceDriven(true)
         h.motion.setConversationPhase(.listening)
         follow(h, yaw: 20)
         await h.drain()
@@ -75,7 +72,9 @@ final class FaceTrackingMotionTests: XCTestCase {
             let h = makeHarness()
             h.motion.setConversationPhase(.listening)
             h.motion.setTrackingState(.searching)
-            await h.advanceFresh(by: 4.25, step: 0.05)
+            h.motion.requestIdleFaceMotion(yaw: -3, pitch: -2)
+            await h.drain()
+            await h.advanceFresh(by: 0.25, step: 0.05)
             XCTAssertFalse(h.sentCommands.isEmpty)
             h.link.emitStatus(robotStatus(flags: [.link, .moving, .torque], yaw: -10))
             await h.drain()
@@ -421,10 +420,14 @@ final class FaceTrackingMotionTests: XCTestCase {
         let h = makeHarness()
         h.motion.setConversationPhase(.listening)
         h.motion.setTrackingState(.holding)
+        h.motion.requestIdleFaceMotion(yaw: -3, pitch: -2)
+        await h.drain()
         await h.advanceFresh(by: 8)
         XCTAssertTrue(h.sentCommands.isEmpty)
         h.motion.setTrackingState(.searching)
-        await h.advanceFresh(by: 4.1)
+        h.motion.requestIdleFaceMotion(yaw: -3, pitch: -2)
+        await h.drain()
+        await h.advanceFresh(by: 0.1)
         XCTAssertFalse(h.sentCommands.isEmpty)
     }
 
@@ -458,11 +461,15 @@ final class FaceTrackingMotionTests: XCTestCase {
         h.motion.setConversationPhase(.listening)
         h.motion.setAutomaticMotionSuspended(true)
         follow(h, yaw: 20)
+        h.motion.requestIdleFaceMotion(yaw: -3, pitch: -2)
+        await h.drain()
         await h.advanceFresh(by: 8)
         XCTAssertTrue(h.sentCommands.isEmpty)
         h.motion.setTrackingState(.searching)
         h.motion.setAutomaticMotionSuspended(false)
-        await h.advanceFresh(by: 4.1)
+        h.motion.requestIdleFaceMotion(yaw: -3, pitch: -2)
+        await h.drain()
+        await h.advanceFresh(by: 0.1)
         XCTAssertFalse(h.sentCommands.isEmpty)
     }
 

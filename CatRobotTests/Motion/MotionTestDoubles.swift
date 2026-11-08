@@ -186,14 +186,14 @@ final class MotionHarness {
     var gestureCommands: [RobotCommand] { sentCommands.filter { if case .gesture = $0 { true } else { false } } }
 
     /// `connected: false` builds the coordinator on a link that has already lost its connection.
-    init(random: ScriptedRobotRandom = ScriptedRobotRandom(), connected: Bool = true) {
+    init(connected: Bool = true) {
         let link = RecordingRobotLink(clock: clock)
         if !connected { link.disconnect() }
         self.link = link
         preferences = RobotPreferences(defaults: UserDefaults(suiteName: "MotionTests.\(UUID().uuidString)")!)
         preferences.trackingEnabled = false
         let trace = trace
-        motion = MotionCoordinator(link: link, clock: clock, preferences: preferences, random: random,
+        motion = MotionCoordinator(link: link, clock: clock, preferences: preferences,
                                    trace: { trace.events.append($0) })
         motion.setConversationPhase(.thinking)
     }

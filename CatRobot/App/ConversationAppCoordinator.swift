@@ -96,7 +96,6 @@ final class ConversationAppCoordinator {
             guard let self, self.isSleeping else { return }
             self.enterSleeping()
         }
-        motion.setIdleFaceDriven(true)
     }
 
     func conversationPhaseDidChange(_ phase: ConversationPhase) {
@@ -113,7 +112,7 @@ final class ConversationAppCoordinator {
         viewModel.clearCaptionForStandby()
         invalidateActionTasksForSceneInactivity()
         pauseConversationForScene()
-        updateRobotScene(scenePhase)
+        updateRobotScene()
     }
 
     private func wakeFromSleeping() {
@@ -124,7 +123,7 @@ final class ConversationAppCoordinator {
             guard !Task.isCancelled, self.scenePhase == .active, self.isVoiceSettingsClosed,
                   self.isSleeping else { return }
             self.inactivity.wake()
-            self.updateRobotScene(self.scenePhase)
+            self.updateRobotScene()
             await self.viewModel.startConversation()
         }
     }
@@ -134,16 +133,19 @@ final class ConversationAppCoordinator {
         isVoiceSettingsClosed ? (isSleeping ? .inactive : .conversation) : settingsModel?.effectiveControlMode ?? .settings
     }
 
+    private var sceneControlMode: RobotControlMode {
+        switch scenePhase {
+        case .active: activeControlMode
+        case .inactive: .inactive
+        case .background: .background
+        }
+    }
+
     private func updateFaceEnvironment(phase: ConversationPhase? = nil) {
         let visible = canRunConversation
         expressions.setVisible(visible)
         look.setVisible(visible)
-        let mode: RobotControlMode
-        switch scenePhase {
-        case .active: mode = activeControlMode
-        case .inactive: mode = .inactive
-        case .background: mode = .background
-        }
+        let mode = sceneControlMode
         camera?.setEnvironment(conversationVisible: visible, sceneActive: scenePhase == .active,
             mode: mode, phase: phase ?? viewModel.viewState.phase)
         faceTracking?.setEnvironment(conversationVisible: destination == .conversation && hasStartedConversation && isVoiceSettingsClosed && !isSleeping,
@@ -173,7 +175,7 @@ final class ConversationAppCoordinator {
         onboardingSettings?.markCompleted()
         destination = .conversation
         inactivity.recordActivity()
-        updateRobotScene(scenePhase)
+        updateRobotScene()
         acquireWakeLockIfNeeded()
         launchStart()
     }
@@ -215,7 +217,7 @@ final class ConversationAppCoordinator {
             inactivity.recordActivity()
         }
         updateInactivity()
-        updateRobotScene(newPhase)
+        updateRobotScene()
 
         switch newPhase {
         case .active:
@@ -245,20 +247,20 @@ final class ConversationAppCoordinator {
         }
     }
 
-    private func updateRobotScene(_ phase: ConversationAppScenePhase) {
-        switch phase {
+    private func updateRobotScene() {
+        switch scenePhase {
         case .active:
             settingsModel?.setApplicationMode(isSleeping && isVoiceSettingsClosed ? .inactive : nil)
-            motion.setControlMode(activeControlMode)
+            motion.setControlMode(sceneControlMode)
             link?.setApplicationActive(true)
             if destination == .conversation { link?.resume() }
         case .inactive:
             settingsModel?.setApplicationMode(.inactive)
-            motion.setControlMode(.inactive)
+            motion.setControlMode(sceneControlMode)
             link?.setApplicationActive(false)
         case .background:
             settingsModel?.setApplicationMode(.background)
-            motion.setControlMode(.background)
+            motion.setControlMode(sceneControlMode)
             link?.setApplicationActive(false)
             link?.suspend()
         }
@@ -287,10 +289,7 @@ final class ConversationAppCoordinator {
             guard self.scenePhase == .active, self.actionSceneGeneration == generation else {
                 // 開く途中で場面が変わりシートを出さない。前面に戻っていれば、ここで聞き取りを再開する。
                 self.isOpeningVoiceSettings = false
-                self.settingsModel?.settingsDidClose()
-                self.updateRobotScene(self.scenePhase)
-                self.acquireWakeLockIfNeeded()
-                self.resumeListeningIfNeeded()
+                self.resumeAfterSettings()
                 return
             }
             self.isOpeningVoiceSettings = false
@@ -302,8 +301,12 @@ final class ConversationAppCoordinator {
         guard !isOpeningVoiceSettings, settingsModel?.calibration == nil else { return }
         showsVoiceSettings = false
         updateInactivity()
+        resumeAfterSettings()
+    }
+
+    private func resumeAfterSettings() {
         settingsModel?.settingsDidClose()
-        updateRobotScene(scenePhase)
+        updateRobotScene()
         acquireWakeLockIfNeeded()
         resumeListeningIfNeeded()
     }
@@ -438,8 +441,12 @@ final class ConversationAppCoordinator {
         pauseTask = task
     }
 
+    private func permitsAction(allowWhileSleeping: Bool) -> Bool {
+        scenePhase == .active && isVoiceSettingsClosed && (allowWhileSleeping || !isSleeping)
+    }
+
     private func launchAction(allowWhileSleeping: Bool = false, _ operation: @escaping @MainActor () async -> Void) {
-        guard scenePhase == .active, isVoiceSettingsClosed, allowWhileSleeping || !isSleeping else { return }
+        guard permitsAction(allowWhileSleeping: allowWhileSleeping) else { return }
         actionCounter &+= 1
         let actionID = actionCounter
         let sceneGeneration = actionSceneGeneration
@@ -447,8 +454,7 @@ final class ConversationAppCoordinator {
             guard let self else { return }
             await self.beforeActionOperation()
             guard !Task.isCancelled,
-                  self.scenePhase == .active, self.isVoiceSettingsClosed,
-                  allowWhileSleeping || !self.isSleeping,
+                  self.permitsAction(allowWhileSleeping: allowWhileSleeping),
                   self.actionSceneGeneration == sceneGeneration else {
                 self.actionTasks[actionID] = nil
                 return

@@ -30,6 +30,7 @@ final class FaceTrackingCoordinator {
     private let clock: any RobotClock
     private let preferences: RobotPreferences
     private let motion: any RobotMotionControlling
+    private let faceLossTimeout: TimeInterval = 10
     @ObservationIgnored private var environment = FaceCaptureEnvironment()
     @ObservationIgnored private var generation: UUID?
     @ObservationIgnored private var connectionID: UUID?
@@ -186,7 +187,7 @@ final class FaceTrackingCoordinator {
                   observation.capturedAt.isFinite, observation.completedAt.isFinite,
                   observation.capturedAt >= 0, observation.capturedAt <= observation.completedAt,
                   observation.completedAt <= clock.now + 0.000_001,
-                  clock.now - observation.capturedAt < FaceCapturePolicy.imageFreshness - 0.000_001,
+                  isFresh(observation),
                   lastObservationAt.map({ observation.capturedAt > $0 }) ?? true else { return }
             lastObservationAt = observation.capturedAt
             pending = observation
@@ -203,9 +204,13 @@ final class FaceTrackingCoordinator {
         }
     }
 
+    private func isFresh(_ observation: FaceObservation) -> Bool {
+        clock.now - observation.capturedAt < FaceCapturePolicy.imageFreshness - 0.000_001
+    }
+
     private func processPending() {
         guard let observation = pending else { return }
-        guard clock.now - observation.capturedAt < FaceCapturePolicy.imageFreshness - 0.000_001 else { pending = nil; return }
+        guard isFresh(observation) else { pending = nil; return }
         guard let pose = poseHistory.pose(at: observation.capturedAt, now: clock.now) else { return }
         pending = nil
         guard let target = FaceTrackingGeometry.project(
@@ -220,11 +225,11 @@ final class FaceTrackingCoordinator {
         guard let lastFaceAt else { status = .searching; return }
         // A fresh detected face waiting for bracketing STATUS is not face loss.
         // The old target still expires normally; only a newly projected target can send a MOVE.
-        if let pending, clock.now - pending.capturedAt < FaceCapturePolicy.imageFreshness - 0.000_001 {
+        if let pending, isFresh(pending) {
             status = .tracking
             return
         }
-        if clock.now - lastFaceAt >= 10 - 0.000_001 {
+        if clock.now - lastFaceAt >= faceLossTimeout - 0.000_001 {
             if !returnRequested { setMotionState(.returnToCenter) }
             status = .searching
         } else if case let .following(target) = motionState, target.validUntil > clock.now + 0.000_001 {
@@ -249,7 +254,7 @@ final class FaceTrackingCoordinator {
             if let received = link.snapshot.statusReceivedAt { deadlines.append(received + RobotLinkSnapshot.statusFreshness) }
             if let lastFaceAt {
                 deadlines.append(lastFaceAt + FaceCapturePolicy.imageFreshness)
-                if !returnRequested { deadlines.append(lastFaceAt + 10) }
+                if !returnRequested { deadlines.append(lastFaceAt + faceLossTimeout) }
             }
             if let pending { deadlines.append(pending.capturedAt + FaceCapturePolicy.imageFreshness) }
         }

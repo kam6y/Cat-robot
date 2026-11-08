@@ -165,6 +165,7 @@ final class ConversationAccessibilityTests: XCTestCase {
 
     func testSettingsSheetDeclaresItsControls() {
         XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
-                       ["sleepyMinutesStepper", "sleepingMinutesStepper", "cameraPermissionButton", "modelPicker", "effortPicker", "voicePresetPicker", "dailyTurnLimitStepper", "memoryFactsList", "deleteAllMemoryButton"])
+                       ["sleepyMinutesStepper", "sleepingMinutesStepper", "cameraPermissionButton",
+                        "faceTrackingEnabled", "faceTrackingStatus", "faceTrackingYawCorrectionStepper", "modelPicker", "effortPicker", "voicePresetPicker", "dailyTurnLimitStepper", "memoryFactsList", "deleteAllMemoryButton"])
     }
 }

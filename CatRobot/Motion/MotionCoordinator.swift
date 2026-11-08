@@ -62,7 +62,6 @@ final class MotionCoordinator: RobotMotionControlling {
     private let link: any RobotLinkControlling
     private let clock: any RobotClock
     private let preferences: RobotPreferences
-    private let random: any RobotRandomSource
     private let trace: @MainActor @Sendable (MotionTraceEvent) -> Void
     private var snapshot: RobotLinkSnapshot
     private var statusVersion: UInt64 = 0
@@ -79,8 +78,6 @@ final class MotionCoordinator: RobotMotionControlling {
     private var autoTask: Task<Void, Never>?
     private var autoToken: UUID?
     private var autoKind: AutoKind?
-    private var nextIdleAt: TimeInterval?
-    private var idleFaceDriven = false
     private var trackingState: RobotTrackingState = .disabled
     private var automaticOwnerConnection: UUID?
     private var automaticOwnerToken: UUID?
@@ -105,12 +102,10 @@ final class MotionCoordinator: RobotMotionControlling {
     private var powerOffTicket: UUID?
 
     init(link: any RobotLinkControlling, clock: any RobotClock, preferences: RobotPreferences,
-         random: any RobotRandomSource,
          trace: @escaping @MainActor @Sendable (MotionTraceEvent) -> Void = { OSMotionTraceSink().record($0) }) {
         self.link = link
         self.clock = clock
         self.preferences = preferences
-        self.random = random
         self.trace = trace
         snapshot = link.snapshot
         let updates = link.updates()
@@ -223,7 +218,6 @@ final class MotionCoordinator: RobotMotionControlling {
         guard self.mode != mode else { return }
         self.mode = mode
         cancelAuto()
-        nextIdleAt = nil
         resetPowerOff()
         switch mode {
         case .background: stopAll(reason: .background)
@@ -250,19 +244,11 @@ final class MotionCoordinator: RobotMotionControlling {
     }
 
     /// The app's face planner owns quiet intervals; tracking remains autonomous.
-    func setIdleFaceDriven(_ enabled: Bool) {
-        guard idleFaceDriven != enabled else { return }
-        cancelDecorativeMotion()
-        idleFaceDriven = enabled
-        nextIdleAt = nil
-        service()
-    }
-
     /// Admit a cue only now. Rejected cues are not saved for later.
     func requestIdleFaceMotion(yaw: Double, pitch: Double) {
         guard yaw.isFinite, pitch.isFinite else { return }
         refreshLinkState()
-        guard idleFaceDriven, mode == .conversation, isWaiting, atRest,
+        guard mode == .conversation, isWaiting, atRest,
               preferences.idleEnabled, !automaticMotionSuspended,
               active == nil, autoTask == nil, strengthTask == nil, stopTask == nil,
               turn?.pending.isEmpty != false else { return }
@@ -279,7 +265,7 @@ final class MotionCoordinator: RobotMotionControlling {
     func requestYawnMotion(pitch: Double) {
         guard pitch.isFinite else { return }
         refreshLinkState()
-        guard idleFaceDriven, mode == .conversation, isWaiting, atRest || ownsTracking || ownsIdle,
+        guard mode == .conversation, isWaiting, atRest || ownsTracking || ownsIdle,
               preferences.idleEnabled, !automaticMotionSuspended,
               active == nil, strengthTask == nil, stopTask == nil,
               turn?.pending.isEmpty != false,
@@ -296,7 +282,6 @@ final class MotionCoordinator: RobotMotionControlling {
     }
 
     func cancelIdleFaceMotion() {
-        guard idleFaceDriven else { return }
         // A tracking write may already be replacing the last idle ownership ticket.
         // The face must never cancel that higher-priority task while it waits to send.
         guard autoKind == .idle || autoKind == .yawn || (autoTask == nil && (ownsIdle || ownsYawn)) else { return }
@@ -337,7 +322,6 @@ final class MotionCoordinator: RobotMotionControlling {
         discardActive()
         cancelAuto()
         resetPowerOff()
-        nextIdleAt = nil
         trackingState = .disabled
         clearAutomaticOwnership()
         trackingReturnIssued = false
@@ -732,21 +716,19 @@ final class MotionCoordinator: RobotMotionControlling {
     private func serviceAutonomous() {
         let permitted = mode == .conversation && permitsTrackingPhase && !automaticMotionSuspended
             && active == nil && strengthTask == nil && stopTask == nil && turn?.pending.isEmpty != false
-        guard permitted, autoTask == nil else { nextIdleAt = nil; return }
+        guard permitted, autoTask == nil else { return }
         if preferences.trackingEnabled {
             switch trackingState {
             case .following:
-                nextIdleAt = nil
                 if let target = freshTracking, atRest || ownsTracking || ownsIdle {
                     if let command = stabilizedTrackingCommand(for: target), trackingCadenceReady {
                         startTrackingCommand(command, validUntil: target.validUntil)
                     }
                 }
                 return
-            case .holding: nextIdleAt = nil; return
+            case .holding: return
             case .returnToCenter:
                 if !trackingReturnIssued {
-                    nextIdleAt = nil
                     if atRest || ownsTracking || ownsIdle, trackingCadenceReady {
                         startTrackingCommand(.move(yawDeci: 0, pitchDeci: 0, speed: 10), validUntil: clock.now + 0.3)
                     }
@@ -754,14 +736,6 @@ final class MotionCoordinator: RobotMotionControlling {
                 }
             case .disabled, .searching: break
             }
-        }
-        guard !idleFaceDriven, isWaiting, atRest, preferences.idleEnabled else { nextIdleAt = nil; return }
-        if nextIdleAt == nil { nextIdleAt = clock.now + random.next(in: 4...10) }
-        if clock.now + 0.000_001 >= nextIdleAt! {
-            nextIdleAt = nil
-            clearAutomaticOwnership()
-            let yaw = random.next(in: -3...3), pitch = random.next(in: -2...2)
-            startColumn(kind: .idle, duration: random.next(in: 3...4), yaw: yaw, pitch: pitch)
         }
     }
 
@@ -890,7 +864,6 @@ final class MotionCoordinator: RobotMotionControlling {
         if let token = autoToken { link.invalidate(token) }
         autoTask?.cancel()
         autoTask = nil; autoToken = nil; autoKind = nil
-        nextIdleAt = nil
     }
 
     private func servicePowerOff() {

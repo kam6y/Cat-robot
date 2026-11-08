@@ -16,9 +16,8 @@ final class ClaudeConversationServiceTests: XCTestCase {
                      longTerm: LongTermMemoryManager = LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
                      settings: Settings = Settings(), usage: ConversationUsageSpy = ConversationUsageSpy(),
                      budget: ConversationBudget = .default) -> ClaudeConversationService {
-        ClaudeConversationService(factory: factory, memoryStore: store, longTermMemory: longTerm,
-                                  tools: RememberToolProvider(),
-                                  configuration: { settings.current }, usage: usage, budget: budget)
+        makeClaudeService(factory, store: store, usage: usage, budget: budget,
+                          longTerm: longTerm, tools: RememberToolProvider(), configuration: { settings.current })
     }
     func collect(_ stream: AsyncThrowingStream<String, Error>) async throws -> [String] {
         var out: [String] = []; for try await s in stream { out.append(s) }; return out
@@ -238,13 +237,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
     }
 
     private func waitForSummaryCondition(_ condition: @escaping @MainActor () async -> Bool) async -> Bool {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(1))
-        while clock.now < deadline {
-            if await condition() { return true }
-            await Task.yield()
-        }
-        return await condition()
+        await pollUntil(condition)
     }
 
     func testDefaultBudgetKeepsLongerContextThanTheFirstRelease() {
@@ -587,15 +580,12 @@ final class ClaudeConversationServiceTests: XCTestCase {
                                          store: any ConversationMemoryStore, budget: ConversationBudget = .default,
                                          onlyCall: Int? = nil) -> ClaudeConversationService {
         let counter = CallCounter()
-        return ClaudeConversationService(factory: factory, memoryStore: store,
-                                         longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                                         tools: RememberToolProvider(),
-                                         configuration: {
-                                             let call = await counter.next()
-                                             if onlyCall == nil || onlyCall == call { await gate.wait() }
-                                             return .init()
-                                         },
-                                         usage: ConversationUsageSpy(), budget: budget)
+        return makeClaudeService(factory, store: store, budget: budget, tools: RememberToolProvider(),
+                                 configuration: {
+                                     let call = await counter.next()
+                                     if onlyCall == nil || onlyCall == call { await gate.wait() }
+                                     return .init()
+                                 })
     }
 
     func testPrewarmFinishingAfterForgetDoesNotResurrectTheOldSession() async throws {

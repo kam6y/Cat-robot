@@ -25,17 +25,11 @@ final class SupertonicSentenceSpeaker: SentenceSpeechSpeaking {
     }
     convenience init(engine: SupertonicEngine, voice: @escaping @MainActor @Sendable () -> SpeechVoicePreset) {
         self.init(player: PCMPlayer(), prepare: {
-            do { try await engine.prepare(); try await JapanesePronunciationService.shared.prepare() }
-            catch is CancellationError { throw ConversationServiceError.cancelled }
-            catch { throw SupertonicErrorMapper.map(error) }
+            try await SupertonicErrorMapper.mapping { try await engine.prepare(); try await JapanesePronunciationService.shared.prepare() }
         }, normalize: { text in
-            do { return try await JapanesePronunciationService.shared.normalize(text) }
-            catch is CancellationError { throw ConversationServiceError.cancelled }
-            catch { throw SupertonicErrorMapper.map(error) }
+            try await SupertonicErrorMapper.mapping { try await JapanesePronunciationService.shared.normalize(text) }
         }, voice: voice, synthesize: { text, preset in
-            do { return try await engine.synthesize(text: text, voiceID: preset.rawValue, steps: 8) }
-            catch is CancellationError { throw ConversationServiceError.cancelled }
-            catch { throw SupertonicErrorMapper.map(error) }
+            try await SupertonicErrorMapper.mapping { try await engine.synthesize(text: text, voiceID: preset.rawValue, steps: 8) }
         })
     }
     func prepare() async throws {

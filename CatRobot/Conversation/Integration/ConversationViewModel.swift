@@ -29,7 +29,6 @@ final class ConversationViewModel {
     private enum EngagementUpdate {
         case arm
         case refresh
-        case none
     }
 
     /// How a failed reply turn ends; typed and voice turns share the decision.
@@ -982,61 +981,71 @@ final class ConversationViewModel {
             let request = AddressClassificationRequest(utterance: candidate, clarification: clarification)
             voiceLatency.selectPath(.classified, generation: generation, turnID: turnID)
             transition(to: .classifying)
-            do {
-                let trace = voiceLatency.trace
-                trace?.mark(.classificationStarted)
-                var classificationOutcome = ReplyTraceOutcome.generationFailure
-                let target = try await ReplyTraceContext.$current.withValue(trace) {
-                    defer { trace?.mark(.classificationFinished, outcome: classificationOutcome) }
-                    let value = try await dependencies.classifier.classify(request)
-                    classificationOutcome = .success
-                    return value
-                }
-                guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                switch target {
-                case .addressed:
-                    onAddressedActivity()
-                    clearPendingClarification()
-                    await generateReply(
-                        to: candidate,
-                        engagementUpdate: .arm,
-                        generation: generation,
-                        turnID: turnID
-                    )
-                case .notAddressed:
-                    voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
-                    await resumeCapture(generation: generation, turnID: turnID)
-                case .ambiguous:
-                    voiceLatency.cancel(reason: .ambiguous, ifOwnedBy: .turn(generation: generation, turnID: turnID))
-                    if isCorrectingPending {
-                        await resumeCapture(generation: generation, turnID: turnID)
-                    } else {
-                        setPendingClarification(
-                            utterance: candidate,
-                            at: dependencies.now(),
-                            generation: generation
-                        )
-                        await speakAndResume(
-                            ClarificationContext.question,
-                            memoryPrompt: candidate.trimmingCharacters(in: .whitespacesAndNewlines),
-                            presentationPhase: .clarifying,
-                            engagementUpdate: .none,
-                            generation: generation,
-                            turnID: turnID
-                        )
-                    }
-                }
-            } catch {
-                guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                await finishVoiceFailure(
-                    with: Self.serviceError(from: error),
-                    stopRecognizer: false,
-                    owner: .turn(generation: generation, turnID: turnID)
-                )
-            }
+            await classifyAndRespond(
+                request,
+                wasCorrectingPending: isCorrectingPending,
+                generation: generation,
+                turnID: turnID
+            )
         case .ignore:
             voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
             await resumeCapture(generation: generation, turnID: turnID)
+        }
+    }
+
+    /// Only the classifier call throws; the routed responses report their own failures.
+    private func classifyAndRespond(
+        _ request: AddressClassificationRequest,
+        wasCorrectingPending: Bool,
+        generation: UInt64,
+        turnID: UInt64
+    ) async {
+        let target: AddressTarget
+        do {
+            let trace = voiceLatency.trace
+            trace?.mark(.classificationStarted)
+            var classificationOutcome = ReplyTraceOutcome.generationFailure
+            target = try await ReplyTraceContext.$current.withValue(trace) {
+                defer { trace?.mark(.classificationFinished, outcome: classificationOutcome) }
+                let value = try await dependencies.classifier.classify(request)
+                classificationOutcome = .success
+                return value
+            }
+        } catch {
+            guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            await finishVoiceFailure(
+                with: Self.serviceError(from: error),
+                stopRecognizer: false,
+                owner: .turn(generation: generation, turnID: turnID)
+            )
+            return
+        }
+        guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+        switch target {
+        case .addressed:
+            onAddressedActivity()
+            clearPendingClarification()
+            await generateReply(
+                to: request.utterance,
+                engagementUpdate: .arm,
+                generation: generation,
+                turnID: turnID
+            )
+        case .notAddressed:
+            voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
+            await resumeCapture(generation: generation, turnID: turnID)
+        case .ambiguous:
+            voiceLatency.cancel(reason: .ambiguous, ifOwnedBy: .turn(generation: generation, turnID: turnID))
+            if wasCorrectingPending {
+                await resumeCapture(generation: generation, turnID: turnID)
+            } else {
+                setPendingClarification(
+                    utterance: request.utterance,
+                    at: dependencies.now(),
+                    generation: generation
+                )
+                await askForClarification(candidate: request.utterance, generation: generation, turnID: turnID)
+            }
         }
     }
 
@@ -1099,7 +1108,6 @@ final class ConversationViewModel {
             switch engagementUpdate {
             case .arm: engagement.arm(at: dependencies.now())
             case .refresh: engagement.refresh(afterReplyAt: dependencies.now())
-            case .none: break
             }
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
@@ -1116,35 +1124,24 @@ final class ConversationViewModel {
         }
     }
 
-    private func speakAndResume(
-        _ text: String,
-        memoryPrompt: String? = nil,
-        presentationPhase: ConversationPhase = .speaking,
-        engagementUpdate: EngagementUpdate,
-        generation: UInt64,
-        turnID: UInt64
-    ) async {
-        let trace = voiceLatency.trace
-        trace?.mark(.speechEnqueued, part: .full)
-        transition(to: presentationPhase, caption: text)
-        voiceLatency.recordFirstCaption(generation: generation, turnID: turnID)
+    /// The turn's measurement already ended as ambiguous, so the fixed question is not traced.
+    /// The original comes from the routed candidate: the expiry task may clear the pending context while speaking.
+    private func askForClarification(candidate: String, generation: UInt64, turnID: UInt64) async {
+        let question = ClarificationContext.question
+        let original = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        transition(to: .clarifying, caption: question)
         do {
-            let stream = try await dependencies.speaker.speak(text)
+            let stream = try await dependencies.speaker.speak(question)
             var finishedNormally = false
             var mouthSequence = SpeechMouthPoseSequence()
             for try await event in stream {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch event {
                 case .started:
-                    trace?.mark(.speechStarted, part: .full, source: .started)
-                    voiceLatency.recordSpeechStarted(generation: generation, turnID: turnID)
                     viewState.mouthPose = .small
                 case .willSpeak:
-                    trace?.mark(.speechStarted, part: .full, source: .willSpeakFallback)
-                    voiceLatency.recordSpeechStarted(generation: generation, turnID: turnID)
                     viewState.mouthPose = mouthSequence.nextWordPose()
                 case .finished:
-                    trace?.mark(.speechFinished, part: .full)
                     finishedNormally = true
                     viewState.mouthPose = .closed
                 case .cancelled:
@@ -1157,23 +1154,10 @@ final class ConversationViewModel {
                 throw ConversationServiceError.speechSynthesisFailed
             }
 
-            if let memoryPrompt {
-                await dependencies.memory.recordExternalTurn(prompt: memoryPrompt, response: text)
-                guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            }
-
-            trace?.finish(.success)
-            switch engagementUpdate {
-            case .arm:
-                engagement.arm(at: dependencies.now())
-            case .refresh:
-                engagement.refresh(afterReplyAt: dependencies.now())
-            case .none:
-                break
-            }
+            await dependencies.memory.recordExternalTurn(prompt: original, response: question)
+            guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
-            trace?.finish(Task.isCancelled ? .cancelled : .speechFailure)
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
             await finishVoiceFailure(
                 with: Self.serviceError(from: error),
@@ -1428,14 +1412,7 @@ final class ConversationViewModel {
 
     private func ownsVoiceFailure(_ owner: ConversationTurnOwner) -> Bool {
         guard !isShutdown, !isShuttingDown else { return false }
-        switch owner {
-        case .lifecycle(let generation):
-            return lifecycleGeneration == generation
-        case .turn(let generation, let turnID):
-            return lifecycleGeneration == generation && activeTurnID == turnID
-        case .capture(let generation, let captureID):
-            return lifecycleGeneration == generation && activeCaptureID == captureID
-        }
+        return owner.isOwned(generation: lifecycleGeneration, turnID: activeTurnID, captureID: activeCaptureID)
     }
 
     private func transition(

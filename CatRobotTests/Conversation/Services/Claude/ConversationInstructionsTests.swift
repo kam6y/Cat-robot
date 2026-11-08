@@ -89,6 +89,16 @@ final class ConversationInstructionsTests: XCTestCase {
         """)
     }
 
+    func testSummaryReferencePromptPreservesExactUTF8() {
+        let request = ConversationSummaryRequest(
+            previousSummary: "- 前",
+            evictedTurns: [.init(prompt: "元", response: "質問")],
+            referenceTurns: [.init(prompt: "か\u{3099}", response: "返")],
+            characterLimit: 1_200)
+        let expected = "これまでの記憶:\n- 前\n追加の会話:\n利用者: 元\nAI: 質問\n解釈のための参考（要約には含めない）:\n利用者: か\u{3099}\nAI: 返\n更新後の記憶だけを1200文字以内で出力してください。"
+        XCTAssertEqual(Array(request.prompt.utf8), Array(expected.utf8))
+    }
+
     func testSummaryRequestIncludesFullReferenceTurnsAfterTheEvictedTurns() {
         let evicted = ConversationMemoryTurn(prompt: "私はピーナッツアレルギーです", response: ClarificationContext.question)
         let reference = ConversationMemoryTurn(prompt: "うん、私のこと" + String(repeating: "参", count: 5_002), response: "わかったよ。")

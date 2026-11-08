@@ -14,8 +14,7 @@ final class RobotAppHarness {
 
     init(faceEnabled: Bool = false, idleClock: (any RobotClock)? = nil) {
         ble.preferences.idleEnabled = false
-        motion = MotionCoordinator(link: ble.link, clock: ble.clock, preferences: ble.preferences,
-                                   random: ScriptedRobotRandom())
+        motion = MotionCoordinator(link: ble.link, clock: ble.clock, preferences: ble.preferences)
         let source = ReservingMotionReply(base: base, motion: motion)
         playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: source, motion: motion), motion: motion)
         let motion = motion
@@ -512,6 +511,30 @@ final class RobotLifecycleIntegrationTests: XCTestCase {
         XCTAssertEqual(h.sentCommands.filter { if case .setLimits = $0 { true } else { false } }.count, 1)
         h.link.completeLimitsRead(.init(yawVelocityDeci: 600, pitchVelocityDeci: 500, yawAngleDeci: 600, pitchAngleDeci: 300))
         await h.drain()
+    }
+
+    func testAppWiringDisablesLegacyIdleBeforeFreshWaiting() async {
+        // No SwiftUI view exists here, so no face neck cue can request motion.
+        let h = MotionHarness()
+        h.preferences.idleEnabled = true
+        h.preferences.trackingEnabled = false
+        let playback = PlaybackIntegrationHarness(motion: h.motion)
+        let coordinator = ConversationAppCoordinator(viewModel: playback.viewModel,
+            wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }),
+            link: h.link, motion: h.motion,
+            idleSettings: ConversationIdleSettings(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        XCTAssertEqual(playback.viewModel.viewState.phase, .idle)
+        await h.advanceFresh(by: 12)
+        XCTAssertFalse(h.link.sent.contains { $0.priority == .idleMotion })
+        XCTAssertFalse(h.sentCommands.contains { if case .move = $0 { true } else { false } })
+        // The head was still free to move: an explicit face cue is admitted right away.
+        h.motion.requestIdleFaceMotion(yaw: 3, pitch: 2)
+        await h.drain()
+        await h.advanceFresh(by: 0.2, step: 0.05)
+        XCTAssertTrue(h.link.sent.contains { sent in
+            if case .move = sent.command { sent.priority == .idleMotion } else { false }
+        })
+        withExtendedLifetime((playback, coordinator)) {}
     }
 
     private func emitCalibration(_ data: Data, h: RobotAppHarness) {

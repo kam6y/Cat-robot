@@ -10,6 +10,36 @@ private func face(yawDegrees: Double) -> FaceRectangle {
 
 @MainActor
 final class FaceTrackingCoordinatorTests: XCTestCase {
+    func testFreshnessHelperPreservesFutureEpsilonAndExpiry() async throws {
+        let expiry = 0.4 - 0.000_001
+        for (at, expected) in [(expiry.nextDown, 1), (expiry, 0)] {
+            let h = FaceTrackingHarness()
+            h.environment()
+            h.link.emitStatus(robotStatus())
+            await robotDrain()
+            await h.clock.advance(by: at)
+            h.frame(capturedAt: 0)
+            await robotDrain()
+            XCTAssertEqual(h.following.count, expected, "now=\(at)")
+        }
+
+        let h = FaceTrackingHarness()
+        h.environment()
+        h.link.emitStatus(robotStatus())
+        await robotDrain()
+        let generation = try XCTUnwrap(h.source.starts.last?.generation)
+        h.source.emit(.observation(.init(
+            generation: generation, capturedAt: 0.000_000_5, completedAt: 0.000_000_5,
+            horizontalFieldOfView: 90, aspectRatio: 4.0 / 3,
+            faces: [.init(x: 0.4, y: 0.4, width: 0.2, height: 0.2, yawRadians: 0, pitchRadians: 0)])))
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 0, "A future image waits for its bracketing pose")
+        await h.clock.advance(by: 0.000_002)
+        h.link.emitStatus(robotStatus())
+        await robotDrain()
+        XCTAssertEqual(h.following.count, 1, "The admitted future image remains pending until STATUS arrives")
+    }
+
     func testPersistedScreenAimChangesActualTrackingTarget() async throws {
         for (correction, expectedYaw) in [(0.0, 0.0), (9.5, -9.5), (14.0, -14.0), (20.0, -20.0)] {
             let h = FaceTrackingHarness(storedYawCorrection: correction)

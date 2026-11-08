@@ -23,9 +23,7 @@ struct CatRobotApp: App {
     var body: some Scene {
         WindowGroup {
             if let composition {
-                AppRootView(dependencies: composition.dependencies, voiceSettings: composition.voiceSettings,
-                            modelSettings: composition.modelSettings, memory: composition.longTermMemory, usage: composition.usage,
-                            robotSettings: composition.robotSettings, robotLink: composition.robotLink, faceTracking: composition.faceTracking, camera: composition.camera, onboardingSettings: onboardingSettings)
+                AppRootView(composition: composition, onboardingSettings: onboardingSettings)
             } else {
                 Color.clear
             }

@@ -5,10 +5,13 @@ import FoundationModels
 func makeClaudeService(_ factory: StubSessionFactory = StubSessionFactory(),
                        store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
                        usage: ConversationUsageSpy = ConversationUsageSpy(),
-                       budget: ConversationBudget = .default) -> ClaudeConversationService {
+                       budget: ConversationBudget = .default,
+                       longTerm: LongTermMemoryManager? = nil,
+                       tools: any ConversationToolProvider = StaticToolProvider([]),
+                       configuration: @escaping @Sendable () async -> ConversationModelConfiguration = { .init() }) -> ClaudeConversationService {
     ClaudeConversationService(factory: factory, memoryStore: store,
-                              longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                              tools: StaticToolProvider([]), configuration: { .init() }, usage: usage, budget: budget)
+                              longTermMemory: longTerm ?? LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
+                              tools: tools, configuration: configuration, usage: usage, budget: budget)
 }
 
 enum ClarificationSummaryFixture {

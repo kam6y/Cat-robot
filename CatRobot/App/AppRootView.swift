@@ -21,6 +21,13 @@ struct AppRootView: View {
     /// シートを開くたびに作り直すと一覧が空に戻るので、ルートで 1 つ持つ。
     @State private var memoryViewModel: LongTermMemoryViewModel
 
+    init(composition: ConversationComposition, onboardingSettings: OnboardingSettings? = nil) {
+        self.init(dependencies: composition.dependencies, voiceSettings: composition.voiceSettings,
+                  modelSettings: composition.modelSettings, memory: composition.longTermMemory, usage: composition.usage,
+                  robotSettings: composition.robotSettings, robotLink: composition.robotLink,
+                  faceTracking: composition.faceTracking, camera: composition.camera, onboardingSettings: onboardingSettings)
+    }
+
     init(
         dependencies: ConversationDependencies,
         voiceSettings: SpeechVoiceSettings? = nil,

@@ -7,7 +7,6 @@ final class MotionCoordinatorTests: XCTestCase {
 
     func testFaceDrivenIdleWaitsForCueAndKeepsExistingCapsAndSpeed() async {
         let h = MotionHarness()
-        h.motion.setIdleFaceDriven(true)
         h.motion.setConversationPhase(.listening)
         await h.advanceFresh(by: 12)
         XCTAssertTrue(h.sentCommands.isEmpty, "Face life owns the quiet intervals")
@@ -29,7 +28,6 @@ final class MotionCoordinatorTests: XCTestCase {
     func testFaceCueIsDroppedRatherThanReplayedAfterHigherPriorityWork() async {
         for gate in 0..<7 {
             let h = MotionHarness()
-            h.motion.setIdleFaceDriven(true)
             h.motion.setConversationPhase(.listening)
             switch gate {
             case 0: h.motion.setControlMode(.settings)
@@ -59,7 +57,6 @@ final class MotionCoordinatorTests: XCTestCase {
 
     func testFaceCueCancellationInvalidatesBackpressuredWrite() async {
         let h = MotionHarness()
-        h.motion.setIdleFaceDriven(true)
         h.motion.setConversationPhase(.listening)
         h.link.writable = false
         h.motion.requestIdleFaceMotion(yaw: 2, pitch: 0)
@@ -75,7 +72,6 @@ final class MotionCoordinatorTests: XCTestCase {
 
     func testCancellingFaceLifeCannotCancelTrackingTakingOverAnIdleWrite() async {
         let h = MotionHarness()
-        h.motion.setIdleFaceDriven(true)
         h.motion.setConversationPhase(.listening)
         h.motion.requestIdleFaceMotion(yaw: 2, pitch: 0)
         await h.drain()
@@ -97,7 +93,6 @@ final class MotionCoordinatorTests: XCTestCase {
 
     func testNonFiniteFaceCuesAreIgnored() async {
         let h = MotionHarness()
-        h.motion.setIdleFaceDriven(true)
         h.motion.setConversationPhase(.listening)
         h.motion.requestIdleFaceMotion(yaw: .nan, pitch: 0)
         h.motion.requestIdleFaceMotion(yaw: 0, pitch: .infinity)
@@ -347,12 +342,11 @@ final class MotionCoordinatorTests: XCTestCase {
         }
     }
 
-    func testIdleIntervalBoundsSmoothSamplesAndRate() async {
-        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2]))
+    func testIdleColumnBoundsSmoothSamplesAndRate() async {
+        let h = MotionHarness()
         h.motion.setConversationPhase(.listening)
-        await h.advanceFresh(by: 3.9)
-        XCTAssertTrue(h.sentCommands.isEmpty)
-        await h.advanceFresh(by: 0.1)
+        h.motion.requestIdleFaceMotion(yaw: 3, pitch: 2)
+        await h.drain()
         await h.advanceFresh(by: 3.0, step: 0.05)
         let moves = h.link.sent.filter { if case .move = $0.command { true } else { false } }
         XCTAssertGreaterThan(moves.count, 20)
@@ -363,15 +357,18 @@ final class MotionCoordinatorTests: XCTestCase {
             XCTAssertEqual(speed, 10)
         }
         for pair in zip(moves, moves.dropFirst()) { XCTAssertGreaterThanOrEqual(pair.1.at - pair.0.at, 0.049_999) }
-        XCTAssertEqual(moves.first?.command, .move(yawDeci: 0, pitchDeci: 0, speed: 10))
-        XCTAssertEqual(moves.last?.command, .move(yawDeci: 30, pitchDeci: 20, speed: 10))
-        XCTAssertEqual(moves.last!.at - moves.first!.at, 3.0, accuracy: 0.051)
+        guard let first = moves.first, let last = moves.last else { return XCTFail("The face cue sent no MOVE") }
+        XCTAssertEqual(first.command, .move(yawDeci: 0, pitchDeci: 0, speed: 10))
+        XCTAssertEqual(last.command, .move(yawDeci: 30, pitchDeci: 20, speed: 10))
+        XCTAssertEqual(last.at - first.at, 3.0, accuracy: 0.051)
     }
 
     func testToolSpeechInvalidatesBlockedIdleMove() async {
-        let h = MotionHarness(random: ScriptedRobotRandom([4, 3, 2, 3.5]))
+        let h = MotionHarness()
         h.motion.setConversationPhase(.listening)
-        await h.advanceFresh(by: 4.1, step: 0.05)
+        h.motion.requestIdleFaceMotion(yaw: 3, pitch: 2)
+        await h.drain()
+        await h.advanceFresh(by: 0.1, step: 0.05)
         h.link.writable = false
         await h.advanceFresh(by: 0.05)
         XCTAssertTrue(h.link.queuedCommands.contains { if case .move = $0 { true } else { false } })
@@ -427,7 +424,11 @@ final class MotionCoordinatorTests: XCTestCase {
         XCTAssertFalse(h.sentCommands.contains(.torque(false)))
         h.motion.setControlMode(.conversation)
         h.motion.setConversationPhase(.listening)
-        await h.advanceFresh(by: 18, step: 0.05)
+        for _ in 0..<3 {
+            h.motion.requestIdleFaceMotion(yaw: -3, pitch: -2)
+            await h.drain()
+            await h.advanceFresh(by: 6, step: 0.05)
+        }
         XCTAssertTrue(h.sentCommands.contains { if case .move = $0 { true } else { false } })
         XCTAssertFalse(h.sentCommands.contains(.torque(false)), "Do not cycle PWM between idle movements")
         h.motion.stopAll(reason: .userStop)

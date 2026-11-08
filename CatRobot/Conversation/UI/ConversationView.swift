@@ -64,7 +64,7 @@ struct ConversationView: View {
     /// 大きい文字・エラー・記憶カードでは、内容を縦に並べてスクロールさせる。
     private var prioritizesContent: Bool {
         dynamicTypeSize.isAccessibilitySize || state.errorMessage != nil
-            || ConversationMemoryPresentation(state: state.memoryState).message != nil
+            || state.memoryPresentation.message != nil
     }
 
     @ViewBuilder
@@ -218,7 +218,7 @@ struct ConversationView: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(ConversationMemoryPresentation(state: state.memoryState).blocksConversation)
+        .disabled(state.memoryPresentation.blocksConversation)
         .accessibilityLabel(accessibility.listeningAction)
         .accessibilityValue(accessibility.microphoneValue)
         .accessibilityHint(accessibility.listeningHint)
@@ -239,10 +239,10 @@ struct ConversationView: View {
 
     private var cards: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let message = ConversationMemoryPresentation(state: state.memoryState).message {
+            if let message = state.memoryPresentation.message {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(message).fixedSize(horizontal: false, vertical: true)
-                    if ConversationMemoryPresentation(state: state.memoryState).canRetry {
+                    if state.memoryPresentation.canRetry {
                         Button(state.memoryState == .unsaved ? "保存を再試行" : "再試行", action: actions.retryMemory)
                             .buttonStyle(.bordered).frame(minHeight: 44)
                     }

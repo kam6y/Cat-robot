@@ -80,23 +80,24 @@ struct ConversationViewState: Equatable, Sendable {
     var isFaceTrackingPausedForHeat = false
     var isAudioOutputMuted = false
     var isSleeping: Bool { inactivity == .sleeping }
+    var memoryPresentation: ConversationMemoryPresentation { ConversationMemoryPresentation(state: memoryState) }
     /// Decoration yields immediately to a person, a held reply, or another screen.
     var allowsIdleFaceLife: Bool {
         guard phase == .idle || phase == .listening || phase == .paused,
               !isSleeping, !isLooking, heldExpression == nil, !showsTypedInput, errorMessage == nil,
               provisionalTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return !ConversationMemoryPresentation(state: memoryState).blocksConversation
+        return !memoryPresentation.blocksConversation
     }
     var showsTapToResume: Bool {
         phase == .paused && isAwaitingTapToResume && !isSleeping
-            && !ConversationMemoryPresentation(state: memoryState).blocksConversation
+            && !memoryPresentation.blocksConversation
     }
     var statusChips: [ConversationStatusChip] {
         var chips: [ConversationStatusChip] = []
         if isSleeping {
             chips.append(.sleeping)
         } else {
-            if phase == .listening && !ConversationMemoryPresentation(state: memoryState).blocksConversation {
+            if phase == .listening && !memoryPresentation.blocksConversation {
                 chips.append(.listening)
             }
             if showsTapToResume { chips.append(.paused) }
@@ -161,7 +162,7 @@ extension ConversationPhase {
 
 extension ConversationViewState {
     var allowsTypedSubmission: Bool {
-        !isSleeping && phase.allowsTypedSubmission && !ConversationMemoryPresentation(state: memoryState).blocksConversation
+        !isSleeping && phase.allowsTypedSubmission && !memoryPresentation.blocksConversation
     }
 
     static let idle = entering(.idle)

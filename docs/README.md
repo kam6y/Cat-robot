@@ -49,10 +49,11 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | [2026-11-06 音量0の警告](superpowers/specs/2026-11-06-muted-audio-warning-design.md) | issue #26。再生音量0を警告チップで知らせ、音量を上げると消す |
 | [2026-11-07 複数人の顔向き](superpowers/specs/2026-11-07-multiple-facing-addressing-design.md) | issue #28。複数人でも1人以上がこちら向きなら宛先判定を省略 |
 | [2026-11-07 聞き返し前後の実際の発言](superpowers/specs/2026-11-07-clarification-history-design.md) | issue #29。聞き返し後の返事を文意で扱い、実際の発言だけを履歴に残す。確認待ち中にこちらを向いていない返事は文脈つきのHaikuで判定 |
+| [2026-11-07 挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md) | #22〜#29 の後の責務整理。利用者の判断で、本番で使っていない内蔵の待機スケジューラを撤去した。そのほかの挙動・モデルへの入力・保存形式は変えない |
 
 [アプリ全体の分岐図（2026-11-07時点の静的スナップショット）](application-flow.html) は、issue #29対応時点の会話・応答条件・記憶・待機・顔と首・読み上げを、条件と動作でたどるHTMLです。現役の仕様ではなく、以後の変更では自動更新されません。今の振る舞いは上の仕様とコードで確かめてください。
 
-進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。
+進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。挙動を変えない整理の計画は [2026-11-07 整理](superpowers/plans/2026-11-07-behavior-preserving-refactor.md) にあります。
 
 ## 採用済みのデザイン資料（`design/`）
 
@@ -98,6 +99,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | 2026-11-06 音量0の警告 | [記録](validation/2026-11-06-muted-audio-warning.md)、[結果](validation/data/2026-11-06-muted-audio-warning/results.json) | 実機で音量0の表示・音量復帰の解除を利用者が確認。inactive/全出力経路/実機VoiceOverの受入は未実施 |
 | 2026-11-07 複数人の顔向き | [記録](validation/2026-11-07-multiple-facing-addressing.md)、[レビュー](validation/multiple-facing-review-2026-11-07/) | 自動1,004件成功、相互レビュー・文書修正確認済み。通常署名版は実機で起動済み。人による複数人条件は回答待ち、mainへの統合は未実施 |
 | 2026-11-07 聞き返し前後の履歴 | [記録](validation/2026-11-07-clarification-history.md)、[計画](superpowers/plans/2026-11-07-clarification-history.md) | 実モデル72試行は初回不合格、指示文修正後の全件再実行で合格（返答・要約33件は両者の全件レビューが一致）。全suite 1,039件成功、通常署名版のbuild成功、両側の独立レビューと相互受領済み（採用は文書1件）。通常版の実機受入は利用者がOKと回答（個々の発話記録はない）。mainへのsquashと#28・#29のpushは利用者が承認済み（この記録の時点では未実行）。ほかの言い方や長い会話での正しさ、実token数・請求額は未確認 |
+| 2026-11-07 挙動を変えない整理 | [記録](validation/2026-11-07-behavior-preserving-refactor.md)、[計画](superpowers/plans/2026-11-07-behavior-preserving-refactor.md) | 通常 suite は再実行で1,048/1,048、双方レビューのCritical・Importantは0。初回の顔描画失敗は原因未確定、T2失効試験の同期改善はMinorとして残す。11/8に実機Supertonic 5/18/10/3件と有料モデル72試行が成功、返答・要約33件の両者の意味判定が一致。通常版を実機で起動し、利用者が待機・あくび・追尾・設定復帰・あくび中の発話をOKと回答。robot motionの全ジェスチャ自動試験は未実行。mainへのsquashとpushは利用者が承認（この追記時点では実行前）。実token数・請求額は未計測 |
 
 ## 2026-10-28 main 整理の検証
 

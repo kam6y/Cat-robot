@@ -5,6 +5,7 @@ import UIKit
 enum ConversationSettingsIdentifier: String, CaseIterable {
     case sleepyMinutesStepper, sleepingMinutesStepper
     case cameraPermissionButton
+    case faceTrackingEnabled, faceTrackingStatus, faceTrackingYawCorrectionStepper
     case modelPicker, effortPicker, voicePresetPicker, dailyTurnLimitStepper, memoryFactsList, deleteAllMemoryButton
 }
 
