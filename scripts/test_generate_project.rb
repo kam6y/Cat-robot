@@ -79,6 +79,7 @@ assert(PBXPROJ_PATH.file?, "generated project.pbxproj is missing")
 assert(SCHEME_PATH.file?, "generated shared scheme is missing")
 
 info = Xcodeproj::Plist.read_from_path(ROOT.join("CatRobot/Resources/Info.plist").to_s)
+assert(info["NSLocalNetworkUsageDescription"] == "開発用の診断で、同じネットワーク上の Mac にある検証用 relay へ接続します。", "the explicit Info.plist must carry the probe local network description")
 reason = info["NSBluetoothAlwaysUsageDescription"]
 assert(reason.is_a?(String) && !reason.strip.empty?, "Bluetooth usage description is missing")
 assert(!info.key?("UIBackgroundModes"), "the robot link must remain foreground-only")
