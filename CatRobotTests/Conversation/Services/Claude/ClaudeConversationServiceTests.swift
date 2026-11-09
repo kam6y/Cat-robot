@@ -399,6 +399,62 @@ final class ClaudeConversationServiceTests: XCTestCase {
         XCTAssertEqual(next.last, "にゃん。")
     }
 
+    func testRecentTurnsFollowsMemoryState() async throws {
+        let store = MemoryStoreFake()
+        let gate = ConversationTestGate()
+        addTeardownBlock { await gate.open() }
+        let longStore = GatedLongTermMemoryStore(clearGate: gate)
+        let held = ScriptedSessionClient(chunks: nil)
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["晴れだよ"]), held])
+        let service = makeService(factory: factory, store: store, longTerm: LongTermMemoryManager(store: longStore))
+
+        let beforePrepare = await service.recentTurns()
+        XCTAssertEqual(beforePrepare, [], "未復元は空")
+
+        _ = try await collect(service.streamReply(to: "今日の天気はどう？"))
+        let first = ConversationMemoryTurn(prompt: "今日の天気はどう？", response: "晴れだよ")
+        let committed = await service.recentTurns()
+        XCTAssertEqual(committed, [first], "確定した往復を返す")
+
+        await store.setSaveFailure(true)
+        await service.recordExternalTurn(prompt: "ねこ、聞いて", response: ClarificationContext.question)
+        let unsaved = await service.recentTurns()
+        let unsavedState = await service.memoryState()
+        XCTAssertEqual(unsaved, [first, .init(prompt: "ねこ、聞いて", response: ClarificationContext.question)], "未保存の往復も含む")
+        XCTAssertEqual(unsavedState, .unsaved)
+        await store.setSaveFailure(false)
+
+        let stream = try await service.streamReply(to: "それで、あしたは？")
+        let reader = Task { try await self.collect(stream) }
+        await held.waitUntilStarted()
+        held.yield("明日は")
+        let generating = await service.recentTurns()
+        XCTAssertEqual(generating, unsaved, "生成中の往復は確定前なので含まない")
+        held.yield("晴れ")
+        held.finish()
+        _ = try await reader.value
+        let afterGeneration = await service.recentTurns()
+        XCTAssertEqual(afterGeneration.count, 3)
+
+        await store.setClearFailure(true)
+        do { try await service.forgetConversation(); XCTFail("expected deleteFailed") }
+        catch { XCTAssertEqual(error as? ConversationMemoryError, .deleteFailed) }
+        let forgetFailed = await service.recentTurns()
+        let failedState = await service.memoryState()
+        XCTAssertEqual(forgetFailed, [], "削除失敗中は空")
+        XCTAssertEqual(failedState, .forgetFailed(.deleteFailed))
+        await store.setClearFailure(false)
+
+        let forget = Task { try await service.forgetConversation() }
+        await gate.waitUntilEntered()
+        let forgetting = await service.recentTurns()
+        XCTAssertEqual(forgetting, [], "削除中は空")
+        await gate.open()
+        try await forget.value
+        let afterForget = await service.recentTurns()
+        XCTAssertEqual(afterForget, [], "削除後は空")
+    }
+
     func testAvailabilityMapsAuthenticationOutcomes() async {
         let ok = await makeService(factory: StubSessionFactory()).availability()
         XCTAssertEqual(ok, .available)

@@ -50,3 +50,9 @@ protocol ConversationMemoryManaging: Sendable {
     func retryMemoryOperation() async throws
     func forgetConversation() async throws
 }
+
+/// 宛先判定に添える直近の会話の読み取り。短期記憶の往復をその時点の複製で返す（未保存を含む）。
+/// 未復元・削除中・削除失敗中は空。要約は含めない。
+protocol ConversationHistoryReading: Sendable {
+    func recentTurns() async -> [ConversationMemoryTurn]
+}

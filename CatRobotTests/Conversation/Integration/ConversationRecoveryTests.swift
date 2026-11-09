@@ -378,6 +378,7 @@ final class ConversationRecoveryTests: XCTestCase {
         await harness.sut.startConversation()
         let first = Task { await harness.sut.submitTypedText("最初") }
         await harness.reply.waitUntilPromptCount(1)
+        XCTAssertFalse(harness.sut.viewState.allowsTypedSubmission)
 
         harness.sut.showTypedInput()
         harness.sut.updateTypedText("二つ目")
@@ -393,6 +394,7 @@ final class ConversationRecoveryTests: XCTestCase {
         let spokenTexts = await harness.speaker.texts
         XCTAssertEqual(replyPrompts, ["最初"])
         XCTAssertEqual(spokenTexts, ["最初の返事"])
+        XCTAssertFalse(spokenTexts.contains(ConversationFailureGuidance.generationFailed))
         XCTAssertEqual(harness.sut.viewState.phase, .paused)
         XCTAssertTrue(harness.sut.viewState.showsTypedInput)
         XCTAssertEqual(harness.sut.viewState.typedText, "二つ目")
@@ -439,7 +441,7 @@ final class ConversationRecoveryTests: XCTestCase {
         let spokenTexts = await harness.speaker.texts
         XCTAssertEqual(resetCount, 1)
         XCTAssertEqual(replyPrompts, ["猫ちゃん、長い話の続き"])
-        XCTAssertTrue(spokenTexts.isEmpty)
+        XCTAssertEqual(spokenTexts, [ConversationFailureGuidance.contextExceeded], "失敗の前に定型文だけを話す")
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.contextExceeded))
         XCTAssertEqual(
             harness.sut.viewState.errorMessage,
@@ -530,7 +532,7 @@ final class ConversationRecoveryTests: XCTestCase {
 
     func testRetryRerunsPreflightAndNeverPretendsUnavailableModelIsListening() async {
         let harness = ConversationHarness(
-            modelAvailabilityResult: .modelNotReady
+            modelAvailabilityResult: .claudeUnreachable
         )
         await harness.sut.startConversation()
 
@@ -542,7 +544,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(startsWhileUnavailable, 0)
         XCTAssertEqual(
             harness.sut.viewState.phase,
-            .failed(.modelUnavailable(.modelNotReady))
+            .failed(.modelUnavailable(.claudeUnreachable))
         )
 
         await harness.modelAvailability.setResult(.available)
@@ -649,6 +651,7 @@ final class ConversationRecoveryTests: XCTestCase {
             replySnapshots: nil
         )
         await harness.sut.startConversation()
+        let stopsBeforeTurn = await harness.speaker.stopCount   // マイク拒否の後始末も stop を数える
         let typed = Task { await harness.sut.submitTypedText("文字の質問") }
         await harness.reply.waitUntilPromptCount(1)
 
@@ -657,8 +660,10 @@ final class ConversationRecoveryTests: XCTestCase {
 
         let audioIsActive = await harness.audio.isActive
         let speakerStops = await harness.speaker.stopCount
+        let deactivations = await harness.audio.deactivateCount
         XCTAssertFalse(audioIsActive)
-        XCTAssertEqual(speakerStops, 1)
+        XCTAssertGreaterThanOrEqual(speakerStops - stopsBeforeTurn, 1)
+        XCTAssertEqual(deactivations, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
         let calls = harness.calls.values
         XCTAssertLessThan(
@@ -673,13 +678,16 @@ final class ConversationRecoveryTests: XCTestCase {
             speakerError: .speechSynthesisFailed
         )
         await harness.sut.startConversation()
+        let stopsBeforeTurn = await harness.speaker.stopCount
 
         await harness.sut.submitTypedText("文字の質問")
 
         let audioIsActive = await harness.audio.isActive
         let speakerStops = await harness.speaker.stopCount
+        let deactivations = await harness.audio.deactivateCount
         XCTAssertFalse(audioIsActive)
-        XCTAssertEqual(speakerStops, 1)
+        XCTAssertGreaterThanOrEqual(speakerStops - stopsBeforeTurn, 1)
+        XCTAssertEqual(deactivations, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
         let calls = harness.calls.values
         XCTAssertLessThan(
@@ -696,6 +704,7 @@ final class ConversationRecoveryTests: XCTestCase {
             replyResetGate: resetGate
         )
         await harness.sut.startConversation()
+        let stopsBeforeTurn = await harness.speaker.stopCount
         let typed = Task { await harness.sut.submitTypedText("文字の質問") }
         await harness.reply.waitUntilPromptCount(1)
 
@@ -704,8 +713,10 @@ final class ConversationRecoveryTests: XCTestCase {
 
         let audioDuringReset = await harness.audio.isActive
         let speakerStopsDuringReset = await harness.speaker.stopCount
+        let deactivationsDuringReset = await harness.audio.deactivateCount
         XCTAssertFalse(audioDuringReset)
-        XCTAssertEqual(speakerStopsDuringReset, 1)
+        XCTAssertGreaterThanOrEqual(speakerStopsDuringReset - stopsBeforeTurn, 1)
+        XCTAssertEqual(deactivationsDuringReset, 1)
         XCTAssertNotEqual(harness.sut.viewState.phase, .failed(.contextExceeded))
 
         await resetGate.open()
@@ -718,7 +729,7 @@ final class ConversationRecoveryTests: XCTestCase {
     func testTypedModelUnavailableAfterVoiceCaptureCleansUpInheritedAudio() async {
         let harness = ConversationHarness()
         await harness.sut.startConversation()
-        await harness.modelAvailability.setResult(.modelNotReady)
+        await harness.modelAvailability.setResult(.claudeUnreachable)
 
         await harness.sut.submitTypedText("文字の質問")
 
@@ -730,7 +741,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(recognizerStops, 1)
         XCTAssertEqual(
             harness.sut.viewState.phase,
-            .failed(.modelUnavailable(.modelNotReady))
+            .failed(.modelUnavailable(.claudeUnreachable))
         )
         let calls = harness.calls.values
         guard let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
@@ -807,6 +818,8 @@ final class ConversationRecoveryTests: XCTestCase {
             let recognizerStops = await harness.recognizer.stopCount
             let speakerStops = await harness.speaker.stopCount
             let audioDeactivations = await harness.audio.deactivateCount
+            let texts = await harness.speaker.texts
+            XCTAssertEqual(texts, [ConversationFailureGuidance.listening], "stage: \(stage)")
             XCTAssertFalse(audioIsActive, "stage: \(stage)")
             XCTAssertEqual(recognizerStops, 1, "stage: \(stage)")
             XCTAssertEqual(speakerStops, 1, "stage: \(stage)")
@@ -815,13 +828,18 @@ final class ConversationRecoveryTests: XCTestCase {
 
             let calls = harness.calls.values
             guard let stopRecognizer = calls.lastIndex(of: .stopRecognizer),
+                  let guidance = calls.lastIndex(of: .speak(ConversationFailureGuidance.listening)),
                   let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
                   let deactivateAudio = calls.lastIndex(of: .deactivateAudio) else {
                 XCTFail("voice preflight failure must stop services before deactivation")
+                await harness.sut.shutdown()
                 continue
             }
+            XCTAssertLessThan(stopRecognizer, guidance)
+            XCTAssertLessThan(guidance, stopSpeaker)
             XCTAssertLessThan(stopRecognizer, deactivateAudio)
             XCTAssertLessThan(stopSpeaker, deactivateAudio)
+            await harness.sut.shutdown()
         }
     }
 
@@ -840,7 +858,7 @@ final class ConversationRecoveryTests: XCTestCase {
         let speakerStops = await harness.speaker.stopCount
         let audioDeactivations = await harness.audio.deactivateCount
         XCTAssertFalse(audioIsActive)
-        XCTAssertEqual(speakerStops, 1)
+        XCTAssertGreaterThanOrEqual(speakerStops, 1, "返答の後始末と案内の後の停止で複数回になりうる")
         XCTAssertEqual(audioDeactivations, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
         let calls = harness.calls.values
@@ -886,7 +904,7 @@ final class ConversationRecoveryTests: XCTestCase {
         let recognizerStarts = await harness.recognizer.startCount
         let audioActivations = await harness.audio.activateCount
         XCTAssertTrue(audioIsActive)
-        XCTAssertEqual(speakerStops, 1)
+        XCTAssertGreaterThanOrEqual(speakerStops, 1)
         XCTAssertEqual(recognizerStarts, 2)
         XCTAssertEqual(audioActivations, 2)
         XCTAssertEqual(harness.sut.viewState.phase, .listening)

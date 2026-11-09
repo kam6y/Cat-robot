@@ -30,14 +30,34 @@ enum ClarificationSummaryFixture {
     }
 }
 
+/// clear() を gate で止められる長期メモの store。forget の途中（削除中）の状態を再現する。
+actor GatedLongTermMemoryStore: LongTermMemoryStore {
+    private var facts: [LongTermFact] = []
+    private let clearGate: ConversationTestGate?
+    private(set) var clearCount = 0
+    init(clearGate: ConversationTestGate? = nil) { self.clearGate = clearGate }
+    func load() -> [LongTermFact] { facts }
+    func save(_ value: [LongTermFact]) { facts = value }
+    func clear() async {
+        clearCount += 1
+        await clearGate?.wait()
+        facts = []
+    }
+}
+
 actor ConversationUsageSpy: ConversationUsageMetering {
     private(set) var turns: [(ConversationModelChoice, Int, Int)] = []
+    /// isDailyLimitReached(limit:) に渡された上限の記録。設定の変更が呼び出しごとに届くことを確かめる。
+    private(set) var limits: [Int] = []
     var limitReached = false
     func setLimitReached(_ value: Bool) { limitReached = value }
     func recordTurn(model: ConversationModelChoice, promptCharacters: Int, responseCharacters: Int) {
         turns.append((model, promptCharacters, responseCharacters))
     }
-    func isDailyLimitReached(limit: Int) -> Bool { limitReached }
+    func isDailyLimitReached(limit: Int) -> Bool {
+        limits.append(limit)
+        return limitReached
+    }
     func summary() -> ConversationUsageSummary {
         .init(turnsToday: turns.count, turnsThisMonth: turns.count, estimatedCostUSDThisMonth: 0)
     }

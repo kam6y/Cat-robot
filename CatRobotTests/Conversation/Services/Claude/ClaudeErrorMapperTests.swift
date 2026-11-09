@@ -33,75 +33,61 @@ final class ClaudeErrorMapperTests: XCTestCase {
         XCTAssertEqual(ClaudeErrorMapper.map(Odd()), .modelGenerationFailed)
     }
 
-    func testFoundationMapperPassesServiceErrorsThrough() {
-        XCTAssertEqual(FoundationModelErrorMapper.map(ConversationServiceError.modelUnreachable), .modelUnreachable)
+    func testMapsFrameworkGenerationFailuresForCloudSessions() {
+        let context = LanguageModelSession.GenerationError.Context(debugDescription: "private diagnostic")
+        let cases: [(LanguageModelSession.GenerationError, ConversationServiceError)] = [
+            (.exceededContextWindowSize(context), .contextExceeded),
+            (.assetsUnavailable(context), .modelGenerationFailed),
+            (.guardrailViolation(context), .guardrailViolation),
+            (.unsupportedGuide(context), .modelGenerationFailed),
+            (.unsupportedLanguageOrLocale(context), .modelLocaleUnsupported),
+            (.decodingFailure(context), .modelGenerationFailed),
+            (.rateLimited(context), .modelGenerationFailed),
+            (.concurrentRequests(context), .modelBusy),
+            (.refusal(.init(transcriptEntries: []), context), .refusal),
+        ]
+        for (error, expected) in cases {
+            let mapped = ClaudeErrorMapper.map(error)
+            XCTAssertEqual(mapped, expected)
+            XCTAssertFalse(ConversationErrorPresentation(mapped).message.contains("private diagnostic"))
+        }
     }
 
-    // MARK: 端末内モデルへ切り替えてよい失敗（FR-LLM-4）
+    func testMapsCancellationBeforeFrameworkGenerationFailures() {
+        XCTAssertEqual(ClaudeErrorMapper.map(CancellationError()), .cancelled)
+    }
 
-    func testOnlyUnreachableAndGenericGenerationFailuresAllowOnDeviceFallback() {
-        let expectations: [(ConversationServiceError, Bool)] = [
-            (.modelUnreachable, true),
-            (.modelGenerationFailed, true),
-            (.modelUnavailable(.claudeCredentialMissing), false),
-            (.modelUnavailable(.claudeAttestationUnsupported), false),
-            (.modelUnavailable(.claudeAttestationFailed), false),
-            (.modelUnavailable(.claudeUnreachable), false),
-            (.modelUnavailable(.deviceNotEligible), false),
-            (.modelLocaleUnsupported, false),
-            (.modelAssetsUnavailable, false),
-            (.guardrailViolation, false),
-            (.refusal, false),
-            (.contextExceeded, false),
-            (.inputTooLong, false),
-            (.modelBusy, false),
-            (.cancelled, false),
-            (.microphoneDenied, false),
-            (.speechAssetsUnavailable, false),
-            (.speechLocaleUnsupported, false),
-            (.speechUnrecognized, false),
-            (.speechCaptureFailed, false),
-            (.speechCaptureAlreadyRunning, false),
-            (.speechVoiceUnavailable, false),
-            (.speechSynthesisFailed, false),
-            (.audioSessionFailed, false),
-        ]
-        for (error, allowed) in expectations {
-            XCTAssertEqual(error.allowsOnDeviceFallback, allowed, "\(error)")
-        }
+    func testServiceErrorsPassThrough() {
+        XCTAssertEqual(ClaudeErrorMapper.map(ConversationServiceError.modelUnreachable), .modelUnreachable)
     }
 
     // MARK: 実際のクライアント経路（127.0.0.1 の固定応答サーバ。外部ネットワークには出ない）
 
     /// 529/429 はパッケージが `LanguageModelError.rateLimited` に型付けする。500/502/503 はパッケージ内部の `APIError` のまま届き、
-    /// 公開 API では種別を見分けられないので `.modelGenerationFailed` に写る。どちらも端末内モデルへの切り替え対象（FR-LLM-4）。
-    func testServerSideFailuresFromTheRealClientAllowOnDeviceFallback() async throws {
+    /// 公開 API では種別を見分けられないので `.modelGenerationFailed` に写る。どちらも声の案内は「答えられなかった」になる（spokenGuidance は Task 3）。
+    func testServerSideFailuresFromTheRealClientMapToUnreachableOrGenerationFailed() async throws {
         for status in [529, 429] {
             let error = try await failureFromStubbedClaude(status: status, body: Data())
             XCTAssertEqual(ClaudeErrorMapper.map(error), .modelUnreachable, "HTTP \(status)")
-            XCTAssertTrue(ClaudeErrorMapper.map(error).allowsOnDeviceFallback, "HTTP \(status)")
         }
         let apiError = #"{"type":"error","error":{"type":"api_error","message":"internal"}}"#
         for (status, body) in [(500, ""), (500, apiError), (502, "<html>bad gateway</html>"), (503, "")] {
             let error = try await failureFromStubbedClaude(status: status, body: Data(body.utf8))
             let failure = ClaudeErrorMapper.map(error)
             XCTAssertEqual(failure, .modelGenerationFailed, "HTTP \(status) \(body)")
-            XCTAssertTrue(failure.allowsOnDeviceFallback, "HTTP \(status) \(body)")
             XCTAssertEqual(ClaudeErrorMapper.availability(error), .claudeUnreachable, "HTTP \(status) \(body)")
         }
     }
 
-    /// 認証・文脈超過はパッケージが型付けするので、意味を保ったまま切り替え対象外。400/403/404 は設定・権限・不正要求の失敗だが、
-    /// 0.2.3 の公開 API では 5xx と区別できず、同じ `.modelGenerationFailed`（切り替え対象）になる（FR-LLM-4 に制約として明記）。
+    /// 認証・文脈超過はパッケージが型付けするので、意味を保ったまま写る。400/403/404 は設定・権限・不正要求の失敗だが、
+    /// 0.2.3 の公開 API では 5xx と区別できず、同じ `.modelGenerationFailed` になる（既知の制約。分け方は変えない）。
     func testClientSideFailuresFromTheRealClientKeepTheirSemantics() async throws {
         let unauthorized = try await failureFromStubbedClaude(status: 401, body: Data())
         XCTAssertEqual(ClaudeErrorMapper.map(unauthorized), .modelUnavailable(.claudeCredentialMissing))
-        XCTAssertFalse(ClaudeErrorMapper.map(unauthorized).allowsOnDeviceFallback)
         XCTAssertEqual(ClaudeErrorMapper.availability(unauthorized), .claudeCredentialMissing)
 
         let tooLarge = try await failureFromStubbedClaude(status: 413, body: Data())
         XCTAssertEqual(ClaudeErrorMapper.map(tooLarge), .contextExceeded)
-        XCTAssertFalse(ClaudeErrorMapper.map(tooLarge).allowsOnDeviceFallback)
         let contextMessage = #"{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long for the context window"}}"#
         let context = try await failureFromStubbedClaude(status: 400, body: Data(contextMessage.utf8))
         XCTAssertEqual(ClaudeErrorMapper.map(context), .contextExceeded)
@@ -112,7 +98,6 @@ final class ClaudeErrorMapperTests: XCTestCase {
             let error = try await failureFromStubbedClaude(status: status, body: Data(body.utf8))
             let failure = ClaudeErrorMapper.map(error)
             XCTAssertEqual(failure, .modelGenerationFailed, "HTTP \(status)")
-            XCTAssertTrue(failure.allowsOnDeviceFallback, "HTTP \(status): 0.2.3 では 5xx と区別できない（既知の代償）")
         }
     }
 

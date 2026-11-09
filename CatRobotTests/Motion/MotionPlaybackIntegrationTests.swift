@@ -20,30 +20,15 @@ actor ReservingMotionReply: ReplyGenerating {
 actor ReservingFailingMotionSession: ConversationSessionClient {
     let motion: any RobotMotionControlling
     private(set) var reservation: MotionReservationResult?
+    private(set) var reservationCount = 0
     init(motion: any RobotMotionControlling) { self.motion = motion }
     func prewarm() async {}
     func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
         if let id = MotionTurnContext.current {
+            reservationCount += 1
             reservation = await motion.reserve(.init(gesture: .nod, intensity: .large, repeats: 1), for: id)
         }
         return AsyncThrowingStream { $0.finish(throwing: URLError(.notConnectedToInternet)) }
-    }
-}
-
-actor MotionProbeSecondary: ReplyGenerating {
-    nonisolated let supportsStableReplyPrefix = true
-    let motion: any RobotMotionControlling
-    private(set) var scope: MotionTurnID?
-    private(set) var reservationAtEntry: MotionReservationResult?
-    init(motion: any RobotMotionControlling) { self.motion = motion }
-    func prewarm() async {}
-    func reset() async {}
-    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
-        scope = MotionTurnContext.current
-        if let scope {
-            reservationAtEntry = await motion.reserve(.init(gesture: .nod, intensity: .small, repeats: 1), for: scope)
-        }
-        return AsyncThrowingStream { $0.yield("短く答えるね。"); $0.finish() }
     }
 }
 
@@ -117,28 +102,33 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
         await h.completeCycle(after: 1.52)
     }
 
-    func testFallbackCannotReleaseFailedPrimaryReservations() async throws {
+    func testFailureGuidanceCannotReleaseFailedPrimaryReservations() async throws {
         let h = MotionHarness()
         let client = ReservingFailingMotionSession(motion: h.motion)
-        let secondary = MotionProbeSecondary(motion: h.motion)
         let primary = makeClaudeService(StubSessionFactory(scripts: [client]))
-        let fallback = OnDeviceFallbackReplyGenerator(primary: primary, secondary: secondary,
-            secondaryAvailability: OnDeviceFallbackReplyGeneratorTests.Availability(value: .available),
-            usage: ConversationUsageSpy(), configuration: { .init() }, motion: h.motion)
         let speaker = ControlledSpeaker()
-        let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: fallback, motion: h.motion),
-                                           speaker: speaker, motion: h.motion)
-        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
-        await speaker.waitUntilCallCount(1)
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: h.motion),
+            memory: primary, speaker: speaker, motion: h.motion)
+        let turn = Task { await playback.viewModel.submitTypedText("質問") }
+        let observed = await playback.infrastructure.waitUntil {
+            let texts = await speaker.texts
+            if !texts.isEmpty { return true }
+            if case .failed = playback.viewModel.viewState.phase { return true }
+            return false
+        }
+        let texts = await speaker.texts
+        XCTAssertTrue(observed)
+        XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
+        XCTAssertTrue(h.sentCommands.isEmpty, "Guidance must not release a motion reservation")
+        await speaker.complete()
+        await turn.value
         let reserved = await client.reservation
-        let probe = await secondary.reservationAtEntry
+        let reservations = await client.reservationCount
         XCTAssertEqual(reserved, .reserved(cycles: 1))
-        XCTAssertEqual(probe, .invalidated)
-        await speaker.complete()
-        await speaker.waitUntilCallCount(2)
-        await speaker.complete()
-        _ = try await run.value
+        XCTAssertEqual(reservations, 1)
         XCTAssertTrue(h.sentCommands.isEmpty)
+        XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))
+        await playback.viewModel.shutdown()
     }
 
     func testSpeechFailureCancelsCurrentMotionAndGeneration() async {

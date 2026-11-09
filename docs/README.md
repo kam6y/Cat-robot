@@ -48,12 +48,13 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | [2026-11-06 中立発話の履歴](superpowers/specs/2026-11-06-neutral-history-design.md) | issue #23。元発話と正常完了した聞き返しを保存し、次のClaude応答へ渡す。肯定語で元発話を再送する部分は#29で廃止 |
 | [2026-11-06 音量0の警告](superpowers/specs/2026-11-06-muted-audio-warning-design.md) | issue #26。再生音量0を警告チップで知らせ、音量を上げると消す |
 | [2026-11-07 複数人の顔向き](superpowers/specs/2026-11-07-multiple-facing-addressing-design.md) | issue #28。複数人でも1人以上がこちら向きなら宛先判定を省略 |
-| [2026-11-07 聞き返し前後の実際の発言](superpowers/specs/2026-11-07-clarification-history-design.md) | issue #29。聞き返し後の返事を文意で扱い、実際の発言だけを履歴に残す。確認待ち中にこちらを向いていない返事は文脈つきのHaikuで判定 |
+| [2026-11-07 聞き返し前後の実際の発言](superpowers/specs/2026-11-07-clarification-history-design.md) | issue #29。聞き返し後の返事を文意で扱い、実際の発言だけを履歴に残す。確認待ち中にこちらを向いていない返事は文脈つきのHaikuで判定。「確認待ちでないときは端末内モデルが使えれば端末内」の振り分けは#30で廃止 |
 | [2026-11-07 挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md) | #22〜#29 の後の責務整理。利用者の判断で、本番で使っていない内蔵の待機スケジューラを撤去した。そのほかの挙動・モデルへの入力・保存形式は変えない |
+| [2026-11-09 端末内モデルの削除と Haiku への一本化](superpowers/specs/2026-11-09-haiku-only-design.md) | issue #30。端末内モデルと fallback を全て外し、宛先判定は直近の会話つきの Claude Haiku、返答は Claude だけ。失敗は種類ごとの定型文を声で案内してから表示する。#29 の「端末内モデルが使えれば端末内」の振り分けはこれで廃止 |
 
-[アプリ全体の分岐図（2026-11-07時点の静的スナップショット）](application-flow.html) は、issue #29対応時点の会話・応答条件・記憶・待機・顔と首・読み上げを、条件と動作でたどるHTMLです。現役の仕様ではなく、以後の変更では自動更新されません。今の振る舞いは上の仕様とコードで確かめてください。
+[アプリ全体の分岐図（2026-11-09時点の静的スナップショット）](application-flow.html) は、issue #30対応時点の会話・応答条件・記憶・待機・顔と首・読み上げを、条件と動作でたどるHTMLです。現役の仕様ではなく、以後の変更では自動更新されません。今の振る舞いは上の仕様とコードで確かめてください。
 
-進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。挙動を変えない整理の計画は [2026-11-07 整理](superpowers/plans/2026-11-07-behavior-preserving-refactor.md) にあります。
+進行中の計画は [2026-10-28 main の整理](superpowers/plans/2026-10-28-main-refactor.md) です。顔の向きによる追尾条件の実装計画は [2026-10-28 顔の向き](superpowers/plans/2026-10-28-face-facing-gate.md) にあります。挙動を変えない整理の計画は [2026-11-07 整理](superpowers/plans/2026-11-07-behavior-preserving-refactor.md) にあります。端末内モデルの削除と Haiku への一本化の計画は [2026-11-09 Haiku 一本化](superpowers/plans/2026-11-09-haiku-only.md) にあります。
 
 ## 採用済みのデザイン資料（`design/`）
 
@@ -100,6 +101,7 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 | 2026-11-07 複数人の顔向き | [記録](validation/2026-11-07-multiple-facing-addressing.md)、[レビュー](validation/multiple-facing-review-2026-11-07/) | 自動1,004件成功、相互レビュー・文書修正確認済み。通常署名版は実機で起動済み。人による複数人条件は回答待ち、mainへの統合は未実施 |
 | 2026-11-07 聞き返し前後の履歴 | [記録](validation/2026-11-07-clarification-history.md)、[計画](superpowers/plans/2026-11-07-clarification-history.md) | 実モデル72試行は初回不合格、指示文修正後の全件再実行で合格（返答・要約33件は両者の全件レビューが一致）。全suite 1,039件成功、通常署名版のbuild成功、両側の独立レビューと相互受領済み（採用は文書1件）。通常版の実機受入は利用者がOKと回答（個々の発話記録はない）。mainへのsquashと#28・#29のpushは利用者が承認済み（この記録の時点では未実行）。ほかの言い方や長い会話での正しさ、実token数・請求額は未確認 |
 | 2026-11-07 挙動を変えない整理 | [記録](validation/2026-11-07-behavior-preserving-refactor.md)、[計画](superpowers/plans/2026-11-07-behavior-preserving-refactor.md) | 通常 suite は再実行で1,048/1,048、双方レビューのCritical・Importantは0。初回の顔描画失敗は原因未確定、T2失効試験の同期改善はMinorとして残す。11/8に実機Supertonic 5/18/10/3件と有料モデル72試行が成功、返答・要約33件の両者の意味判定が一致。通常版を実機で起動し、利用者が待機・あくび・追尾・設定復帰・あくび中の発話をOKと回答。robot motionの全ジェスチャ自動試験は未実行。mainへのsquashとpushは利用者が承認（この追記時点では実行前）。実token数・請求額は未計測 |
+| 2026-11-09 端末内モデルの削除と Haiku への一本化 | [記録](validation/2026-11-09-haiku-only.md)、[計画](superpowers/plans/2026-11-09-haiku-only.md) | 通常 suite 1,047 件成功。実モデルは r1 66/69 の不合格を指示文の修正で r2 69/69。独立レビューの重要指摘を修正・限定確認済み。通常署名版の実機受入は利用者が「問題なかった」と回答し、main への squash と push を承認済み（この記録時点では未実行） |
 
 ## 2026-10-28 main 整理の検証
 

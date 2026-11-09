@@ -5,29 +5,6 @@ import XCTest
 
 @MainActor
 final class AppleServiceCompositionTests: XCTestCase {
-    func testAppleServiceCompositionConformsToDomainProtocols() {
-        let availability: any ModelAvailabilityChecking =
-            FoundationModelAvailabilityService()
-        let classifier: any AddressClassifying =
-            FoundationModelAddressClassifier()
-        let replies: any ReplyGenerating = FoundationModelReplyService()
-        let concreteRecognizer = AppleSpeechRecognizer()
-        let recognizer: any SpeechRecognizing = concreteRecognizer
-        let shutdown: @Sendable () async -> Void = {
-            await concreteRecognizer.shutdown()
-        }
-        let audio: any AudioSessionControlling = AppleAudioSessionController()
-
-        _ = (
-            availability,
-            classifier,
-            replies,
-            recognizer,
-            shutdown,
-            audio
-        )
-    }
-
     func testServiceTeardownClosureReleasesSpeechReservationOnce() async throws {
         let locale = Locale(identifier: "ja-JP")
         let inventory = CompositionSpeechAssetInventory(locale: locale)

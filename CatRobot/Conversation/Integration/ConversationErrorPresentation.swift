@@ -45,18 +45,6 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             case .available:
                 message = "会話モデルの状態を確認できませんでした。"
                 recoveries = [.checkAgain]
-            case .deviceNotEligible:
-                message = "このiPhoneではApple Intelligenceの会話モデルを利用できません。"
-                recoveries = [.checkAgain]
-            case .appleIntelligenceNotEnabled:
-                message = "Apple Intelligenceがオフです。設定で有効にしてください。"
-                recoveries = [.settings]
-            case .modelNotReady:
-                message = "会話モデルを準備しています。少し待ってから、もう一度確認してください。"
-                recoveries = [.checkAgain]
-            case .unsupportedLocale:
-                message = "Apple Intelligenceの言語設定が日本語に対応していません。"
-                recoveries = [.settings]
             case .claudeCredentialMissing:
                 message = "Claudeの接続設定がありません。開発ビルドではAPIキー、配布ビルドではApp Attestの登録が必要です。"
                 recoveries = [.checkAgain]
@@ -73,9 +61,6 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .modelLocaleUnsupported:
             message = "この言語では会話モデルを利用できません。設定を確認してください。"
             recoveries = [.settings]
-        case .modelAssetsUnavailable:
-            message = "会話モデルの準備が完了していません。少し待ってから、もう一度お試しください。"
-            recoveries = [.checkAgain]
         case .guardrailViolation:
             message = "その内容には答えられません。言い方を変えて話しかけてください。"
             recoveries = [.retry]

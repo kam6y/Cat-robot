@@ -6,15 +6,21 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
     private var state: ConversationMemoryState
     private var listeners: [AsyncStream<ConversationMemoryState>.Continuation] = []
     private(set) var forgets = 0
+    private(set) var prepareCount = 0
     var failsForget = false
     /// 指定すると forgetConversation がこのゲートで待つ（削除中の操作を再現する）。
     private let forgetGate: ConversationTestGate?
-    init(state: ConversationMemoryState = .ready, forgetGate: ConversationTestGate? = nil) {
+    private let prepareGate: ConversationTestGate?
+    init(state: ConversationMemoryState = .ready, forgetGate: ConversationTestGate? = nil,
+         prepareGate: ConversationTestGate? = nil) {
         self.state = state
         self.forgetGate = forgetGate
+        self.prepareGate = prepareGate
     }
     func setForgetFailure(_ value: Bool) { failsForget = value }
-    func prepareMemory() throws {
+    func prepareMemory() async throws {
+        prepareCount += 1
+        await prepareGate?.wait()
         if case .restoreFailed(let error) = state { throw error }
         if case .forgetFailed = state { throw ConversationMemoryError.deleteFailed }
     }
@@ -413,28 +419,42 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         }
     }
 
-    func testPendingReplyFallbackRecordsActualFollowupWithZeroClaudeUsage() async {
-        let store = MemoryStoreFake()
-        let usage = ConversationUsageSpy()
+    func testContextStaysOutOfPromptAndHistory() async {
+        let prior = ConversationMemoryTurn(prompt: "今日の天気はどう？", response: "晴れだよ")
+        let client = ScriptedSessionClient(chunks: ["傘はいらないよ。"])
+        let store = MemoryStoreFake(snapshot: .init(schemaVersion: 1, memoryCompatibilityID: ClaudeMemoryCompatibility.current,
+                                                    revision: 1, savedAt: Date(), summary: "", turns: [prior]))
+        let service = makeClaudeService(StubSessionFactory(scripts: [client]), store: store)
+        let base = FakeAddressClassifier(result: .addressed, log: ConversationTestCallLog())
+        let harness = ConversationHarness(replyOverride: service, memory: service,
+                                          classifierOverride: ContextualAddressClassifier(base: base, history: service))
+
+        await harness.completeUnengagedTurn("それで、あしたは？", at: 0)
+        await harness.waitUntil { await store.snapshot?.turns.count == 2 }
+
+        let requests = await base.requests
+        let saved = await store.snapshot?.turns
+        XCTAssertEqual(requests, [.init(utterance: "それで、あしたは？", recentTurns: [prior])], "The context reaches only the classifier")
+        XCTAssertEqual(client.prompts, ["それで、あしたは？"], "The reply prompt is the utterance alone, without the context")
+        XCTAssertEqual(saved, [prior, .init(prompt: "それで、あしたは？", response: "傘はいらないよ。")],
+                       "History keeps the actual turns only; the context turns are not duplicated")
+        await harness.sut.shutdown()
+    }
+
+    func testPendingReplyFailureSpeaksGuidanceAndSavesNothing() async {
+        let store = MemoryStoreFake(), usage = ConversationUsageSpy()
         let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [" \n"], failure: URLError(.notConnectedToInternet))])
         let primary = makeClaudeService(factory, store: store, usage: usage)
-        let secondary = FakeReplyService(automaticSnapshots: ["短い返事。"], resetGate: nil, log: ConversationTestCallLog())
-        let fallback = OnDeviceFallbackReplyGenerator(
-            primary: primary, secondary: secondary,
-            secondaryAvailability: FakeModelAvailability(result: .available, log: ConversationTestCallLog()),
-            usage: usage, configuration: { .init(dailyTurnLimit: 300) })
-        let harness = ConversationHarness(replyOverride: fallback, memory: primary, classification: .ambiguous)
+        let harness = ConversationHarness(replyOverride: primary, memory: primary, classification: .ambiguous)
         await harness.completeUnengagedTurn("今日の天気はどう？", at: 0)
         await harness.classifier.setResult(.addressed)
         await harness.completeUnengagedTurn("うん", at: 3)
-
-        let secondaryPrompts = await secondary.prompts
-        let saved = await store.snapshot?.turns
-        let chargedTurns = await usage.turns.count
-        XCTAssertEqual(secondaryPrompts, ["うん"])
-        XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: "今の、ぼくに言った？"),
-                               .init(prompt: "うん", response: OnDeviceFallbackReplyGenerator.claudeFailureNotice + "短い返事。")])
-        XCTAssertEqual(chargedTurns, 0, "The on-device fallback reply is not charged as a Claude turn")
+        let saved = await store.snapshot?.turns, chargedTurns = await usage.turns.count
+        let texts = await harness.speaker.texts
+        XCTAssertEqual(texts.last, ConversationFailureGuidance.unreachable)
+        XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: "今の、ぼくに言った？")])
+        XCTAssertEqual(chargedTurns, 0)
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnreachable))
         await harness.sut.shutdown()
     }
 

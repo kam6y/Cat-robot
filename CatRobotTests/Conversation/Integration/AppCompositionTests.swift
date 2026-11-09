@@ -45,72 +45,49 @@ final class AppCompositionTests: XCTestCase {
                                                        auth: .missing)
         XCTAssertTrue(composition.dependencies.reply is MotionReplyGenerator)
         XCTAssertTrue(composition.dependencies.motion is MotionCoordinator)
-        XCTAssertTrue(composition.dependencies.modelAvailability is OnDeviceFallbackReplyGenerator)
+        XCTAssertTrue(composition.dependencies.modelAvailability is ClaudeConversationService)
         XCTAssertTrue(composition.dependencies.memory is ClaudeConversationService)
-        XCTAssertTrue(composition.dependencies.classifier is RoutedAddressClassifier)
+        XCTAssertTrue(composition.dependencies.classifier is ContextualAddressClassifier)
         // 構築だけではネットワークにも端末内モデルにも触れない。認証なしの availability は設定ミスとして報告される。
         let availability = await composition.dependencies.modelAvailability.availability()
         XCTAssertEqual(availability, .claudeCredentialMissing)
     }
 
     func testAddressClassifierSendsClarificationRepliesOnlyToHaikuThroughLiveWrappers() async throws {
-        let native = RecordingAddressModelClient(result: .notAddressed)
+        let turns = [ConversationMemoryTurn(prompt: "ねこ、おはよう", response: "おはよう！")]
         let haiku = RecordingAddressModelClient(result: .addressed)
-        let availability = FakeModelAvailability(result: .available, log: ConversationTestCallLog())
-        let classifier = ConversationComposition.makeAddressClassifier(
-            onDevice: FoundationModelAddressClassifier(client: native),
-            onDeviceAvailability: availability, claudeClient: haiku)
-        let checksBeforeUse = await availability.checkCount
+        let history = FakeConversationHistory(turns: turns)
+        let classifier = ConversationComposition.makeAddressClassifier(claudeClient: haiku, history: history)
         let reply = AddressClassificationRequest(utterance: "いいえ、あなたには言ってない",
                                                  clarification: .init(originalUtterance: "今日の天気はどう？"))
-
+        let requestsBeforeUse = await haiku.requests
+        XCTAssertEqual(requestsBeforeUse, [])
         let target = try await classifier.classify(reply)
-
-        let nativeRequests = await native.requests, haikuRequests = await haiku.requests
-        XCTAssertEqual(checksBeforeUse, 0)
+        let requests = await haiku.requests, reads = await history.readCount
         XCTAssertEqual(target, .addressed)
-        XCTAssertEqual(nativeRequests, [])
-        XCTAssertEqual(haikuRequests, [reply])
+        XCTAssertEqual(requests, [.init(utterance: reply.utterance, clarification: reply.clarification, recentTurns: turns)],
+                       "the live wrapper attaches the recent conversation read from the shared history")
+        XCTAssertEqual(reads, 1)
     }
 
-    func testAddressClassifierKeepsOrdinaryRoutingWithoutClarification() async throws {
-        for (state, expectsNative) in [(ModelAvailability.available, true), (.deviceNotEligible, false)] {
-            let native = RecordingAddressModelClient(result: .notAddressed)
-            let haiku = RecordingAddressModelClient(result: .addressed)
-            let classifier = ConversationComposition.makeAddressClassifier(
-                onDevice: FoundationModelAddressClassifier(client: native),
-                onDeviceAvailability: FakeModelAvailability(result: state, log: ConversationTestCallLog()),
-                claudeClient: haiku)
-
-            let target = try await classifier.classify("明日の予定は？")
-
-            let nativeRequests = await native.requests, haikuRequests = await haiku.requests
-            let ordinary = [AddressClassificationRequest(utterance: "明日の予定は？")]
-            XCTAssertEqual(target, expectsNative ? .notAddressed : .addressed, "\(state)")
-            XCTAssertEqual(nativeRequests, expectsNative ? ordinary : [], "\(state)")
-            XCTAssertEqual(haikuRequests, expectsNative ? [] : ordinary, "\(state)")
-        }
+    func testAddressClassifierUsesHaikuWithoutClarification() async throws {
+        let turns = [ConversationMemoryTurn(prompt: "今日の天気はどう？", response: "晴れだよ")]
+        let haiku = RecordingAddressModelClient(result: .addressed)
+        let classifier = ConversationComposition.makeAddressClassifier(claudeClient: haiku, history: FakeConversationHistory(turns: turns))
+        let target = try await classifier.classify("それで、あしたは？")
+        let requests = await haiku.requests
+        XCTAssertEqual(target, .addressed)
+        XCTAssertEqual(requests, [.init(utterance: "それで、あしたは？", recentTurns: turns)])
     }
 
-    func testAddressClassifierReportsClarificationHaikuFailureWithoutNativeRetry() async {
-        let native = RecordingAddressModelClient(result: .addressed)
+    func testAddressClassifierReportsClarificationHaikuFailureWithoutRetry() async {
         let haiku = RecordingAddressModelClient(result: .addressed, error: .modelUnreachable)
-        let classifier = ConversationComposition.makeAddressClassifier(
-            onDevice: FoundationModelAddressClassifier(client: native),
-            onDeviceAvailability: FakeModelAvailability(result: .available, log: ConversationTestCallLog()),
-            claudeClient: haiku)
-        let reply = AddressClassificationRequest(utterance: "言ったよ",
-                                                 clarification: .init(originalUtterance: "今日の天気はどう？"))
-
-        do {
-            _ = try await classifier.classify(reply)
-            XCTFail("The contextual Haiku failure must surface instead of falling back to the on-device model")
-        } catch {
-            XCTAssertEqual(error as? ConversationServiceError, .modelUnreachable)
-        }
-        let nativeRequests = await native.requests, haikuRequests = await haiku.requests
-        XCTAssertEqual(nativeRequests, [])
-        XCTAssertEqual(haikuRequests, [reply])
+        let classifier = ConversationComposition.makeAddressClassifier(claudeClient: haiku, history: FakeConversationHistory())
+        let reply = AddressClassificationRequest(utterance: "言ったよ", clarification: .init(originalUtterance: "今日の天気はどう？"))
+        do { _ = try await classifier.classify(reply); XCTFail("The cloud failure must propagate") }
+        catch { XCTAssertEqual(error as? ConversationServiceError, .modelUnreachable) }
+        let requests = await haiku.requests
+        XCTAssertEqual(requests, [reply])
     }
 
     func testRootConstructionLeavesAllConversationServicesLazy() async {

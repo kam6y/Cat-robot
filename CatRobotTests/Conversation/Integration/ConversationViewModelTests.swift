@@ -548,12 +548,12 @@ final class ConversationViewModelTests: XCTestCase {
         XCTAssertTrue(didRoute)
     }
 
-    func testEmptyReplyShowsRecoveryWithoutSpeechOrEngagement() async {
+    func testEmptyReplySpeaksGuidanceAndShowsRecoveryWithoutEngagement() async {
         let harness = ConversationHarness(replySnapshots: ["", "   "])
         await harness.completeTurn("ねこ、質問", at: 0)
 
         let speakerTexts = await harness.speaker.texts
-        XCTAssertTrue(speakerTexts.isEmpty)
+        XCTAssertEqual(speakerTexts, [ConversationFailureGuidance.generationFailed], "空の返答は読み上げず、定型文だけを話す")
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
         XCTAssertEqual(harness.sut.viewState.recoveries.map(\.action), [.retry, .showTypedInput])
     }

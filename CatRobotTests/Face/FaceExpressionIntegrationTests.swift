@@ -135,30 +135,34 @@ final class FaceExpressionIntegrationTests: XCTestCase {
         }
     }
 
-    func testFallbackNeverReleasesFailedPrimaryExpression() async throws {
+    func testFailureGuidanceNeverReleasesFailedPrimaryExpression() async throws {
         let h = FaceExpressionHarness(), motion = MotionControllerSpy()
         let observer = ReplyTurnMulticaster([motion, h.sut])
         let client = FailingFaceSession(expressions: h.sut)
         let primary = makeClaudeService(StubSessionFactory(scripts: [client]))
-        let fallback = OnDeviceFallbackReplyGenerator(primary: primary, secondary: FixedIntegrationReply(text: "短く答えるね。"),
-            secondaryAvailability: OnDeviceFallbackReplyGeneratorTests.Availability(value: .available),
-            usage: ConversationUsageSpy(), configuration: { .init() }, motion: observer)
         let speaker = ControlledSpeaker()
-        let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: fallback, motion: observer),
-                                           speaker: speaker, motion: observer)
-        let run = Task { try await sut.run(prompt: "質問", trace: nil, onUpdate: { _ in }) }
-        await speaker.waitUntilCallCount(1)
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: observer),
+            memory: primary, speaker: speaker, motion: motion, expressions: h.sut, replyTurnObserver: observer)
+        let turn = Task { await playback.viewModel.submitTypedText("質問") }
+        let observed = await playback.infrastructure.waitUntil {
+            let texts = await speaker.texts
+            if !texts.isEmpty { return true }
+            if case .failed = playback.viewModel.viewState.phase { return true }
+            return false
+        }
+        let texts = await speaker.texts
+        XCTAssertTrue(observed)
+        XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
+        XCTAssertNil(h.sut.heldExpression, "The failed primary's expression must remain invalid during guidance")
+        await speaker.complete()
+        await turn.value
         let reservation = await client.reservation
         XCTAssertTrue(reservation.contains("予約しました"))
-        await speaker.emit(.started)
-        await robotDrain()
         XCTAssertNil(h.sut.heldExpression)
-        await speaker.complete()
-        await speaker.waitUntilCallCount(2)
-        await speaker.complete()
-        _ = try await run.value
-        XCTAssertNil(h.sut.heldExpression)
+        XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))
+        XCTAssertEqual(motion.begins.count, 1)
         XCTAssertEqual(motion.cancellations.count, 1)
+        await playback.viewModel.shutdown()
     }
 
     func testFinishedReplyHoldClearsOnSettingsPauseNewConversationBackgroundAndShutdown() async {

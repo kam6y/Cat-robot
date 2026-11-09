@@ -1,10 +1,11 @@
 # アーキテクチャ
 
-この文書は、アプリの構成と、コンポーネントの間の約束事をまとめたものです。2026-10-28 の文単位再生への一本化と ViewModel の責務整理に加え、2026-11-07 の[挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md)を反映しています。手順は [README](../README.md)、仕様の一覧は [文書の索引](README.md) を見てください。
+この文書は、アプリの構成と、コンポーネントの間の約束事をまとめたものです。2026-10-28 の文単位再生への一本化と ViewModel の責務整理に加え、2026-11-07 の[挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md)と、2026-11-09 の[端末内モデルの削除と Haiku への一本化](superpowers/specs/2026-11-09-haiku-only-design.md)を反映しています。手順は [README](../README.md)、仕様の一覧は [文書の索引](README.md) を見てください。
 
 ```
 iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
-  聞き取り → 宛先の判定 → 返答の生成（Claude、失敗時は端末内モデル） → 文ごとの読み上げ（Supertonic）
+  聞き取り → 宛先の判定（Claude Haiku、直近の会話つき） → 返答の生成（Claude） → 文ごとの読み上げ（Supertonic）
+  失敗したときは、種類ごとの定型文を声で案内してから表示する（端末内モデルへの切り替えはない）
   顔の描画・表情・視線（前面カメラは画面の左に固定） ─┐
   首の動作の調停（MotionCoordinator） ───────────┼→ RobotLink ⇄ BLE（protocol v1） ⇄ XIAO ESP32C3 の
   顔追尾（FaceTrackingCoordinator） ──────────────┘                                    ファームウェア（2 軸サーボ）
@@ -29,10 +30,10 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - 聞き取りと発話の区切り（`UtteranceSegmenter`）
   - 宛先の判定（`AddresseePolicy`、`EngagementWindow`、聞き返し）
   - 返答の再生の起動と、聞き返しの定型句「今の、ぼくに言った？」の発話（`askForClarification`）。字幕と発話は固定の質問で、話し終えたときだけ、trim した元の発言と質問を記憶に残す
-  - 失敗の後始末と、記憶の操作
+  - 失敗の後始末（定型文の読み上げを含む）と、記憶の操作
 - **`ConversationViewState`**: 表示状態を表す値型。
   - `enter(_:caption:)` は phase ごとの口の形と状態文言の表で、この表はここにしかない。
-  - 失敗の表示は `presentFailure` が持つ。
+  - 失敗の表示は `presentFailure` が持つ。定型文の読み上げ中は `isSpeakingFailureGuidance` が立ち、phase が speaking のまま文字入力だけを受け付ける（`allowsTypedSubmission`）。
   - 記憶の表示値は `memoryPresentation`（計算 property で、cache しない）から読む。
 - **`VoiceTurnLatencyRecorder`**: 音声ターン 1 回分の latency token と `ReplyTrace` を持つ。記録と終了は、所有者（世代・ターン・キャプチャ）が一致したときだけ行う。
   - 所有者（`ConversationTurnOwner`）による取り消しと ViewModel の失敗処理は、同じ `isOwned` の判定を使う。shutdown 中かどうかの確認は ViewModel 側に残す。milestone の記録は、従来どおり世代とターンを直接照合する。
@@ -57,9 +58,10 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - ClaudeForFoundationModels 0.2.3 のセッション。
   - 短期記憶（会話の要約と直近の往復）。
   - tools: `move_head`、`express`、`look`、`remember`。
-- **`OnDeviceFallbackReplyGenerator`**: Claude が失敗したら端末内の Foundation Models に切り替える。返答の途中では切り替えない。
+- **`DailyLimitedReplyGenerator`**: 返答の前に日次上限を確かめ、達していれば Claude を呼ばずに `dailyLimitReached` で止める。端末内モデルへの切り替えはない（2026-11-09 に `OnDeviceFallbackReplyGenerator` と Foundation Models の実装を撤去した）。
 - **`MotionReplyGenerator`**: 生成が終わったことを首に知らせる。
-- **`RoutedAddressClassifier`**: 宛先を、端末内の分類と Claude の分類で振り分けて判定する。
+- **`ContextualAddressClassifier`**: 宛先の判定。`ConversationHistoryReading`（`ClaudeConversationService` が実装。準備前・忘却中・削除失敗中は空）から直近の往復を読み、確認待ちなら末尾の「元の発言 → 聞き返し」の往復を除き、新しい側から合計 4,000 文字（`ConversationBudget().retainedCharacters`）までを `recentTurns` として `ClaudeAddressModelClient`（Haiku 5.5、effort low、timeout 15 秒、fallback なし）へ JSON で渡す。端末内の分類はない。通常の指示文は「他の相手への呼びかけや独り言の明言なら notAddressed、猫を呼べば addressed、直前の話題と同じ事柄の続きなら addressed、別の話題を新しく尋ねるだけなら ambiguous」。確認待ち中（こちらを向いていない返事）は #29 の確認待ち用の指示文のままで、聞き返しへの肯定・否定・説明の返事を addressed として優先する（「ママに言ったの」のような訂正も、返事そのものは猫宛てなので addressed）。
+- **`ConversationFailureGuidance`**: 失敗の種類ごとの定型文（9 文）。`ConversationServiceError.spokenGuidance` が対応を決め、読み上げ・audio session・マイクの許可・取り消し・聞き取れなかった場合（`speechUnrecognized`）は声で案内しない。
 - **`LongTermMemoryManager`**: 長期メモを扱う。
 - **保存先**: Application Support の下（`ConversationMemoryLocation`）。
   - 短期記憶は `current.json`、長期メモは `facts.json`。
@@ -115,10 +117,10 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 - **`ConversationTurnOwner`**（lifecycle / turn / capture）: 失敗の後始末と計測の取り消しは、所有者が一致したときだけ行う。古い所有者が新しいターンの計測や trace を終わらせることはない。
 - **操作の意図**: 前の後始末を待っている間に、後から開始・文字入力・一時停止が来たら、先に来た操作は取りやめる（`awaitTaskKeepingIntent`）。
 - **cancel と join の順序**:
-  - **返答の失敗**: `stopTurnAudio` が、再生の join → 話者の停止 → 認識の停止 → audio session の解除 →（`contextExceeded` のときだけ）返答 session の reset、の順で行う。
+  - **失敗の終了**: 返答・宛先判定・文字入力・開始前の確認・聞き取りのどの失敗も `finishFailure` を通る。(1) 同期部で聞き取りの意図と確認待ちを消し、`failureCleanupTask` を最初の await より前に登録する。その Task が (2) 再生の join と、起点が認識を使っていれば認識の停止 → (3) 定型文があり所有者が一致していて audio session が未起動なら、話者と audio session の準備 → (4) 所有者が一致していれば phase を speaking にし、開始前も取り消せる子 Task で定型文を読み上げる（所有を失うと話者の停止より前に子だけを取り消し、後始末の Task は子を待ってから続行する） → (5) 話者の停止、audio session を起動していれば（音声の会話から引き継いだ場合と、起動を試みて失敗した場合を含む）その解除、`contextExceeded` のときだけ返答 session の reset → (6) 所有者が一致していれば失敗の表示（記憶の失敗なら paused）、の順で行う。所有者が変わると (3)(4) の新しい案内と (6) の表示は行わないが、(5) の停止・解除・reset は必ず行う。後始末はこの Task だけが行うので、操作が重なっても `deactivate` は 1 回で、遅れて `activate` や読み上げが始まらない。
   - **一時停止**: まず世代を進めて paused を表示し、その後で実行中の作業を切り離す。そこから先は状況で二通り。
     - 通常: 再生の join → 話者の停止 → 認識の停止 → キャプチャ・区切り・ターンの join → audio session の解除。
-    - 失敗の後始末の最中: 音声の停止は後始末に任せる。キャプチャと区切りの確定作業は cancel してから join する。
+    - 失敗の後始末の最中: 再生の join と話者の停止を行ってから `failureCleanupTask` を待つ（読み上げ中の定型文はここで止まり、その失敗の表示は出さない）。キャプチャと区切りの確定作業は cancel してから join する。
   - **shutdown**: 明示的な teardown の約束事として残している。今の本番 UI からは呼ばれていないが、テストの停止境界として使っている。
 - **表示と聞き取りの再開**:
   - 文と文の間は口を閉じ、phase は speaking のままにする。
@@ -132,11 +134,11 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 | 対象 | 入口 |
 |---|---|
 | iOS の単体・統合テスト | README「Simulatorでビルド・テスト」（`xcodebuild … -scheme CatRobot test`）。Claude API には接続しない |
-| 会話の状態機械 | `ConversationViewModelTests`、`ConversationRecoveryTests`、`ConversationAutoResumeTests`、`ConversationNewSessionTests`、`ConversationMemoryIntegrationTests`、`ConversationIdleIntegrationTests` |
+| 会話の状態機械 | `ConversationViewModelTests`、`ConversationRecoveryTests`、`ConversationAutoResumeTests`、`ConversationNewSessionTests`、`ConversationMemoryIntegrationTests`、`ConversationIdleIntegrationTests`、`FailureGuidanceTests`（失敗の定型文と後始末） |
 | 再生と計測 | `SentenceReplyPlaybackTests`、`ReplyPlaybackCoordinatorTests`、`ReplyPlaybackIntegrationTests`、`ConversationLatencyTests`、`ReplyTraceTests`、`VoiceTurnLatencyRecorderTests` |
 | 表示と VoiceOver | `ConversationViewStateTests`、`ConversationAccessibilityTests`、`FaceConversationPresentationTests` |
 | 首と追尾 | `MotionCoordinatorTests`、`FaceTrackingMotionTests`、`RobotLinkTests`、`RobotLifecycleIntegrationTests`、`RobotProtocolTests` |
-| 実機専用（通常のテストではスキップ） | `SupertonicIntegrationDeviceTests` scheme と `scripts/run_supertonic_integration_device_test.sh`、`scripts/run_robot_motion_device_test.sh`（7 動作×3 強度。首が見える状態で実行する） |
+| 実機専用（通常のテストではスキップ） | `SupertonicIntegrationDeviceTests` scheme と `scripts/run_supertonic_integration_device_test.sh`、`scripts/run_robot_motion_device_test.sh`（7 動作×3 強度。首が見える状態で実行する）、`scripts/run_haiku_addressing_model_tests.sh`（有料。`HaikuAddressingModelTests` の 23 fixture × 3 回を本番の Haiku で判定する） |
 | プロジェクト生成の契約 | `ruby scripts/generate_project.rb && ruby scripts/test_generate_project.rb`（pbxproj と共有 scheme は直接編集しない） |
 | 顔の描画計測 | `scripts/render_face.sh check` と `scripts/render_face.sh measure`。新しい round は顔が 9 から、寝顔が 3 から |
 | Python のスクリプト | `scripts/test_*.py`（音声資産の準備・検証、実機結果の集計） |

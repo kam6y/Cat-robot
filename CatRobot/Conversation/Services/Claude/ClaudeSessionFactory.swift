@@ -119,3 +119,27 @@ private struct FailingSessionClient: ConversationSessionClient {
         AsyncThrowingStream { $0.finish(throwing: ClaudeErrorMapper.map(error)) }
     }
 }
+
+extension LanguageModelSession {
+    /// Cumulative response text as a stream. The generating task inherits the caller's
+    /// task-local context, checks cancellation per element, is cancelled by every
+    /// termination of the stream, and maps a failure through `mapError` before finishing.
+    func contentSnapshots(to prompt: String, options: GenerationOptions,
+                          mapError: @escaping @Sendable (any Swift.Error) -> any Swift.Error) -> AsyncThrowingStream<String, Swift.Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { [self] in
+                do {
+                    let response = streamResponse(to: prompt, options: options)
+                    for try await snapshot in response {
+                        try Task.checkCancellation()
+                        continuation.yield(snapshot.content)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: mapError(error))
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}

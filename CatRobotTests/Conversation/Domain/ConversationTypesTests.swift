@@ -4,8 +4,8 @@ import XCTest
 final class ConversationTypesTests: XCTestCase {
     func testFailurePhaseRetainsActionableCause() {
         XCTAssertEqual(
-            ConversationPhase.failed(.modelUnavailable(.modelNotReady)),
-            .failed(.modelUnavailable(.modelNotReady))
+            ConversationPhase.failed(.modelUnavailable(.claudeUnreachable)),
+            .failed(.modelUnavailable(.claudeUnreachable))
         )
     }
 

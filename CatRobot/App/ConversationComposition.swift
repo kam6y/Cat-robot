@@ -55,14 +55,8 @@ struct ConversationComposition {
         let claude = ClaudeConversationService(factory: factory, memoryStore: memoryStore, longTermMemory: longTermMemory,
                                                tools: RobotConversationToolProvider(motion: motion, expressions: expressions, look: look),
                                                configuration: configuration, usage: usage)
-        let onDeviceAvailability = FoundationModelAvailabilityService()
-        let fallback = OnDeviceFallbackReplyGenerator(primary: claude, secondary: FoundationModelReplyService(),
-                                                      secondaryAvailability: onDeviceAvailability, usage: usage,
-                                                      configuration: configuration, motion: replyTurnObserver)
-        let reply = MotionReplyGenerator(base: fallback, motion: replyTurnObserver)
-        let classifier = makeAddressClassifier(onDevice: FoundationModelAddressClassifier(),
-                                               onDeviceAvailability: onDeviceAvailability,
-                                               claudeClient: ClaudeAddressModelClient(auth: auth))
+        let reply = makeReplyGenerator(claude: claude, usage: usage, configuration: configuration, motion: replyTurnObserver)
+        let classifier = makeAddressClassifier(claudeClient: ClaudeAddressModelClient(auth: auth), history: claude)
 
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let smartTurn = SmartTurnService(root: resources.appendingPathComponent("SmartTurn"))
@@ -72,7 +66,7 @@ struct ConversationComposition {
         let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voiceSettings.selected })
         let dependencies = ConversationDependencies(
             microphonePermission: MicrophonePermissionService(),
-            modelAvailability: fallback,
+            modelAvailability: claude,
             recognizer: concreteRecognizer,
             classifier: classifier,
             reply: reply,
@@ -102,11 +96,18 @@ struct ConversationComposition {
                     longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, faceTracking: faceTracking, camera: camera, robotSettings: robotSettings)
     }
 
-    /// 宛先判定の組み立て。Claude側のclientを包むところまで、liveと試験で同じ経路を使う。
-    static func makeAddressClassifier(onDevice: any AddressClassifying,
-                                      onDeviceAvailability: any ModelAvailabilityChecking,
-                                      claudeClient: any AddressModelClient) -> RoutedAddressClassifier {
-        RoutedAddressClassifier(onDevice: onDevice, onDeviceAvailability: onDeviceAvailability,
-                                claude: FoundationModelAddressClassifier(client: claudeClient))
+    /// 返答の組み立て。首の予約（MotionReplyGenerator）→ 日次上限（DailyLimitedReplyGenerator）→ Claude の順。
+    /// 上限の日は Claude のセッションを作らない。
+    static func makeReplyGenerator(claude: ClaudeConversationService, usage: any ConversationUsageMetering,
+                                   configuration: @escaping @Sendable () async -> ConversationModelConfiguration,
+                                   motion: any ReplyTurnObserving) -> MotionReplyGenerator {
+        MotionReplyGenerator(base: DailyLimitedReplyGenerator(base: claude, usage: usage, configuration: configuration),
+                             motion: motion)
+    }
+
+    /// 宛先判定の組み立て。直近の会話を添える decorator → Claude の分類器。liveと試験で同じ経路を使う。
+    static func makeAddressClassifier(claudeClient: any AddressModelClient,
+                                      history: any ConversationHistoryReading) -> ContextualAddressClassifier {
+        ContextualAddressClassifier(base: ClaudeAddressClassifier(client: claudeClient), history: history)
     }
 }

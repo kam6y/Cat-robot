@@ -20,31 +20,43 @@ private actor LookingReply: ReplyGenerating {
 
 @MainActor
 final class LookIntegrationTests: XCTestCase {
-    func testFallbackAfterImageClearsIndicatorAndKeepsConversationFunctional() async throws {
+    func testFailureGuidanceAfterImageClearsIndicatorAndNextTurnWorks() async throws {
         let look = LookCoordinator(camera: ImmediateSnapshotCamera(), clock: SystemRobotClock())
         look.setVisible(true)
         let motion = MotionControllerSpy(), observer = ReplyTurnMulticaster([motion, look])
         let client = FailingLookSession(look: look)
-        let primary = makeClaudeService(StubSessionFactory(scripts: [client]))
-        let fallback = OnDeviceFallbackReplyGenerator(primary: primary,
-            secondary: FixedIntegrationReply(text: "今は画像を確認できないけれど、話を続けよう。"),
-            secondaryAvailability: OnDeviceFallbackReplyGeneratorTests.Availability(value: .available),
-            usage: ConversationUsageSpy(), configuration: { .init() }, motion: observer)
+        let factory = StubSessionFactory(scripts: [client, ScriptedSessionClient(chunks: ["もう一度話せるよ。"])])
+        let primary = makeClaudeService(factory)
         let speaker = ControlledSpeaker()
-        let sut = ReplyPlaybackCoordinator(reply: MotionReplyGenerator(base: fallback, motion: observer),
-            speaker: speaker, motion: observer)
-        let run = Task { try await sut.run(prompt: "見て", trace: nil, onUpdate: { _ in }) }
-        await speaker.waitUntilCallCount(1)
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: observer),
+            memory: primary, speaker: speaker, motion: motion, replyTurnObserver: observer, look: look)
+        let turn = Task { await playback.viewModel.submitTypedText("見て") }
+        let observed = await playback.infrastructure.waitUntil {
+            let texts = await speaker.texts
+            if !texts.isEmpty { return true }
+            if case .failed = playback.viewModel.viewState.phase { return true }
+            return false
+        }
+        let guidance = await speaker.texts
+        XCTAssertTrue(observed)
+        XCTAssertEqual(guidance, [ConversationFailureGuidance.unreachable])
         let receivedImage = await client.receivedImage
         XCTAssertTrue(receivedImage)
         XCTAssertFalse(look.isLooking)
         XCTAssertEqual(motion.cancellations.count, 1)
-        await speaker.emit(.started)
         await speaker.complete()
-        await speaker.waitUntilCallCount(2)
-        await speaker.complete()
-        _ = try await run.value
+        await turn.value
+        XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))
+        await playback.viewModel.retryRecovery()
+        let next = Task { await playback.viewModel.submitTypedText("次") }
+        let spoke = await playback.infrastructure.waitUntil { await speaker.texts.count == 2 }
+        XCTAssertTrue(spoke)
+        let texts = await speaker.texts
+        for index in texts.indices { await speaker.complete(run: index) }
+        await next.value
+        XCTAssertEqual(texts.last, "もう一度話せるよ。")
         XCTAssertFalse(look.isLooking)
+        await playback.viewModel.shutdown()
     }
 
     func testVoiceAndTypedTurnsCaptureWithoutRobotAndContinueSpeaking() async throws {

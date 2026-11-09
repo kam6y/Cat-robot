@@ -88,7 +88,7 @@ struct UsageSettingsPane: View {
             Section {
                 Stepper("1日の上限 \(modelSettings.dailyTurnLimit) 回", value: $modelSettings.dailyTurnLimit, in: 10...2_000, step: 10)
                     .accessibilityIdentifier(ConversationSettingsIdentifier.dailyTurnLimitStepper.rawValue)
-            } footer: { Text("上限に達した日は、端末内のモデルで短く答えます。") }
+            } footer: { Text("上限に達した日は返事をせず、声でお知らせします。上限はここで変えられます。") }
             Section {
                 LabeledContent("今日", value: summary.map { "\($0.turnsToday) 回・約 \($0.estimatedTokensToday.formatted()) トークン" } ?? "—")
                 LabeledContent("今月", value: summary.map { "\($0.turnsThisMonth) 回・約 \($0.estimatedTokensThisMonth.formatted()) トークン" } ?? "—")
@@ -105,7 +105,7 @@ struct AboutSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Text("返事は Anthropic の Claude で作ります。送るのは話しかけた文字・会話の要約・覚えていることと、「見て」と頼んだときの静止画像1枚です。音声や連続した映像は送りません。聞き取り・読み上げ・顔追尾の映像処理はこのiPhoneの中で行い、会話の記憶もこのiPhoneだけに保存します。")
+                Text("返事は Anthropic の Claude で作ります。送るのは話しかけた文字・会話の要約・覚えていることと、「見て」と頼んだときの静止画像1枚です。猫に話しかけたかの判定にも Claude を使うため、聞き取った発話と直近の会話も送ります。音声や連続した映像は送りません。聞き取り・読み上げ・顔追尾の映像処理はこのiPhoneの中で行い、会話の記憶もこのiPhoneだけに保存します。")
             } header: { Text("送るもの・保存するもの") }
             Section {
                 Button("はじめの説明をもう一度見る") { showsOnboarding = true }

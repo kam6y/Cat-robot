@@ -7,6 +7,12 @@ struct ConversationSessionConfiguration: Equatable, Sendable {
     var instructions: String
 }
 
+/// 返答モデルの最小の契約。prewarm と、prompt への累積スナップショットの列。
+protocol ReplyModelClient: Sendable {
+    func prewarm() async
+    func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error>
+}
+
 /// ReplyModelClient の契約（prewarm と累積スナップショット。失敗は ConversationServiceError に写像して投げる）に、
 /// 画像添付の有無の検査を加えたもの。
 protocol ConversationSessionClient: ReplyModelClient {

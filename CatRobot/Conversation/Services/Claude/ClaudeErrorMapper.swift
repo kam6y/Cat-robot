@@ -3,7 +3,7 @@ import Foundation
 import FoundationModels
 
 /// Claude 経由の失敗を既存の会話エラーへ写す。認証の失敗は「利用不可の理由」、
-/// 通信断・タイムアウト・レート制限は `modelUnreachable`（端末内モデルへ切り替える判断材料）。
+/// 通信断・タイムアウト・レート制限は `modelUnreachable`、型の公開されない API エラーは `modelGenerationFailed`。
 enum ClaudeErrorMapper {
     static func map(_ error: any Error) -> ConversationServiceError {
         if error is CancellationError { return .cancelled }
@@ -28,7 +28,18 @@ enum ClaudeErrorMapper {
             }
         }
         if error is URLError { return .modelUnreachable }
-        return FoundationModelErrorMapper.map(error)
+        if let generation = error as? LanguageModelSession.GenerationError {
+            switch generation {
+            case .exceededContextWindowSize: return .contextExceeded
+            case .guardrailViolation: return .guardrailViolation
+            case .unsupportedLanguageOrLocale: return .modelLocaleUnsupported
+            case .concurrentRequests: return .modelBusy
+            case .refusal: return .refusal
+            case .assetsUnavailable, .unsupportedGuide, .decodingFailure, .rateLimited: return .modelGenerationFailed
+            @unknown default: return .modelGenerationFailed
+            }
+        }
+        return .modelGenerationFailed
     }
 
     static func availability(_ error: any Error) -> ModelAvailability {

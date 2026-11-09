@@ -73,6 +73,7 @@ struct ConversationViewState: Equatable, Sendable {
     var memoryNotice: String? = nil
     var heldExpression: FaceExpression? = nil
     var isLooking = false
+    var isSpeakingFailureGuidance = false
     var inactivity: ConversationInactivityState = .awake
     var activityGeneration: UInt64 = 0
     var isAwaitingTapToResume = false
@@ -161,8 +162,9 @@ extension ConversationPhase {
 }
 
 extension ConversationViewState {
+    /// 失敗の案内を読み上げている間（phase は .speaking）だけは、文字入力で案内を置き換えられる。
     var allowsTypedSubmission: Bool {
-        !isSleeping && phase.allowsTypedSubmission && !memoryPresentation.blocksConversation
+        !isSleeping && (phase.allowsTypedSubmission || isSpeakingFailureGuidance) && !memoryPresentation.blocksConversation
     }
 
     static let idle = entering(.idle)

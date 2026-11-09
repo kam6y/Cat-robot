@@ -28,7 +28,7 @@ struct ShortTermMemory: Equatable, Sendable {
 /// Claude の返答、短期記憶（要約＋直近の往復）、その永続化を 1 つのアクターで持つ。
 /// セッションは「無効化されるまで使い続ける」。無効化は 圧縮・失敗・取消・reset・forget・外部往復・画像付き返答 のとき。
 /// モデル設定の変更は次のセッション生成時に反映する（進行中のセッションでは切り替えない）。
-actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, ModelAvailabilityChecking {
+actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, ModelAvailabilityChecking, ConversationHistoryReading {
     nonisolated let supportsStableReplyPrefix = true
 
     private let factory: any ConversationSessionFactory
@@ -91,6 +91,14 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         } catch {
             return ClaudeErrorMapper.availability(error)
         }
+    }
+
+    // MARK: ConversationHistoryReading
+
+    func recentTurns() async -> [ConversationMemoryTurn] {
+        guard prepared, forgetting == nil else { return [] }
+        if case .forgetFailed = persistenceState { return [] }
+        return memory.turns
     }
 
     // MARK: ReplyGenerating

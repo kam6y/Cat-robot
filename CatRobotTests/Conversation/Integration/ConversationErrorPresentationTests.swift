@@ -16,8 +16,8 @@ final class ConversationErrorPresentationTests: XCTestCase {
         ])
     }
 
-    func testModelPreparingOffersRetry() {
-        let value = ConversationErrorPresentation(.modelUnavailable(.modelNotReady))
+    func testCloudUnreachableOffersRetry() {
+        let value = ConversationErrorPresentation(.modelUnavailable(.claudeUnreachable))
 
         XCTAssertEqual(
             value.recoveries,
@@ -36,7 +36,6 @@ final class ConversationErrorPresentationTests: XCTestCase {
         let dailyLimit = ConversationErrorPresentation(.dailyLimitReached)
         XCTAssertEqual(dailyLimit.recoveries.map(\.action), [.openSettings])
         XCTAssertTrue(dailyLimit.message.contains("上限"))
-        XCTAssertFalse(ConversationServiceError.dailyLimitReached.allowsOnDeviceFallback)
         let errors: [ConversationServiceError] = [
             .microphoneDenied,
             .speechAssetsUnavailable,
@@ -48,16 +47,11 @@ final class ConversationErrorPresentationTests: XCTestCase {
             .speechSynthesisFailed,
             .audioSessionFailed,
             .modelUnavailable(.available),
-            .modelUnavailable(.deviceNotEligible),
-            .modelUnavailable(.appleIntelligenceNotEnabled),
-            .modelUnavailable(.modelNotReady),
-            .modelUnavailable(.unsupportedLocale),
             .modelUnavailable(.claudeCredentialMissing),
             .modelUnavailable(.claudeAttestationUnsupported),
             .modelUnavailable(.claudeAttestationFailed),
             .modelUnavailable(.claudeUnreachable),
             .modelLocaleUnsupported,
-            .modelAssetsUnavailable,
             .guardrailViolation,
             .refusal,
             .contextExceeded,

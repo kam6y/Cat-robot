@@ -51,6 +51,33 @@ final class PlaybackIntegrationHarness {
 
 @MainActor
 final class ReplyPlaybackIntegrationTests: XCTestCase {
+    func testFailureGuidanceAddsNoNewMotionTurn() async {
+        let motion = MotionControllerSpy()
+        let primary = makeClaudeService(StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [],
+            failure: URLError(.notConnectedToInternet))]))
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: motion),
+            memory: primary, motion: motion, replyTurnObserver: motion)
+        let turn = Task { await playback.viewModel.submitTypedText("質問") }
+        let observed = await playback.infrastructure.waitUntil {
+            let texts = await playback.speaker.texts
+            if !texts.isEmpty { return true }
+            if case .failed = playback.viewModel.viewState.phase { return true }
+            return false
+        }
+        let texts = await playback.speaker.texts
+        XCTAssertTrue(observed)
+        XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
+        XCTAssertEqual(motion.begins.count, 1)
+        XCTAssertEqual(motion.cancellations.count, 1)
+        XCTAssertTrue(motion.reservations.isEmpty)
+        await playback.speaker.complete()
+        await turn.value
+        XCTAssertEqual(motion.begins.count, 1)
+        XCTAssertEqual(motion.cancellations.count, 1)
+        XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))
+        await playback.viewModel.shutdown()
+    }
+
     func testTypedAndVoiceWaitForGenerationAndAllSentences() async {
         for voice in [false, true] {
             let harness = PlaybackIntegrationHarness()
