@@ -58,18 +58,17 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - ClaudeForFoundationModels 0.2.3 のセッション。
   - 短期記憶（会話の要約と直近の往復）。
   - tools: `move_head`、`express`、`look`、`remember`。
-- **`DailyLimitedReplyGenerator`**: 返答の前に日次上限を確かめ、達していれば Claude を呼ばずに `dailyLimitReached` で止める。端末内モデルへの切り替えはない（2026-11-09 に `OnDeviceFallbackReplyGenerator` と Foundation Models の実装を撤去した）。
-- **`MotionReplyGenerator`**: 生成が終わったことを首に知らせる。
+- **`MotionReplyGenerator`**: Claude の返答を直接受け、生成が終わったことを首に知らせる。アプリ独自の利用量集計・保存と日次上限はなく、prewarm も日次上限で抑止しない。
 - **`ContextualAddressClassifier`**: 宛先の判定。`ConversationHistoryReading`（`ClaudeConversationService` が実装。準備前・忘却中・削除失敗中は空）から直近の往復を読み、確認待ちなら末尾の「元の発言 → 聞き返し」の往復を除き、新しい側から合計 4,000 文字（`ConversationBudget().retainedCharacters`）までを `recentTurns` として `ClaudeAddressModelClient`（Haiku 5.5、effort low、timeout 15 秒、fallback なし）へ JSON で渡す。端末内の分類はない。通常の指示文は「他の相手への呼びかけや独り言の明言なら notAddressed、猫を呼べば addressed、直前の話題と同じ事柄の続きなら addressed、別の話題を新しく尋ねるだけなら ambiguous」。確認待ち中（こちらを向いていない返事）は #29 の確認待ち用の指示文のままで、聞き返しへの肯定・否定・説明の返事を addressed として優先する（「ママに言ったの」のような訂正も、返事そのものは猫宛てなので addressed）。
-- **`ConversationFailureGuidance`**: 失敗の種類ごとの定型文（9 文）。`ConversationServiceError.spokenGuidance` が対応を決め、読み上げ・audio session・マイクの許可・取り消し・聞き取れなかった場合（`speechUnrecognized`）は声で案内しない。
+- **`ConversationFailureGuidance`**: 失敗の種類ごとの定型文（8 文）。`ConversationServiceError.spokenGuidance` が対応を決め、読み上げ・audio session・マイクの許可・取り消し・聞き取れなかった場合（`speechUnrecognized`）は声で案内しない。
 - **`LongTermMemoryManager`**: 長期メモを扱う。
 - **保存先**: Application Support の下（`ConversationMemoryLocation`）。
   - 短期記憶は `current.json`、長期メモは `facts.json`。
   - 保存先が使えないとき、短期記憶はエラーを表示する。長期メモはメモリ上だけで保持する。
-- **互換性**: 次の値は変えない。変えると保存済みの記憶や設定が読めなくなる。
+- **現行の保存形式と設定**: 今回は記憶エンジンを移行せず、次の形式を引き続き使う。旧メモ・履歴のための移行・互換処理は追加しない。
   - 互換 ID の `claude-memory-v1`、snapshot の `schemaVersion` 1、ファイル名
   - enum の raw 値（記憶のカテゴリ、声、モデル、effort）
-  - UserDefaults の key（声、使用量、首、オンボーディング、待機）
+  - UserDefaults の key（声、首、オンボーディング、待機）
 
 ## 顔・視線・首
 

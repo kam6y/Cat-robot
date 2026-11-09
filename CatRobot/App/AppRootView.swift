@@ -7,7 +7,6 @@ struct AppRootView: View {
     @Environment(\.openURL) private var openURL
     private let voiceSettings: SpeechVoiceSettings
     private let modelSettings: ConversationModelSettings
-    private let usage: any ConversationUsageMetering
     private let faceTracking: FaceTrackingCoordinator?
     private let faceExpressions: any FaceExpressionControlling
     private let camera: ConversationCamera?
@@ -18,12 +17,10 @@ struct AppRootView: View {
     @State private var reconnectIndicator: RobotReconnectIndicator
     @State private var viewModel: ConversationViewModel
     @State private var coordinator: ConversationAppCoordinator
-    /// シートを開くたびに作り直すと一覧が空に戻るので、ルートで 1 つ持つ。
-    @State private var memoryViewModel: LongTermMemoryViewModel
 
     init(composition: ConversationComposition, onboardingSettings: OnboardingSettings? = nil) {
         self.init(dependencies: composition.dependencies, voiceSettings: composition.voiceSettings,
-                  modelSettings: composition.modelSettings, memory: composition.longTermMemory, usage: composition.usage,
+                  modelSettings: composition.modelSettings,
                   robotSettings: composition.robotSettings, robotLink: composition.robotLink,
                   faceTracking: composition.faceTracking, camera: composition.camera, onboardingSettings: onboardingSettings)
     }
@@ -33,8 +30,6 @@ struct AppRootView: View {
         voiceSettings: SpeechVoiceSettings? = nil,
         wakeLock: ConversationScreenWakeLock = .live(),
         modelSettings: ConversationModelSettings? = nil,
-        memory: LongTermMemoryManager? = nil,
-        usage: (any ConversationUsageMetering)? = nil,
         robotSettings: RobotSettingsModel? = nil,
         robotLink: (any RobotLinkControlling)? = nil,
         faceTracking: FaceTrackingCoordinator? = nil,
@@ -53,9 +48,6 @@ struct AppRootView: View {
         _reconnectIndicator = State(initialValue: reconnectIndicator)
         self.voiceSettings = voiceSettings ?? SpeechVoiceSettings()
         self.modelSettings = modelSettings ?? ConversationModelSettings()
-        self.usage = usage ?? UserDefaultsUsageMeter()
-        _memoryViewModel = State(initialValue: LongTermMemoryViewModel(
-            memory: memory ?? LongTermMemoryManager(store: InMemoryLongTermMemoryStore())))
         let viewModel = ConversationViewModel(dependencies: dependencies)
         _viewModel = State(initialValue: viewModel)
         _coordinator = State(
@@ -85,8 +77,7 @@ struct AppRootView: View {
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {
             ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
-                                     memory: memoryViewModel, usage: usage, idleSettings: coordinator.inactivity.settings, robotSettings: robotSettings, faceTracking: faceTracking, camera: camera,
-                                     onDeleteAll: { await coordinator.deleteAllMemory() },
+                                     idleSettings: coordinator.inactivity.settings, robotSettings: robotSettings, faceTracking: faceTracking, camera: camera,
                                      onDone: coordinator.closeVoiceSettings)
 
         }

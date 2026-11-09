@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "01895B8FE7E674DCC008205F1C76A1B5"
+               BlueprintIdentifier = "16BCDCD73C77228FE00011988CA6E656"
                BuildableName = "CatRobot.app"
                BlueprintName = "CatRobot"
                ReferencedContainer = "container:CatRobot.xcodeproj">
@@ -28,7 +28,7 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "321F9DCBB415F7E3BBE0B05216F97274"
+               BlueprintIdentifier = "8B393C6FB5D3FC443859B5D365CD457E"
                BuildableName = "CatRobotTests.xctest"
                BlueprintName = "CatRobotTests"
                ReferencedContainer = "container:CatRobot.xcodeproj">
@@ -44,7 +44,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "01895B8FE7E674DCC008205F1C76A1B5"
+            BlueprintIdentifier = "16BCDCD73C77228FE00011988CA6E656"
             BuildableName = "CatRobot.app"
             BlueprintName = "CatRobot"
             ReferencedContainer = "container:CatRobot.xcodeproj">
@@ -57,7 +57,7 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "321F9DCBB415F7E3BBE0B05216F97274"
+               BlueprintIdentifier = "8B393C6FB5D3FC443859B5D365CD457E"
                BuildableName = "CatRobotTests.xctest"
                BlueprintName = "CatRobotTests"
                ReferencedContainer = "container:CatRobot.xcodeproj">
@@ -91,7 +91,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "01895B8FE7E674DCC008205F1C76A1B5"
+            BlueprintIdentifier = "16BCDCD73C77228FE00011988CA6E656"
             BuildableName = "CatRobot.app"
             BlueprintName = "CatRobot"
             ReferencedContainer = "container:CatRobot.xcodeproj">
@@ -108,7 +108,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "01895B8FE7E674DCC008205F1C76A1B5"
+            BlueprintIdentifier = "16BCDCD73C77228FE00011988CA6E656"
             BuildableName = "CatRobot.app"
             BlueprintName = "CatRobot"
             ReferencedContainer = "container:CatRobot.xcodeproj">

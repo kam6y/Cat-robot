@@ -26,6 +26,8 @@ git ls-tree -r --name-only 69c2a229ac10f410d3101de468e198ad2fa60944 -- docs/   #
 
 ## 現役の仕様（`superpowers/specs/`）
 
+記憶管理画面、利用量・トークン数・利用料の計測と保存、日次上限は2026-11-10に撤去しました。この範囲は[Hermes 移行②の記録](validation/2026-11-10-remove-memory-ui-and-usage.md)を優先し、過去の仕様・検証記録は当時の記録として残します。
+
 | 文書 | 対象 |
 |---|---|
 | [2026-10-11 要件定義](superpowers/specs/2026-10-11-cat-robot-claude-neck-requirements.md) | 全体要件（Claude 対話＋2 軸の首、iPhone で完結する構成）。版 1.1 |

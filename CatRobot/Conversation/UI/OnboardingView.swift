@@ -64,7 +64,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             point("返事は Anthropic の Claude が作ります。送るのは話しかけた文字・会話の要約・覚えたことと、「見て」と頼んだときの静止画像1枚。音声や動画は送りません",
                   systemImage: "cloud")
-            point("聞き取り・読み上げ・記憶はこのiPhoneの中。マイクは会話画面を開いている間だけ使います。記憶はいつでも消せます",
+            point("聞き取り・読み上げ・記憶はこのiPhoneの中。マイクは会話画面を開いている間だけ使います。会話の要約と直近のやり取りは「新しい会話を始める」で消せます。長期メモは残ります",
                   systemImage: "iphone")
             point("AIの返事は間違うことがあります。利用料は作者の負担です", systemImage: "exclamationmark.triangle")
             Text("聞き取り中はカメラで顔の向きを確認し、こちらを向いていればすぐ返答します。顔の判定はiPhone内だけで行います。カメラの許可とこの説明は、あとから「設定」で確認できます")

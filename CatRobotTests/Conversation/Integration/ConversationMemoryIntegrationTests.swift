@@ -53,17 +53,14 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         let client = ScriptedSessionClient(chunks: ["天気のお話だね。"])
         let factory = StubSessionFactory(scripts: [client])
         let store = MemoryStoreFake()
-        let usage = ConversationUsageSpy()
-        let service = makeClaudeService(factory, store: store, usage: usage)
+        let service = makeClaudeService(factory, store: store)
         let harness = ConversationHarness(replyOverride: service, memory: service, classification: .ambiguous)
 
         await harness.completeUnengagedTurn("今日の天気はどう？", at: 0)
 
         let clarification = ConversationMemoryTurn(prompt: "今日の天気はどう？", response: "今の、ぼくに言った？")
         let afterClarification = await store.snapshot?.turns
-        let chargedTurns = await usage.turns.count
         XCTAssertEqual(afterClarification, [clarification])
-        XCTAssertEqual(chargedTurns, 0, "A fixed clarification must not count as a generated reply")
         XCTAssertTrue(client.prompts.isEmpty, "The clarification must not invoke generation")
 
         await harness.classifier.setResult(.addressed)
@@ -105,8 +102,7 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         let client = ScriptedSessionClient(chunks: ["元の話に答えるね。"])
         let factory = StubSessionFactory(scripts: [client])
         let store = MemoryStoreFake()
-        let usage = ConversationUsageSpy()
-        let service = makeClaudeService(factory, store: store, usage: usage)
+        let service = makeClaudeService(factory, store: store)
         let harness = ConversationHarness(replyOverride: service, memory: service, classification: .ambiguous)
         await harness.completeUnengagedTurn(original, at: 0)
         await harness.classifier.setResult(.addressed)
@@ -114,13 +110,11 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
 
         let requests = await harness.classifier.requests
         let saved = await store.snapshot?.turns
-        let chargedTurns = await usage.turns.count
         XCTAssertEqual(requests.last, .init(utterance: "はい", clarification: .init(originalUtterance: original)),
                        "The full original is classification context, outside the generation prompt limit")
         XCTAssertEqual(client.prompts, ["はい"])
         XCTAssertEqual(saved, [.init(prompt: original, response: ClarificationContext.question),
                                .init(prompt: "はい", response: "元の話に答えるね。")])
-        XCTAssertEqual(chargedTurns, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
         await harness.sut.shutdown()
     }
@@ -129,19 +123,16 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         let client = ScriptedSessionClient(chunks: ["使われない返事。"])
         let factory = StubSessionFactory(scripts: [client])
         let store = MemoryStoreFake()
-        let usage = ConversationUsageSpy()
-        let service = makeClaudeService(factory, store: store, usage: usage)
+        let service = makeClaudeService(factory, store: store)
         let harness = ConversationHarness(replyOverride: service, memory: service, classification: .ambiguous)
         await harness.completeUnengagedTurn("今日の天気はどう？", at: 0)
         await harness.classifier.setResult(.addressed)
         await harness.completeUnengagedTurn(String(repeating: "あ", count: 4_001), at: 3)
 
         let saved = await store.snapshot?.turns
-        let chargedTurns = await usage.turns.count
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.inputTooLong))
         XCTAssertTrue(client.prompts.isEmpty)
         XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: ClarificationContext.question)])
-        XCTAssertEqual(chargedTurns, 0)
         await harness.sut.shutdown()
     }
 
@@ -180,8 +171,7 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         let client = ScriptedSessionClient(chunks: ["生成されない返答"])
         let factory = StubSessionFactory(scripts: [client])
         let store = MemoryStoreFake()
-        let usage = ConversationUsageSpy()
-        let service = makeClaudeService(factory, store: store, usage: usage)
+        let service = makeClaudeService(factory, store: store)
         let sink = RecordingReplyTraceSink()
         let sleeper = ConversationTestSleeper()
         let harness = ConversationHarness(replyOverride: service, replyTraceSink: sink, memory: service,
@@ -212,12 +202,10 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
 
         let saved = await store.snapshot?.turns
         let saves = await store.saveCount
-        let charges = await usage.turns.count
         let starts = await harness.recognizer.startCount
         XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: ClarificationContext.question)])
         XCTAssertEqual(saves, 1)
         XCTAssertTrue(client.prompts.isEmpty, "The clarification must not invoke generation")
-        XCTAssertEqual(charges, 0)
         XCTAssertEqual(starts, 2, "Listening resumes after the question")
         let events = harness.latency.events
         guard case let .began(token, _, _, _, _) = events.first else {
@@ -342,8 +330,7 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
             let client = ScriptedSessionClient(chunks: ["そっか、わかった。"])
             let factory = StubSessionFactory(scripts: [client])
             let store = MemoryStoreFake()
-            let usage = ConversationUsageSpy()
-            let service = makeClaudeService(factory, store: store, usage: usage)
+            let service = makeClaudeService(factory, store: store)
             let harness = ConversationHarness(replyOverride: service, memory: service, classification: .ambiguous)
             await harness.completeUnengagedTurn("今日の天気はどう？", at: 0)
             await harness.classifier.setResult(.addressed)
@@ -352,14 +339,12 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
             let requests = await harness.classifier.requests
             let instructions = await factory.sessions.last?.configuration.instructions ?? ""
             let saved = await store.snapshot?.turns
-            let chargedTurns = await usage.turns.count
             XCTAssertEqual(requests.last, .init(utterance: followup, clarification: .init(originalUtterance: "今日の天気はどう？")), followup)
             XCTAssertEqual(client.prompts, [followup], followup)
             XCTAssertEqual(instructions.components(separatedBy: "今日の天気はどう？").count - 1, 1,
                            "The restored history carries the original exactly once: \(followup)")
             XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: "今の、ぼくに言った？"),
                                    .init(prompt: followup, response: "そっか、わかった。")], followup)
-            XCTAssertEqual(chargedTurns, 1, followup)
             await harness.sut.shutdown()
         }
     }
@@ -380,13 +365,12 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         await harness.sut.shutdown()
     }
 
-    func testSpeechFailureOrCancellationAfterCommitKeepsHistoryAndUsage() async {
+    func testSpeechFailureOrCancellationAfterCommitKeepsHistory() async {
         enum Ending: CaseIterable { case speechFailure, cancelled }
         for ending in Ending.allCases {
             let store = MemoryStoreFake()
-            let usage = ConversationUsageSpy()
             let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["そっか、わかった。"])])
-            let service = makeClaudeService(factory, store: store, usage: usage)
+            let service = makeClaudeService(factory, store: store)
             let harness = ConversationHarness(replyOverride: service, memory: service, classification: .ambiguous,
                                               speakerAutomaticallyFinishes: false)
             let original = Task { await harness.completeUnengagedTurn("今日の天気はどう？", at: 0) }
@@ -411,10 +395,8 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
             await followup.value
 
             let saved = await store.snapshot?.turns
-            let chargedTurns = await usage.turns.count
             XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: "今の、ぼくに言った？"),
                                    .init(prompt: "ううん", response: "そっか、わかった。")], "\(ending)")
-            XCTAssertEqual(chargedTurns, 1, "\(ending)")
             await harness.sut.shutdown()
         }
     }
@@ -442,41 +424,18 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
     }
 
     func testPendingReplyFailureSpeaksGuidanceAndSavesNothing() async {
-        let store = MemoryStoreFake(), usage = ConversationUsageSpy()
+        let store = MemoryStoreFake()
         let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [" \n"], failure: URLError(.notConnectedToInternet))])
-        let primary = makeClaudeService(factory, store: store, usage: usage)
+        let primary = makeClaudeService(factory, store: store)
         let harness = ConversationHarness(replyOverride: primary, memory: primary, classification: .ambiguous)
         await harness.completeUnengagedTurn("今日の天気はどう？", at: 0)
         await harness.classifier.setResult(.addressed)
         await harness.completeUnengagedTurn("うん", at: 3)
-        let saved = await store.snapshot?.turns, chargedTurns = await usage.turns.count
+        let saved = await store.snapshot?.turns
         let texts = await harness.speaker.texts
         XCTAssertEqual(texts.last, ConversationFailureGuidance.unreachable)
         XCTAssertEqual(saved, [.init(prompt: "今日の天気はどう？", response: "今の、ぼくに言った？")])
-        XCTAssertEqual(chargedTurns, 0)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnreachable))
-        await harness.sut.shutdown()
-    }
-
-    func testDeleteAllFromSettingsForgetsWhileTheSheetIsOpenAndListeningResumesOnClose() async {
-        let memory = FakeConversationMemoryManager()
-        let harness = ConversationHarness(memory: memory)
-        let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
-            wakeLock: ConversationScreenWakeLock(readIdleTimerDisabled: { false }, writeIdleTimerDisabled: { _ in }))
-        coordinator.beginConversation(); await coordinator.waitForOperations()
-        await harness.sut.submitTypedText("覚えて")
-        XCTAssertEqual(harness.sut.viewState.caption, "わかったよ")
-        coordinator.makeActions(openSettings: {}).openVoiceSettings(); await coordinator.waitForOperations()
-        XCTAssertTrue(coordinator.showsVoiceSettings)
-
-        await coordinator.deleteAllMemory()
-        let forgets = await memory.forgets
-        XCTAssertEqual(forgets, 1, "シートを開いたまま削除できる")
-        XCTAssertEqual(harness.sut.viewState.caption, "")
-        XCTAssertEqual(harness.sut.viewState.phase, .paused, "シートが開いている間は再開しない")
-
-        coordinator.closeVoiceSettings(); await coordinator.waitForOperations()
-        XCTAssertEqual(harness.sut.viewState.phase, .listening, "閉じたら聞き取りを再開する")
         await harness.sut.shutdown()
     }
 

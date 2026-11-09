@@ -6,22 +6,20 @@ enum ConversationSettingsIdentifier: String, CaseIterable {
     case sleepyMinutesStepper, sleepingMinutesStepper
     case cameraPermissionButton
     case faceTrackingEnabled, faceTrackingStatus, faceTrackingYawCorrectionStepper
-    case modelPicker, effortPicker, voicePresetPicker, dailyTurnLimitStepper, memoryFactsList, deleteAllMemoryButton
+    case modelPicker, effortPicker, voicePresetPicker
 }
 
 /// 設定の左列に並べるカテゴリ。開いたときは「会話」を選ぶ。
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case conversation, memory, cameraAndTracking, robot, usage, about
+    case conversation, cameraAndTracking, robot, about
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .conversation: "会話"
-        case .memory: "記憶"
         case .cameraAndTracking: "カメラと顔追尾"
         case .robot: "ロボット"
-        case .usage: "利用量"
         case .about: "このアプリについて"
         }
     }
@@ -29,10 +27,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .conversation: "bubble.left"
-        case .memory: "book.closed"
         case .cameraAndTracking: "camera"
         case .robot: "antenna.radiowaves.left.and.right"
-        case .usage: "chart.bar"
         case .about: "info.circle"
         }
     }
@@ -46,29 +42,22 @@ struct ConversationSettingsView: View {
     @Bindable var voiceSettings: SpeechVoiceSettings
     @Bindable var modelSettings: ConversationModelSettings
     @Bindable var idleSettings: ConversationIdleSettings
-    let memory: LongTermMemoryViewModel
-    let usage: any ConversationUsageMetering
     let faceTracking: FaceTrackingCoordinator?
     let camera: ConversationCamera?
     let robotSettings: RobotSettingsModel?
-    /// 「すべて削除」の実体。覚えていることと会話の要約を消す。確認は「記憶」の中で済ませる。
-    let onDeleteAll: @MainActor () async -> Void
     let onDone: () -> Void
     @State private var selection: SettingsCategory
-    @State private var usageSummary: ConversationUsageSummary?
-    @State private var isDeletingAll = false
 
     init(voiceSettings: SpeechVoiceSettings, modelSettings: ConversationModelSettings,
-         memory: LongTermMemoryViewModel, usage: any ConversationUsageMetering,
          idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
          camera: ConversationCamera? = nil, initialCategory: SettingsCategory = .conversation,
-         onDeleteAll: @escaping @MainActor () async -> Void, onDone: @escaping () -> Void) {
+         onDone: @escaping () -> Void) {
         self.idleSettings = idleSettings
         self.faceTracking = faceTracking
         self.camera = camera
         self.robotSettings = robotSettings
         self.voiceSettings = voiceSettings; self.modelSettings = modelSettings
-        self.memory = memory; self.usage = usage; self.onDeleteAll = onDeleteAll; self.onDone = onDone
+        self.onDone = onDone
         _selection = State(initialValue: initialCategory)
     }
 
@@ -104,8 +93,6 @@ struct ConversationSettingsView: View {
             }
             .task {
                 camera?.refreshAuthorization()
-                await memory.load()
-                usageSummary = await usage.summary()
             }
         }
         .interactiveDismissDisabled(robotSettings?.calibration != nil)
@@ -189,25 +176,12 @@ struct ConversationSettingsView: View {
         switch category {
         case .conversation:
             ConversationSettingsPane(voiceSettings: voiceSettings, modelSettings: modelSettings, idleSettings: idleSettings)
-        case .memory:
-            MemorySettingsPane(memory: memory, isDeletingAll: isDeletingAll, onDeleteAll: deleteAll)
         case .cameraAndTracking:
             CameraTrackingSettingsPane(camera: camera, faceTracking: faceTracking, preferences: robotSettings?.preferences)
         case .robot:
             if let robotSettings { RobotConnectionView(model: robotSettings) }
-        case .usage:
-            UsageSettingsPane(modelSettings: modelSettings, summary: usageSummary)
         case .about:
             AboutSettingsPane()
-        }
-    }
-
-    private func deleteAll() {
-        Task { @MainActor in
-            isDeletingAll = true
-            await onDeleteAll()
-            await memory.load()
-            isDeletingAll = false
         }
     }
 }

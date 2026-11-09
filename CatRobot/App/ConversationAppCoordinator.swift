@@ -311,22 +311,6 @@ final class ConversationAppCoordinator {
         resumeListeningIfNeeded()
     }
 
-    /// 設定の「すべて削除」。シートが開いたまま実行し、覚えていることと会話の要約を消す。聞き取りはシートを閉じたときに再開する。
-    func deleteAllMemory() async {
-        actionCounter &+= 1
-        let actionID = actionCounter
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.viewModel.forgetConversation()
-            self.actionTasks[actionID] = nil
-            // 削除中にシートを閉じていると、閉じた時点の再開は削除中のため見送られている。完了後にもう一度評価する。
-            // 削除に失敗した場合は viewModel 側が開始を拒むので、ここで再開しても聞き取りは始まらない。
-            self.resumeListeningIfNeeded()
-        }
-        actionTasks[actionID] = task
-        await task.value
-    }
-
     func makeActions(openSettings: @escaping @MainActor () -> Void) -> ConversationActions {
         ConversationActions(
             toggleListening: { [weak self] in

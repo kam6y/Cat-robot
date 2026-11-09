@@ -36,21 +36,14 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private let longTermMemory: LongTermMemoryManager
     private let toolProvider: any ConversationToolProvider
     private let configuration: @Sendable () async -> ConversationModelConfiguration
-    private let usage: any ConversationUsageMetering
     private let compatibilityID: String
     private let budget: ConversationBudget
 
-    /// 生きているセッションを作ったときのモデル。利用量の集計はこれで行う（設定変更は次のセッションから）。
-    private struct CachedSession: Sendable {
-        let client: any ConversationSessionClient
-        let model: ConversationModelChoice
-    }
-
     private var memory = ShortTermMemory()
-    private var session: CachedSession?
+    private var session: (any ConversationSessionClient)?
     /// セッションを無効化するたびに進む世代。生成途中に無効化が入った古いセッションは登録しない。
     private var sessionEpoch: UInt64 = 0
-    /// 生きているセッションを作ったときの長期メモの削除世代。設定で事実を消したら次の返答の前に作り直す。
+    /// 生きているセッションを作ったときの長期メモの削除世代。削除後は次の返答の前に作り直す。
     private var sessionFactsRevision: UInt64 = 0
     private var generation: Task<Void, Never>?
     private var isGenerating: Bool { generation != nil }
@@ -69,7 +62,6 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
          longTermMemory: LongTermMemoryManager,
          tools: any ConversationToolProvider,
          configuration: @escaping @Sendable () async -> ConversationModelConfiguration,
-         usage: any ConversationUsageMetering,
          compatibilityID: String = ClaudeMemoryCompatibility.current,
          budget: ConversationBudget = .default) {
         self.factory = factory
@@ -77,7 +69,6 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         self.longTermMemory = longTermMemory
         self.toolProvider = tools
         self.configuration = configuration
-        self.usage = usage
         self.compatibilityID = compatibilityID
         self.budget = budget
     }
@@ -109,7 +100,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         // ここで作ると圧縮前のセッションが先に登録され、返答がそれに揃ってしまう。
         guard !isGenerating else { return }
         guard let session = await currentSession() else { return }   // 生成中に無効化されたセッションは温めない
-        await session.client.prewarm()
+        await session.prewarm()
     }
 
     func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
@@ -175,7 +166,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
 
     private func generate(_ prompt: String, epoch: UInt64, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
         var failure: ConversationServiceError?
-        // 設定で消した事実を生きているセッションが知り続けないよう、削除があれば作り直す（要約と直近の往復は残る）。
+        // 消した事実を生きているセッションが知り続けないよう、削除があれば作り直す（要約と直近の往復は残る）。
         if await longTermMemory.factsRevision != sessionFactsRevision { invalidateSession() }
         var candidate = memory
         var response = ""
@@ -185,7 +176,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                 invalidateSession()
             }
             guard let session = await currentSession(for: candidate) else { throw ConversationServiceError.cancelled }
-            let source = await session.client.snapshots(for: prompt)
+            let source = await session.snapshots(for: prompt)
             for try await snapshot in source {
                 try Task.checkCancellation()
                 response = snapshot
@@ -195,7 +186,7 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw ConversationServiceError.modelGenerationFailed
             }
-            let containsImage = await session.client.containsImageAttachments()
+            let containsImage = await session.containsImageAttachments()
             try Task.checkCancellation()
             guard epoch == operationEpoch else { throw ConversationServiceError.cancelled }
             ReplyTraceContext.current?.mark(.generationFinished, outcome: .success)
@@ -205,8 +196,6 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             revision &+= 1
             // This reply may use its tool image; the next reply rebuilds from text memory only.
             if containsImage { invalidateSession() }
-            // 集計はこのターンを生成したセッションのモデルで行う（設定変更は次のセッションから）。
-            await usage.recordTurn(model: session.model, promptCharacters: prompt.count, responseCharacters: response.count)
             try? await saveMemory(epoch: epoch)
         } catch {
             failure = Task.isCancelled || epoch != operationEpoch ? .cancelled : ClaudeErrorMapper.map(error)
@@ -217,19 +206,19 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         continuation.finish(throwing: failure)
     }
 
-    /// セッションとそのモデルをまとめて無効化し、世代を進める。
+    /// セッションを無効化し、世代を進める。
     private func invalidateSession() {
         session = nil
         sessionEpoch &+= 1
     }
 
-    private func currentSession() async -> CachedSession? { await currentSession(for: memory) }
+    private func currentSession() async -> (any ConversationSessionClient)? { await currentSession(for: memory) }
 
     /// 生きているセッションを返す。無ければ memory から作って登録する。
     /// memory・sessionEpoch・operationEpoch は呼び出し側の判定と同じ actor 区間（最初の await の前）で採取する。
     /// 生成の await 中に無効化（圧縮・失敗・reset・forget・外部往復）が入ったら、作ったものは登録せず nil を返す。
     /// 無効化は無いが他の生成が先に登録していた場合（prewarm と返答が同時に作ったとき）は、先に登録された方に揃える。
-    private func currentSession(for memory: ShortTermMemory) async -> CachedSession? {
+    private func currentSession(for memory: ShortTermMemory) async -> (any ConversationSessionClient)? {
         if let session { return session }
         let expectedSession = sessionEpoch
         let epoch = operationEpoch
@@ -252,11 +241,10 @@ actor ClaudeConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             trace?.mark(.sessionFinished, outcome: .success)
             return session
         }
-        let created = CachedSession(client: client, model: settings.model)
-        session = created
+        session = client
         sessionFactsRevision = factsRevision
         trace?.mark(.sessionFinished, outcome: .success)
-        return created
+        return client
     }
 
     private func compact(_ original: ShortTermMemory) async throws -> ShortTermMemory {

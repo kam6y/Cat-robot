@@ -336,10 +336,10 @@ final class FailureGuidanceTests: XCTestCase {
         await harness.sut.shutdown()
     }
 
-    func testGuidanceIsNotRecordedChargedOrTraced() async {
-        let store = MemoryStoreFake(), usage = ConversationUsageSpy()
+    func testGuidanceIsNotRecordedOrTraced() async {
+        let store = MemoryStoreFake()
         let service = makeClaudeService(StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [],
-            failure: URLError(.notConnectedToInternet))]), store: store, usage: usage)
+            failure: URLError(.notConnectedToInternet))]), store: store)
         let playback = PlaybackIntegrationHarness(service: service, memory: service)
         let turn = Task { await playback.viewModel.submitTypedText("質問") }
         let reached = await playback.infrastructure.waitUntil {
@@ -353,9 +353,8 @@ final class FailureGuidanceTests: XCTestCase {
         XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
         await playback.speaker.complete()
         await turn.value
-        let saved = await store.snapshot?.turns ?? [], charges = await usage.turns.count
+        let saved = await store.snapshot?.turns ?? []
         XCTAssertEqual(saved, [])
-        XCTAssertEqual(charges, 0)
         XCTAssertEqual(playback.traces.events.filter { $0.point == .speechStarted || $0.point == .speechEnqueued }.count, 0)
         XCTAssertEqual(playback.traces.events.filter { $0.point == .request }.count, 1)
         XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))
@@ -402,8 +401,8 @@ final class FailureGuidanceTests: XCTestCase {
     }
 
     func testReplyFailureAfterPartialTextStillSpeaksGuidance() async {
-        let store = MemoryStoreFake(), usage = ConversationUsageSpy(), client = ScriptedSessionClient(chunks: nil)
-        let primary = makeClaudeService(StubSessionFactory(scripts: [client]), store: store, usage: usage)
+        let store = MemoryStoreFake(), client = ScriptedSessionClient(chunks: nil)
+        let primary = makeClaudeService(StubSessionFactory(scripts: [client]), store: store)
         let harness = ConversationHarness(replyOverride: primary, memory: primary)
         await harness.sut.startConversation()
         let turn = Task { await harness.emitCompletedUtterance("ねこ、質問", at: 0) }
@@ -415,10 +414,9 @@ final class FailureGuidanceTests: XCTestCase {
         client.fail(ConversationServiceError.modelGenerationFailed)
         await turn.value
 
-        let texts = await harness.speaker.texts, charged = await usage.turns.count
+        let texts = await harness.speaker.texts
         let saved = await store.snapshot?.turns ?? []
         XCTAssertEqual(texts.last, ConversationFailureGuidance.generationFailed)
-        XCTAssertEqual(charged, 0)
         XCTAssertEqual(saved, [])
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
         await harness.sut.shutdown()
@@ -503,8 +501,8 @@ final class FailureGuidanceTests: XCTestCase {
             for memoryFails in [false, true] {
                 for speechFails in [false, true] {
                     let memory = FakeConversationMemoryManager(state: memoryFails ? .restoreFailed(.readFailed) : .ready)
-                    let store = MemoryStoreFake(), usage = ConversationUsageSpy(), factory = StubSessionFactory()
-                    let primary = makeClaudeService(factory, store: store, usage: usage)
+                    let store = MemoryStoreFake(), factory = StubSessionFactory()
+                    let primary = makeClaudeService(factory, store: store)
                     let harness = ConversationHarness(replyOverride: primary, memory: memory, microphoneAllowed: voice,
                         modelAvailabilityResult: memoryFails ? .available : .claudeUnreachable,
                         speakerAutomaticallyFinishes: !speechFails)
@@ -520,12 +518,11 @@ final class FailureGuidanceTests: XCTestCase {
 
                     let texts = await harness.speaker.texts, active = await harness.audio.isActive
                     let deactivations = await harness.audio.deactivateCount, sessions = await factory.sessions.count
-                    let charges = await usage.turns.count, snapshot = await store.snapshot
+                    let snapshot = await store.snapshot
                     XCTAssertEqual(texts, [guidance])
                     XCTAssertFalse(active)
                     XCTAssertEqual(deactivations, 1)
                     XCTAssertEqual(sessions, 0)
-                    XCTAssertEqual(charges, 0)
                     XCTAssertNil(snapshot)
                     XCTAssertFalse(harness.calls.values.contains(.prepareRecognizer))
                     if !voice { XCTAssertFalse(harness.calls.values.contains(.requestMicrophone)) }

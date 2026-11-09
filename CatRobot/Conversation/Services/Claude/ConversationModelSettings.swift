@@ -24,7 +24,6 @@ enum ConversationEffort: String, CaseIterable, Codable, Sendable {
 struct ConversationModelConfiguration: Equatable, Sendable {
     var model: ConversationModelChoice = .opus5_5
     var effort: ConversationEffort = .low
-    var dailyTurnLimit: Int = 300
 }
 
 @MainActor @Observable
@@ -32,7 +31,6 @@ final class ConversationModelSettings {
     @ObservationIgnored private let defaults: UserDefaults
     private static let modelKey = "conversation.claude.model"
     private static let effortKey = "conversation.claude.effort"
-    private static let limitKey = "conversation.claude.dailyTurnLimit"
 
     var model: ConversationModelChoice {
         didSet { defaults.set(model.rawValue, forKey: Self.modelKey) }
@@ -40,12 +38,9 @@ final class ConversationModelSettings {
     var effort: ConversationEffort {
         didSet { defaults.set(effort.rawValue, forKey: Self.effortKey) }
     }
-    var dailyTurnLimit: Int {
-        didSet { defaults.set(dailyTurnLimit, forKey: Self.limitKey) }
-    }
 
     var configuration: ConversationModelConfiguration {
-        ConversationModelConfiguration(model: model, effort: effort, dailyTurnLimit: dailyTurnLimit)
+        ConversationModelConfiguration(model: model, effort: effort)
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -53,7 +48,5 @@ final class ConversationModelSettings {
         let fallback = ConversationModelConfiguration()
         model = defaults.string(forKey: Self.modelKey).flatMap(ConversationModelChoice.init(rawValue:)) ?? fallback.model
         effort = defaults.string(forKey: Self.effortKey).flatMap(ConversationEffort.init(rawValue:)) ?? fallback.effort
-        let stored = defaults.integer(forKey: Self.limitKey)
-        dailyTurnLimit = stored > 0 ? stored : fallback.dailyTurnLimit
     }
 }

@@ -9,8 +9,6 @@ struct ConversationComposition {
     let dependencies: ConversationDependencies
     let voiceSettings: SpeechVoiceSettings
     let modelSettings: ConversationModelSettings
-    let longTermMemory: LongTermMemoryManager
-    let usage: any ConversationUsageMetering
     let robotLink: any RobotLinkControlling
     let faceTracking: FaceTrackingCoordinator
     let camera: ConversationCamera
@@ -50,12 +48,11 @@ struct ConversationComposition {
         }
         let factory = ClaudeSessionFactory(auth: auth)
         let longTermMemory = LongTermMemoryManager(store: longTermStore, consolidate: { try await factory.consolidateFacts($0) })
-        let usage = UserDefaultsUsageMeter()
         let configuration: @Sendable () async -> ConversationModelConfiguration = { await MainActor.run { modelSettings.configuration } }
         let claude = ClaudeConversationService(factory: factory, memoryStore: memoryStore, longTermMemory: longTermMemory,
                                                tools: RobotConversationToolProvider(motion: motion, expressions: expressions, look: look),
-                                               configuration: configuration, usage: usage)
-        let reply = makeReplyGenerator(claude: claude, usage: usage, configuration: configuration, motion: replyTurnObserver)
+                                               configuration: configuration)
+        let reply = makeReplyGenerator(claude: claude, motion: replyTurnObserver)
         let classifier = makeAddressClassifier(claudeClient: ClaudeAddressModelClient(auth: auth), history: claude)
 
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
@@ -93,16 +90,13 @@ struct ConversationComposition {
             }
         )
         return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
-                    longTermMemory: longTermMemory, usage: usage, robotLink: robotLink, faceTracking: faceTracking, camera: camera, robotSettings: robotSettings)
+                    robotLink: robotLink, faceTracking: faceTracking, camera: camera, robotSettings: robotSettings)
     }
 
-    /// 返答の組み立て。首の予約（MotionReplyGenerator）→ 日次上限（DailyLimitedReplyGenerator）→ Claude の順。
-    /// 上限の日は Claude のセッションを作らない。
-    static func makeReplyGenerator(claude: ClaudeConversationService, usage: any ConversationUsageMetering,
-                                   configuration: @escaping @Sendable () async -> ConversationModelConfiguration,
+    /// 返答の組み立て。首の予約（MotionReplyGenerator）→ Claude の順。
+    static func makeReplyGenerator(claude: ClaudeConversationService,
                                    motion: any ReplyTurnObserving) -> MotionReplyGenerator {
-        MotionReplyGenerator(base: DailyLimitedReplyGenerator(base: claude, usage: usage, configuration: configuration),
-                             motion: motion)
+        MotionReplyGenerator(base: claude, motion: motion)
     }
 
     /// 宛先判定の組み立て。直近の会話を添える decorator → Claude の分類器。liveと試験で同じ経路を使う。
