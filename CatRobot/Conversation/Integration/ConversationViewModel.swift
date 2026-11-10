@@ -428,7 +428,7 @@ final class ConversationViewModel {
         }
     }
 
-    /// 設定の「すべて削除」。確認ダイアログは設定画面側で済ませてから呼ぶ。覚えていることと会話の要約の両方を消す。
+    /// 長期メモと短期の会話記憶を消す。失敗時は忘却の復旧経路を保つ。
     func forgetConversation() async {
         guard !memoryActionInProgress,
               ConversationMemoryPresentation(state: viewState.memoryState).supportsForget else { return }

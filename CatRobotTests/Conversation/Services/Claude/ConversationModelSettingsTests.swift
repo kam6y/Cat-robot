@@ -10,12 +10,23 @@ final class ConversationModelSettingsTests: XCTestCase {
         return defaults
     }
 
-    func testDefaultsAreOpusLowAnd300() {
+    func testDefaultsAreOpusLow() {
         let settings = ConversationModelSettings(defaults: suite())
         XCTAssertEqual(
             settings.configuration,
-            ConversationModelConfiguration(model: .opus5_5, effort: .low, dailyTurnLimit: 300)
+            ConversationModelConfiguration(model: .opus5_5, effort: .low)
         )
+    }
+
+    func testRetiredDailyLimitKeyNoLongerShapesTheConfiguration() {
+        // 日次上限は 2026-11-10 に撤去した。旧 key に値が残っていても設定はモデルとエフォートだけになる。
+        let defaults = suite()
+        defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
+        let settings = ConversationModelSettings(defaults: defaults)
+        XCTAssertEqual(settings.configuration, ConversationModelConfiguration(model: .opus5_5, effort: .low))
+        settings.model = .haiku5_5
+        XCTAssertEqual(ConversationModelSettings(defaults: defaults).configuration,
+                       ConversationModelConfiguration(model: .haiku5_5, effort: .low))
     }
 
     func testEveryEffortOptionPersistsUsingItsAPIName() {
@@ -36,24 +47,19 @@ final class ConversationModelSettingsTests: XCTestCase {
         let first = ConversationModelSettings(defaults: defaults)
         first.model = .sonnet5_5
         first.effort = .medium
-        first.dailyTurnLimit = 50
 
         let second = ConversationModelSettings(defaults: defaults)
         XCTAssertEqual(
             second.configuration,
-            ConversationModelConfiguration(model: .sonnet5_5, effort: .medium, dailyTurnLimit: 50)
+            ConversationModelConfiguration(model: .sonnet5_5, effort: .medium)
         )
 
         defaults.set("unknown-model", forKey: "conversation.claude.model")
         defaults.set("unknown-effort", forKey: "conversation.claude.effort")
-        defaults.set(-3, forKey: "conversation.claude.dailyTurnLimit")
         let third = ConversationModelSettings(defaults: defaults)
         XCTAssertEqual(third.model, .opus5_5)
         XCTAssertEqual(third.effort, .low)
-        XCTAssertEqual(third.dailyTurnLimit, 300)
 
-        defaults.set(0, forKey: "conversation.claude.dailyTurnLimit")
-        XCTAssertEqual(ConversationModelSettings(defaults: defaults).dailyTurnLimit, 300)
     }
 
     func testRawValuesAreAPIModelIDs() {

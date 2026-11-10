@@ -53,6 +53,62 @@ final class AppCompositionTests: XCTestCase {
         XCTAssertEqual(availability, .claudeCredentialMissing)
     }
 
+    func testLiveReplyPipelineHasNoDailyLimitGateEvenWithTheRetiredLimitKeyStored() throws {
+        // 日次上限は 2026-11-10 に撤去した。旧 key に上限 1 が残っていても、首の観察の内側は Claude のサービスそのもの。
+        let defaults = UserDefaults(suiteName: "composition-limit-\(UUID().uuidString)")!
+        defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
+        let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults),
+                                                       modelSettings: ConversationModelSettings(defaults: defaults),
+                                                       auth: .missing)
+        let reply = try XCTUnwrap(composition.dependencies.reply as? MotionReplyGenerator)
+        XCTAssertTrue(reply.base is ClaudeConversationService, "\(type(of: reply.base)) must not sit between the motion observer and Claude")
+    }
+
+    func testReplyPipelineCompletesAndPersistsWithRetiredDailyLimitSetting() async throws {
+        let name = "retired-limit-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
+        let settings = ConversationModelSettings(defaults: defaults)
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["応答。"])])
+        let service = makeClaudeService(factory, configuration: { await settings.configuration })
+        let reply = ConversationComposition.makeReplyGenerator(
+            claude: service, motion: ReplyTurnMulticaster([]))
+
+        var response = ""
+        for try await text in try await reply.streamReply(to: "こんにちは") { response = text }
+
+        let sessions = await factory.sessions
+        let turns = await service.recentTurns()
+        XCTAssertEqual(response, "応答。")
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(turns, [.init(prompt: "こんにちは", response: "応答。")])
+    }
+
+    func testCompletedReplyLeavesRetiredAccountingAndUnrelatedPreferencesUntouched() async throws {
+        let name = "retired-accounting-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let oldAccounting = Data("retired accounting record".utf8)
+        defaults.set(oldAccounting, forKey: "conversation.claude.usage")
+        defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
+        defaults.set("keep-calibration", forKey: "unrelated-test-preference")
+        let settings = ConversationModelSettings(defaults: defaults)
+        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["応答。"])])
+        let service = ClaudeConversationService(
+            factory: factory, memoryStore: InMemoryConversationMemoryStore(),
+            longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
+            tools: StaticToolProvider([]), configuration: { await settings.configuration })
+
+        var response = ""
+        for try await text in try await service.streamReply(to: "こんにちは") { response = text }
+
+        XCTAssertEqual(response, "応答。")
+        XCTAssertEqual(defaults.data(forKey: "conversation.claude.usage"), oldAccounting)
+        XCTAssertEqual(defaults.integer(forKey: "conversation.claude.dailyTurnLimit"), 1)
+        XCTAssertEqual(defaults.string(forKey: "unrelated-test-preference"), "keep-calibration")
+    }
+
     func testAddressClassifierSendsClarificationRepliesOnlyToHaikuThroughLiveWrappers() async throws {
         let turns = [ConversationMemoryTurn(prompt: "ねこ、おはよう", response: "おはよう！")]
         let haiku = RecordingAddressModelClient(result: .addressed)
@@ -130,8 +186,7 @@ final class AppCompositionTests: XCTestCase {
             dependencies: harness.dependencies,
             voiceSettings: SpeechVoiceSettings(defaults: defaults),
             modelSettings: ConversationModelSettings(defaults: defaults),
-            longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-            usage: ConversationUsageSpy(), robotLink: link, faceTracking: tracking, camera: camera,
+            robotLink: link, faceTracking: tracking, camera: camera,
             robotSettings: RobotSettingsModel(link: link, preferences: preferences, clock: clock))
         let onboarding = OnboardingSettings(defaults: defaults)
         onboarding.markCompleted()

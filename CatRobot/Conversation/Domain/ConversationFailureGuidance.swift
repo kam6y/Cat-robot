@@ -2,7 +2,6 @@ enum ConversationFailureGuidance {
     static let unreachable = "ごめんね、いまは Claude とうまくつながらないみたい。少し待ってから、また話しかけてね。"
     static let generationFailed = "ごめんね、いまはうまく答えられなかった。もう一回話しかけてね。"
     static let configuration = "ごめんね、Claude につなぐ準備ができていないみたい。設定を確認してね。"
-    static let dailyLimit = "今日はたくさん話したから、もうおしまいにするね。また明日、話しかけてね。"
     static let refused = "ごめんね、それには答えられないんだ。別の話をしよう。"
     static let contextExceeded = "ごめんね、話が長くなりすぎて、うまく続けられなかった。もう一回話しかけてね。"
     static let inputTooLong = "ちょっと長すぎて、一度に聞ききれなかった。短く分けて話してね。"
@@ -20,8 +19,6 @@ extension ConversationServiceError {
             ConversationFailureGuidance.generationFailed
         case .modelUnavailable, .modelLocaleUnsupported:
             ConversationFailureGuidance.configuration
-        case .dailyLimitReached:
-            ConversationFailureGuidance.dailyLimit
         case .refusal, .guardrailViolation:
             ConversationFailureGuidance.refused
         case .contextExceeded:

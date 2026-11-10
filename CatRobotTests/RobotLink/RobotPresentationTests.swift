@@ -119,9 +119,8 @@ final class RobotPresentationTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         let view = ConversationSettingsView(voiceSettings: SpeechVoiceSettings(defaults: defaults),
             modelSettings: ConversationModelSettings(defaults: defaults),
-            memory: LongTermMemoryViewModel(memory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore())),
-            usage: ConversationUsageSpy(), idleSettings: ConversationIdleSettings(defaults: defaults),
-            robotSettings: model, initialCategory: .robot, onDeleteAll: {}, onDone: {})
+            idleSettings: ConversationIdleSettings(defaults: defaults),
+            robotSettings: model, initialCategory: .robot, onDone: {})
         let textSize = SettingsTextSize()
         textSize.value = initialSize
         let host = UIHostingController(rootView: SettingsTextSizeFixture(settings: view, size: textSize))

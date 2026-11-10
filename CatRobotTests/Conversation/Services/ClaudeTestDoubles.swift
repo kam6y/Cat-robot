@@ -4,14 +4,13 @@ import FoundationModels
 
 func makeClaudeService(_ factory: StubSessionFactory = StubSessionFactory(),
                        store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
-                       usage: ConversationUsageSpy = ConversationUsageSpy(),
                        budget: ConversationBudget = .default,
                        longTerm: LongTermMemoryManager? = nil,
                        tools: any ConversationToolProvider = StaticToolProvider([]),
                        configuration: @escaping @Sendable () async -> ConversationModelConfiguration = { .init() }) -> ClaudeConversationService {
     ClaudeConversationService(factory: factory, memoryStore: store,
                               longTermMemory: longTerm ?? LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                              tools: tools, configuration: configuration, usage: usage, budget: budget)
+                              tools: tools, configuration: configuration, budget: budget)
 }
 
 enum ClarificationSummaryFixture {
@@ -42,24 +41,6 @@ actor GatedLongTermMemoryStore: LongTermMemoryStore {
         clearCount += 1
         await clearGate?.wait()
         facts = []
-    }
-}
-
-actor ConversationUsageSpy: ConversationUsageMetering {
-    private(set) var turns: [(ConversationModelChoice, Int, Int)] = []
-    /// isDailyLimitReached(limit:) に渡された上限の記録。設定の変更が呼び出しごとに届くことを確かめる。
-    private(set) var limits: [Int] = []
-    var limitReached = false
-    func setLimitReached(_ value: Bool) { limitReached = value }
-    func recordTurn(model: ConversationModelChoice, promptCharacters: Int, responseCharacters: Int) {
-        turns.append((model, promptCharacters, responseCharacters))
-    }
-    func isDailyLimitReached(limit: Int) -> Bool {
-        limits.append(limit)
-        return limitReached
-    }
-    func summary() -> ConversationUsageSummary {
-        .init(turnsToday: turns.count, turnsThisMonth: turns.count, estimatedCostUSDThisMonth: 0)
     }
 }
 

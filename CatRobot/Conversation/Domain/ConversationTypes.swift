@@ -73,7 +73,6 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case modelGenerationFailed
     /// 通信断・タイムアウト・レート制限（通信到達不能）。
     case modelUnreachable
-    case dailyLimitReached
     case cancelled
 }
 

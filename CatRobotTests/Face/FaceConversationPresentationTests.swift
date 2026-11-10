@@ -86,18 +86,12 @@ final class FaceConversationPresentationTests: XCTestCase {
         defer { fixture.tearDown() }
         let (window, host, _) = try await hostInScene(fixture.view(.conversation).environment(\.dynamicTypeSize, .large))
         defer { releaseWindow(window) }
-        // 「すべて削除」は Form の行の中にあり、この fixture では行の識別子が要素の木に出ない（描画では表示されている）。
-        // VoiceOver が読む名前で探す。
-        let deleteAll = "すべて削除"
         try await waitForAccessibilityTree(in: host.view)
         XCTAssertNotNil(accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.voicePresetPicker.rawValue),
                         "開いたときは「会話」を選ぶ")
-        XCTAssertNil(accessibilityElement(in: host.view, label: deleteAll))
-        try await activateAccessibilityElement(in: host.view, identifier: SettingsCategory.memory.accessibilityIdentifier)
-        let deleteAllButton = try await reachableAccessibilityElement(in: host.view, label: deleteAll,
-                                                                      scrollingIn: detailScrollView(in: host.view))
-        XCTAssertNotNil(deleteAllButton, "Selecting 記憶 must replace the detail column with the memory list and すべて削除")
-        try capture(host.view, size: host.view.bounds.size, name: "settings-selected-memory")
+        XCTAssertNil(accessibilityElement(in: host.view, identifier: "settingsCategory.memory"))
+        XCTAssertNil(accessibilityElement(in: host.view, identifier: "settingsCategory.usage"))
+        XCTAssertNil(accessibilityElement(in: host.view, label: "すべて削除"))
 
         try await activateAccessibilityElement(in: host.view, identifier: SettingsCategory.about.accessibilityIdentifier)
         let showsAbout = try await waitUntil(settling: host.view) { self.accessibilityElement(in: host.view, label: "送るもの・保存するもの") != nil }
@@ -579,7 +573,7 @@ final class FaceConversationPresentationTests: XCTestCase {
         return (window, host, insets)
     }
 
-    /// 設定の fixture が共有する依存。首は接続済み、記憶は3件。
+    /// 設定の fixture が共有する依存。首は接続済み。
     @MainActor
     private final class SettingsFixture {
         let defaultsName: String
@@ -587,7 +581,6 @@ final class FaceConversationPresentationTests: XCTestCase {
         let robot: RobotSettingsModel
         let camera: ConversationCamera
         let face: FaceTrackingCoordinator
-        let memory: LongTermMemoryViewModel
         let voiceSettings: SpeechVoiceSettings
         let modelSettings: ConversationModelSettings
         let idleSettings: ConversationIdleSettings
@@ -602,12 +595,6 @@ final class FaceConversationPresentationTests: XCTestCase {
             camera = ConversationCamera(source: FakeFaceCaptureSource(authorization: authorization), clock: ManualRobotClock())
             face = FaceTrackingCoordinator(source: FakeFaceCaptureSource(authorization: authorization), link: harness.link,
                                            clock: harness.clock, preferences: harness.preferences, motion: MotionControllerSpy())
-            let facts = [
-                LongTermFact(id: UUID(), category: .preference, text: "甘いものが好きで、特にどら焼きをよく食べる", createdAt: Date(timeIntervalSince1970: 1)),
-                LongTermFact(id: UUID(), category: .person, text: "妹のさくらは春に大学へ入学した", createdAt: Date(timeIntervalSince1970: 2)),
-                LongTermFact(id: UUID(), category: .event, text: "週末は公園で写真を撮る予定", createdAt: Date(timeIntervalSince1970: 3))
-            ]
-            memory = LongTermMemoryViewModel(memory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore(facts: facts)))
             voiceSettings = SpeechVoiceSettings(defaults: defaults)
             modelSettings = ConversationModelSettings(defaults: defaults)
             idleSettings = ConversationIdleSettings(defaults: defaults)
@@ -616,10 +603,10 @@ final class FaceConversationPresentationTests: XCTestCase {
         func connectRobot() async { await harness.connectReady() }
 
         func view(_ category: SettingsCategory) -> ConversationSettingsView {
-            ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings, memory: memory,
-                                     usage: ConversationUsageSpy(), idleSettings: idleSettings, robotSettings: robot,
+            ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
+                                     idleSettings: idleSettings, robotSettings: robot,
                                      faceTracking: face, camera: camera, initialCategory: category,
-                                     onDeleteAll: {}, onDone: {})
+                                     onDone: {})
         }
 
         func tearDown() {

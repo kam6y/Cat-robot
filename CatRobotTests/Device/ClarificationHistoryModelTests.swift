@@ -271,7 +271,7 @@ final class ClarificationHistoryModelTests: XCTestCase {
         let store = InMemoryConversationMemoryStore()
         let memory = LongTermMemoryManager(store: InMemoryLongTermMemoryStore())
         let service = ClaudeConversationService(factory: factory, memoryStore: store, longTermMemory: memory,
-            tools: tools, configuration: { .init(model: .opus5_5, effort: .low) }, usage: ConversationUsageSpy())
+            tools: tools, configuration: { .init(model: .opus5_5, effort: .low) })
         try await service.prepareMemory()
         await service.recordExternalTurn(prompt: fixture.original, response: ClarificationContext.question)
         return Probe(service: service, factory: factory, store: store, memory: memory)
@@ -285,7 +285,7 @@ final class ClarificationHistoryModelTests: XCTestCase {
         let store = InMemoryConversationMemoryStore(snapshot: snapshot)
         let memory = LongTermMemoryManager(store: InMemoryLongTermMemoryStore())
         let service = ClaudeConversationService(factory: factory, memoryStore: store, longTermMemory: memory,
-            tools: StaticToolProvider([]), configuration: { .init(model: .opus5_5, effort: .low) }, usage: ConversationUsageSpy(),
+            tools: StaticToolProvider([]), configuration: { .init(model: .opus5_5, effort: .low) },
             budget: .init(compactionTriggerCharacters: 1, retainedCharacters: retainedCharacters))
         return Probe(service: service, factory: factory, store: store, memory: memory)
     }

@@ -13,7 +13,6 @@ final class ConversationFailureGuidanceTests: XCTestCase {
             (.modelUnavailable(.claudeAttestationUnsupported), ConversationFailureGuidance.configuration),
             (.modelUnavailable(.claudeAttestationFailed), ConversationFailureGuidance.configuration),
             (.modelLocaleUnsupported, ConversationFailureGuidance.configuration),
-            (.dailyLimitReached, ConversationFailureGuidance.dailyLimit),
             (.refusal, ConversationFailureGuidance.refused),
             (.guardrailViolation, ConversationFailureGuidance.refused),
             (.contextExceeded, ConversationFailureGuidance.contextExceeded),

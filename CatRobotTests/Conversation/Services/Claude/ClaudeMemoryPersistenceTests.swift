@@ -94,16 +94,13 @@ final class ClaudeMemoryPersistenceTests: XCTestCase {
         for previous in ["", "- 好きな飲み物は紅茶"] {
             let store = MemoryStoreFake(snapshot: ClarificationSummaryFixture.snapshot(summary: previous))
             await store.setSaveFailure(true)
-            let usage = ConversationUsageSpy()
             let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [ClarificationSummaryFixture.nextTurn.response])],
                                              summaries: [.noContent])
-            let service = makeClaudeService(factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+            let service = makeClaudeService(factory, store: store, budget: ClarificationSummaryFixture.budget)
             do { try await drain(service.streamReply(to: ClarificationSummaryFixture.nextTurn.prompt)) }
             catch { XCTFail("noContent must still commit the generated reply before save retry: \(error)"); continue }
             let unsaved = await service.memoryState()
-            let chargedTurns = await usage.turns.count
             XCTAssertEqual(unsaved, .unsaved)
-            XCTAssertEqual(chargedTurns, 1)
             await store.setSaveFailure(false)
             do { try await service.retryMemoryOperation() }
             catch { XCTFail("Retry must persist the latest compacted memory: \(error)"); continue }

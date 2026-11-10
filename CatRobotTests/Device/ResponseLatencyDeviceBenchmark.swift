@@ -104,7 +104,7 @@ struct ResponseLatencyDeviceBenchmark {
         guard auth != .missing else { throw XCTSkip("Current app has no Claude credential") }
         let service = ClaudeConversationService(factory: ClaudeSessionFactory(auth: auth),
             memoryStore: InMemoryConversationMemoryStore(), longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-            tools: RobotConversationToolProvider(motion: NoopRobotMotionController()), configuration: { settings }, usage: ConversationUsageSpy())
+            tools: RobotConversationToolProvider(motion: NoopRobotMotionController()), configuration: { settings })
         let availability = await service.availability()
         guard availability == .available else { throw ConversationServiceError.modelUnavailable(availability) }
         await service.prewarm()
@@ -117,7 +117,7 @@ struct ResponseLatencyDeviceBenchmark {
                                       cooldown: cooldown, sample: sample)
             row["model"] = settings.model.rawValue
             row["effort"] = settings.effort.rawValue
-            row["memoryScope"] = "isolated test-only memory and usage; robot/camera controllers are noops"
+            row["memoryScope"] = "isolated test-only memory; robot/camera controllers are noops"
             try record(row)
             if row["outcome"] as? String != "success" { throw BenchmarkFailure.trialFailed }
         }

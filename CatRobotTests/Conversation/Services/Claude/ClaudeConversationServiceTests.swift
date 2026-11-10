@@ -14,25 +14,23 @@ final class ClaudeConversationServiceTests: XCTestCase {
     func makeService(factory: StubSessionFactory = StubSessionFactory(),
                      store: any ConversationMemoryStore = InMemoryConversationMemoryStore(),
                      longTerm: LongTermMemoryManager = LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-                     settings: Settings = Settings(), usage: ConversationUsageSpy = ConversationUsageSpy(),
+                     settings: Settings = Settings(),
                      budget: ConversationBudget = .default) -> ClaudeConversationService {
-        makeClaudeService(factory, store: store, usage: usage, budget: budget,
+        makeClaudeService(factory, store: store, budget: budget,
                           longTerm: longTerm, tools: RememberToolProvider(), configuration: { settings.current })
     }
     func collect(_ stream: AsyncThrowingStream<String, Error>) async throws -> [String] {
         var out: [String] = []; for try await s in stream { out.append(s) }; return out
     }
 
-    func testStreamsCumulativeSnapshotsCommitsTurnAndRecordsUsage() async throws {
-        let factory = StubSessionFactory(); let store = InMemoryConversationMemoryStore(); let usage = ConversationUsageSpy()
-        let service = makeService(factory: factory, store: store, usage: usage)
+    func testStreamsCumulativeSnapshotsCommitsTurn() async throws {
+        let factory = StubSessionFactory(); let store = InMemoryConversationMemoryStore()
+        let service = makeService(factory: factory, store: store)
         let snapshots = try await collect(service.streamReply(to: "こんにちは"))
         XCTAssertEqual(snapshots, ["にゃ", "にゃん。"])
         let saved = await store.load()
         XCTAssertEqual(saved?.turns, [.init(prompt: "こんにちは", response: "にゃん。")])
         XCTAssertEqual(saved?.memoryCompatibilityID, "claude-memory-v1")
-        let recorded = await usage.turns
-        XCTAssertEqual(recorded.count, 1); XCTAssertEqual(recorded.first?.0, .opus5_5)
         let sessions = await factory.sessions
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions.first?.toolNames, ["remember"])
@@ -130,8 +128,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
         let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [ClarificationSummaryFixture.nextTurn.response])],
                                          summaries: [.noContent])
         let store = InMemoryConversationMemoryStore(snapshot: ClarificationSummaryFixture.snapshot(summary: previousSummary))
-        let usage = ConversationUsageSpy()
-        let service = makeService(factory: factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+        let service = makeService(factory: factory, store: store, budget: ClarificationSummaryFixture.budget)
         do {
             let snapshots = try await collect(service.streamReply(to: ClarificationSummaryFixture.nextTurn.prompt))
             XCTAssertEqual(snapshots, [ClarificationSummaryFixture.nextTurn.response], file: file, line: line)
@@ -140,12 +137,10 @@ final class ClaudeConversationServiceTests: XCTestCase {
             return
         }
         let saved = await store.load()
-        let chargedTurns = await usage.turns.count
         XCTAssertEqual(saved?.summary, previousSummary, file: file, line: line)
         XCTAssertEqual(saved?.turns, ClarificationSummaryFixture.retained() + [ClarificationSummaryFixture.nextTurn], file: file, line: line)
         XCTAssertEqual(saved?.schemaVersion, 1, file: file, line: line)
         XCTAssertEqual(saved?.memoryCompatibilityID, "claude-memory-v1", file: file, line: line)
-        XCTAssertEqual(chargedTurns, 1, file: file, line: line)
 
         let restoredFactory = StubSessionFactory()
         let restored = makeService(factory: restoredFactory, store: store)
@@ -176,7 +171,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
         XCTAssertFalse(instructions.contains(previous))
     }
 
-    func testInvalidOrFailedSummariesDoNotCommitCandidateOrUsage() async throws {
+    func testInvalidOrFailedSummariesDoNotCommitCandidate() async throws {
         let parse = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Malformed structured summary"))
         let truncated = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Incomplete structured summary at output limit"))
         let scenarios: [(ConversationSummaryResult, (any Error)?, ConversationServiceError)] = [
@@ -191,15 +186,12 @@ final class ClaudeConversationServiceTests: XCTestCase {
             let factory = StubSessionFactory(scripts: [client], summaries: [summary], summaryError: failure)
             let initial = ClarificationSummaryFixture.snapshot(summary: "- 前回の記憶")
             let store = InMemoryConversationMemoryStore(snapshot: initial)
-            let usage = ConversationUsageSpy()
-            let service = makeService(factory: factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+            let service = makeService(factory: factory, store: store, budget: ClarificationSummaryFixture.budget)
             do { _ = try await collect(service.streamReply(to: "次の話")); XCTFail("Invalid/failed summary must fail") }
             catch { XCTAssertEqual(error as? ConversationServiceError, expectedError) }
             let saved = await store.load()
-            let charges = await usage.turns.count
             XCTAssertEqual(saved, initial, "No compaction candidate or new turn may commit on failure")
             XCTAssertTrue(client.prompts.isEmpty)
-            XCTAssertEqual(charges, 0)
         }
     }
 
@@ -208,8 +200,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
         addTeardownBlock { await gate.open() }
         let factory = StubSessionFactory(summaries: [.noContent], summaryGate: gate)
         let store = InMemoryConversationMemoryStore(snapshot: ClarificationSummaryFixture.snapshot(summary: "- 削除前の記憶"))
-        let usage = ConversationUsageSpy()
-        let service = makeService(factory: factory, store: store, usage: usage, budget: ClarificationSummaryFixture.budget)
+        let service = makeService(factory: factory, store: store, budget: ClarificationSummaryFixture.budget)
         let turn = Task { () -> ConversationServiceError? in
             do { _ = try await self.collect(service.streamReply(to: "削除される入力")); return nil }
             catch { return error as? ConversationServiceError }
@@ -224,10 +215,8 @@ final class ClaudeConversationServiceTests: XCTestCase {
         let error = await turn.value
         try await forgetting.value
         let erased = await store.load()
-        let charges = await usage.turns.count
         XCTAssertEqual(error, .cancelled)
         XCTAssertNil(erased)
-        XCTAssertEqual(charges, 0)
 
         _ = try await collect(service.streamReply(to: "削除後の入力"))
         let instructions = await factory.sessions.last?.configuration.instructions ?? ""
@@ -278,8 +267,7 @@ final class ClaudeConversationServiceTests: XCTestCase {
         for effort in ConversationEffort.allCases {
             let settings = Settings(.init(model: .opus5_5))
             let factory = StubSessionFactory()
-            let usage = ConversationUsageSpy()
-            let service = makeService(factory: factory, settings: settings, usage: usage)
+            let service = makeService(factory: factory, settings: settings)
             _ = try await collect(service.streamReply(to: "一回目"))
             settings.set(.init(model: .sonnet5_5, effort: effort))
             _ = try await collect(service.streamReply(to: "二回目"))
@@ -291,8 +279,6 @@ final class ClaudeConversationServiceTests: XCTestCase {
             sessions = await factory.sessions
             XCTAssertEqual(sessions.map(\.configuration.model), [.opus5_5, .sonnet5_5])
             XCTAssertEqual(sessions.map(\.configuration.effort), [.low, effort])
-            let billed = await usage.turns.map { $0.0 }
-            XCTAssertEqual(billed, [.opus5_5, .opus5_5, .sonnet5_5], "集計はそのターンを生成したセッションのモデルで行う")
         }
     }
 

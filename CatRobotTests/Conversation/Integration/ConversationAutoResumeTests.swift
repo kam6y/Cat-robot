@@ -133,57 +133,6 @@ final class ConversationAutoResumeTests: XCTestCase {
         await harness.sut.shutdown()
     }
 
-    func testClosingSettingsWhileDeletingAllResumesAfterTheDeletionSucceeds() async {
-        let forgetGate = ConversationTestGate()
-        let memory = FakeConversationMemoryManager(forgetGate: forgetGate)
-        let harness = ConversationHarness(memory: memory)
-        let coordinator = makeCoordinator(harness)
-        coordinator.beginConversation(); await coordinator.waitForOperations()
-        coordinator.makeActions(openSettings: {}).openVoiceSettings(); await coordinator.waitForOperations()
-        let deletion = Task { await coordinator.deleteAllMemory() }
-        await forgetGate.waitUntilEntered()
-        coordinator.closeVoiceSettings()          // 削除中に「完了」
-        await Task.yield()
-        XCTAssertEqual(harness.sut.viewState.phase, .paused, "削除中は始まらない")
-        await forgetGate.open()
-        await deletion.value
-        await coordinator.waitForOperations()
-        XCTAssertEqual(harness.sut.viewState.memoryState, .ready)
-        XCTAssertEqual(harness.sut.viewState.phase, .listening, "削除が終わったら再開する")
-        let starts = await harness.recognizer.startCount
-        XCTAssertEqual(starts, 2)
-        await harness.sut.shutdown()
-    }
-
-    func testClosingSettingsWhileDeletingAllStaysPausedWhenTheDeletionFailsUntilRetrySucceeds() async {
-        let forgetGate = ConversationTestGate()
-        let memory = FakeConversationMemoryManager(forgetGate: forgetGate)
-        await memory.setForgetFailure(true)
-        let harness = ConversationHarness(memory: memory)
-        let coordinator = makeCoordinator(harness)
-        coordinator.beginConversation(); await coordinator.waitForOperations()
-        coordinator.makeActions(openSettings: {}).openVoiceSettings(); await coordinator.waitForOperations()
-        let deletion = Task { await coordinator.deleteAllMemory() }
-        await forgetGate.waitUntilEntered()
-        coordinator.closeVoiceSettings()
-        await forgetGate.open()
-        await deletion.value
-        await coordinator.waitForOperations()
-        XCTAssertEqual(harness.sut.viewState.memoryState, .forgetFailed(.deleteFailed))
-        XCTAssertEqual(harness.sut.viewState.phase, .paused, "削除に失敗したら再開しない")
-        var starts = await harness.recognizer.startCount
-        XCTAssertEqual(starts, 1)
-
-        await memory.setForgetFailure(false)
-        coordinator.makeActions(openSettings: {}).retryMemory()
-        await coordinator.waitForOperations()
-        XCTAssertEqual(harness.sut.viewState.memoryState, .ready)
-        XCTAssertEqual(harness.sut.viewState.phase, .listening, "再試行が成功したら再開する")
-        starts = await harness.recognizer.startCount
-        XCTAssertEqual(starts, 2)
-        await harness.sut.shutdown()
-    }
-
     func testSaveRetryKeepsTheCatTapPause() async {
         let memory = FakeConversationMemoryManager(state: .unsaved)
         let harness = ConversationHarness(memory: memory)
@@ -210,21 +159,6 @@ final class ConversationAutoResumeTests: XCTestCase {
         XCTAssertEqual(harness.sut.viewState.phase, .listening)
         let starts = await harness.recognizer.startCount
         XCTAssertEqual(starts, 1, "聞き取り中の保存再試行は開始し直さない")
-        await harness.sut.shutdown()
-    }
-
-    func testDeletingAllWhileTheSheetStaysOpenDoesNotResume() async {
-        let memory = FakeConversationMemoryManager()
-        let harness = ConversationHarness(memory: memory)
-        let coordinator = makeCoordinator(harness)
-        coordinator.beginConversation(); await coordinator.waitForOperations()
-        coordinator.makeActions(openSettings: {}).openVoiceSettings(); await coordinator.waitForOperations()
-        await coordinator.deleteAllMemory()
-        await coordinator.waitForOperations()
-        XCTAssertTrue(coordinator.showsVoiceSettings)
-        XCTAssertEqual(harness.sut.viewState.phase, .paused)
-        let starts = await harness.recognizer.startCount
-        XCTAssertEqual(starts, 1)
         await harness.sut.shutdown()
     }
 
