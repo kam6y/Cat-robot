@@ -79,6 +79,7 @@ assert(PBXPROJ_PATH.file?, "generated project.pbxproj is missing")
 assert(SCHEME_PATH.file?, "generated shared scheme is missing")
 
 info = Xcodeproj::Plist.read_from_path(ROOT.join("CatRobot/Resources/Info.plist").to_s)
+assert(info["NSLocalNetworkUsageDescription"] == "開発用の診断で、同じネットワーク上の Mac にある検証用 relay へ接続します。", "the explicit Info.plist must carry the probe local network description")
 reason = info["NSBluetoothAlwaysUsageDescription"]
 assert(reason.is_a?(String) && !reason.strip.empty?, "Bluetooth usage description is missing")
 assert(!info.key?("UIBackgroundModes"), "the robot link must remain foreground-only")
@@ -206,8 +207,10 @@ assert(app.shell_script_build_phases.any? { |p| p.name == "Validate Supertonic a
 cleanup = app.shell_script_build_phases.find { |p| p.name == "Remove codeless onnxruntime framework" }
 assert(cleanup && cleanup.shell_script.include?("onnxruntime.framework"), "codeless framework cleanup missing")
 assert(app.build_phases.last.equal?(cleanup), "codeless framework cleanup must be the last build phase")
-assert(cleanup.output_paths.empty? && cleanup.input_paths.empty?,
-       "codeless framework cleanup must not declare the framework or Frameworks directory as an output: both collide with the embed and MkDir steps (Multiple commands produce)")
+assert(cleanup.output_paths.empty?,
+       "codeless framework cleanup must not collide with the embed or MkDir output")
+assert(cleanup.input_paths == ["$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/onnxruntime.framework/_CodeSignature"],
+       "codeless framework cleanup must declare the embedded framework signature as its only input so it runs after the implicit CodeSign")
 assert(app.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "NO" },
        "the app target must run its script phases unsandboxed so the cleanup can inspect and delete the stub under SYMROOT / DSTROOT")
 assert(targets.fetch("CatRobotTests").build_configurations.none? { |c| c.build_settings.key?("ENABLE_USER_SCRIPT_SANDBOXING") },
@@ -216,11 +219,20 @@ assert(targets.fetch("CatRobotTests").build_configurations.none? { |c| c.build_s
 # スタブ除去スクリプトの振る舞い: 記号を公開しないスタブだけを消し、検査や削除の失敗は非 0 で止める。
 require "tmpdir"
 require "open3"
-def run_cleanup(script, products, framework: true, with_binary: nil, mode: nil)
+def run_cleanup(script, products, framework: true, with_binary: nil, mode: nil, signed: false)
   app_dir = File.join(products, "CatRobot.app")
   fw = File.join(app_dir, "Frameworks", "onnxruntime.framework")
   FileUtils.mkdir_p(framework ? fw : File.join(app_dir, "Frameworks"))
   FileUtils.cp(with_binary, File.join(fw, "onnxruntime")) if with_binary
+  if signed
+    Xcodeproj::Plist.write_to_path({
+      "CFBundleIdentifier" => "com.kamby.onnx-signing-fixture",
+      "CFBundleExecutable" => "onnxruntime", "CFBundlePackageType" => "FMWK",
+      "CFBundleVersion" => "1"
+    }, File.join(fw, "Info.plist"))
+    signing, status = Open3.capture2e("/usr/bin/codesign", "--force", "--sign", "-", fw)
+    assert(status.success?, "fixture framework signing failed: #{signing}")
+  end
   File.chmod(mode, File.join(app_dir, "Frameworks")) if mode
   out, status = Open3.capture2e({ "TARGET_BUILD_DIR" => products, "FRAMEWORKS_FOLDER_PATH" => "CatRobot.app/Frameworks" }, "/bin/sh", "-c", script)
   [out, status.exitstatus, File.exist?(fw)]
@@ -242,6 +254,16 @@ Dir.mktmpdir("cat-onnx-cleanup") do |dir|
 
   out, code, remains = run_cleanup(script, File.join(dir, "real"), with_binary: real)
   assert(code == 0 && remains && out.include?("not a codeless stub"), "a real dylib must be kept: #{out}")
+
+  out, code, remains = run_cleanup(script, File.join(dir, "signed-stub"), with_binary: stub, signed: true)
+  assert(code == 0 && !remains, "a signed codeless stub must still be removed: #{out}")
+
+  real_products = File.join(dir, "signed-real")
+  out, code, remains = run_cleanup(script, real_products, with_binary: real, signed: true)
+  assert(code == 0 && remains, "a signed real dylib must be kept: #{out}")
+  verification, status = Open3.capture2e("/usr/bin/codesign", "--verify", "--strict",
+    File.join(real_products, "CatRobot.app/Frameworks/onnxruntime.framework"))
+  assert(status.success?, "cleanup must preserve the real dylib signature: #{verification}")
 
   out, code, remains = run_cleanup(script, File.join(dir, "absent"), framework: false)
   assert(code == 0 && !remains && out.include?("nothing to remove"), "missing framework must be a no-op: #{out}")

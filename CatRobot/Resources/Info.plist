@@ -30,6 +30,8 @@
 	<string>顔がこちらを向いているかをiPhone内で確認して話しかけられたか判断し、顔の方向にハードを向けます。「見て」と頼んだときは前面カメラの静止画像を1枚Claudeへ送ります。画像はアプリに保存しません。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。音声は端末上で処理されます。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>開発用の診断で、同じネットワーク上の Mac にある検証用 relay へ接続します。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Cat Robotは、AIの猫との会話を文字にするため、端末上の音声認識を使用します。</string>
 	<key>UIApplicationSceneManifest</key>
