@@ -195,6 +195,10 @@ cleanup.shell_script = <<~'SH'
   echo "Removed codeless onnxruntime.framework stub"
 SH
 cleanup.always_out_of_date = "1"
+# SwiftPM の暗黙の embed / CodeSign は build_phases の並びだけでは待たれない。
+# 実際の CodeSign 出力を入力にし、署名が読む bundle を途中で削除しない。
+# framework 自体を出力に宣言すると Copy と競合するため、出力は追加しない。
+cleanup.input_paths = ["$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/onnxruntime.framework/_CodeSignature"]
 
 apply_common_settings(app_target)
 apply_common_settings(test_target)

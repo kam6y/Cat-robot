@@ -1,8 +1,18 @@
 # Hermes 移行①: 接続プローブ（文字往復・取消・模擬端末ツール）
 
+## 現状（2026-11-10 最終化時点）
+
+本欄と末尾の「修正後のfresh Simulator lifetime 1/2・最終化」が現在の状態である。その間の本文は各段階の履歴として保持する。過去の「受信許可待ち」「未実施」「新gate待ち」、提出版やレビュー予定、旧TLSのSANは現在の状態を示さない。
+
+- 署名race修正後のv4 `f67f56b2…`（943 files）を固定し、fresh Simulator lifetime 1/2を各1回実行した。両方とも同じDerivedData／package cacheで通常署名build・install・testがexit 0、canonical xcresultは各1 passed / 0 failed / 0 skipped。cache再生成や署名弱化はしていない。実装・テスト・生成projectは既存レビュー対象`56a13d07…`から不変である。
+- lifetime 1はcapabilities 401/401/200、plain nonce一致、bound mockEcho受理・nonce一致。親のWindows traceではplainも未bind echoを試行してno-bound errorとなっており、tool-freeではない。lifetime 2は実call受信後の取消が成立し、held callをローカル破棄、mock／physical操作は未実行。遅延resultのHTTP POST拒否はliveで実証していない（`staleResultRejected=null`）。親は新3 sessionすべて専用probe DBに各1件、default DBに0件と確認した。
+- 親はPythonの受信許可を02:16Zに確認済み。live証明書のSANは`172.28.194.198`と`127.0.0.1`、有効期間は11月10日01:43:55Z〜11月13日01:43:55Z。現在のLAN `172.18.37.128`はSAN外のため、Simulatorは既存のloopback SANを使う`https://127.0.0.1:18644`で検証した。証明書・pinの変更、hostname／日付／pin検査の弱化はない。本文の`192.168.0.202`／`localhost`は初期証明書の履歴である。
+- 実機liveの`-1001`は原因未解明。最新の非通信実機6件attemptは空き約20.02 GiBを確認したが、05:18Z以降のreadinessで`unavailable`／DDI利用不可のためbuild前にblockedとなった。build・install・launch・テスト・再試行はいずれも行っていない。Simulator成功で実機／LAN受入は完了せず、PR #35はDraftを維持する。
+- 専用Windows gatewayは親が停止済みでdefault gatewayは不変。relay2 PID25684はgateway先行停止後、所有確認してSIGTERMを1回送り、processと18643/18644 listenerの消滅を確認した。SDK `ClosedResourceError`とrelay1の遅延停止は観測として保持し、無害性や一般的な原因を断定しない。通常アプリの会話／memoryは未移行。Release iphoneos archive／App Store uploadは未検証である。
+
 基点: `4bda92b44340267d605aea4143250dd6b1a6fd60`（②の確定コミット、PR #34）。ブランチ: `feat/hermes-connection-probe`。①のPRは②に依存するstacked PRとして親が作成し、mainへのmergeは行わない。実装契約は共有scratchの`windows-probe-contract-final.md`（r3）。
 
-この記録は3種類の結果を区別する。(1) Simulator単体試験と Mac上のrelay単体/公式MCP client統合試験は完了し成功。(2) 実機は署名付きDebug build-for-testingまで成功、install/launch/非通信host試験は本文末尾の「最終候補の検証」に記す。(3) Windows Hermes実エージェントとの実通信（lifetime 1/2）は未実施で、Macへの受信許可待ちのため**pending**。既定でskipされる試験を統合の合格とは扱わない。
+初回検証時点では3種類の結果を区別した。(1) Simulator単体試験と Mac上のrelay単体/公式MCP client統合試験は完了し成功。(2) 実機は署名付きDebug build-for-testingまで成功、install/launch/非通信host試験は本文末尾の「最終候補の検証」に記す。(3) Windows Hermes実エージェントとの実通信（lifetime 1/2）は未実施で、Macへの受信許可待ちのため**pending**だった。既定でskipされる試験を統合の合格とは扱わない。
 
 ## 変更範囲
 
@@ -199,3 +209,89 @@ RELAY-003: submitの非同期deadlineは、この要求が予約を取る前に�
 証拠区分（親CYCLE1-S02）: cycle 2で変更した入力は`relay/bridge.py`、`tests/test_bridge.py`、relay `README.md`、本文書の4 fileだけであり、Swift・Xcode project・scripts・資産の全入力はcycle 1の検証入力`c45b0083…`とper-fileで一致する（`cycle2-scope-equivalence.json`）。したがって`cycle1-swift-suite`（1109 / 5 skip / 0）、`cycle1-physical-build`・`cycle1-physical-codesign.json`、`cycle1-device-offline-host`（6 / 0）、`cycle1-release-artifact`・`cycle1-artifact-checks/`は**cycle 1の実行結果を同一入力の証拠として保持**したものであり、cycle 2で再実行してはいない。保持したCodeSign順序のsetup失敗と作業用Buildの一度の再生成は、既存の増分build問題が解決したことを示さない。Windows実エージェントとのlifetime 1/2と受信許可後の到達性は引き続き未実施である。
 
 最終提出manifestは`step1/cycle2-candidate-freeze.json`、patchは`step1/cycle2-review-ready.patch`、変更ファイルのhash一覧は`step1/cycle2-patch-manifest.json`、旧2候補（`0adefa43…`、`19d357c3…`）との差分一覧は`step1/cycle2-scope-equivalence.json`に記録する。過去の候補・receipt・レビュー本文は上書きしない。pair限定追認は`step1/review/codex-cycle2-followup.md`と`claude-cycle2-driver-note.md`に保存し、review-readyは一度だけ通知する。commit/pushは親のGO後、PRは親が未完了Draftとして作成し、mergeしない。
+
+## 署名raceの根本修正（2026-11-10T03:29Z〜、ユーザー承認 `parent-buildfix-approved-charter.md`）
+
+Simulator lifetime 2の再試行（`step1/live-resume/sim2-20261110T030253Z/`）は、`build-for-testing`が`CodeSign …/CatRobot.app/Frameworks/onnxruntime.framework: bundle format unrecognized`（exit 65）で止まり、XCTestは起動しなかった。これはsetup失敗であり取消試験のREDではない。保全した実build graph（`XCBuildData` manifest）の依存を辿ると、SwiftPMのbinary targetが暗黙に行うCopy→stub注入→framework CodeSignと、最後のscript段階「Remove codeless onnxruntime framework」の間に依存辺がなく、app CodeSignだけが両方を待っていた。Copyが再実行されるbuildでは、script段階がstub注入とCodeSignの間でbundleを消すことがあり、同じDerivedDataで交互に失敗する。
+
+| 項目 | 内容 |
+|---|---|
+| 根本原因 | script段階の順序はbuild_phasesの並びでは決まらず、暗黙のembed/CodeSignとの間に依存がなかった（race）。cleanupの除去ロジック自体（記号を公開しないstubだけを消し、本物のdylibは残す）は正しい |
+| RED | `scripts/test_onnx_build_order.py`（実manifestのinputs→producersを推移的に辿り、copy→framework CodeSign→cleanup→app CodeSignと逆向きcycleなしをassert）を先に追加し、保全した失敗graphで`cleanup must wait for framework CodeSign`のassertion失敗を記録（`regression-red.log`）。exit 65をREDの代用にしていない |
+| 修正 | `scripts/generate_project.rb`: cleanup段階の`input_paths`に`$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/onnxruntime.framework/_CodeSignature`を宣言（出力宣言はCopy/MkDirと衝突するため追加しない）。除去script・ITMS-90208回避・本物dylib保持・Release設定は不変。生成projectと2 schemeは再生成（UUIDは生成器の性質で広く付け替わるが、build file 264件の集合は同一） |
+| 契約試験 | `scripts/test_generate_project.rb`: 旧「input空」制約を解除し`input_paths`の値を固定、署名済みstubの除去と署名済み本物dylibの保持（`codesign --verify --strict`）のfixtureを追加。`generator-contract`／`generator-contract-2` PASS。固定assertはbaseline projectで失敗することを`r1-contract-red-on-baseline.txt`に記録 |
+| 署名build | 同じ`/private/tmp/cat-impl-codex-step1-dd`で署名付き`build-for-testing`を連続3回（`build-debug-1/2/3`、入力`559787e7…`）＋最終候補で1回（`build-debug-4-final`）。各回exit 0。実graphの依存はCopy→framework CodeSign→cleanup→app CodeSignまで成立（GREEN）。実行logで毎回確認したのはCopy→stub注入→framework CodeSign→除去までで、app CodeSignは必要なbuild（1回目と最終候補の4回目）でのみ再実行され、2回目・3回目では走っていない。製品にstubなし、app と同梱frameworkの`codesign --verify --deep --strict` exit 0。cleanupはCopyの出力を消すので次buildでも再Copy/stub署名/除去が走るが、これは修正前からの挙動で（旧logでも0 SwiftCompileのbuildにCopyとCodeSignがある）、修正で増えたのは順序の辺だけであり、宣言した入力が消えていても`cannot be found`は出ない |
+| unsigned経路 | READMEの`CODE_SIGNING_ALLOWED=NO` Debug build（`unsigned-debug-build-1`）はexit 0。CodeSign taskがない graph でも宣言入力はエラーにならない。unsignedではCopy→cleanupの順序保証は従来どおりなく、配布物には関係しない（`test_onnx_build_order.py`のunsigned分岐とdocstringに明記） |
+| Release | `release-simulator-2`（NO）: Hermes symbol 0、`HERMES_PROBE`文字列・開発キー資源なし、stubなし、バイナリsha `0d98c313…`は前回Release artifactと同一。`release-simulator-signed-2`（YES）: graph GREEN、stubなし、app署名検証 exit 0。Debugだけの改善ではない |
+| その他 | `swift-suite-2`: 全Simulator suite 1109 tests、5 opt-in skips、0 failures（copy xctestrunに`HERMES_PROBE=1`のみ注入、試験後に除去）。`runner-unit-2` 7 / 0、`relay-suite-2` 92 / 0。`xcodebuild -dry-run`はXcode 27.2で廃止（exit 64、setup失敗として保持） |
+| 実機 | `device-readiness-2`: iPhone 16 Pro connected/paired、DDIあり、developer mode有効（read-only）。Dataボリュームの空きが1.17 GiBのため署名実機build-for-testingと非通信6件は未実施（cache・過去証拠は削除しない）。旧cycle 1の6件は流用しない |
+
+最終候補は943 files、full digest `56a13d07…`（`build-fix-20261110T032911Z/final-candidate-freeze.json`）。公開済みe5c96cd相当（`6ec9f4fb…`、`cycle2-review-ready.patch`からの再構成で942 hash一致）からの増分は6 file（`final-incremental-vs-e5c96cd.patch`）、HEAD `4bda92b`からの全patchは`final-full-vs-4bda92b.patch`。中間候補`559787e7…`との差はtest 2 fileのみで、production入力は同一。本節の追記は文書のみの変更であり、code-scope digestは不変。
+
+### 独立レビューと採否（build-fix）
+
+初回レビューは双方とも保存後に交換した。Codexの新規独立レビュアー（`build-fix-20261110T032911Z/codex-independent-first-review.md`、sha256 `89b1fb66…`）はCritical 0 / Important 0 / Minor 0で、unsigned経路の`allow-missing-inputs=true`（script段階の入力欠落がエラーにならない理由）を実manifestで確認し、実機6件未実施・App Store検証未実施・live未実施を限界として明記した。Claude側の実`/simplify` report-only 4観点（`review/claude-simplify-initial-*.md`）は、再利用1件（fixtureのpath重複、Minor）、簡素化5件（いずれも非blocking）、効率は「変更なし。毎buildの再Copy/署名/除去は修正前からの挙動」、Altitudeは「修正は正しく検証済みだが、app targetに`PACKAGE_SKIP_AUTO_EMBEDDING_STATIC_BINARY_FRAMEWORKS = YES`を置けば静的binary frameworkの自動embed自体を止められる」という指摘だった。
+
+採否（`review/adoption-decisions.json`）: Altitudeの設定案は延期とし、親・ユーザーへの推奨follow-upとして記録する。理由は、承認scopeの不具合は署名graphの依存で解消・検証済みであること、当該設定は未文書化でXcode 27.2のbuild systemバイナリとswift-build一次sourceに存在は確認できたが本プロジェクトでの効果は未実測であること、適用はproduction変更として新たな再検証とレビューを要することである。cleanupを残す前提なら将来の候補になり得るもので、設定が本環境で意図どおり働けば、unsignedの順序非保証と毎buildのstub再生成（いずれも修正前からの性質）も解消できる可能性がある（未実測）。その他の簡素化・再利用指摘は挙動上の利益がなく、全検証を通過した候補を解凍しない理由で不採用。効率観点の反証は本節の記述に反映した。独立レビュー後の実装・テスト変更はなく、validation本文のみ追記した。build・test・レビューの対象は候補`56a13d07…`のまま。graph試験は実manifestを渡す手動検査であり、CI配線は本scope外として記録する。
+
+未実施・未判断: 署名実機build-for-testingと非通信6件（容量不足、端末はconnected/paired/DDIあり、lockStateは未取得）、Release iphoneos archive／App Store upload検証、実機lifetime 1の`-1001`の原因、fresh lifetime 1/2のlive通信（親の新gate待ち）。旧queued GOはすべて失効している。
+
+提出物の対応: 本文書を含む最終候補のmanifestは`build-fix-20261110T032911Z/final-candidate-freeze-v3.json`、公開e5c96cd相当からの増分patchは`final-incremental-vs-e5c96cd-v3.patch`、HEAD `4bda92b`からの全patchは`final-full-vs-4bda92b-v3.patch`。build・test・独立レビューの対象（tested tag）は候補`56a13d07…`であり、v3との差は本文書だけでcode-scope digestは不変。同じCodex reviewerによる文書差分の限定追認は`review/`に別保存する。
+
+## 接続復帰後の非通信実機6件の再検証（2026-11-10 05:18Z〜）
+
+親の`parent-buildfix-resume-after-restored-mac.md`とClaudeの05:15:15Z HANDOFF OFFERを受領し、Codex Driver／Claude Navigatorへ実交代した。検証入力はv3 `022bb5531c9a87177561a0aacbe12c1c68bc805d3b093d0a5bb5b1db09592b47`（943 files）に固定し、既存device DerivedDataとSourcePackagesを使う通常署名build 1回と、旧`cycle1-device-offline-host`と同じhost 3件＋mock 3件だけが許可範囲だった。
+
+新attempt `build-fix-20261110T032911Z/device-offline-20261110T051854Z/`で空き容量20.0169 GiBを確認した後、`devicectl device info details`を1回実行した。コマンドはexit 0だが、`properties.connection.state`と`tunnelState`は`unavailable`、`ddiServicesAvailable=false`、pairingは`paired`、Developer Modeは`enabled`だった。`lastConnectionDate`は03:59Zで、lockStateは未取得。接続・DDIの前提を満たさないため**blocked**とし、build／署名検査／install／launch／テストはいずれも0回、6件の合否は未測定、再試行なしで停止した。これは新候補の実機成功ではない。
+
+開始前後の943入力manifestは同一、HEAD `4bda92b`／index空も不変だった。結果は`parent-buildfix-device-offline-result.json`に保存し、`hermes-cat-buildfix-device-offline`を05:20:29Zに1回だけ通知（exit 0、attempt内`signal-receipt.json`）。cache・過去証拠の削除、credentials／relay／API／実機駆動／mic／camera／BLE／live操作は行っていない。容量回復と端末unavailableの原因は断定しない。
+
+本節と冒頭の現状欄はreadiness確認完了後の文書変更だけであり、実装・テスト・生成projectは不変。提出manifestは`build-fix-20261110T032911Z/final-candidate-freeze-v4.json`、増分／全patchは同ディレクトリの`final-incremental-vs-e5c96cd-v4.patch`／`final-full-vs-4bda92b-v4.patch`。v3との差は本文書1ファイルだけとして固定し、同じCodex reviewerが事実対応のみを限定追認する。実機再試行・fresh Simulator liveには親の新gateが必要で、Macのcommit/pushとmergeは行わない。
+
+## 修正後のfresh Simulator lifetime 1/2・最終化（2026-11-10）
+
+本節は、上の履歴にあるfresh live待ち・v4文書追認予定を更新する。親の段階別GOと実scope OFFER/ACKでClaude Driver／Codex read-only Navigatorとして実行した。入力はv4 `f67f56b23f46596d691757201018fb2e8a788f0d2b764b305d88c1fc4168532c`（943 files、本文書を含む）に固定し、各runnerの完全manifest前後一致を確認した。以下のreceipt名は共有scratch `cat-impl-20261110/`、各attemptは`build-fix-20261110T032911Z/`を基準とする。秘密値やbootstrap本体は本文・提出manifestに含めない。
+
+| 項目 | fresh lifetime 1 | fresh lifetime 2 |
+|---|---|---|
+| 新Windows-ready | `parent-buildfix-windows-ready-sim1.json`、専用gateway43364／relay99224 | `parent-buildfix-windows-ready-sim2.json`、専用gateway53032／relay25684 |
+| runner attempt | `sim1-runner-20261110T053713Z/attempt` | `sim2-runner-20261110T060842Z/attempt` |
+| runner実行（UTC） | 05:46:04.782756〜05:47:19.675089、1回、exit 0 | 06:10:38.126281〜06:11:09.200779、1回、exit 0 |
+| probe run ID | `a461c3f3-0a55-4f28-9ba3-6a3a519ba80a` | `f8b346fc-daa7-4565-b771-28bb230299ec` |
+| build／install／test | 各exit 0 | 各exit 0 |
+| canonical xcresult | 1 total / 1 passed / 0 failed / 0 skipped | 1 total / 1 passed / 0 failed / 0 skipped |
+| 実probe events | capabilities: 鍵なし401・誤鍵401・正鍵200。plain nonce一致。bound call受信、mockEcho accepted、bound terminal completed・nonce一致 | bound callを受信して保持した後、revokeAccepted=true・stopAccepted=true、terminal cancelled、heldCallDiscarded=true、mockExecuted=false。lifetime 2ではcapabilities/plainを再実行しない |
+| 境界・cleanup | compositionCreated=false、physicalOperations=false。appはbootstrap削除を報告、Mac bootstrapと生成xctestrunの不存在も確認 | 同左。mock操作も未実行 |
+| 正本receipt／event | `parent-buildfix-sim1-result.json`、`hermes-cat-buildfix-sim1-result`を05:49:27Zに1回 | `parent-buildfix-sim2-result.json`、`hermes-cat-buildfix-sim2-result`を06:12:22Zに1回 |
+
+両方とも既存reviewed runnerを使用し、Simulator `32623B53-C27C-480C-8478-3F277BAE8431`、DerivedData `/private/tmp/cat-impl-codex-step1-dd`、package cache `/private/tmp/cat-impl-codex-step2-dd/SourcePackages`は同一。`CODE_SIGNING_ALLOWED=YES`の通常署名で、generator・clean・cache削除・新DerivedData・署名回避を行わず、失敗時の自動retryも行っていない。実製品はappの`codesign --verify --deep --strict` exit 0、codeless ONNX stubなし。lifetime 1の追加graph抽出補助は`output.log`前提が合わず失敗した履歴を保持し、保全manifestを既存graph検査に直接渡した結果はPASS。lifetime 2の保全manifestでもCopy→framework CodeSign→cleanup→app CodeSignの検査はPASS。これらはbuild／live testの再実行ではない。
+
+### Windows側の実run・tool・session証拠
+
+親の`parent-buildfix-sim1-windows-proof.json`と`parent-buildfix-sim2-windows-proof.json`により、APIのterminal状態、実tool到達、専用DBの隔離を確認した。別processでのinventory列挙に加えて実runの保存traceを照合しており、tool名は`mcp__mockbridge__echo`である。
+
+| Windows run／session | API状態 | 保存trace | 専用probe DB／default DB |
+|---|---|---|---|
+| `run_34eccff12a79485da864ba65aa8bfb07`（lifetime 1 plain） | completed | 未bind echoを試行し、期待するno-bound error。その後plain nonce一致。tool-freeではない | 1件／0件 |
+| `run_69d17ae44f8643bb949c80d8baaf9fc0`（lifetime 1 bound） | completed | bound echo成功、端末mock結果を受理 | 1件／0件 |
+| `run_e231c018a26d42cf979d3b60fa36dbeb`（lifetime 2） | cancelled | echo callが実際に届いた後に取消。端末は保持callを破棄しmock未実行 | 1件／0件 |
+
+**取消liveで確認したのはlocal held-call discardであり、遅延resultのHTTP POST拒否ではない。** `parent-buildfix-sim2-result.json`の`staleResultRejected`はnull、親proofの`liveStaleResultHTTPRejectionVerified`はfalseで、実POST拒否を示すeventはない。既存Swift／relay単体試験の取消・世代／期限検査の証拠（`swift-suite-2`: 1109 total / 5 skip / 0 failures、`relay-suite-2`: 92 / 0）は別の証拠として保持し、live実証へ読み替えない。
+
+sim2 receiptの`source.postflight.noLifetime2=true`と`sim2-runner-20261110T060842Z/postflight-summary.json`の同名fieldは、lifetime 1用helperからのcopy/pasteによる古いlabelである。実際のlifetime 2は上表のとおり1回実行済みであり、正しい意味は「**追加lifetimeなし／retryなし**」。元receipt・ログ・件数・結果は変更せず、訂正は`parent-buildfix-sim2-receipt-correction.json`に原本hashとともに別保存した。挙動変更や再試験はない。
+
+### TLS・停止の観測と残る受入範囲
+
+Simulatorのmetadataは`parent-simulator-tls-public-metadata.json`（sha256 `3647a2ae03e92e359a0d04075d93a88237a946baa508f9e85db20ca1568d607b`）。公開metadataのendpointだけをloopbackに絞ったもので、元のcertificate／private-key path／DER pinは同じ。実際のendpointは`https://127.0.0.1:18644`、MCP listenerは`100.102.164.56:18643`である。新しいLAN `172.18.37.128`は既存証明書SAN `172.28.194.198`／`127.0.0.1`と一致しないためLANへbindしていない。証明書再発行・OS変更・TLSのhostname／日付／pin検査の弱化は行っていない。
+
+公式MCP SDK readinessのsession終了時にrelay stderrの`ClosedResourceError`を観測した。初回relay99224は05:59:06ZのSIGTERM 1回でlistenerを解放したが、20秒のbounded waitではprocessが残り、最初の`stop-incomplete` receiptを保持した。その後のreadbackでは消滅しており、約36秒後のSDK session shutdown logも保存している。親も専用gateway43364の公式停止後にrelay process／listener不在を直接確認した（`parent-buildfix-sim1-stop-parent-readback.json`）。無害性、一般的な原因、gateway停止との因果は断定しない。追加signal・kill escalation・broad killは行っていない。
+
+lifetime 2後は親が先に専用gateway53032を公式CLIで停止し、06:13:12Zにprocess／18642 listener不在とdefault33356不変を確認した。完了boundaryでClaudeの06:15:33Z HANDOFF OFFERへCodexがACKし、Codex Driver／Claude read-only Navigatorへ実交代した。Codexはrelay25684のpidfile・uid501・完全command・2 listenerの一致を確認し、SIGTERM 1回後約0.49秒でprocessと18643/18644 listener不在を確認した（`parent-buildfix-sim2-relay-stopped.json`）。停止前の補助スクリプトでlsofのFD行を含む出力の比較が一度失敗したが、その時点ではsignal未送信。PID行の比較へ訂正し、その履歴と停止後の不変ログを`finalization-v5/`に残した。再起動・削除・追加liveなし。
+
+実機liveの`NSURLError -1001`は未解明で、最新の非通信実機6件attemptは`unavailable`／`ddiServicesAvailable=false`のreadinessによりbuild前にblockedのまま。6件の現在候補での合否は未測定、実機retryなし。本最終化では追加の実機readiness取得も行っていない。Simulator／loopbackの成功は実機・LAN到達性を証明せず、PR #35はDraftを維持する。通常アプリの会話／memoryはHermesへ移行していない。Release Simulatorの署名／非署名artifact検査は上の既存証拠に限られ、Release iphoneos archive・App Store uploadの受入は未検証である。
+
+### 最終提出候補と限定文書確認
+
+最終化のworktree変更は本文書だけであり、v4からの差分を`finalization-v5/validation-v4-to-v5.diff`に保存する。v5全943ファイルのmanifestは`final-candidate-freeze-v5.json`、code-scope digestは`baec2e956eed38fadb07211a782b45f5124f7cc2787ec8648370dcf4d23f7899`で不変。実装・テスト候補`56a13d07…`の既存独立レビューと試験、新live入力v4の結果を対応付け、本文書更新後の再build／testや全コード再レビューは行わない。
+
+公開済みe5c96cd相当からの最終増分は`final-incremental-vs-e5c96cd-v5.patch`、Mac HEAD `4bda92b`からの全patchは`final-full-vs-4bda92b-v5.patch`。Claudeの限定確認はこの文書diffとreceiptとの事実対応だけを対象とし、最終freezeに紐づく明示ACKを`parent-buildfix-final-ready.json`から参照する。v4時点の文書追認予定はこの限定確認に置き換える。親がこの正確なtreeをWindowsから既存Draft PR #35へnon-forceで公開する範囲であり、MacのHEAD／index／stash／commit／pushとmergeは変更しない。
