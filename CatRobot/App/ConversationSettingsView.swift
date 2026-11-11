@@ -6,18 +6,22 @@ enum ConversationSettingsIdentifier: String, CaseIterable {
     case sleepyMinutesStepper, sleepingMinutesStepper
     case cameraPermissionButton
     case faceTrackingEnabled, faceTrackingStatus, faceTrackingYawCorrectionStepper
-    case modelPicker, effortPicker, voicePresetPicker
+    case voicePresetPicker
+    case hermesEndpointField, hermesAPIKeyField, hermesSaveButton, hermesDeleteKeyButton
+    case historyReloadButton
 }
 
 /// 設定の左列に並べるカテゴリ。開いたときは「会話」を選ぶ。
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case conversation, cameraAndTracking, robot, about
+    case conversation, hermesConnection, history, cameraAndTracking, robot, about
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .conversation: "会話"
+        case .hermesConnection: "Hermes 接続"
+        case .history: "会話の履歴"
         case .cameraAndTracking: "カメラと顔追尾"
         case .robot: "ロボット"
         case .about: "このアプリについて"
@@ -27,6 +31,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .conversation: "bubble.left"
+        case .hermesConnection: "network"
+        case .history: "clock.arrow.circlepath"
         case .cameraAndTracking: "camera"
         case .robot: "antenna.radiowaves.left.and.right"
         case .about: "info.circle"
@@ -40,7 +46,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 struct ConversationSettingsView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Bindable var voiceSettings: SpeechVoiceSettings
-    @Bindable var modelSettings: ConversationModelSettings
+    let connectionSettings: HermesConnectionSettings?
+    let history: (any ConversationTranscriptReading)?
     @Bindable var idleSettings: ConversationIdleSettings
     let faceTracking: FaceTrackingCoordinator?
     let camera: ConversationCamera?
@@ -48,15 +55,15 @@ struct ConversationSettingsView: View {
     let onDone: () -> Void
     @State private var selection: SettingsCategory
 
-    init(voiceSettings: SpeechVoiceSettings, modelSettings: ConversationModelSettings,
-         idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
+    init(voiceSettings: SpeechVoiceSettings, connectionSettings: HermesConnectionSettings? = nil,
+         history: (any ConversationTranscriptReading)? = nil, idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
          camera: ConversationCamera? = nil, initialCategory: SettingsCategory = .conversation,
          onDone: @escaping () -> Void) {
         self.idleSettings = idleSettings
         self.faceTracking = faceTracking
         self.camera = camera
         self.robotSettings = robotSettings
-        self.voiceSettings = voiceSettings; self.modelSettings = modelSettings
+        self.voiceSettings = voiceSettings; self.connectionSettings = connectionSettings; self.history = history
         self.onDone = onDone
         _selection = State(initialValue: initialCategory)
     }
@@ -65,6 +72,8 @@ struct ConversationSettingsView: View {
     private var categories: [SettingsCategory] {
         SettingsCategory.allCases.filter { category in
             switch category {
+            case .hermesConnection: connectionSettings != nil
+            case .history: history != nil
             case .robot: robotSettings != nil
             case .cameraAndTracking: camera != nil || faceTracking != nil
             default: true
@@ -175,7 +184,11 @@ struct ConversationSettingsView: View {
     private func pane(for category: SettingsCategory) -> some View {
         switch category {
         case .conversation:
-            ConversationSettingsPane(voiceSettings: voiceSettings, modelSettings: modelSettings, idleSettings: idleSettings)
+            ConversationSettingsPane(voiceSettings: voiceSettings, idleSettings: idleSettings)
+        case .hermesConnection:
+            if let connectionSettings { HermesConnectionSettingsPane(settings: connectionSettings) }
+        case .history:
+            if let history { ConversationHistoryPane(reader: history) }
         case .cameraAndTracking:
             CameraTrackingSettingsPane(camera: camera, faceTracking: faceTracking, preferences: robotSettings?.preferences)
         case .robot:

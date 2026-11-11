@@ -35,6 +35,7 @@ class Upstream:
         self._base = config.hermes_base
         self._limit = config.max_response_bytes
         self._timeout = config.upstream_timeout_seconds
+        self._upstream_key = config.upstream_key if config.conversation_mode else ""
         self._client = httpx.AsyncClient(transport=transport, trust_env=False, follow_redirects=False,
                                          timeout=config.upstream_timeout_seconds)
 
@@ -43,6 +44,9 @@ class Upstream:
         return {name: headers[name] for name in FORWARDED_HEADERS if name in headers}
 
     async def request(self, method: str, path: str, headers: dict[str, str], body: bytes | None = None) -> UpstreamResponse:
+        if self._upstream_key:
+            headers = {name: value for name, value in headers.items() if name.lower() != "authorization"}
+            headers["authorization"] = "Bearer " + self._upstream_key
         request = httpx.Request(method, httpx.URL(self._base + path), headers=headers, content=body)
         try:
             # httpx の per-operation timeout に加え、往復全体にも同じ上限を掛ける（transport 差し替え時も有効）。

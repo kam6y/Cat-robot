@@ -118,7 +118,6 @@ final class RobotPresentationTests: XCTestCase {
         let defaultsName = "calibration-sheet-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         let view = ConversationSettingsView(voiceSettings: SpeechVoiceSettings(defaults: defaults),
-            modelSettings: ConversationModelSettings(defaults: defaults),
             idleSettings: ConversationIdleSettings(defaults: defaults),
             robotSettings: model, initialCategory: .robot, onDone: {})
         let textSize = SettingsTextSize()

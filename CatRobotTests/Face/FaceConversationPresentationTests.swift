@@ -80,6 +80,50 @@ final class FaceConversationPresentationTests: XCTestCase {
         }
     }
 
+    /// 接続の欄は接続先とキーの入力・保存・削除を出す。保存済みのキーは入力欄にも戻さない。
+    func testHermesConnectionPaneOffersEndpointAndKeyWithoutShowingTheSavedKey() async throws {
+        let fixture = SettingsFixture(authorization: .authorized)
+        defer { fixture.tearDown() }
+        try await fixture.connectionSettings.save(endpointText: "https://hermes.test:8443", apiKey: "saved-secret-key")
+        let (window, host, _) = try await hostInScene(fixture.view(.hermesConnection).environment(\.dynamicTypeSize, .large))
+        defer { releaseWindow(window) }
+        try await waitForAccessibilityTree(in: host.view)
+        // 横向きでは保存・削除が画面の下にあるので、利用者と同じく詳細の列を送って探す。
+        for identifier in [ConversationSettingsIdentifier.hermesEndpointField, .hermesAPIKeyField, .hermesSaveButton, .hermesDeleteKeyButton] {
+            let found = try await reachableAccessibilityElement(in: host.view, identifier: identifier.rawValue,
+                                                                scrollingIn: detailScrollView(in: host.view))
+            XCTAssertNotNil(found, identifier.rawValue)
+        }
+        let keyField = try await reachableAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesAPIKeyField.rawValue,
+                                                               scrollingIn: detailScrollView(in: host.view))
+        XCTAssertFalse((keyField?.element.accessibilityValue ?? "").contains("saved-secret-key"), "the saved key is never put back into the field")
+    }
+
+    /// 会話の履歴は開くたびに Hermes から読む。読めなかったときは理由と「もう一度読み込む」を出し、押すと読み直す。
+    func testHistoryPaneReadsHermesWhenOpenedAndOffersAReloadAfterAFailure() async throws {
+        let reader = ScriptedTranscriptReader([.failure(HermesClientError.transport("NSURLErrorDomain -1009")),
+                                               .success([HermesTranscriptEntry(speaker: .user, text: "こんにちは")])])
+        let fixture = SettingsFixture(authorization: .authorized, history: reader)
+        defer { fixture.tearDown() }
+        let (window, host, _) = try await hostInScene(fixture.view(.history).environment(\.dynamicTypeSize, .large))
+        defer { releaseWindow(window) }
+        try await waitForAccessibilityTree(in: host.view)
+        let reload = try await reachableAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.historyReloadButton.rawValue,
+                                                             scrollingIn: detailScrollView(in: host.view))
+        XCTAssertNotNil(reload, "a failed read says so and offers a reload")
+        let opened = await reader.reads
+        XCTAssertEqual(opened, 1, "opening the pane reads Hermes once")
+        try await activateAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.historyReloadButton.rawValue,
+                                               scrollingIn: detailScrollView(in: host.view))
+        var reads = 0
+        for _ in 0..<60 {
+            reads = await reader.reads
+            if reads == 2 { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(reads, 2, "the reload reads Hermes again; nothing is cached on the iPhone")
+    }
+
     func testSettingsNavigationSwitchesCategoriesAndReviewsOnboarding() async throws {
         let fixture = SettingsFixture(authorization: .authorized)
         await fixture.connectRobot()
@@ -582,10 +626,12 @@ final class FaceConversationPresentationTests: XCTestCase {
         let camera: ConversationCamera
         let face: FaceTrackingCoordinator
         let voiceSettings: SpeechVoiceSettings
-        let modelSettings: ConversationModelSettings
         let idleSettings: ConversationIdleSettings
+        let keys: HermesKeyStoresFake
+        let connectionSettings: HermesConnectionSettings
+        let history: ScriptedTranscriptReader
 
-        init(authorization: FaceCameraAuthorization) {
+        init(authorization: FaceCameraAuthorization, history: ScriptedTranscriptReader? = nil) {
             let defaultsName = "settings-fixture-\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: defaultsName)!
             let harness = RobotLinkHarness()
@@ -596,14 +642,18 @@ final class FaceConversationPresentationTests: XCTestCase {
             face = FaceTrackingCoordinator(source: FakeFaceCaptureSource(authorization: authorization), link: harness.link,
                                            clock: harness.clock, preferences: harness.preferences, motion: MotionControllerSpy())
             voiceSettings = SpeechVoiceSettings(defaults: defaults)
-            modelSettings = ConversationModelSettings(defaults: defaults)
             idleSettings = ConversationIdleSettings(defaults: defaults)
+            let keys = HermesKeyStoresFake()
+            self.keys = keys
+            connectionSettings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) })
+            self.history = history ?? ScriptedTranscriptReader([.success([HermesTranscriptEntry(speaker: .user, text: "こんにちは"),
+                                                                          HermesTranscriptEntry(speaker: .cat, text: "やあ")])])
         }
 
         func connectRobot() async { await harness.connectReady() }
 
         func view(_ category: SettingsCategory) -> ConversationSettingsView {
-            ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
+            ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings, history: history,
                                      idleSettings: idleSettings, robotSettings: robot,
                                      faceTracking: face, camera: camera, initialCategory: category,
                                      onDone: {})
