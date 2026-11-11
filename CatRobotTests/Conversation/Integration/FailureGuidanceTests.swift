@@ -394,6 +394,8 @@ final class FailureGuidanceTests: XCTestCase {
         let texts = await harness.speaker.texts, starts = await harness.recognizer.startCount
         XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnreachable))
+        XCTAssertFalse(harness.sut.viewState.recoveries.contains { $0.action == .startNewConversation },
+                       "an addressing failure keeps the Hermes conversation")
         XCTAssertFalse(harness.sut.viewState.isSpeakingFailureGuidance)
         assertOrder(harness.calls.values, [.speak(ConversationFailureGuidance.unreachable), .stopSpeaker, .deactivateAudio])
         XCTAssertEqual(starts, 1)

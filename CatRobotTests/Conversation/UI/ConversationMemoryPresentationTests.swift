@@ -12,6 +12,17 @@ final class ConversationMemoryPresentationTests: XCTestCase {
         }
         XCTAssertFalse(ConversationMemoryPresentation(state: .unsupported).supportsForget)
     }
+    /// Hermes に前の会話が無いときの出口は「新しい会話を始める」。新しい会話は削除や忘却を意味しない。
+    func testRestoreFailureOffersANewConversationWithoutClaimingDeletion() {
+        let failed = ConversationMemoryPresentation(state: .restoreFailed(.unavailable))
+        XCTAssertTrue(failed.offersNewConversation)
+        let message = failed.message ?? ""
+        XCTAssertTrue(message.contains("新しい会話"), message)
+        XCTAssertFalse(message.contains("消") || message.contains("削除"), message)
+        for state in [ConversationMemoryState.ready, .unsaved, .loading, .unsupported] {
+            XCTAssertFalse(ConversationMemoryPresentation(state: state).offersNewConversation, "\(state)")
+        }
+    }
     func testWarningIsAnnouncedOnlyOnceNotForEveryCaption() {
         var old = ConversationViewState.idle
         old.phase = .paused

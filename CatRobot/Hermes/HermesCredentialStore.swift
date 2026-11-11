@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import Security
 
@@ -13,14 +12,21 @@ enum HermesCredentialStoreError: Error, Equatable, Sendable {
     case invalidData
 }
 
+/// Keychain の generic password 1 件。service と account で範囲を決める。
 actor KeychainHermesCredentialStore: HermesCredentialStore {
-    static let service = "com.kamby.CatRobot.hermes-probe"
+    /// 通常会話の API キー。account には接続先の origin を入れ、別の接続先へ古いキーを渡さない。
+    static let conversationService = "com.kamby.CatRobot.hermes"
+    private let service: String
     private let account: String
 
-    init(account: String = "apiKey") { self.account = account }
+    init(service: String, account: String) {
+        self.service = service
+        self.account = account
+    }
+
     private var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: Self.service,
+         kSecAttrService as String: service,
          kSecAttrAccount as String: account]
     }
 
@@ -63,5 +69,15 @@ actor InMemoryHermesCredentialStore: HermesCredentialStore {
     func load() throws -> HermesCredential? { credential }
     func save(_ credential: HermesCredential) throws { self.credential = credential }
     func delete() throws { credential = nil }
+}
+
+#if DEBUG
+extension KeychainHermesCredentialStore {
+    /// DEBUG の接続プローブ専用の service。通常会話のキーとは混ざらない。
+    static let probeService = "com.kamby.CatRobot.hermes-probe"
+
+    init(account: String = "apiKey") {
+        self.init(service: Self.probeService, account: account)
+    }
 }
 #endif

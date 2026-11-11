@@ -60,7 +60,7 @@ actor HermesBridgeClient {
     }
 
     func bind() async throws -> HermesBinding {
-        guard phase == .idle else { throw HermesProbeError.invalidBridgeState }
+        guard phase == .idle else { throw HermesClientError.invalidBridgeState }
         phase = .binding
         do {
             let response = try await send("POST", path: "bridge/bindings", status: 201,
@@ -68,7 +68,7 @@ actor HermesBridgeClient {
             let binding: HermesBinding = try decode(response.body)
             guard Self.isSafeID(binding.bindingID), binding.generation > 0, (binding.generation < Int.max),
                   binding.expiresAt.timeIntervalSince1970.isFinite, binding.expiresAt > (await clock.now()) else {
-                throw HermesProbeError.malformedResponse
+                throw HermesClientError.malformedResponse
             }
             currentBinding = binding
             generation = binding.generation
@@ -81,14 +81,14 @@ actor HermesBridgeClient {
     }
 
     func submitRun(input: String) async throws -> HermesRunState {
-        guard phase == .bound, let binding = currentBinding else { throw HermesProbeError.invalidBridgeState }
+        guard phase == .bound, let binding = currentBinding else { throw HermesClientError.invalidBridgeState }
         phase = .submitting
         do {
             let response = try await send("POST", path: "bridge/bindings/\(binding.bindingID)/run", status: 202,
                                           body: JSONEncoder().encode(RunInput(input: input)), timeout: Self.submitRequestTimeout)
             let payload: RunPayload = try decode(response.body)
-            guard Self.isSafeID(payload.runID), !payload.status.isEmpty else { throw HermesProbeError.malformedResponse }
-            guard phase == .submitting else { throw HermesProbeError.invalidBridgeState }
+            guard Self.isSafeID(payload.runID), !payload.status.isEmpty else { throw HermesClientError.malformedResponse }
+            guard phase == .submitting else { throw HermesClientError.invalidBridgeState }
             let run = HermesRunState(runID: payload.runID, status: .init(rawValue: payload.status),
                                      sessionID: payload.sessionID, output: nil)
             currentRun = run
@@ -101,7 +101,7 @@ actor HermesBridgeClient {
     }
 
     func pollCalls() async throws -> [HermesDeviceCall] {
-        guard phase == .running, let binding = currentBinding else { throw HermesProbeError.invalidBridgeState }
+        guard phase == .running, let binding = currentBinding else { throw HermesClientError.invalidBridgeState }
         let response = try await send("GET", path: "bridge/bindings/\(binding.bindingID)/calls", status: 200,
                                       query: [URLQueryItem(name: "generation", value: String(generation)),
                                               URLQueryItem(name: "wait", value: "10")])
@@ -142,9 +142,9 @@ actor HermesBridgeClient {
             } else {
                 outcome = .unknown
             }
-        } catch HermesProbeError.httpStatus(let code) {
+        } catch HermesClientError.httpStatus(let code) {
             outcome = .rejected(code)
-        } catch HermesProbeError.unauthorized {
+        } catch HermesClientError.unauthorized {
             outcome = .rejected(401)
         } catch {
             outcome = .unknown
@@ -154,13 +154,13 @@ actor HermesBridgeClient {
     }
 
     func revoke() async throws {
-        guard let binding = currentBinding else { throw HermesProbeError.invalidBridgeState }
+        guard let binding = currentBinding else { throw HermesClientError.invalidBridgeState }
         invalidate()
         _ = try await send("POST", path: "bridge/bindings/\(binding.bindingID)/revoke", status: 200)
     }
 
     func cancel(using runClient: HermesRunClient, deadline: Duration) async throws -> HermesBridgeCancellation {
-        guard let run = currentRun else { throw HermesProbeError.invalidBridgeState }
+        guard let run = currentRun else { throw HermesClientError.invalidBridgeState }
         let revoked: Bool
         do { try await revoke(); revoked = true } catch { revoked = false }
         let stopped: Bool
@@ -181,15 +181,15 @@ actor HermesBridgeClient {
         var headers = ["Authorization": "Bearer \(credential.apiKey)"]
         if body != nil { headers["Content-Type"] = "application/json" }
         let response = try await transport.send(HermesHTTPRequest(method: method, url: url, headers: headers, body: body, timeout: timeout))
-        if response.statusCode == 401 { throw HermesProbeError.unauthorized }
-        guard response.statusCode == status else { throw HermesProbeError.httpStatus(response.statusCode) }
+        if response.statusCode == 401 { throw HermesClientError.unauthorized }
+        guard response.statusCode == status else { throw HermesClientError.httpStatus(response.statusCode) }
         return response
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
-        guard let value = try? decoder.decode(T.self, from: data) else { throw HermesProbeError.malformedResponse }
+        guard let value = try? decoder.decode(T.self, from: data) else { throw HermesClientError.malformedResponse }
         return value
     }
 

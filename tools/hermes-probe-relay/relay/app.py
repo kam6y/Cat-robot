@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import contextlib
+import hmac
 import logging
 import time
 from typing import Callable
+from urllib.parse import urlencode
 
 import httpx
 from starlette.applications import Starlette
@@ -48,6 +50,22 @@ class AccessLog:
             logger.info(line)
 
 
+class ClientAuthentication:
+    """Task-only conversation fixture: authenticate before forwarding the fixed upstream key."""
+
+    def __init__(self, app, client_key: str):
+        self.app = app
+        self._bearer = ("Bearer " + client_key).encode("ascii")
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            values = [v for k, v in scope.get("headers", []) if k.lower() == b"authorization"]
+            if len(values) != 1 or not hmac.compare_digest(values[0], self._bearer):
+                await error(401, "unauthorized")(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 def proxied(response) -> Response:
     return Response(response.body, status_code=response.status, media_type=response.content_type)
 
@@ -71,6 +89,10 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
         body = await read_body(request, config.max_request_bytes)
         if body is None:
             return error(413, "request body exceeds maxRequestBytes")
+        if config.conversation_mode:
+            # Hermes already durably deduplicates keyed POSTs and queues session turns.
+            # This text-only fixture has no device bridge; a stale probe slot must not trap recovery.
+            return await forward(request, "POST", "/v1/runs", body)
         if admission.busy or bridge.state_name != "none":
             return error(409, "busy", reason="busy")
         token = admission.reserve()  # upstream を待つ前に予約。結果不明なら解放しない（fail closed）。
@@ -85,6 +107,8 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
         run_id = request.path_params["run_id"]
         if not is_valid_id(run_id):
             return error(404, "not found")
+        if config.conversation_mode:
+            return await forward(request, "GET", f"/v1/runs/{run_id}")
         try:
             response = await upstream.request("GET", f"/v1/runs/{run_id}", Upstream.forwardable(request.headers))
         except UpstreamError as failure:
@@ -98,6 +122,20 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
             return error(404, "not found")
         return await forward(request, "POST", f"/v1/runs/{run_id}/stop")
 
+    async def session_messages(request: Request) -> Response:
+        session_id = request.path_params["session_id"]
+        if not is_valid_id(session_id):
+            return error(404, "not found")
+        try:
+            limit = int(request.query_params.get("limit", "100"))
+        except ValueError:
+            return error(400, "invalid history limit")
+        order = request.query_params.get("order", "latest")
+        if not 1 <= limit <= 500 or order not in ("latest", "oldest"):
+            return error(400, "invalid history pagination")
+        query = urlencode({"order": order, "limit": limit, "inline_images": "false"})
+        return await forward(request, "GET", f"/api/sessions/{session_id}/messages?{query}")
+
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         try:
@@ -110,7 +148,8 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
         Route("/v1/runs", create_run, methods=["POST"]),
         Route("/v1/runs/{run_id}", get_run, methods=["GET"]),
         Route("/v1/runs/{run_id}/stop", stop_run, methods=["POST"]),
-        *bridge_routes(bridge),
+        *([Route("/api/sessions/{session_id}/messages", session_messages, methods=["GET"])] if config.conversation_mode else []),
+        *(bridge_routes(bridge) if not config.conversation_mode else []),
     ]
     for route in routes:
         route.methods.discard("HEAD")  # Starlette が GET に付ける暗黙の HEAD は契約の allowlist 外。
@@ -120,5 +159,7 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
     app.state.upstream = upstream
     app.state.admission = admission
     app.state.bridge = bridge
+    if config.conversation_mode:
+        app.add_middleware(ClientAuthentication, client_key=config.client_key)
     app.add_middleware(AccessLog)
     return app

@@ -1,21 +1,24 @@
 import Foundation
 
-/// 本番の依存関係を 1 か所で組み立てる。
-/// 構築時はネットワーク、マイク・音声の稼働、モデル生成・availability 照会、記憶データの読み書きを行わない。
-/// 既存の保存先ヘルパーが Application Support ルートだけを作る場合がある（冪等・データなし）。
-/// 会話ディレクトリや current.json / facts.json は保存時まで作らない。
+/// 本番の依存関係を 1 か所で組み立てる。通常の返事・会話の記憶・履歴は 1 つの Hermes の会話が受け持ち、
+/// 声の宛先判定だけを Claude Haiku に残す（返事をほかのモデルで代わりに作ることはしない）。
+/// 構築時はネットワーク、マイク・音声の稼働、モデル生成・availability 照会、Keychain と会話の記録の読み書きを行わない。
 @MainActor
 struct ConversationComposition {
     let dependencies: ConversationDependencies
     let voiceSettings: SpeechVoiceSettings
-    let modelSettings: ConversationModelSettings
+    let connectionSettings: HermesConnectionSettings
+    /// 設定の「会話の履歴」が読む会話（返事・記憶と同じ Hermes の session）。
+    let history: any ConversationTranscriptReading
     let robotLink: any RobotLinkControlling
     let faceTracking: FaceTrackingCoordinator
     let camera: ConversationCamera
     let robotSettings: RobotSettingsModel
 
     static func live(voiceSettings: SpeechVoiceSettings = SpeechVoiceSettings(),
-                     modelSettings: ConversationModelSettings = ConversationModelSettings(),
+                     connectionSettings: HermesConnectionSettings = HermesConnectionSettings(),
+                     hermesTransport: any HermesTransport = HermesURLSessionTransport(),
+                     sessionRecords: any HermesSessionRecordStore = UserDefaultsHermesSessionRecordStore(),
                      auth: ClaudeAuthConfiguration = .live(),
                      robotTransport: (any RobotTransport)? = nil,
                      robotClock: (any RobotClock)? = nil,
@@ -37,23 +40,12 @@ struct ConversationComposition {
                                                    motion.setControlMode($0)
                                                    faceTracking.setControlMode($0)
                                                })
-        let memoryStore: any ConversationMemoryStore
-        let longTermStore: any LongTermMemoryStore
-        if let directory = try? FileConversationMemoryStore.defaultDirectory() {
-            memoryStore = FileConversationMemoryStore(directory: directory, compatibilityID: ClaudeMemoryCompatibility.current)
-            longTermStore = FileLongTermMemoryStore(directory: directory)
-        } else {
-            memoryStore = UnavailableConversationMemoryStore()
-            longTermStore = InMemoryLongTermMemoryStore()
-        }
-        let factory = ClaudeSessionFactory(auth: auth)
-        let longTermMemory = LongTermMemoryManager(store: longTermStore, consolidate: { try await factory.consolidateFacts($0) })
-        let configuration: @Sendable () async -> ConversationModelConfiguration = { await MainActor.run { modelSettings.configuration } }
-        let claude = ClaudeConversationService(factory: factory, memoryStore: memoryStore, longTermMemory: longTermMemory,
-                                               tools: RobotConversationToolProvider(motion: motion, expressions: expressions, look: look),
-                                               configuration: configuration)
-        let reply = makeReplyGenerator(claude: claude, motion: replyTurnObserver)
-        let classifier = makeAddressClassifier(claudeClient: ClaudeAddressModelClient(auth: auth), history: claude)
+        // 接続先とキーはターンごとに設定から読む（保存した次のターンから効く）。
+        let hermes = HermesConversationService(connection: { await connectionSettings.connection() },
+                                               transport: hermesTransport, records: sessionRecords)
+        let reply = makeReplyGenerator(base: hermes, motion: replyTurnObserver)
+        // 声の宛先判定は補助の経路として Claude Haiku のまま。直近の会話は返事と同じ Hermes の会話から読む。
+        let classifier = makeAddressClassifier(claudeClient: ClaudeAddressModelClient(auth: auth), history: hermes)
 
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let smartTurn = SmartTurnService(root: resources.appendingPathComponent("SmartTurn"))
@@ -63,7 +55,7 @@ struct ConversationComposition {
         let speaker = SupertonicSentenceSpeaker(engine: engine, voice: { voiceSettings.selected })
         let dependencies = ConversationDependencies(
             microphonePermission: MicrophonePermissionService(),
-            modelAvailability: claude,
+            modelAvailability: hermes,
             recognizer: concreteRecognizer,
             classifier: classifier,
             reply: reply,
@@ -75,7 +67,7 @@ struct ConversationComposition {
             faceExpressions: expressions,
             look: look,
             replyTurnObserver: replyTurnObserver,
-            memory: claude,
+            memory: hermes,
             isFacingScreen: { camera.hasFreshFacingFace(yawCorrection: preferences.trackingYawCorrection) },
             serviceTeardown: {
                 await MainActor.run {
@@ -89,14 +81,14 @@ struct ConversationComposition {
                 await concreteRecognizer.shutdown()
             }
         )
-        return Self(dependencies: dependencies, voiceSettings: voiceSettings, modelSettings: modelSettings,
+        return Self(dependencies: dependencies, voiceSettings: voiceSettings, connectionSettings: connectionSettings, history: hermes,
                     robotLink: robotLink, faceTracking: faceTracking, camera: camera, robotSettings: robotSettings)
     }
 
-    /// 返答の組み立て。首の予約（MotionReplyGenerator）→ Claude の順。
-    static func makeReplyGenerator(claude: ClaudeConversationService,
+    /// 返答の組み立て。首の予約（MotionReplyGenerator）→ 返事を作る service の順。
+    static func makeReplyGenerator(base: any ReplyGenerating,
                                    motion: any ReplyTurnObserving) -> MotionReplyGenerator {
-        MotionReplyGenerator(base: claude, motion: motion)
+        MotionReplyGenerator(base: base, motion: motion)
     }
 
     /// 宛先判定の組み立て。直近の会話を添える decorator → Claude の分類器。liveと試験で同じ経路を使う。
