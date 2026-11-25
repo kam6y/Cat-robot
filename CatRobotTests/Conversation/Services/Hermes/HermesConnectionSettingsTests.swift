@@ -137,10 +137,89 @@ final class HermesConnectionSettingsTests: XCTestCase {
         XCTAssertNil(current)
     }
 
+    func testSavingTypedDraftUsesOnlyTheOriginItWasEnteredFor() async throws {
+        let f = makeFixture(); defer { f.tearDown() }
+        var draft = HermesConnectionSettings.Draft(endpointText: "https://a.example")
+        draft.apiKey = "synthetic-a"
+        let initialRevision = draft.revision
+        draft.endpointText = " HTTPS://A.EXAMPLE:443/ "
+        XCTAssertEqual(draft.revision, initialRevision)
+        try await f.settings.save(draft: draft)
+        let a = await f.settings.connection()
+        XCTAssertEqual(a, connection("https://a.example", "synthetic-a"))
+
+        draft.endpointText = "https://b.example"
+        try await f.settings.save(draft: draft)
+        let bWithoutKey = await f.settings.connection()
+        let savedB = await f.keys.savedKey(for: "https://b.example")
+        XCTAssertNil(bWithoutKey)
+        XCTAssertNil(savedB)
+
+        draft.apiKey = "synthetic-b"
+        draft.endpointText = "https://"
+        draft.apiKey = "synthetic-invalid"
+        do {
+            try await f.settings.save(draft: draft)
+            XCTFail("invalid drafts must fail before opening a store")
+        } catch {
+            XCTAssertEqual(error as? HermesConnectionSettings.SaveError, .invalidEndpoint)
+        }
+        draft.endpointText = "https://b.example"
+        try await f.settings.save(draft: draft)
+        let bAfterInvalidation = await f.settings.connection()
+        XCTAssertNil(bAfterInvalidation)
+
+        draft.apiKey = "synthetic-new-b"
+        try await f.settings.save(draft: draft)
+        let b = await f.settings.connection()
+        let savedA = await f.keys.savedKey(for: "https://a.example")
+        XCTAssertEqual(b, connection("https://b.example", "synthetic-new-b"))
+        XCTAssertEqual(savedA, HermesCredential(apiKey: "synthetic-a"))
+    }
+
+    func testDraftCannotShowOrDeleteAnotherOriginsKey() async throws {
+        let f = makeFixture(); defer { f.tearDown() }
+        try await f.settings.save(endpointText: "https://b.example", apiKey: "key-b")
+        try await f.settings.save(endpointText: "https://a.example", apiKey: "key-a")
+
+        XCTAssertFalse(f.settings.hasSavedKey(for: "https://b.example"))
+        let mismatched = try await f.settings.deleteKey(for: "https://b.example")
+        XCTAssertFalse(mismatched)
+        let a = await f.keys.savedKey(for: "https://a.example")
+        let b = await f.keys.savedKey(for: "https://b.example")
+        XCTAssertEqual(a, HermesCredential(apiKey: "key-a"))
+        XCTAssertEqual(b, HermesCredential(apiKey: "key-b"))
+
+        let equivalent = " HTTPS://A.EXAMPLE:443/ "
+        XCTAssertTrue(f.settings.hasSavedKey(for: equivalent))
+        let deleted = try await f.settings.deleteKey(for: equivalent)
+        XCTAssertTrue(deleted)
+        let removed = await f.keys.savedKey(for: "https://a.example")
+        XCTAssertNil(removed)
+    }
+
+    func testDeleteRechecksTheSavedOriginAtExecution() async throws {
+        let f = makeFixture(); defer { f.tearDown() }
+        let draftAtDecision = "HTTPS://A.EXAMPLE:443/"
+        try await f.settings.save(endpointText: "https://a.example", apiKey: "key-a")
+        XCTAssertTrue(f.settings.hasSavedKey(for: draftAtDecision))
+        try await f.settings.save(endpointText: "https://b.example", apiKey: "key-b")
+
+        let deleted = try await f.settings.deleteKey(for: draftAtDecision)
+        XCTAssertFalse(deleted)
+        XCTAssertFalse(f.settings.hasSavedKey(for: draftAtDecision))
+        XCTAssertTrue(f.settings.hasSavedKey(for: "https://b.example/"))
+        let a = await f.keys.savedKey(for: "https://a.example")
+        let b = await f.keys.savedKey(for: "https://b.example")
+        XCTAssertEqual(a, HermesCredential(apiKey: "key-a"))
+        XCTAssertEqual(b, HermesCredential(apiKey: "key-b"))
+    }
+
     func testDeletingTheKeyLeavesTheEndpointWithoutAConnection() async throws {
         let f = makeFixture(); defer { f.tearDown() }
         try await f.settings.save(endpointText: "https://a.example", apiKey: "key-a")
-        try await f.settings.deleteKey()
+        let deleted = try await f.settings.deleteKey(for: "https://a.example")
+        XCTAssertTrue(deleted)
         let current = await f.settings.connection()
         XCTAssertNil(current)
         XCTAssertEqual(f.settings.endpoint?.absoluteString, "https://a.example")

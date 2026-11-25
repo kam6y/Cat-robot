@@ -8,6 +8,7 @@ actor FakeHermesServer: HermesTransport {
         case json(Int, String)
         case transportFailure
         case gated(String, Reply)
+        case cooperativelyGated(String)
     }
 
     private(set) var requests: [HermesHTTPRequest] = []
@@ -16,6 +17,8 @@ actor FakeHermesServer: HermesTransport {
     private var stopReplies: [String: [Reply]]
     private var historyReplies: [Reply]
     private var capabilityReplies: [Reply]
+    private(set) var cancelledGates: Set<String> = []
+    private var releasedEarly: Set<String> = []
     private var blocked: Set<String> = []
     private var gates: [String: CheckedContinuation<Void, Never>] = [:]
 
@@ -65,15 +68,34 @@ actor FakeHermesServer: HermesTransport {
         case .transportFailure:
             throw HermesClientError.transport("NSURLErrorDomain -1005")
         case .gated(let name, let next):
-            blocked.insert(name)
-            await withCheckedContinuation { gates[name] = $0 }
+            await waitAtGate(name)
             return try await respond(next)
+        case .cooperativelyGated(let name):
+            await withTaskCancellationHandler {
+                await waitAtGate(name)
+            } onCancel: {
+                Task { await self.cancelGate(name) }
+            }
+            try Task.checkCancellation()
+            throw HermesClientError.transport("released without acceptance")
         }
+    }
+
+    private func waitAtGate(_ name: String) async {
+        if releasedEarly.remove(name) != nil { return }
+        blocked.insert(name)
+        await withCheckedContinuation { gates[name] = $0 }
+    }
+
+    private func cancelGate(_ name: String) {
+        cancelledGates.insert(name)
+        release(name)
     }
 
     func release(_ name: String) {
         blocked.remove(name)
-        gates.removeValue(forKey: name)?.resume()
+        if let gate = gates.removeValue(forKey: name) { gate.resume() }
+        else { releasedEarly.insert(name) }
     }
 
     func isBlocked(_ name: String) -> Bool { blocked.contains(name) }

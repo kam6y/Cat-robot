@@ -23,15 +23,32 @@ class HermesURLSessionTransport: NSObject, HermesTransport, URLSessionTaskDelega
         for (field, value) in request.headers { urlRequest.setValue(value, forHTTPHeaderField: field) }
         urlRequest.httpBody = request.body
 
-        let data: Data
-        let response: URLResponse
+        let http: HTTPURLResponse
+        var data = Data()
         do {
-            (data, response) = try await session.data(for: urlRequest, delegate: self)
+            let (bytes, response) = try await session.bytes(for: urlRequest, delegate: self)
+            guard let response = response as? HTTPURLResponse else {
+                bytes.task.cancel()
+                throw HermesClientError.transport("non-HTTP response")
+            }
+            http = response
+            if http.statusCode == 401 {
+                // The status is definitive even when the refusal body never finishes.
+                bytes.task.cancel()
+            } else {
+                for try await byte in bytes {
+                    guard data.count < Self.maximumBodyBytes else {
+                        bytes.task.cancel()
+                        throw HermesClientError.transport("response body exceeds 1 MiB")
+                    }
+                    data.append(byte)
+                }
+            }
+        } catch let error as HermesClientError {
+            throw error
         } catch {
             throw HermesClientError.transport(Self.describe(error))
         }
-        guard let http = response as? HTTPURLResponse else { throw HermesClientError.transport("non-HTTP response") }
-        guard data.count <= Self.maximumBodyBytes else { throw HermesClientError.transport("response body exceeds 1 MiB") }
         var headers: [String: String] = [:]
         for (key, value) in http.allHeaderFields { headers[String(describing: key)] = String(describing: value) }
         return HermesHTTPResponse(statusCode: http.statusCode, headers: headers, body: data)

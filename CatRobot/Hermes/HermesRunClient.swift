@@ -40,10 +40,12 @@ actor HermesRunClient {
     /// 明示 session の続き。同じターンの再送は同じ key と同じ body にする（Hermes は body 全体で同一性を判定する）。
     /// 履歴は Hermes が session から読むので、端末の会話は送らない。
     /// instructions は Hermes の ephemeral system prompt（その run だけに重ねる）。nil なら送らない。
-    func createRun(input: String, sessionID: String, idempotencyKey: UUID, instructions: String? = nil) async throws -> HermesRunHandle {
+    // Forward the caller’s isolation so its final session check and transport handoff stay on the same actor.
+    func createRun(input: String, sessionID: String, idempotencyKey: UUID, instructions: String? = nil,
+                   isolation: isolated (any Actor)? = nil) async throws -> HermesRunHandle {
         guard Self.isValidRunID(sessionID) else { throw HermesClientError.invalidSessionID }
         return try await postRun(SessionRunInput(input: input, session_id: sessionID, instructions: instructions),
-                                 idempotencyKey: idempotencyKey)
+                                 idempotencyKey: idempotencyKey, isolation: isolation)
     }
 
     /// Hermes が正本の会話履歴の最新ページ（古い順）。応答の session_id は圧縮後の tip を指すことがある。
@@ -65,19 +67,20 @@ actor HermesRunClient {
         return HermesSessionHistory(sessionID: payload.session_id, messages: payload.data)
     }
 
-    private func postRun(_ input: some Encodable, idempotencyKey: UUID) async throws -> HermesRunHandle {
+    private func postRun(_ input: some Encodable, idempotencyKey: UUID,
+                         isolation: isolated (any Actor)? = nil) async throws -> HermesRunHandle {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
         let response = try await send("POST", path: "v1/runs", expectedStatus: 202,
                                       headers: ["Content-Type": "application/json", "Idempotency-Key": idempotencyKey.uuidString],
-                                      body: encoder.encode(input))
+                                      body: encoder.encode(input), isolation: isolation)
         let payload = try Self.decodeRun(response.body)
         return HermesRunHandle(runID: payload.run_id, status: .init(rawValue: payload.status), replayed: payload.replayed ?? false)
     }
 
-    func run(id: String) async throws -> HermesRunState {
+    func run(id: String, timeout: TimeInterval? = nil) async throws -> HermesRunState {
         guard Self.isValidRunID(id) else { throw HermesClientError.invalidRunID }
-        let response = try await send("GET", path: "v1/runs/\(id)", expectedStatus: 200)
+        let response = try await send("GET", path: "v1/runs/\(id)", expectedStatus: 200, timeout: timeout)
         let payload = try Self.decodeRun(response.body)
         guard payload.run_id == id else { throw HermesClientError.malformedResponse }
         return HermesRunState(runID: id, status: .init(rawValue: payload.status), sessionID: payload.session_id, output: payload.output)
@@ -85,9 +88,9 @@ actor HermesRunClient {
 
     /// stop の応答が告げた status（stopping、またはすでに終わっていた run の terminal）。応答に無ければ nil。
     @discardableResult
-    func stop(id: String) async throws -> HermesRunStatus? {
+    func stop(id: String, timeout: TimeInterval? = nil) async throws -> HermesRunStatus? {
         guard Self.isValidRunID(id) else { throw HermesClientError.invalidRunID }
-        let response = try await send("POST", path: "v1/runs/\(id)/stop")
+        let response = try await send("POST", path: "v1/runs/\(id)/stop", timeout: timeout)
         guard !response.body.isEmpty else { return nil }
         guard let payload = try? JSONDecoder().decode(StopPayload.self, from: response.body),
               payload.run_id == nil || payload.run_id == id else { throw HermesClientError.malformedResponse }
@@ -120,8 +123,9 @@ actor HermesRunClient {
     }
 
     private func send(_ method: String, path: String, expectedStatus: Int? = nil,
-                      headers: [String: String] = [:], body: Data? = nil) async throws -> HermesHTTPResponse {
-        let response = try await exchange(method, path: path, headers: headers, body: body)
+                      headers: [String: String] = [:], body: Data? = nil,
+                      timeout: TimeInterval? = nil, isolation: isolated (any Actor)? = nil) async throws -> HermesHTTPResponse {
+        let response = try await exchange(method, path: path, headers: headers, body: body, timeout: timeout, isolation: isolation)
         if response.statusCode == 404,
            (try? JSONDecoder().decode(ErrorEnvelope.self, from: response.body))?.error.code == "run_not_found" {
             throw HermesClientError.runNotFound
@@ -134,18 +138,22 @@ actor HermesRunClient {
 
     /// 認証付きの 1 往復。401 だけはここで専用のエラーにし、他の status の判定は呼び出し側に任せる。
     private func exchange(_ method: String, path: String, headers: [String: String] = [:], body: Data? = nil,
-                          query: [URLQueryItem] = []) async throws -> HermesHTTPResponse {
+                          query: [URLQueryItem] = [], timeout: TimeInterval? = nil,
+                          isolation: isolated (any Actor)? = nil) async throws -> HermesHTTPResponse {
         try Task.checkCancellation()
         var authenticated = headers
         authenticated["Authorization"] = "Bearer \(credential.apiKey)"
         var url = endpoint.appending(path: path)
         if !query.isEmpty { url.append(queryItems: query) }
         let request = HermesHTTPRequest(method: method, url: url,
-                                        headers: authenticated, body: body, timeout: requestTimeout)
+                                        headers: authenticated, body: body, timeout: min(timeout ?? requestTimeout, requestTimeout))
         let response = try await transport.send(request)
         if response.statusCode == 401 { throw HermesClientError.unauthorized }
         return response
     }
+
+    // Cleanup combines this inactivity limit with its own wall-clock budget.
+    nonisolated var maximumRequestDuration: TimeInterval { requestTimeout }
 
     private struct RunInput: Encodable { let input: String }
     private struct StopPayload: Decodable { let run_id: String?; let status: String? }

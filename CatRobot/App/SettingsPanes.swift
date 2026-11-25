@@ -28,20 +28,20 @@ struct ConversationSettingsPane: View {
 /// 設定「Hermes 接続」の右列。接続先（https の root）と API キー。保存済みのキーは表示せず、入力欄にも戻さない。
 struct HermesConnectionSettingsPane: View {
     let settings: HermesConnectionSettings
-    @State private var endpointText: String
-    @State private var apiKey = ""
-    @State private var status: String?
+    @State private var draft: HermesConnectionSettings.Draft
+    private var endpointText: String { draft.endpointText }
+    @State private var status: (draft: String, message: String)?
     @State private var isWorking = false
 
     init(settings: HermesConnectionSettings) {
         self.settings = settings
-        _endpointText = State(initialValue: settings.endpoint?.absoluteString ?? "")
+        _draft = State(initialValue: HermesConnectionSettings.Draft(endpointText: settings.endpoint?.absoluteString ?? ""))
     }
 
     var body: some View {
         Form {
             Section {
-                TextField("https://hermes.example:8443", text: $endpointText)
+                TextField("https://hermes.example:8443", text: $draft.endpointText)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -51,12 +51,12 @@ struct HermesConnectionSettingsPane: View {
                 Text("https で始まる URL（パス・クエリなし）。iPhone 標準の証明書の確認を通る接続先だけに送ります。")
             }
             Section {
-                SecureField(settings.hasSavedKey ? "保存済み（変えるときだけ入力）" : "API キー", text: $apiKey)
+                SecureField(settings.hasSavedKey(for: endpointText) ? "保存済み（変えるときだけ入力）" : "API キー", text: $draft.apiKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityLabel("API キー")
                     .accessibilityIdentifier(ConversationSettingsIdentifier.hermesAPIKeyField.rawValue)
-                Text(settings.hasSavedKey ? "この接続先のキーはこの iPhone に保存されています" : "この接続先のキーはまだ保存されていません")
+                Text(keyStatus)
                     .foregroundStyle(.secondary)
             } header: { Text("API キー") } footer: {
                 Text("キーは接続先ごとにこの iPhone のキーチェーンに保存し、ほかの接続先へは送りません。接続先を変えたら、その接続先のキーを入力してください。")
@@ -66,9 +66,9 @@ struct HermesConnectionSettingsPane: View {
                     .disabled(isWorking)
                     .accessibilityIdentifier(ConversationSettingsIdentifier.hermesSaveButton.rawValue)
                 Button("この接続先のキーを削除", role: .destructive, action: deleteKey)
-                    .disabled(isWorking || !settings.hasSavedKey)
+                    .disabled(isWorking || !settings.hasSavedKey(for: endpointText))
                     .accessibilityIdentifier(ConversationSettingsIdentifier.hermesDeleteKeyButton.rawValue)
-                if let status { Text(status) }
+                if let status, status.draft == endpointText { Text(status.message) }
             } footer: {
                 Text("普段使いできる常設の HTTPS 接続先はまだ用意されていません。接続先とキーを設定しないと、通常の返事は使えません（ほかのモデルが代わりに答えることはありません）。")
             }
@@ -76,34 +76,54 @@ struct HermesConnectionSettingsPane: View {
         .task { await settings.refresh() }
     }
 
+    private var keyStatus: String {
+        guard let saved = settings.endpoint, saved == HermesConnectionSettings.endpoint(from: endpointText) else {
+            return "表示中の接続先はまだ保存されていません"
+        }
+        return settings.hasSavedKey(for: endpointText)
+            ? "この接続先のキーはこの iPhone に保存されています"
+            : "この接続先のキーはまだ保存されていません"
+    }
+
     private func save() {
+        guard !isWorking else { return }
+        let submitted = draft
         isWorking = true
         Task {
             defer { isWorking = false }
+            guard draft.revision == submitted.revision else { return }
             do {
-                try await settings.save(endpointText: endpointText, apiKey: apiKey)
-                apiKey = ""
-                endpointText = settings.endpoint?.absoluteString ?? endpointText
-                status = settings.hasSavedKey ? "保存しました。次の返事からこの接続先を使います。" : "接続先を保存しました。この接続先の API キーを入力してください。"
+                try await settings.save(draft: submitted)
+                guard draft.revision == submitted.revision, let saved = settings.endpoint,
+                      saved == submitted.endpoint else { return }
+                draft.apiKey = ""
+                draft.endpointText = saved.absoluteString
+                let message = settings.hasSavedKey(for: endpointText)
+                    ? "保存しました。次の返事からこの接続先を使います。"
+                    : "接続先を保存しました。この接続先の API キーを入力してください。"
+                status = (endpointText, message)
             } catch HermesConnectionSettings.SaveError.invalidEndpoint {
-                status = "接続先は https で始まる URL（パス・クエリなし）で入力してください。"
+                status = (submitted.endpointText, "接続先は https で始まる URL（パス・クエリなし）で入力してください。")
             } catch HermesConnectionSettings.SaveError.invalidKey {
-                status = "API キーに使えない文字があります。空白や改行を含めずに入力してください。"
+                status = (submitted.endpointText, "API キーに使えない文字があります。空白や改行を含めずに入力してください。")
             } catch {
-                status = "キーを保存できませんでした。設定は変えていません。"
+                status = (submitted.endpointText, "キーを保存できませんでした。設定は変えていません。")
             }
         }
     }
 
     private func deleteKey() {
+        let draft = endpointText
         isWorking = true
         Task {
             defer { isWorking = false }
+            guard HermesConnectionSettings.endpoint(from: endpointText) == HermesConnectionSettings.endpoint(from: draft) else { return }
             do {
-                try await settings.deleteKey()
-                status = "この接続先のキーを削除しました。"
+                if try await settings.deleteKey(for: draft) {
+                    status = (draft, "この接続先のキーを削除しました。")
+                }
             } catch {
-                status = "キーを削除できませんでした。"
+                status = (draft, "キーを削除できませんでした。")
             }
         }
     }

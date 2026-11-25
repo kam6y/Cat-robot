@@ -79,6 +79,21 @@ final class HermesAuthorizationRecheckTests: XCTestCase {
         XCTAssertEqual(requests, ["POST /v1/runs", "GET /v1/capabilities"])
     }
 
+    func testAnOlderSuccessfulRecheckCannotClearANewerRefusal() async {
+        let server = FakeHermesServer(runs: [Self.unauthorized],
+                                      capabilities: [.gated("old-check", Self.capabilities), Self.unauthorized])
+        let service = makeService(server)
+        await refuse(service)
+        let old = Task { await service.recheckAvailability() }
+        await server.waitUntilBlocked("old-check")
+        await service.recheckAvailability()
+        await server.release("old-check")
+        await old.value
+
+        let availability = await service.availability()
+        XCTAssertEqual(availability, .hermesUnauthorized)
+    }
+
     /// 届かなかった確認は拒否の根拠にしない。次に利用者が話したときの Hermes の答えで決まる。
     func testARecheckThatCannotReachHermesLiftsTheRefusalForTheNextTurn() async {
         let server = FakeHermesServer(runs: [Self.unauthorized], capabilities: [.transportFailure])

@@ -8,12 +8,43 @@ import Observation
 final class HermesConnectionSettings {
     enum SaveError: Error, Equatable { case invalidEndpoint, invalidKey }
 
+    struct Draft {
+        var endpointText: String {
+            didSet {
+                if Self.normalized(oldValue) != endpoint {
+                    key = ""
+                    revision = UUID()
+                }
+            }
+        }
+        private var key = ""
+        private(set) var revision = UUID()
+
+        init(endpointText: String) { self.endpointText = endpointText }
+
+        var endpoint: URL? { Self.normalized(endpointText) }
+
+        var apiKey: String {
+            get { key }
+            set {
+                guard endpoint != nil, key != newValue else { return }
+                key = newValue
+                revision = UUID()
+            }
+        }
+
+        private static func normalized(_ text: String) -> URL? {
+            HermesConnectionSettings.endpoint(from: text)
+        }
+    }
+
     static let endpointKey = "hermesConversationEndpoint"
 
     /// 保存済みの接続先。未設定なら nil。
     private(set) var endpoint: URL?
     /// 保存済みの接続先の origin にキーがあるか（値は持たない。表示用で、会話はこれを見ない）。
     private(set) var hasSavedKey = false
+    @ObservationIgnored private var keyStatusRevision = UUID()
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let credentials: @Sendable (String) -> any HermesCredentialStore
 
@@ -57,6 +88,10 @@ final class HermesConnectionSettings {
         return HermesCredential(apiKey: key)
     }
 
+    func save(draft: Draft) async throws {
+        try await save(endpointText: draft.endpointText, apiKey: draft.apiKey)
+    }
+
     /// 接続先とキーを確かめ、入力されたキーをその origin に保存してから接続先を保存する。
     /// キーを保存できなければ接続先も変えない（動いていた設定を残す）。空のキーは、その origin に保存済みのキーをそのまま使う。
     func save(endpointText: String, apiKey: String) async throws {
@@ -65,22 +100,42 @@ final class HermesConnectionSettings {
         let store = credentials(HermesConnection.origin(of: url))
         if let credential { try await store.save(credential) }
         defaults.set(url.absoluteString, forKey: Self.endpointKey)
+        if endpoint != url { hasSavedKey = false }
         endpoint = url
-        hasSavedKey = (try? await store.load()) != nil
+        let revision = UUID()
+        keyStatusRevision = revision
+        let saved = (try? await store.load()) != nil
+        if keyStatusRevision == revision { hasSavedKey = saved }
     }
 
-    /// 保存済みの接続先の origin のキーを消す。接続先は残る（キーを入れ直せば使える）。
-    func deleteKey() async throws {
-        guard let endpoint else { return }
+    func hasSavedKey(for endpointText: String) -> Bool {
+        guard let endpoint, endpoint == Self.endpoint(from: endpointText) else { return false }
+        return hasSavedKey
+    }
+
+    /// Delete only the saved origin that matches the draft at the time the action begins.
+    func deleteKey(for endpointText: String) async throws -> Bool {
+        guard let endpoint, hasSavedKey(for: endpointText) else { return false }
+        let revision = UUID()
+        keyStatusRevision = revision
         try await credentials(HermesConnection.origin(of: endpoint)).delete()
-        if self.endpoint == endpoint { hasSavedKey = false }
+        if self.endpoint == endpoint {
+            if keyStatusRevision == revision {
+                keyStatusRevision = UUID()
+                hasSavedKey = false
+            } else {
+                await refresh()
+            }
+        }
+        return true
     }
 
     /// 表示用に、保存済みの接続先にキーがあるかを読み直す。
     func refresh() async {
         guard let endpoint else { hasSavedKey = false; return }
+        let revision = keyStatusRevision
         let saved = (try? await credentials(HermesConnection.origin(of: endpoint)).load()) != nil
-        if self.endpoint == endpoint { hasSavedKey = saved }
+        if keyStatusRevision == revision { hasSavedKey = saved }
     }
 
     /// そのターンの接続。接続先と、その origin に保存されたキーがそろっていなければ nil（未設定）。

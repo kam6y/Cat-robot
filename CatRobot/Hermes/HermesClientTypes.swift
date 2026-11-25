@@ -58,6 +58,14 @@ protocol HermesTransport: Sendable {
 protocol HermesClock: Sendable {
     func now() async -> Date
     func sleep(for duration: Duration) async throws
+    func sleepUntilTurnDeadline(_ deadline: Date) async throws
+}
+
+extension HermesClock {
+    func sleepUntilTurnDeadline(_ deadline: Date) async throws {
+        let remaining = deadline.timeIntervalSince(await now())
+        if remaining > 0 { try await Task.sleep(for: .seconds(remaining)) }
+    }
 }
 
 struct SystemHermesClock: HermesClock {
