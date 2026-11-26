@@ -152,32 +152,26 @@ final class ConversationAccessibilityTests: XCTestCase {
         XCTAssertEqual(labels.listeningHint, "マイクの聞き取りを停止します")
     }
 
-    func testAccessibilityTypedPanelUsesCompactHorizontalLayout() {
-        XCTAssertEqual(
-            TypedInputLayout.preferred(for: .accessibility1),
-            .compactHorizontal
-        )
-        XCTAssertEqual(
-            TypedInputLayout.preferred(for: .large),
-            .standard
-        )
-    }
-
     func testSettingsSheetDeclaresItsControls() {
         // 記憶の一覧・すべて削除・1 日の上限は 2026-11-10 に撤去した（Hermes 移行②）。
         // 端末のモデルとエフォートの選択は、返事を Hermes が作るようになって撤去した。
-        // 2026-11-26 から「Hermes 接続」で、その Hermes が使えるモデルと effort を選ぶ（候補は Hermes から読む）。
+        // 2026-11-26 から、その Hermes が使えるモデルと effort を選ぶ（候補は Hermes から読む）。
+        // 選ぶ欄は設定の「返答モデル」で、接続先かキーが無ければそこから「Hermes 接続を設定」へ進む。
         XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
                        ["sleepyMinutesStepper", "sleepingMinutesStepper", "cameraPermissionButton",
                         "faceTrackingEnabled", "faceTrackingStatus", "faceTrackingYawCorrectionStepper", "voicePresetPicker",
                         "hermesEndpointField", "hermesAPIKeyField", "hermesSaveButton", "hermesDeleteKeyButton",
-                        "hermesModelPicker", "hermesEffortPicker", "hermesModelRefresh",
+                        "hermesModelPicker", "hermesEffortPicker", "hermesModelRefresh", "replyModelOpenConnection",
                         "historyReloadButton"])
     }
-    func testSettingsCategoriesHaveNoMemoryOrUsagePane() {
+    /// 設定は構成だけ。会話の履歴は会話メニューから開く独立した画面で、設定のカテゴリには無い。
+    func testSettingsCategoriesHaveNoMemoryUsageOrHistoryPane() {
         XCTAssertEqual(SettingsCategory.allCases.map(\.rawValue),
-                       ["conversation", "hermesConnection", "history", "cameraAndTracking", "robot", "about"])
+                       ["conversation", "replyModel", "hermesConnection", "cameraAndTracking", "robot", "about"])
+        XCTAssertEqual(SettingsCategory.allCases.map(\.title),
+                       ["声と待機時間", "返答モデル", "Hermes 接続", "カメラと顔追尾", "ロボット", "このアプリについて"])
         XCTAssertNil(SettingsCategory(rawValue: "memory"))
         XCTAssertNil(SettingsCategory(rawValue: "usage"))
+        XCTAssertNil(SettingsCategory(rawValue: "history"))
     }
 }

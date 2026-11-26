@@ -12,12 +12,21 @@ enum ConversationAppScenePhase: Equatable, Sendable {
     case background
 }
 
+/// 会話メニューから出す modal。どちらも開く前に会話を止め、閉じたら再開する（経路は 1 本）。
+enum ConversationSheet: Equatable, Sendable {
+    case settings(SettingsCategory?)
+    case history
+}
+
 @MainActor
 @Observable
 final class ConversationAppCoordinator {
+    /// 会話メニューの modal（設定か会話の履歴）を出している。
     private(set) var showsVoiceSettings = false
-    /// 設定を開くときに選ぶ欄。
-    private(set) var settingsCategory: SettingsCategory = .conversation
+    /// 出している、または出そうとしている modal の種類。
+    private(set) var sheet: ConversationSheet = .settings(nil)
+    /// 会話メニューの「新しい会話を始める…」の確認を出している。前面でなくなる・modal を開く・眠ると閉じる。
+    private(set) var confirmsNewConversation = false
     private(set) var isOpeningVoiceSettings = false
     private var isVoiceSettingsClosed: Bool { !showsVoiceSettings && !isOpeningVoiceSettings }
     @ObservationIgnored private var voiceSettingsTask: Task<Void, Never>?
@@ -269,9 +278,18 @@ final class ConversationAppCoordinator {
         updateFaceEnvironment()
     }
 
-    func openVoiceSettings(category: SettingsCategory = .conversation) {
+    func openVoiceSettings(category: SettingsCategory? = nil) {
+        presentSheet(.settings(category))
+    }
+
+    /// 会話メニューの「会話の履歴」。設定とは別の画面だが、会話を止めて開き、閉じたら再開するのは設定と同じ。
+    func openHistory() {
+        presentSheet(.history)
+    }
+
+    private func presentSheet(_ kind: ConversationSheet) {
         guard scenePhase == .active, isVoiceSettingsClosed else { return }
-        settingsCategory = category
+        sheet = kind
         isOpeningVoiceSettings = true
         updateInactivity()
         settingsModel?.setApplicationMode(nil)
@@ -300,6 +318,24 @@ final class ConversationAppCoordinator {
         }
     }
 
+    /// 会話メニューの「新しい会話を始める…」。すぐには切り替えず、確認を出す（取り消せる）。
+    func requestNewConversation() {
+        guard permitsAction(allowWhileSleeping: false) else { return }
+        confirmsNewConversation = true
+    }
+
+    /// 確認で「新しい会話を始める」を選んだ。確認を出している間に前面でなくなった・眠ったなら何もしない。
+    func confirmNewConversation() {
+        guard confirmsNewConversation else { return }
+        confirmsNewConversation = false
+        launchNewConversation()
+    }
+
+    func cancelNewConversation() {
+        confirmsNewConversation = false
+    }
+
+    /// 設定と履歴のどちらからも、同じ経路で会話に戻る。
     func closeVoiceSettings() {
         guard !isOpeningVoiceSettings, settingsModel?.calibration == nil else { return }
         showsVoiceSettings = false
@@ -362,8 +398,10 @@ final class ConversationAppCoordinator {
                 }
             },
             openVoiceSettings: { [weak self] in self?.openVoiceSettings() },
-            openHistory: { [weak self] in self?.openVoiceSettings(category: .history) },
+            openHistory: { [weak self] in self?.openHistory() },
+            // 記憶のカードからの「新しい会話を始める」。失敗のカードは performRecovery を使う。
             startNewConversation: { [weak self] in self?.launchNewConversation() },
+            requestNewConversation: { [weak self] in self?.requestNewConversation() },
             retryMemory: { [weak self] in
                 self?.launchAction(allowWhileSleeping: true) { [weak self] in
                     guard let self else { return }
@@ -463,6 +501,8 @@ final class ConversationAppCoordinator {
     }
 
     private func invalidateActionTasksForSceneInactivity() {
+        // 前面でなくなる・modal を開く・眠るときは、出していた確認も取り消す（戻ったら選び直す）。
+        confirmsNewConversation = false
         actionSceneGeneration &+= 1
         for task in actionTasks.values {
             task.cancel()

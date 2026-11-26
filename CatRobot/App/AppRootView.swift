@@ -77,12 +77,26 @@ struct AppRootView: View {
                 )
             }
         }
+        // 横向きでも「キャンセル」が見える alert を使う。確定・取消は各ボタンで一度だけ処理する。
+        .alert("新しい会話を始めますか？",
+               isPresented: Binding(get: { coordinator.confirmsNewConversation }, set: { _ in })) {
+            Button("新しい会話を始める", action: coordinator.confirmNewConversation)
+                .accessibilityIdentifier("confirmNewConversation")
+            Button("キャンセル", role: .cancel, action: coordinator.cancelNewConversation)
+        } message: {
+            Text("切り替えた後、アプリの履歴には新しい会話だけが表示されます。これまでの会話は Hermes に残ります。")
+        }
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {
-            ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings, history: history,
-                                     idleSettings: coordinator.inactivity.settings, robotSettings: robotSettings, faceTracking: faceTracking, camera: camera,
-                                     initialCategory: coordinator.settingsCategory, onDone: coordinator.closeVoiceSettings)
-
+            switch coordinator.sheet {
+            case .settings(let category):
+                ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings,
+                                         idleSettings: coordinator.inactivity.settings, robotSettings: robotSettings, faceTracking: faceTracking, camera: camera,
+                                         initialCategory: category,
+                                         onDone: coordinator.closeVoiceSettings)
+            case .history:
+                ConversationHistorySheet(history: history, onDone: coordinator.closeVoiceSettings)
+            }
         }
         .task {
             guard let robotLink else { return }
@@ -139,5 +153,32 @@ struct AppRootView: View {
         @unknown default:
             .inactive
         }
+    }
+}
+
+/// 会話メニューの「会話の履歴」。設定とは別の全幅の画面で、「完了」で会話に戻る。
+struct ConversationHistorySheet: View {
+    let history: (any ConversationTranscriptReading)?
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let history {
+                    ConversationHistoryPane(reader: history)
+                } else {
+                    ContentUnavailableView("履歴を表示できません", systemImage: "clock.arrow.circlepath")
+                }
+            }
+            .navigationTitle("会話の履歴")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完了", action: onDone)
+                        .accessibilityIdentifier("historyDoneButton")
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }

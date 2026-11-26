@@ -1,7 +1,7 @@
 import Observation
 import SwiftUI
 
-/// 設定「会話の履歴」の状態。履歴の正本は Hermes にあり、開くたびに読む（この iPhone には保存しない）。
+/// 「会話の履歴」の状態。履歴の正本は Hermes にあり、開くたびに読む（この iPhone には保存しない）。
 @MainActor @Observable
 final class ConversationHistoryModel {
     enum Phase: Equatable {
@@ -32,7 +32,7 @@ final class ConversationHistoryModel {
     }
 }
 
-/// 設定「会話の履歴」の右列。今の会話の、あなたと猫のやり取りを古い順に出す。
+/// 今の会話を時系列で表示し、開いたときは直近のやり取りを見せる。
 struct ConversationHistoryPane: View {
     @State private var model: ConversationHistoryModel
 
@@ -41,38 +41,63 @@ struct ConversationHistoryPane: View {
     }
 
     var body: some View {
-        Form {
+        Group {
             switch model.phase {
             case .loading:
-                Section { ProgressView("読み込んでいます") }
+                ProgressView("履歴を読み込み中")
             case .loaded(let entries) where entries.isEmpty:
-                Section { Text("この会話の履歴はまだありません。") }
+                ContentUnavailableView("まだ会話がありません", systemImage: "bubble.left.and.bubble.right")
             case .loaded(let entries):
-                Section {
-                    ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.speaker == .user ? "あなた" : "猫")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(entry.text).fixedSize(horizontal: false, vertical: true)
+                ScrollView {
+                    LazyVStack(spacing: 14) {
+                        ForEach(entries.indices, id: \.self) { index in
+                            message(entries[index])
+                                .accessibilityIdentifier("historyMessage.\(index)")
                         }
-                        .accessibilityElement(children: .combine)
                     }
-                } footer: { historyNote }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
+                }
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(.top, for: .alignment)
             case .unconfigured:
-                Section { Text("Hermes の接続先が設定されていません。「Hermes 接続」で設定すると履歴を読めます。") }
+                ContentUnavailableView("Hermes の接続が必要です", systemImage: "network",
+                                       description: Text("設定の「Hermes 接続」で接続先と API キーを保存してください。"))
             case .failed(let message):
-                Section {
-                    Text(message).fixedSize(horizontal: false, vertical: true)
-                    Button("もう一度読み込む") { Task { await model.reload() } }
-                        .accessibilityIdentifier(ConversationSettingsIdentifier.historyReloadButton.rawValue)
+                ScrollView {
+                    ContentUnavailableView {
+                        Label("履歴を表示できません", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        Button("もう一度読み込む") { Task { await model.reload() } }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier(ConversationSettingsIdentifier.historyReloadButton.rawValue)
+                    }
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await model.reload() }
     }
 
-    private var historyNote: some View {
-        Text("履歴は Hermes に保存されています。「新しい会話を始める」は新しい会話に切り替えるだけで、前の会話を Hermes から消しません。")
+    private func message(_ entry: HermesTranscriptEntry) -> some View {
+        let isUser = entry.speaker == .user
+        return VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+            Text(isUser ? "あなた" : "猫")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(entry.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(isUser ? Color.accentColor.opacity(0.20) : Color(uiColor: .secondarySystemBackground),
+                            in: RoundedRectangle(cornerRadius: 14))
+        }
+        .accessibilityElement(children: .combine)
+        .padding(isUser ? .leading : .trailing, 26)
+        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
     }
 }

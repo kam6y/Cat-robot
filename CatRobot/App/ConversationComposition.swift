@@ -8,7 +8,7 @@ struct ConversationComposition {
     let dependencies: ConversationDependencies
     let voiceSettings: SpeechVoiceSettings
     let connectionSettings: HermesConnectionSettings
-    /// 設定の「会話の履歴」が読む会話（返事・記憶と同じ Hermes の session）。
+    /// 会話メニューの「会話の履歴」が読む会話（返事・記憶と同じ Hermes の session）。
     let history: any ConversationTranscriptReading
     let robotLink: any RobotLinkControlling
     let faceTracking: FaceTrackingCoordinator

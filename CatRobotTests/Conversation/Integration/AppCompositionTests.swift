@@ -505,17 +505,18 @@ final class AppCompositionTests: XCTestCase {
         await coordinator.waitForOperations()
 
         XCTAssertTrue(coordinator.showsVoiceSettings)
-        XCTAssertEqual(coordinator.settingsCategory, .hermesConnection)
+        XCTAssertEqual(coordinator.sheet, .settings(.hermesConnection))
         XCTAssertEqual(systemSettingsOpenCount, 0)
         coordinator.closeVoiceSettings()
         coordinator.openVoiceSettings()
         await coordinator.waitForOperations()
-        XCTAssertEqual(coordinator.settingsCategory, .conversation, "the menu still opens at 会話")
+        XCTAssertEqual(coordinator.sheet, .settings(nil), "通常の設定はトップから開く")
         await harness.sut.shutdown()
     }
 
-    /// 会話画面のメニューの「会話の履歴」は、アプリ内の設定を履歴の欄で開く（正本は Hermes、端末は表示のたびに読む）。
-    func testTheHistoryMenuOpensTheInAppSettingsAtTheHistoryPane() async {
+    /// 会話メニューの「会話の履歴」は、設定ではない独立した画面を開く（正本は Hermes、端末は表示のたびに読む）。
+    /// 次に「設定」を開けば、設定は先頭の「声と待機時間」から始まる。
+    func testTheHistoryMenuOpensTheHistorySheetInsteadOfTheSettings() async {
         let harness = ConversationHarness()
         let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
                                                      wakeLock: TestIdleTimerStorage(initialValue: false).makeWakeLock())
@@ -525,7 +526,93 @@ final class AppCompositionTests: XCTestCase {
         await coordinator.waitForOperations()
 
         XCTAssertTrue(coordinator.showsVoiceSettings)
-        XCTAssertEqual(coordinator.settingsCategory, .history)
+        XCTAssertEqual(coordinator.sheet, .history)
+        coordinator.closeVoiceSettings()
+        actions.openVoiceSettings()
+        await coordinator.waitForOperations()
+        XCTAssertEqual(coordinator.sheet, .settings(nil))
+        await harness.sut.shutdown()
+    }
+
+    /// 会話メニューの「新しい会話を始める…」は確認を出すだけで、取り消せば今の会話のまま続く。
+    func testTheMenuAsksBeforeANewConversationAndCancelKeepsTheConversation() async {
+        let harness = ConversationHarness()
+        let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
+                                                     wakeLock: TestIdleTimerStorage(initialValue: false).makeWakeLock())
+        coordinator.beginConversation()
+        await coordinator.waitForOperations()
+        let actions = coordinator.makeActions { XCTFail("the iOS Settings app is not involved") }
+
+        actions.requestNewConversation()
+        XCTAssertTrue(coordinator.confirmsNewConversation)
+        await coordinator.waitForOperations()
+        var resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 0, "確認を出しただけでは切り替えない")
+        XCTAssertNil(harness.sut.viewState.memoryNotice)
+
+        coordinator.cancelNewConversation()
+        XCTAssertFalse(coordinator.confirmsNewConversation)
+        coordinator.confirmNewConversation()
+        await coordinator.waitForOperations()
+        resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 0, "取り消した後の確定は届かない")
+        let starts = await harness.recognizer.startCount
+        XCTAssertEqual(starts, 1, "取り消しても聞き取りは止め直さない")
+        await harness.sut.shutdown()
+    }
+
+    /// 確定すると 1 回だけ新しい会話へ移り、聞き取りを再開する。重ねて確定しても 2 回目は無い。
+    func testConfirmingTheMenuStartsOneNewConversation() async {
+        let harness = ConversationHarness()
+        let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
+                                                     wakeLock: TestIdleTimerStorage(initialValue: false).makeWakeLock())
+        coordinator.beginConversation()
+        await coordinator.waitForOperations()
+        let actions = coordinator.makeActions { XCTFail("the iOS Settings app is not involved") }
+
+        actions.requestNewConversation()
+        coordinator.confirmNewConversation()
+        coordinator.confirmNewConversation()
+        await coordinator.waitForOperations()
+
+        let resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 1)
+        XCTAssertFalse(coordinator.confirmsNewConversation)
+        XCTAssertEqual(harness.sut.viewState.memoryNotice, "新しい会話を始めました")
+        XCTAssertEqual(harness.sut.viewState.phase, .listening, "新しい会話でも聞き取りを続ける")
+        await harness.sut.shutdown()
+    }
+
+    /// 確認を出している間に前面でなくなったり modal を開いたりしたら、確認は消え、確定も届かない。
+    /// 失敗のカードの「新しい会話を始める」は、カードが説明を兼ねるので確認なしで 1 回始める。
+    func testTheConfirmationEndsWithTheSceneAndRecoveryNeedsNoConfirmation() async {
+        let harness = ConversationHarness()
+        let coordinator = ConversationAppCoordinator(viewModel: harness.sut,
+                                                     wakeLock: TestIdleTimerStorage(initialValue: false).makeWakeLock())
+        coordinator.beginConversation()
+        await coordinator.waitForOperations()
+        let actions = coordinator.makeActions { XCTFail("the iOS Settings app is not involved") }
+
+        actions.requestNewConversation()
+        coordinator.scenePhaseDidChange(.inactive)
+        XCTAssertFalse(coordinator.confirmsNewConversation, "前面でなくなったら確認を閉じる")
+        coordinator.confirmNewConversation()
+        coordinator.scenePhaseDidChange(.active)
+        await coordinator.waitForOperations()
+        actions.requestNewConversation()
+        actions.openHistory()
+        XCTAssertFalse(coordinator.confirmsNewConversation, "modal を開いたら確認を閉じる")
+        await coordinator.waitForOperations()
+        coordinator.closeVoiceSettings()
+        await coordinator.waitForOperations()
+        var resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 0)
+
+        actions.performRecovery(.startNewConversation)
+        await coordinator.waitForOperations()
+        resets = await harness.reply.resetCount
+        XCTAssertEqual(resets, 1, "回復の経路は確認を出さない")
+        XCTAssertFalse(coordinator.confirmsNewConversation)
         await harness.sut.shutdown()
     }
 

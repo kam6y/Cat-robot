@@ -8,21 +8,22 @@ enum ConversationSettingsIdentifier: String, CaseIterable {
     case faceTrackingEnabled, faceTrackingStatus, faceTrackingYawCorrectionStepper
     case voicePresetPicker
     case hermesEndpointField, hermesAPIKeyField, hermesSaveButton, hermesDeleteKeyButton
-    case hermesModelPicker, hermesEffortPicker, hermesModelRefresh
+    case hermesModelPicker, hermesEffortPicker, hermesModelRefresh, replyModelOpenConnection
     case historyReloadButton
 }
 
-/// 設定の左列に並べるカテゴリ。開いたときは「会話」を選ぶ。
+/// 設定の左列に並べるカテゴリ（使う目的ごとの名前）。開いたときは先頭の「声と待機時間」を選ぶ。
+/// 会話の履歴は設定ではなく、会話メニューから開く独立した画面に置く。
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case conversation, hermesConnection, history, cameraAndTracking, robot, about
+    case conversation, replyModel, hermesConnection, cameraAndTracking, robot, about
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .conversation: "会話"
+        case .conversation: "声と待機時間"
+        case .replyModel: "返答モデル"
         case .hermesConnection: "Hermes 接続"
-        case .history: "会話の履歴"
         case .cameraAndTracking: "カメラと顔追尾"
         case .robot: "ロボット"
         case .about: "このアプリについて"
@@ -32,8 +33,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .conversation: "bubble.left"
+        case .replyModel: "sparkles"
         case .hermesConnection: "network"
-        case .history: "clock.arrow.circlepath"
         case .cameraAndTracking: "camera"
         case .robot: "antenna.radiowaves.left.and.right"
         case .about: "info.circle"
@@ -48,33 +49,34 @@ struct ConversationSettingsView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Bindable var voiceSettings: SpeechVoiceSettings
     let connectionSettings: HermesConnectionSettings?
-    let history: (any ConversationTranscriptReading)?
     @Bindable var idleSettings: ConversationIdleSettings
     let faceTracking: FaceTrackingCoordinator?
     let camera: ConversationCamera?
     let robotSettings: RobotSettingsModel?
     let onDone: () -> Void
     @State private var selection: SettingsCategory
+    /// 大きい文字のときの一覧から詳細への stack。校正の画面（isPresented / item の destination）も同じ stack に積まれる。
+    @State private var path = NavigationPath()
+    @State private var pendingDetail: SettingsCategory?
 
     init(voiceSettings: SpeechVoiceSettings, connectionSettings: HermesConnectionSettings? = nil,
-         history: (any ConversationTranscriptReading)? = nil, idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
-         camera: ConversationCamera? = nil, initialCategory: SettingsCategory = .conversation,
-         onDone: @escaping () -> Void) {
+         idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
+         camera: ConversationCamera? = nil, initialCategory: SettingsCategory? = nil, onDone: @escaping () -> Void) {
         self.idleSettings = idleSettings
         self.faceTracking = faceTracking
         self.camera = camera
         self.robotSettings = robotSettings
-        self.voiceSettings = voiceSettings; self.connectionSettings = connectionSettings; self.history = history
+        self.voiceSettings = voiceSettings; self.connectionSettings = connectionSettings
         self.onDone = onDone
-        _selection = State(initialValue: initialCategory)
+        _selection = State(initialValue: initialCategory ?? .conversation)
+        _pendingDetail = State(initialValue: initialCategory)
     }
 
     /// 首やカメラを持たない構成（テストなど）では、その欄を出さない。
     private var categories: [SettingsCategory] {
         SettingsCategory.allCases.filter { category in
             switch category {
-            case .hermesConnection: connectionSettings != nil
-            case .history: history != nil
+            case .replyModel, .hermesConnection: connectionSettings != nil
             case .robot: robotSettings != nil
             case .cameraAndTracking: camera != nil || faceTracking != nil
             default: true
@@ -83,7 +85,7 @@ struct ConversationSettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 header
                 if typeSize.isAccessibilitySize { categoryList } else { twoColumns }
@@ -93,7 +95,8 @@ struct ConversationSettingsView: View {
             // 上部の左に「設定」、右に「完了」を自前で置く。進んだ先（校正・大きい文字の詳細）ではバーを出す。
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: SettingsCategory.self) { category in
-                pane(for: category)
+                // 大きい文字では一覧から進む。返答モデルから接続へは、同じ stack に接続の画面を積む（戻るとモデルに戻る）。
+                pane(for: category, openConnection: nil)
                     .navigationTitle(category.title)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar(.visible, for: .navigationBar)
@@ -104,9 +107,20 @@ struct ConversationSettingsView: View {
             .task {
                 camera?.refreshAuthorization()
             }
+            .onAppear(perform: openInitialDetailIfNeeded)
         }
         .interactiveDismissDisabled(robotSettings?.calibration != nil)
         .preferredColorScheme(.dark)
+    }
+
+    /// 大きい文字で特定の設定を指定したときは、その詳細から開く。戻れば一覧へ移る。
+    private func openInitialDetailIfNeeded() {
+        guard let category = pendingDetail else { return }
+        pendingDetail = nil
+        guard typeSize.isAccessibilitySize, categories.contains(category) else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { path.append(category) }
     }
 
     private var header: some View {
@@ -134,7 +148,8 @@ struct ConversationSettingsView: View {
                 ScrollView { sidebar }
             }
             .frame(width: 220)
-            pane(for: selection)
+            // 2 列では、返答モデルの「Hermes 接続を設定」で右列を接続に切り替える。
+            pane(for: selection, openConnection: { selection = .hermesConnection })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -181,15 +196,16 @@ struct ConversationSettingsView: View {
         }
     }
 
+    /// openConnection は 2 列のときの切り替え。nil なら（大きい文字の一覧から進んだ先）接続の画面へ進む link にする。
     @ViewBuilder
-    private func pane(for category: SettingsCategory) -> some View {
+    private func pane(for category: SettingsCategory, openConnection: (() -> Void)?) -> some View {
         switch category {
         case .conversation:
             ConversationSettingsPane(voiceSettings: voiceSettings, idleSettings: idleSettings)
+        case .replyModel:
+            if let connectionSettings { ReplyModelSettingsPane(settings: connectionSettings, openConnection: openConnection) }
         case .hermesConnection:
             if let connectionSettings { HermesConnectionSettingsPane(settings: connectionSettings) }
-        case .history:
-            if let history { ConversationHistoryPane(reader: history) }
         case .cameraAndTracking:
             CameraTrackingSettingsPane(camera: camera, faceTracking: faceTracking, preferences: robotSettings?.preferences)
         case .robot:

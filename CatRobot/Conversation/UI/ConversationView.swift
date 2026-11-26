@@ -189,22 +189,32 @@ struct ConversationView: View {
         menuButton.padding(.trailing, Self.menuTrailingInset).padding(.top, 4)
     }
 
+    /// 顔の上のボタンはこの 1 つ。メニューの各操作の間に同じ区切りを入れる。
     private var menuButton: some View {
         Menu {
-            Button("文字で話しかける", systemImage: "keyboard", action: actions.showTypedInput)
-                .accessibilityIdentifier("showTypedInput")
-                .disabled(state.isSleeping)
-            Button("設定", systemImage: "gearshape", action: actions.openVoiceSettings)
-                .accessibilityIdentifier("openVoiceSettings")
-            Button("会話の履歴", systemImage: "clock.arrow.circlepath", action: actions.openHistory)
-                .accessibilityIdentifier("openHistory")
-            Button("新しい会話を始める", systemImage: "arrow.counterclockwise", action: actions.startNewConversation)
-                .accessibilityIdentifier("startNewConversation")
-                .disabled(state.isSleeping)
+            Section {
+                Button("文字で話しかける", systemImage: "keyboard", action: actions.showTypedInput)
+                    .accessibilityIdentifier("showTypedInput")
+                    .disabled(state.isSleeping)
+            }
+            Section {
+                Button("会話の履歴", systemImage: "clock.arrow.circlepath", action: actions.openHistory)
+                    .accessibilityIdentifier("openHistory")
+            }
+            Section {
+                Button("新しい会話を始める…", systemImage: "arrow.counterclockwise", action: actions.requestNewConversation)
+                    .accessibilityIdentifier("startNewConversation")
+                    .disabled(state.isSleeping)
+            }
+            Section {
+                Button("設定", systemImage: "gearshape", action: actions.openVoiceSettings)
+                    .accessibilityIdentifier("openVoiceSettings")
+            }
         } label: {
             Image(systemName: "ellipsis.circle").frame(minWidth: Self.menuSize, minHeight: Self.menuSize)
         }
-        .accessibilityLabel("会話の設定")
+        .menuOrder(.fixed)
+        .accessibilityLabel("会話メニュー")
         .accessibilityIdentifier("conversationSettings")
         .disabled(state.memoryState == .forgetting || isOpeningVoiceSettings)
     }

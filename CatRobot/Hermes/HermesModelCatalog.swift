@@ -1,6 +1,6 @@
 import Foundation
 
-/// Hermes で選べるモデルの候補（設定「Hermes 接続」が表示する）。
+/// Hermes で選べるモデルの候補（設定「返答モデル」が表示する）。
 /// - native inventory（`GET /api/model/options?include_unconfigured=false`）: provider ごとのモデルと、推論の対応。
 /// - 一覧に対応しない古い Hermes（404・405・501）: `GET /v1/models` の model_routes の別名だけ（provider は持たない）。
 /// Hermes はモデルごとの effort の段階を返さない。推論に対応するかと、推論を止められるかだけを読む。

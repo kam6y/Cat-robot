@@ -17,7 +17,7 @@ struct HermesTranscriptEntry: Equatable, Sendable {
 actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, ModelAvailabilityChecking, ConversationHistoryReading {
     nonisolated let supportsStableReplyPrefix = false
     private let connection: @Sendable () async -> HermesConnection?
-    /// その origin で run に付けるモデルと effort（設定「Hermes 接続」）。nil は Hermes の既定。
+    /// その origin で run に付けるモデルと effort（設定「返答モデル」）。nil は Hermes の既定。
     private let runOptions: @Sendable (String) async -> HermesRunOptions?
     private let transport: any HermesTransport
     private let records: any HermesSessionRecordStore
@@ -608,11 +608,11 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         return history.entries
     }
 
-    /// 前の会話を Hermes から読む（返事の準備と設定の履歴の共通の規則）。世代が進んでいたら nil（結果を捨てる）。
+    /// 前の会話を Hermes から読む（返事の準備と履歴画面で共通の規則）。世代が進んでいたら nil（結果を捨てる）。
     /// - 読めたら記録の session を Hermes の tip にそろえ、会話があれば受付済みとして残す（受付の分からない送信の後でも、失われたら明示できる）。
     /// - 404: 受付済みの session は失われた会話（restoreFailed）。受付の分からない送信だけなら、まだ始まっていない空の会話。
     /// - 401: この接続の拒否として記録する。
-    /// それ以外の失敗は呼び出し側が決める（返事の準備はキャッシュを保ち、設定の履歴は失敗を出す）。
+    /// それ以外の失敗は呼び出し側が決める（返事の準備はキャッシュを保ち、履歴画面は失敗を出す）。
     private func readHistory(_ current: HermesConnection, _ selected: HermesRecordSelection,
                              fromTranscript: Bool = false) async throws -> (history: HermesSessionHistory, tipRevision: UInt64)? {
         let snapshot = selected.record

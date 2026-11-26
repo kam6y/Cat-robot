@@ -119,7 +119,7 @@ final class RobotPresentationTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsName))
         let view = ConversationSettingsView(voiceSettings: SpeechVoiceSettings(defaults: defaults),
             idleSettings: ConversationIdleSettings(defaults: defaults),
-            robotSettings: model, initialCategory: .robot, onDone: {})
+            robotSettings: model, initialCategory: initialSize.isAccessibilitySize ? nil : .robot, onDone: {})
         let textSize = SettingsTextSize()
         textSize.value = initialSize
         let host = UIHostingController(rootView: SettingsTextSizeFixture(settings: view, size: textSize))

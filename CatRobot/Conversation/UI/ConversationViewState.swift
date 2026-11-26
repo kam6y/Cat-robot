@@ -150,7 +150,10 @@ struct ConversationActions {
     var performRecovery: (ConversationRecoveryAction) -> Void
     var openVoiceSettings: () -> Void = {}
     var openHistory: () -> Void = {}
+    /// 記憶のカードから、確認なしで新しい会話を始める。
     var startNewConversation: () -> Void = {}
+    /// 会話メニューから。確認を出し、確定で始める。
+    var requestNewConversation: () -> Void = {}
     var retryMemory: () -> Void = {}
     var idleFaceMotion: (CatIdleNeckCue) -> Void = { _ in }
     var cancelIdleFaceMotion: () -> Void = {}

@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// 設定「Hermes 接続」のモデルと effort。候補は保存済みの接続先の Hermes から読み、選択は接続先の origin ごとに
+/// 設定「返答モデル」のモデルと effort。候補は保存済みの接続先の Hermes から読み、選択は接続先の origin ごとに
 /// UserDefaults に置く（別の接続先のモデルを送らない）。会話はターンの初めに `options(for:)` を 1 回だけ読む
 /// （保存した次のターンから効き、同じターンの再送では変えない）。モデルを変えても新しい会話には切り替えない。
 @MainActor @Observable

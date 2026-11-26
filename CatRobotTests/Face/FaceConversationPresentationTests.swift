@@ -9,6 +9,38 @@ import XCTest
 final class FaceConversationPresentationTests: XCTestCase {
     private let longCaption = "今日はいい天気だね。窓から見える景色について、ゆっくり話そう。お昼には何を食べたの？楽しかったことも、気になったことも、ここで聞かせてね。最後までちゃんと聞いているよ。"
 
+    func testSettingsSidebarContainsConfigurationAndLeavesHistoryToConversation() async throws {
+        let fixture = SettingsFixture(authorization: .authorized)
+        defer { fixture.tearDown() }
+        let (window, host, _) = try await hostInScene(fixture.view())
+        defer { releaseWindow(window) }
+        try await waitForAccessibilityTree(in: host.view)
+        XCTAssertNotNil(accessibilityElement(in: host.view, identifier: SettingsCategory.conversation.accessibilityIdentifier))
+        XCTAssertNotNil(accessibilityElement(in: host.view, label: "返答モデル"),
+                        "モデル選択は接続先の詳細を開く前に見つかる")
+        XCTAssertNil(accessibilityElement(in: host.view, identifier: "settingsCategory.history"),
+                     "履歴は会話から開く独立した画面")
+    }
+
+    func testHistoryOpensAtTheLatestExchangeAndIncludesBothSpeakers() async throws {
+        let entries = (0..<30).map { index in
+            HermesTranscriptEntry(speaker: index.isMultiple(of: 2) ? .user : .cat, text: "メッセージ \(index)")
+        }
+        let reader = ScriptedTranscriptReader([.success(entries)])
+        let (window, host, _) = try await hostInScene(ConversationHistoryPane(reader: reader))
+        defer { releaseWindow(window) }
+        try await waitForAccessibilityTree(in: host.view)
+        for (index, speaker) in [(28, "あなた"), (29, "猫")] {
+            let visible = try await waitUntil(settling: host.view) {
+                guard let row = self.accessibilityElement(in: host.view, identifier: "historyMessage.\(index)"),
+                      let frame = try? self.accessibilityFrame(of: row, in: host.view) else { return false }
+                return host.view.bounds.intersects(frame) && (row.accessibilityLabel ?? "").contains(speaker)
+            }
+            XCTAssertTrue(visible, "会話の末尾で \(speaker) の発言が見える")
+        }
+        try capture(host.view, size: host.view.bounds.size, name: "conversation-history-latest")
+    }
+
     func testAudioOutputWarningRendersWithOtherWarningsAndClears() async throws {
         var state = ConversationViewState.listening
         state.isAudioOutputMuted = true
@@ -80,7 +112,8 @@ final class FaceConversationPresentationTests: XCTestCase {
         }
     }
 
-    func testHermesConnectionPaneCanRefreshTheServersModelList() async throws {
+    /// 返答モデルは設定の独立した欄で、その Hermes の候補・effort・再取得を出す（接続の詳細を開かなくてよい）。
+    func testReplyModelPaneCanRefreshTheServersModelList() async throws {
         func inventory(_ model: String) -> String {
             #"{"provider":"test","model":"\#(model)","providers":[{"slug":"test","models":["\#(model)"],"capabilities":{"\#(model)":{"reasoning":true}}}]}"#
         }
@@ -88,14 +121,17 @@ final class FaceConversationPresentationTests: XCTestCase {
         let fixture = SettingsFixture(authorization: .authorized, transport: server)
         defer { fixture.tearDown() }
         try await fixture.connectionSettings.save(endpointText: "https://hermes.test", apiKey: "fixture-key")
-        let (window, host, _) = try await hostInScene(fixture.view(.hermesConnection))
+        let (window, host, _) = try await hostInScene(fixture.view(.replyModel))
         defer { releaseWindow(window) }
         try await waitForAccessibilityTree(in: host.view)
+        XCTAssertNil(accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.replyModelOpenConnection.rawValue),
+                     "接続先とキーがあれば接続への案内は出さない")
         for id in [ConversationSettingsIdentifier.hermesModelPicker, .hermesEffortPicker] {
             let row = try await reachableAccessibilityElement(in: host.view, identifier: id.rawValue,
                                                              scrollingIn: detailScrollView(in: host.view))
             XCTAssertNotNil(row, id.rawValue)
         }
+        try capture(host.view, size: host.view.bounds.size, name: "settings-reply-model-configured")
         try await activateAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesModelRefresh.rawValue,
                                               scrollingIn: detailScrollView(in: host.view))
         let updated = try await waitUntil(settling: host.view) {
@@ -127,9 +163,8 @@ final class FaceConversationPresentationTests: XCTestCase {
     func testHistoryPaneReadsHermesWhenOpenedAndOffersAReloadAfterAFailure() async throws {
         let reader = ScriptedTranscriptReader([.failure(HermesClientError.transport("NSURLErrorDomain -1009")),
                                                .success([HermesTranscriptEntry(speaker: .user, text: "こんにちは")])])
-        let fixture = SettingsFixture(authorization: .authorized, history: reader)
-        defer { fixture.tearDown() }
-        let (window, host, _) = try await hostInScene(fixture.view(.history).environment(\.dynamicTypeSize, .large))
+        let sheet = ConversationHistorySheet(history: reader, onDone: {})
+        let (window, host, _) = try await hostInScene(sheet.environment(\.dynamicTypeSize, .large))
         defer { releaseWindow(window) }
         try await waitForAccessibilityTree(in: host.view)
         let reload = try await reachableAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.historyReloadButton.rawValue,
@@ -152,11 +187,11 @@ final class FaceConversationPresentationTests: XCTestCase {
         let fixture = SettingsFixture(authorization: .authorized)
         await fixture.connectRobot()
         defer { fixture.tearDown() }
-        let (window, host, _) = try await hostInScene(fixture.view(.conversation).environment(\.dynamicTypeSize, .large))
+        let (window, host, _) = try await hostInScene(fixture.view().environment(\.dynamicTypeSize, .large))
         defer { releaseWindow(window) }
         try await waitForAccessibilityTree(in: host.view)
         XCTAssertNotNil(accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.voicePresetPicker.rawValue),
-                        "開いたときは「会話」を選ぶ")
+                        "開いたときは先頭の「声と待機時間」を選ぶ")
         XCTAssertNil(accessibilityElement(in: host.view, identifier: "settingsCategory.memory"))
         XCTAssertNil(accessibilityElement(in: host.view, identifier: "settingsCategory.usage"))
         XCTAssertNil(accessibilityElement(in: host.view, label: "すべて削除"))
@@ -182,7 +217,7 @@ final class FaceConversationPresentationTests: XCTestCase {
         let fixture = SettingsFixture(authorization: .denied)
         await fixture.connectRobot()
         defer { fixture.tearDown() }
-        let (window, host, _) = try await hostInScene(fixture.view(.conversation).environment(\.dynamicTypeSize, .accessibility5))
+        let (window, host, _) = try await hostInScene(fixture.view().environment(\.dynamicTypeSize, .accessibility5))
         defer { releaseWindow(window) }
         try capture(host.view, size: host.view.bounds.size, name: "settings-maximum-type-list")
         for category in [SettingsCategory.conversation, .cameraAndTracking, .robot] {
@@ -199,6 +234,69 @@ final class FaceConversationPresentationTests: XCTestCase {
             let popped = try await waitForNavigation(navigation, toShow: 1, in: host.view)
             XCTAssertTrue(popped)
         }
+    }
+
+    /// 接続先もキーも無いとき、返答モデルは「Hermes 接続を設定」を出し、押すと右列が接続の欄に替わる（2 列）。
+    func testReplyModelLeadsToTheConnectionPaneWhenNothingIsSaved() async throws {
+        let fixture = SettingsFixture(authorization: .authorized)
+        defer { fixture.tearDown() }
+        let (window, host, _) = try await hostInScene(fixture.view(.replyModel).environment(\.dynamicTypeSize, .large))
+        defer { releaseWindow(window) }
+        try await waitForAccessibilityTree(in: host.view)
+        XCTAssertNil(accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesEndpointField.rawValue))
+        try await activateAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.replyModelOpenConnection.rawValue,
+                                               scrollingIn: detailScrollView(in: host.view))
+        let showsConnection = try await waitUntil(settling: host.view) {
+            self.accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesEndpointField.rawValue) != nil
+        }
+        XCTAssertTrue(showsConnection, "「Hermes 接続を設定」で接続先の入力に進める")
+        let navigation = try XCTUnwrap(navigationController(in: host))
+        XCTAssertEqual(navigation.viewControllers.count, 1, "2 列では右列を替えるだけで、画面を積まない")
+    }
+
+    /// 大きい文字では一覧 → 返答モデル → 「Hermes 接続を設定」で接続の詳細へ進み、戻るとモデルに戻る。
+    func testReplyModelLeadsToTheConnectionPaneAtAccessibilitySize() async throws {
+        let fixture = SettingsFixture(authorization: .authorized)
+        defer { fixture.tearDown() }
+        let (window, host, _) = try await hostInScene(fixture.view().environment(\.dynamicTypeSize, .accessibility5))
+        defer { releaseWindow(window) }
+        let navigation = try XCTUnwrap(navigationController(in: host))
+        XCTAssertEqual(navigation.viewControllers.count, 1, "普段の設定は一覧から始める")
+        try await activateAccessibilityElement(in: host.view, identifier: SettingsCategory.replyModel.accessibilityIdentifier,
+                                               scrollingIn: firstScrollView(in: host.view))
+        let model = try await waitForNavigation(navigation, toShow: 2, in: host.view)
+        XCTAssertTrue(model, "返答モデルは一覧から進む")
+        try await activateAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.replyModelOpenConnection.rawValue,
+                                               scrollingIn: detailScrollView(in: host.view))
+        let connection = try await waitForNavigation(navigation, toShow: 3, in: host.view)
+        XCTAssertTrue(connection, "接続の詳細はモデルの上に積む")
+        let showsField = try await waitUntil(settling: host.view) {
+            self.accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesEndpointField.rawValue) != nil
+        }
+        XCTAssertTrue(showsField)
+        navigation.popViewController(animated: false)
+        let back = try await waitForNavigation(navigation, toShow: 2, in: host.view)
+        XCTAssertTrue(back, "戻ると返答モデルに戻る")
+    }
+
+    /// 失敗から接続の欄を指して開いたときは、大きい文字でも一覧を挟まずに接続の詳細から始める（戻ると一覧）。
+    func testConnectionDeepLinkOpensItsDetailAtAccessibilitySize() async throws {
+        let fixture = SettingsFixture(authorization: .authorized)
+        defer { fixture.tearDown() }
+        let (window, host, _) = try await hostInScene(fixture.view(.hermesConnection)
+            .environment(\.dynamicTypeSize, .accessibility5))
+        defer { releaseWindow(window) }
+        let navigation = try XCTUnwrap(navigationController(in: host))
+        let opened = try await waitForNavigation(navigation, toShow: 2, in: host.view)
+        XCTAssertTrue(opened, "指した欄の詳細から始める")
+        let showsField = try await waitUntil(settling: host.view) {
+            self.accessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesEndpointField.rawValue) != nil
+        }
+        XCTAssertTrue(showsField)
+        navigation.popViewController(animated: false)
+        let list = try await waitForNavigation(navigation, toShow: 1, in: host.view)
+        XCTAssertTrue(list, "戻ると一覧")
+        XCTAssertNotNil(accessibilityElement(in: host.view, identifier: SettingsCategory.replyModel.accessibilityIdentifier))
     }
 
     func testCameraPaneAuthorizationStatesRender() async throws {
@@ -336,11 +434,14 @@ final class FaceConversationPresentationTests: XCTestCase {
             try assertChips(chips, clearTheMenuIn: view, insets: Self.leftIslandInsets)
             let editor = try XCTUnwrap(accessibilityElement(in: view, label: "文字で話しかける"), "the typed input is reachable")
             let editorFrame = try accessibilityFrame(of: editor, in: view)
-            let title = try XCTUnwrap(accessibilityElement(in: view, label: "文字入力"), "the input card title is reachable")
+            let send = try XCTUnwrap(accessibilityElement(in: view, label: "文字を送信"))
             let close = try XCTUnwrap(accessibilityElement(in: view, label: "文字入力を閉じる"))
-            let titleFrame = try accessibilityFrame(of: title, in: view)
+            let sendFrame = try accessibilityFrame(of: send, in: view)
             let closeFrame = try accessibilityFrame(of: close, in: view)
-            let inputTop = min(editorFrame.minY, titleFrame.minY, closeFrame.minY)
+            XCTAssertGreaterThan(min(editorFrame.maxY, sendFrame.maxY, closeFrame.maxY),
+                                 max(editorFrame.minY, sendFrame.minY, closeFrame.minY),
+                                 "入力欄・送信・閉じるは横向きのキーボード上の同じ行に収まる")
+            let inputTop = min(editorFrame.minY, sendFrame.minY, closeFrame.minY)
             XCTAssertTrue(view.bounds.contains(editorFrame), "the editor stays in the viewport")
             XCTAssertTrue(view.bounds.contains(closeFrame), "the close button stays in the viewport")
             // スクロール内容の AX frame は画面外も含むので、上側のスクロール領域で実際に見える部分を測る。
@@ -352,7 +453,7 @@ final class FaceConversationPresentationTests: XCTestCase {
                 let frame = try accessibilityFrame(of: element, in: view)
                 let visible = contentViewport.map { frame.intersection($0) } ?? frame
                 if !visible.isNull {
-                    XCTAssertLessThanOrEqual(visible.maxY, inputTop, "\(chip) must stay above the entire input card, including its title and close button: \(visible) / inputTop=\(inputTop)")
+                    XCTAssertLessThanOrEqual(visible.maxY, inputTop, "\(chip) must stay above the entire input card, including the send and close buttons: \(visible) / inputTop=\(inputTop)")
                 }
             }
         }
@@ -653,9 +754,8 @@ final class FaceConversationPresentationTests: XCTestCase {
         let idleSettings: ConversationIdleSettings
         let keys: HermesKeyStoresFake
         let connectionSettings: HermesConnectionSettings
-        let history: ScriptedTranscriptReader
 
-        init(authorization: FaceCameraAuthorization, history: ScriptedTranscriptReader? = nil,
+        init(authorization: FaceCameraAuthorization,
              transport: any HermesTransport = RoutedHermesTransport([:])) {
             let defaultsName = "settings-fixture-\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: defaultsName)!
@@ -673,17 +773,14 @@ final class FaceConversationPresentationTests: XCTestCase {
             // モデルの候補は外へ取りに行かない（自動試験で外部通信しない）。
             connectionSettings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) },
                                                           transport: transport)
-            self.history = history ?? ScriptedTranscriptReader([.success([HermesTranscriptEntry(speaker: .user, text: "こんにちは"),
-                                                                          HermesTranscriptEntry(speaker: .cat, text: "やあ")])])
         }
 
         func connectRobot() async { await harness.connectReady() }
 
-        func view(_ category: SettingsCategory) -> ConversationSettingsView {
-            ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings, history: history,
+        func view(_ category: SettingsCategory? = nil) -> ConversationSettingsView {
+            ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings,
                                      idleSettings: idleSettings, robotSettings: robot,
-                                     faceTracking: face, camera: camera, initialCategory: category,
-                                     onDone: {})
+                                     faceTracking: face, camera: camera, initialCategory: category, onDone: {})
         }
 
         func tearDown() {

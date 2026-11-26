@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定「会話」の右列。声と、居眠りまでの時間。返事を作るのは Hermes なので、モデルと effort の選択は「Hermes 接続」に置く。
+/// 設定「声と待機時間」の右列。声と、居眠りまでの時間。返事のモデルと effort は「返答モデル」に置く。
 struct ConversationSettingsPane: View {
     @Bindable var voiceSettings: SpeechVoiceSettings
     @Bindable var idleSettings: ConversationIdleSettings
@@ -25,7 +25,7 @@ struct ConversationSettingsPane: View {
     }
 }
 
-/// 設定「Hermes 接続」の右列。接続先（https の root）と API キー、その Hermes で使うモデルと effort。
+/// 設定「Hermes 接続」の右列。接続先（https の root）と API キーだけ（モデルと effort は「返答モデル」）。
 /// 保存済みのキーは表示せず、入力欄にも戻さない。
 struct HermesConnectionSettingsPane: View {
     let settings: HermesConnectionSettings
@@ -73,11 +73,8 @@ struct HermesConnectionSettingsPane: View {
             } footer: {
                 Text("普段使いできる常設の HTTPS 接続先はまだ用意されていません。接続先とキーを設定しないと、通常の返事は使えません（ほかのモデルが代わりに答えることはありません）。")
             }
-            HermesModelSection(settings: settings)
         }
         .task { await settings.refresh() }
-        // 開いたときと、接続先かキーを保存・削除したときに、Hermes の cache から候補を読む（probe し直すのは明示の再取得だけ）。
-        .task(id: settings.models.connectionRevision) { await settings.refreshModels(force: false) }
     }
 
     private var keyStatus: String {
@@ -133,15 +130,43 @@ struct HermesConnectionSettingsPane: View {
     }
 }
 
-/// 「Hermes 接続」のモデルと effort。候補は保存済みの接続先の Hermes から読み、選択は接続先ごとに保存する。
+/// 設定「返答モデル」の右列。返事に使うモデルと effort。候補は保存済みの接続先の Hermes から読み、選択は接続先ごとに保存する。
 /// 再取得のボタンは、読み込み中・失敗・未設定のときも出す（押せないときは disabled）。
-private struct HermesModelSection: View {
+/// 接続先かキーが無いときは「Hermes 接続を設定」を出す。openConnection が nil なら、同じ stack で接続の画面へ進む。
+struct ReplyModelSettingsPane: View {
     let settings: HermesConnectionSettings
+    let openConnection: (() -> Void)?
     private var models: HermesModelSettings { settings.models }
     /// 保存済みの接続先に、その origin のキーがある（候補を読める）。
     private var canLoad: Bool { models.origin != nil && settings.hasSavedKey }
 
     var body: some View {
+        Form {
+            if !canLoad { connectionSection }
+            modelSection
+        }
+        .task { await settings.refresh() }
+        // 開いたときと、接続先かキーを保存・削除したときに、Hermes の cache から候補を読む（probe し直すのは明示の再取得だけ）。
+        .task(id: models.connectionRevision) { await settings.refreshModels(force: false) }
+    }
+
+    private var connectionSection: some View {
+        Section {
+            Text(models.origin == nil
+                 ? "接続先と API キーを保存すると、モデルを選べます。対応モデルでは推論の深さも変更できます。"
+                 : "API キーを保存すると、モデルを選べます。対応モデルでは推論の深さも変更できます。")
+                .foregroundStyle(.secondary)
+            if let openConnection {
+                Button("Hermes 接続を設定", action: openConnection)
+                    .accessibilityIdentifier(ConversationSettingsIdentifier.replyModelOpenConnection.rawValue)
+            } else {
+                NavigationLink("Hermes 接続を設定", value: SettingsCategory.hermesConnection)
+                    .accessibilityIdentifier(ConversationSettingsIdentifier.replyModelOpenConnection.rawValue)
+            }
+        }
+    }
+
+    private var modelSection: some View {
         Section {
             Picker("モデル", selection: Binding(get: { models.current.model }, set: { models.select(model: $0) })) {
                 Text(defaultModelLabel).tag(HermesModelID?.none)
@@ -184,8 +209,8 @@ private struct HermesModelSection: View {
     }
 
     private var status: String? {
-        guard models.origin != nil else { return "接続先とキーを保存すると、この Hermes で使えるモデルを読み込めます。" }
-        guard settings.hasSavedKey else { return "この接続先の API キーを保存すると、使えるモデルを読み込めます。" }
+        // 接続先かキーが無いときの案内は、上の「Hermes 接続を設定」の欄に出す。
+        guard canLoad else { return nil }
         switch models.phase {
         case .idle: return nil
         case .loading: return "モデルの候補を読み込んでいます…"
