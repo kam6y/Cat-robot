@@ -2,6 +2,12 @@ import Foundation
 
 protocol ModelAvailabilityChecking: Sendable {
     func availability() async -> ModelAvailability
+    /// 利用者が明示的に確かめ直したとき（「もう一度確認」）だけ呼ぶ。拒否を覚えていない実装は何もしない。
+    func recheckAvailability() async
+}
+
+extension ModelAvailabilityChecking {
+    func recheckAvailability() async {}
 }
 
 protocol AddressClassifying: Sendable {

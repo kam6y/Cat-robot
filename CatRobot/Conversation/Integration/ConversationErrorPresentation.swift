@@ -45,18 +45,25 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             case .available:
                 message = "会話モデルの状態を確認できませんでした。"
                 recoveries = [.checkAgain]
+            case .hermesNotConfigured:
+                message = "返事に使う Hermes の接続先が設定されていません。設定で接続先と API キーを入力してください。"
+                recoveries = [.connectionSettings, .checkAgain]
+            case .hermesUnauthorized:
+                message = "Hermes が API キーを受け付けませんでした。設定でキーを確かめるか、Hermes 側を直してから「もう一度確認」を押してください。"
+                recoveries = [.connectionSettings, .checkAgain]
+            // Claude は声の宛先判定だけに使う。文字の会話は Hermes だけで続けられる。
             case .claudeCredentialMissing:
-                message = "Claudeの接続設定がありません。開発ビルドではAPIキー、配布ビルドではApp Attestの登録が必要です。"
-                recoveries = [.checkAgain]
+                message = "声の呼びかけの判定に使う Claude の接続設定がありません。開発ビルドではAPIキー、配布ビルドではApp Attestの登録が必要です。文字なら話しかけられます。"
+                recoveries = [.checkAgain, .typedInput]
             case .claudeAttestationUnsupported:
-                message = "この端末ではApp Attestを使えないため、Claudeに接続できません。実機で実行してください。"
-                recoveries = [.checkAgain]
+                message = "この端末ではApp Attestを使えないため、声の呼びかけの判定に使う Claude に接続できません。実機で実行するか、文字で話しかけてください。"
+                recoveries = [.checkAgain, .typedInput]
             case .claudeAttestationFailed:
-                message = "Claudeの認証に失敗しました。ネットワークを確認して、もう一度お試しください。続く場合はアプリの登録が無効になっている可能性があります。"
-                recoveries = [.checkAgain]
+                message = "声の呼びかけの判定に使う Claude の認証に失敗しました。ネットワークを確認して、もう一度お試しください。続く場合はアプリの登録が無効になっている可能性があります。文字なら話しかけられます。"
+                recoveries = [.checkAgain, .typedInput]
             case .claudeUnreachable:
-                message = "Claudeに接続できません。ネットワークを確認してください。"
-                recoveries = [.checkAgain]
+                message = "声の呼びかけの判定に使う Claude に接続できません。ネットワークを確認するか、文字で話しかけてください。"
+                recoveries = [.checkAgain, .typedInput]
             }
         case .modelLocaleUnsupported:
             message = "この言語では会話モデルを利用できません。設定を確認してください。"
@@ -82,6 +89,10 @@ struct ConversationErrorPresentation: Equatable, Sendable {
         case .modelUnreachable:
             message = "通信が不安定で返事を受け取れませんでした。もう一度話しかけてください。"
             recoveries = [.retry, .typedInput]
+        case .replyTimedOut:
+            // Hermes 側で前の run が終わらないと同じ会話の後続も止まる。その出口として新しい会話を出す。
+            message = "返事が届かないまま時間が過ぎました。もう一度話しかけてください。続くときは新しい会話を始めてください。"
+            recoveries = [.retry, .typedInput, .newConversation]
         case .cancelled:
             message = "会話を一時停止しました。"
             recoveries = [.retry]
@@ -93,5 +104,7 @@ extension ConversationRecovery {
     fileprivate static let retry = Self(title: "もう一度", action: .retry)
     fileprivate static let checkAgain = Self(title: "もう一度確認", action: .retry)
     fileprivate static let settings = Self(title: "設定を開く", action: .openSettings)
+    fileprivate static let connectionSettings = Self(title: "接続を設定", action: .openConnectionSettings)
+    fileprivate static let newConversation = Self(title: "新しい会話を始める", action: .startNewConversation)
     static let typedInput = Self(title: "文字で話す", action: .showTypedInput)
 }

@@ -16,6 +16,8 @@ enum ConversationAppScenePhase: Equatable, Sendable {
 @Observable
 final class ConversationAppCoordinator {
     private(set) var showsVoiceSettings = false
+    /// 設定を開くときに選ぶ欄。
+    private(set) var settingsCategory: SettingsCategory = .conversation
     private(set) var isOpeningVoiceSettings = false
     private var isVoiceSettingsClosed: Bool { !showsVoiceSettings && !isOpeningVoiceSettings }
     @ObservationIgnored private var voiceSettingsTask: Task<Void, Never>?
@@ -267,8 +269,9 @@ final class ConversationAppCoordinator {
         updateFaceEnvironment()
     }
 
-    func openVoiceSettings() {
+    func openVoiceSettings(category: SettingsCategory = .conversation) {
         guard scenePhase == .active, isVoiceSettingsClosed else { return }
+        settingsCategory = category
         isOpeningVoiceSettings = true
         updateInactivity()
         settingsModel?.setApplicationMode(nil)
@@ -352,21 +355,15 @@ final class ConversationAppCoordinator {
                 case .showTypedInput:
                     guard !self.isSleeping else { return }
                     self.viewModel.showTypedInput()
+                case .openConnectionSettings:
+                    self.openVoiceSettings(category: .hermesConnection)
+                case .startNewConversation:
+                    self.launchNewConversation()
                 }
             },
             openVoiceSettings: { [weak self] in self?.openVoiceSettings() },
-            startNewConversation: { [weak self] in
-                self?.launchAction { [weak self] in
-                    guard let self else { return }
-                    self.hasStartedConversation = false
-                    self.inactivity.recordActivity()
-                    self.updateInactivity()
-                    self.updateFaceEnvironment()
-                    self.faceTracking?.resetConversation()
-                    await self.viewModel.startNewConversation()
-                    self.resumeListeningIfNeeded()
-                }
-            },
+            openHistory: { [weak self] in self?.openVoiceSettings(category: .history) },
+            startNewConversation: { [weak self] in self?.launchNewConversation() },
             retryMemory: { [weak self] in
                 self?.launchAction(allowWhileSleeping: true) { [weak self] in
                     guard let self else { return }
@@ -393,6 +390,20 @@ final class ConversationAppCoordinator {
             },
             cancelIdleFaceMotion: { [weak self] in self?.motion.cancelIdleFaceMotion() }
         )
+    }
+
+    /// 新しい Hermes の session で会話を始める。メニューと失敗・記憶の出口が同じ経路を使う。
+    private func launchNewConversation() {
+        launchAction { [weak self] in
+            guard let self else { return }
+            self.hasStartedConversation = false
+            self.inactivity.recordActivity()
+            self.updateInactivity()
+            self.updateFaceEnvironment()
+            self.faceTracking?.resetConversation()
+            await self.viewModel.startNewConversation()
+            self.resumeListeningIfNeeded()
+        }
     }
 
     func waitForOperations() async {

@@ -165,12 +165,16 @@ final class ConversationAccessibilityTests: XCTestCase {
 
     func testSettingsSheetDeclaresItsControls() {
         // 記憶の一覧・すべて削除・1 日の上限は 2026-11-10 に撤去した（Hermes 移行②）。
+        // モデルとエフォートの選択は返事を Hermes が作るようになって撤去した。
         XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
                        ["sleepyMinutesStepper", "sleepingMinutesStepper", "cameraPermissionButton",
-                        "faceTrackingEnabled", "faceTrackingStatus", "faceTrackingYawCorrectionStepper", "modelPicker", "effortPicker", "voicePresetPicker"])
+                        "faceTrackingEnabled", "faceTrackingStatus", "faceTrackingYawCorrectionStepper", "voicePresetPicker",
+                        "hermesEndpointField", "hermesAPIKeyField", "hermesSaveButton", "hermesDeleteKeyButton",
+                        "historyReloadButton"])
     }
     func testSettingsCategoriesHaveNoMemoryOrUsagePane() {
-        XCTAssertEqual(SettingsCategory.allCases.map(\.rawValue), ["conversation", "cameraAndTracking", "robot", "about"])
+        XCTAssertEqual(SettingsCategory.allCases.map(\.rawValue),
+                       ["conversation", "hermesConnection", "history", "cameraAndTracking", "robot", "about"])
         XCTAssertNil(SettingsCategory(rawValue: "memory"))
         XCTAssertNil(SettingsCategory(rawValue: "usage"))
     }

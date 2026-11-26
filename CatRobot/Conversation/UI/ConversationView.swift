@@ -196,6 +196,8 @@ struct ConversationView: View {
                 .disabled(state.isSleeping)
             Button("設定", systemImage: "gearshape", action: actions.openVoiceSettings)
                 .accessibilityIdentifier("openVoiceSettings")
+            Button("会話の履歴", systemImage: "clock.arrow.circlepath", action: actions.openHistory)
+                .accessibilityIdentifier("openHistory")
             Button("新しい会話を始める", systemImage: "arrow.counterclockwise", action: actions.startNewConversation)
                 .accessibilityIdentifier("startNewConversation")
                 .disabled(state.isSleeping)
@@ -244,6 +246,10 @@ struct ConversationView: View {
                     Text(message).fixedSize(horizontal: false, vertical: true)
                     if state.memoryPresentation.canRetry {
                         Button(state.memoryState == .unsaved ? "保存を再試行" : "再試行", action: actions.retryMemory)
+                            .buttonStyle(.bordered).frame(minHeight: 44)
+                    }
+                    if state.memoryPresentation.offersNewConversation {
+                        Button("新しい会話を始める", action: actions.startNewConversation)
                             .buttonStyle(.bordered).frame(minHeight: 44)
                     }
                 }

@@ -62,9 +62,9 @@ struct OnboardingView: View {
 
     private var points: some View {
         VStack(alignment: .leading, spacing: 14) {
-            point("返事は Anthropic の Claude が作ります。送るのは話しかけた文字・会話の要約・覚えたことと、「見て」と頼んだときの静止画像1枚。音声や動画は送りません",
+            point("返事は設定した Hermes の接続先が作り、会話の続きと履歴も Hermes に残ります。送るのは話しかけた文字だけで、音声や映像は送りません。声で話しかけたときは、猫に話しかけたかの判定に Anthropic の Claude も使います",
                   systemImage: "cloud")
-            point("聞き取り・読み上げ・記憶はこのiPhoneの中。マイクは会話画面を開いている間だけ使います。会話の要約と直近のやり取りは「新しい会話を始める」で消せます。長期メモは残ります",
+            point("聞き取りと読み上げはこのiPhoneの中。マイクは会話画面を開いている間だけ使います。「新しい会話を始める」は Hermes で新しい会話に切り替えます。前の会話を Hermes から消すことはしません",
                   systemImage: "iphone")
             point("AIの返事は間違うことがあります。利用料は作者の負担です", systemImage: "exclamationmark.triangle")
             Text("聞き取り中はカメラで顔の向きを確認し、こちらを向いていればすぐ返答します。顔の判定はiPhone内だけで行います。カメラの許可とこの説明は、あとから「設定」で確認できます")

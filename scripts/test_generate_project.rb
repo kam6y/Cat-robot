@@ -79,7 +79,8 @@ assert(PBXPROJ_PATH.file?, "generated project.pbxproj is missing")
 assert(SCHEME_PATH.file?, "generated shared scheme is missing")
 
 info = Xcodeproj::Plist.read_from_path(ROOT.join("CatRobot/Resources/Info.plist").to_s)
-assert(info["NSLocalNetworkUsageDescription"] == "開発用の診断で、同じネットワーク上の Mac にある検証用 relay へ接続します。", "the explicit Info.plist must carry the probe local network description")
+assert(info["NSLocalNetworkUsageDescription"] == "返事に使う Hermes の接続先が同じネットワーク上にあるときに、その接続先へ HTTPS で接続します。開発用の診断では、同じネットワーク上の Mac にある検証用 relay へ接続します。", "the explicit Info.plist must carry the Hermes local network description")
+assert(info["NSCameraUsageDescription"] == "顔がこちらを向いているかをiPhone内で確認して話しかけられたか判断し、顔の方向にハードを向けます。カメラの映像と画像は送信も保存もしません。", "no still image goes to a model now that replies come from Hermes")
 reason = info["NSBluetoothAlwaysUsageDescription"]
 assert(reason.is_a?(String) && !reason.strip.empty?, "Bluetooth usage description is missing")
 assert(!info.key?("UIBackgroundModes"), "the robot link must remain foreground-only")

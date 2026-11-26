@@ -6,7 +6,8 @@ struct AppRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     private let voiceSettings: SpeechVoiceSettings
-    private let modelSettings: ConversationModelSettings
+    private let connectionSettings: HermesConnectionSettings?
+    private let history: (any ConversationTranscriptReading)?
     private let faceTracking: FaceTrackingCoordinator?
     private let faceExpressions: any FaceExpressionControlling
     private let camera: ConversationCamera?
@@ -20,7 +21,7 @@ struct AppRootView: View {
 
     init(composition: ConversationComposition, onboardingSettings: OnboardingSettings? = nil) {
         self.init(dependencies: composition.dependencies, voiceSettings: composition.voiceSettings,
-                  modelSettings: composition.modelSettings,
+                  connectionSettings: composition.connectionSettings, history: composition.history,
                   robotSettings: composition.robotSettings, robotLink: composition.robotLink,
                   faceTracking: composition.faceTracking, camera: composition.camera, onboardingSettings: onboardingSettings)
     }
@@ -29,7 +30,8 @@ struct AppRootView: View {
         dependencies: ConversationDependencies,
         voiceSettings: SpeechVoiceSettings? = nil,
         wakeLock: ConversationScreenWakeLock = .live(),
-        modelSettings: ConversationModelSettings? = nil,
+        connectionSettings: HermesConnectionSettings? = nil,
+        history: (any ConversationTranscriptReading)? = nil,
         robotSettings: RobotSettingsModel? = nil,
         robotLink: (any RobotLinkControlling)? = nil,
         faceTracking: FaceTrackingCoordinator? = nil,
@@ -47,7 +49,8 @@ struct AppRootView: View {
         if let robotLink { reconnectIndicator.update(robotLink.snapshot) }
         _reconnectIndicator = State(initialValue: reconnectIndicator)
         self.voiceSettings = voiceSettings ?? SpeechVoiceSettings()
-        self.modelSettings = modelSettings ?? ConversationModelSettings()
+        self.connectionSettings = connectionSettings
+        self.history = history
         let viewModel = ConversationViewModel(dependencies: dependencies)
         _viewModel = State(initialValue: viewModel)
         _coordinator = State(
@@ -76,9 +79,9 @@ struct AppRootView: View {
         }
         .sheet(isPresented: Binding(get: { coordinator.showsVoiceSettings },
                                     set: { if !$0 { coordinator.closeVoiceSettings() } })) {
-            ConversationSettingsView(voiceSettings: voiceSettings, modelSettings: modelSettings,
+            ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings, history: history,
                                      idleSettings: coordinator.inactivity.settings, robotSettings: robotSettings, faceTracking: faceTracking, camera: camera,
-                                     onDone: coordinator.closeVoiceSettings)
+                                     initialCategory: coordinator.settingsCategory, onDone: coordinator.closeVoiceSettings)
 
         }
         .task {

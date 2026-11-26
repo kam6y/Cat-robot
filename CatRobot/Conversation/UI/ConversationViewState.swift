@@ -19,8 +19,13 @@ struct SpeechMouthPoseSequence {
 
 enum ConversationRecoveryAction: Equatable, Sendable {
     case retry
+    /// iOS の設定アプリ（マイクの許可など）。
     case openSettings
     case showTypedInput
+    /// アプリ内の設定を Hermes 接続の欄で開く。
+    case openConnectionSettings
+    /// 新しい Hermes の session で会話を始める（前の run の停止の成功・履歴の削除・忘却を意味しない）。
+    case startNewConversation
 }
 
 struct ConversationRecovery: Equatable, Sendable {
@@ -144,6 +149,7 @@ struct ConversationActions {
     var sendTypedText: () -> Void
     var performRecovery: (ConversationRecoveryAction) -> Void
     var openVoiceSettings: () -> Void = {}
+    var openHistory: () -> Void = {}
     var startNewConversation: () -> Void = {}
     var retryMemory: () -> Void = {}
     var idleFaceMotion: (CatIdleNeckCue) -> Void = { _ in }

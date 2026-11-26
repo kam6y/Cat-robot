@@ -15,6 +15,9 @@ from urllib.parse import urlsplit
 
 _REQUIRED = ("hermesBase", "relayListen", "cert", "key", "mcpListen", "mcpBridgeKey")
 _DEFAULTS: dict[str, Any] = {
+    "conversationMode": False,
+    "clientKey": "",
+    "upstreamKey": "",
     "upstreamTimeoutSeconds": 15,
     "callTimeoutSeconds": 30,
     "bindingTTLSeconds": 600,
@@ -94,6 +97,9 @@ class RelayConfig:
     max_runs_per_process: int
     drain_poll_attempts: int
     drain_poll_interval_seconds: float
+    conversation_mode: bool = False
+    client_key: str = field(default="", repr=False)
+    upstream_key: str = field(default="", repr=False)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "RelayConfig":
@@ -106,6 +112,17 @@ class RelayConfig:
         if unknown:
             raise ValueError("unknown config key(s): " + ", ".join(unknown))
         merged = {**_DEFAULTS, **values}
+        if not isinstance(merged["conversationMode"], bool):
+            raise ValueError("conversationMode must be a boolean")
+        if merged["conversationMode"]:
+            for name in ("clientKey", "upstreamKey"):
+                value = _text(merged, name)
+                if any(ord(c) < 33 or ord(c) > 126 for c in value):
+                    raise ValueError(f"{name} must contain visible ASCII only")
+            if merged["clientKey"] == merged["upstreamKey"]:
+                raise ValueError("clientKey and upstreamKey must be different")
+        elif merged["clientKey"] or merged["upstreamKey"]:
+            raise ValueError("clientKey and upstreamKey require conversationMode")
 
         hermes_base = _text(merged, "hermesBase")
         parts = urlsplit(hermes_base)
@@ -118,6 +135,9 @@ class RelayConfig:
         relay_listen = tuple(_listen(item, "relayListen", _lan_or_loopback, "a loopback or private LAN address") for item in listen)
 
         return cls(
+            conversation_mode=merged["conversationMode"],
+            client_key=merged["clientKey"],
+            upstream_key=merged["upstreamKey"],
             hermes_base=hermes_base,
             relay_listen=relay_listen,
             cert=_text(merged, "cert"),
@@ -149,6 +169,9 @@ class RelayConfig:
     def public(self) -> dict[str, Any]:
         """receipt / ログ向けの非秘密ビュー。鍵は在否の真偽値だけ。"""
         return {
+            "conversationMode": self.conversation_mode,
+            "clientKey_present": bool(self.client_key),
+            "upstreamKey_present": bool(self.upstream_key),
             "hermesBase": self.hermes_base,
             "relayListen": [f"{host}:{port}" for host, port in self.relay_listen],
             "cert": self.cert,

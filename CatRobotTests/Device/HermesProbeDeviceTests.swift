@@ -65,7 +65,7 @@ final class HermesProbeDeviceTests: XCTestCase {
             receipt["endpoint"] = configuration.endpoint.absoluteString
             try require(!credential.apiKey.isEmpty, "probe credential empty")
             let transport = PinnedURLSessionTransport(configuration: configuration)
-            let runs = HermesRunClient(configuration: configuration, credential: credential, transport: transport)
+            let runs = HermesRunClient(endpoint: configuration.endpoint, credential: credential, transport: transport)
             let bridge = HermesBridgeClient(configuration: configuration, credential: credential, transport: transport)
 
             if stage == "lifetime1" {
@@ -140,8 +140,8 @@ final class HermesProbeDeviceTests: XCTestCase {
             receipt["outcome"] = "failed"
             receipt["failedPhase"] = phase
             // Never describe arbitrary errors or requests; external messages may include credentials.
-            if case HermesProbeError.transport(let reason) = error { receipt["transportDiagnostic"] = reason }
-            if case HermesProbeError.httpStatus(let status) = error { receipt["httpStatus"] = status }
+            if case HermesClientError.transport(let reason) = error { receipt["transportDiagnostic"] = reason }
+            if case HermesClientError.httpStatus(let status) = error { receipt["httpStatus"] = status }
             receipt["errorType"] = String(reflecting: type(of: error))
             try? save()
             XCTFail("Hermes probe failed in \(phase); see sanitized results.json")

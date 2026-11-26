@@ -22,7 +22,7 @@ struct CatRobotApp: App {
         isHermesProbe = environment["HERMES_PROBE"] == "1"
         // Dedicated speech trials own AVAudioSession and measure their first dictionary load.
         // Running the live scene alongside them would prepare the shared service early.
-        if isHermesProbe || environment["SUPER_INTEGRATION_TESTS"] == "1" {
+        if isHermesProbe || environment["HERMES_CONVERSATION_LIVE"] == "1" || environment["SUPER_INTEGRATION_TESTS"] == "1" {
             composition = nil
         } else {
             composition = .live()

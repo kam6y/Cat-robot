@@ -143,7 +143,8 @@ final class ConversationViewModel {
         activeMicrophonePermissionAwaitID != nil
     }
 
-    func startConversation() async {
+    /// rechecksAvailability は「もう一度確認」の操作だけが true にする（使えなかった会話モデルを開始の中で 1 回確かめ直す）。
+    func startConversation(rechecksAvailability: Bool = false) async {
         guard !isShutdown, !isShuttingDown, !memoryActionInProgress,
               !ConversationMemoryPresentation(state: viewState.memoryState).blocksConversation else { return }
         ensureMemoryEventConsumer()
@@ -179,7 +180,7 @@ final class ConversationViewModel {
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.dependencies.lifecycleCheckpoint(.preflightWillStart)
-            await self.performVoicePreflight(generation: generation)
+            await self.performVoicePreflight(generation: generation, rechecksAvailability: rechecksAvailability)
             await self.dependencies.lifecycleCheckpoint(.preflightWillFinish)
             if self.preflightOwnership.finish(preflightID) {
                 self.preflightTask = nil
@@ -200,11 +201,13 @@ final class ConversationViewModel {
     }
 
     func retryRecovery() async {
+        var rechecksAvailability = false
+        if case .failed(.modelUnavailable) = viewState.phase { rechecksAvailability = true }
         viewState.errorMessage = nil
         viewState.recoveries = []
         switch viewState.phase {
         case .failed, .paused, .idle:
-            await startConversation()
+            await startConversation(rechecksAvailability: rechecksAvailability)
         default:
             break
         }
@@ -458,7 +461,8 @@ final class ConversationViewModel {
         transition(to: .paused)
     }
 
-    /// 短期の会話内容だけを捨てる。長期メモは残る。モデル設定の変更はこのあとの会話から効く。
+    /// 会話を新しく始め直す（Hermes では新しい session に替わる）。進行中のターンは取り消すが、
+    /// 前の会話を Hermes から消したり、前の run を止めたと扱ったりはしない。
     func startNewConversation() async {
         guard !memoryActionInProgress, !isShutdown, !isShuttingDown else { return }
         memoryActionInProgress = true
@@ -518,10 +522,15 @@ final class ConversationViewModel {
         }
     }
 
-    private func performVoicePreflight(generation: UInt64) async {
+    private func performVoicePreflight(generation: UInt64, rechecksAvailability: Bool) async {
         var audioActivationAttempted = false
         var recognizerPreparationAttempted = false
         let owner = ConversationTurnOwner.lifecycle(generation: generation)
+        if rechecksAvailability {
+            // マイクの許可より前に確かめる（文字だけで話す人も同じ操作で戻れる）。待つ間に場面が変われば、ここで止める。
+            await dependencies.modelAvailability.recheckAvailability()
+            guard isCurrent(generation) else { return }
+        }
         do {
             microphonePermissionAwaitCounter &+= 1
             let permissionAwaitID = microphonePermissionAwaitCounter

@@ -798,6 +798,8 @@ final class ConversationHarness {
         isFacingScreen: (@MainActor @Sendable () -> Bool)? = nil,
         microphoneAllowed: Bool = true,
         modelAvailabilityResult: ModelAvailability = .available,
+        /// 指定すると fake の代わりにこの availability（実の Hermes service など）を VM へ渡す。
+        modelAvailabilityOverride: (any ModelAvailabilityChecking)? = nil,
         availabilityGate: ConversationTestGate? = nil,
         permissionGate: ConversationTestGate? = nil,
         replySnapshots: [String]? = ["わかったよ"],
@@ -890,7 +892,7 @@ final class ConversationHarness {
         let attention = self.attention
         let dependencies = ConversationDependencies(
             microphonePermission: microphone,
-            modelAvailability: modelAvailability,
+            modelAvailability: modelAvailabilityOverride ?? modelAvailability,
             recognizer: recognizerOverride ?? recognizer,
             classifier: classifierOverride ?? classifier,
             reply: replyOverride ?? reply,

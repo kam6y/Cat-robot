@@ -43,13 +43,17 @@ enum SpeechEvent: Equatable, Sendable {
     case cancelled
 }
 
-/// 会話モデル（Claude）の可否。利用不可の理由は接続設定・App Attest・到達不能のいずれか。
+/// 会話モデルの可否。通常の返事は Hermes、宛先判定は Claude（Haiku）が受け持つ。
 enum ModelAvailability: Equatable, Sendable {
     case available
     case claudeCredentialMissing
     case claudeAttestationUnsupported
     case claudeAttestationFailed
     case claudeUnreachable
+    /// Hermes の接続先か API キーが設定されていない。
+    case hermesNotConfigured
+    /// Hermes が API キーを受け付けなかった（401）。
+    case hermesUnauthorized
 }
 
 enum ConversationServiceError: Error, Equatable, Sendable {
@@ -73,6 +77,9 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case modelGenerationFailed
     /// 通信断・タイムアウト・レート制限（通信到達不能）。
     case modelUnreachable
+    /// 返事が期限までに届かなかった（受付の分からない送信のまま、または受け付けられた run が終わらないまま）。
+    /// installed Hermes で終わらない run が同じ会話の後続を止める場合を含む。
+    case replyTimedOut
     case cancelled
 }
 

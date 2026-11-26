@@ -146,7 +146,7 @@ final class HermesBridgeClientTests: XCTestCase {
             .json(200, "{}"), .json(202, "{}"),
             .json(200, #"{"run_id":"run-1","status":"completed","output":"completed first"}"#)
         ], clock: clock)
-        let runClient = HermesRunClient(configuration: try configuration(), credential: HermesCredential(apiKey: "test-only-key"),
+        let runClient = HermesRunClient(endpoint: try configuration().endpoint, credential: HermesCredential(apiKey: "test-only-key"),
                                         transport: transport, clock: clock)
         let result = try await bridge.cancel(using: runClient, deadline: .seconds(45))
         XCTAssertTrue(result.revokeAccepted)
@@ -164,7 +164,7 @@ final class HermesBridgeClientTests: XCTestCase {
             let bridge = HermesBridgeClient(configuration: try configuration(), credential: HermesCredential(apiKey: "test-only-key"),
                                            transport: transport, clock: ManualHermesClock())
             do { _ = try await bridge.bind(); XCTFail("unexpected bind status must fail") }
-            catch { XCTAssertEqual(error as? HermesProbeError, status == 401 ? .unauthorized : .httpStatus(status)) }
+            catch { XCTAssertEqual(error as? HermesClientError, status == 401 ? .unauthorized : .httpStatus(status)) }
         }
         for body in ["not json", #"{"bindingID":"../bad","generation":1,"expiresAt":2000}"#,
                      #"{"bindingID":"b","generation":0,"expiresAt":2000}"#,
@@ -173,7 +173,7 @@ final class HermesBridgeClientTests: XCTestCase {
             let bridge = HermesBridgeClient(configuration: try configuration(), credential: HermesCredential(apiKey: "test-only-key"),
                                            transport: transport, clock: ManualHermesClock())
             do { _ = try await bridge.bind(); XCTFail("invalid bind body must fail") }
-            catch { XCTAssertEqual(error as? HermesProbeError, .malformedResponse) }
+            catch { XCTAssertEqual(error as? HermesClientError, .malformedResponse) }
         }
     }
 
@@ -184,7 +184,7 @@ final class HermesBridgeClientTests: XCTestCase {
                                            transport: transport, clock: ManualHermesClock())
             _ = try await bridge.bind()
             do { _ = try await bridge.submitRun(input: "x"); XCTFail("invalid submission must fail") }
-            catch { XCTAssertEqual(error as? HermesProbeError, status == 200 ? .httpStatus(200) : .malformedResponse) }
+            catch { XCTAssertEqual(error as? HermesClientError, status == 200 ? .httpStatus(200) : .malformedResponse) }
         }
     }
 
@@ -220,7 +220,7 @@ final class HermesBridgeClientTests: XCTestCase {
                 .json(revokeStatus, "{}"), .json(stopStatus, "{}"),
                 .json(200, #"{"run_id":"run-1","status":"cancelled"}"#)
             ], clock: clock)
-            let run = HermesRunClient(configuration: try configuration(), credential: HermesCredential(apiKey: "test-only-key"),
+            let run = HermesRunClient(endpoint: try configuration().endpoint, credential: HermesCredential(apiKey: "test-only-key"),
                                       transport: transport, clock: clock)
             let result = try await bridge.cancel(using: run, deadline: .seconds(45))
             XCTAssertEqual(result.revokeAccepted, revokeStatus == 200)
@@ -241,7 +241,7 @@ final class HermesBridgeClientTests: XCTestCase {
         let configuration = try configuration()
         let credential = HermesCredential(apiKey: "test-only-key")
         let bridge = HermesBridgeClient(configuration: configuration, credential: credential, transport: transport, clock: clock)
-        let run = HermesRunClient(configuration: configuration, credential: credential, transport: transport, clock: clock)
+        let run = HermesRunClient(endpoint: configuration.endpoint, credential: credential, transport: transport, clock: clock)
         _ = try await bridge.bind()
         _ = try await bridge.submitRun(input: "use echo")
         let cancellation = Task { try await bridge.cancel(using: run, deadline: .seconds(45)) }

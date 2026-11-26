@@ -1,11 +1,11 @@
 # アーキテクチャ
 
-この文書は、アプリの構成と、コンポーネントの間の約束事をまとめたものです。2026-10-28 の文単位再生への一本化と ViewModel の責務整理に加え、2026-11-07 の[挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md)と、2026-11-09 の[端末内モデルの削除と Haiku への一本化](superpowers/specs/2026-11-09-haiku-only-design.md)を反映しています。手順は [README](../README.md)、仕様の一覧は [文書の索引](README.md) を見てください。
+この文書は、アプリの構成と、コンポーネントの間の約束事をまとめたものです。2026-10-28 の文単位再生への一本化と ViewModel の責務整理に加え、2026-11-07 の[挙動を変えない整理](superpowers/specs/2026-11-07-behavior-preserving-refactor-design.md)、2026-11-09 の[端末内モデルの削除と Haiku への一本化](superpowers/specs/2026-11-09-haiku-only-design.md)、2026-11-10 の返事の Hermes への移行（[検証記録](validation/2026-11-10-hermes-conversation.md)）を反映しています。手順は [README](../README.md)、仕様の一覧は [文書の索引](README.md) を見てください。
 
 ```
 iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
-  聞き取り → 宛先の判定（Claude Haiku、直近の会話つき） → 返答の生成（Claude） → 文ごとの読み上げ（Supertonic）
-  失敗したときは、種類ごとの定型文を声で案内してから表示する（端末内モデルへの切り替えはない）
+  聞き取り → 宛先の判定（Claude Haiku、直近の会話つき。補助の経路） → 返事（利用者の Hermes の run API、最終出力を poll） → 文ごとの読み上げ（Supertonic）
+  失敗したときは、種類ごとの定型文を声で案内してから表示する（別のモデルへの切り替えはない）
   顔の描画・表情・視線（前面カメラは画面の左に固定） ─┐
   首の動作の調停（MotionCoordinator） ───────────┼→ RobotLink ⇄ BLE（protocol v1） ⇄ XIAO ESP32C3 の
   顔追尾（FaceTrackingCoordinator） ──────────────┘                                    ファームウェア（2 軸サーボ）
@@ -13,7 +13,7 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 
 ## 組み立て
 
-- **`ConversationComposition.live`**（App）: 本番の依存関係を 1 か所で組み立てる。組み立ての時点では、通信・マイクの起動・モデルの生成・記憶の読み書きをしない。
+- **`ConversationComposition.live`**（App）: 本番の依存関係を 1 か所で組み立てる。組み立ての時点では、通信・マイクの起動・モデルの生成・記憶の読み書き・Keychain の読み出しをしない。返事・可否・記憶・宛先判定の履歴・設定の履歴に同じ `HermesConversationService` を 1 つ渡す。
 - **`AppRootView(composition:onboardingSettings:)`**（App）: composition の全 field を、そのまま既存の init へ渡す。
 - **`ConversationAppCoordinator`**（App）: アプリ全体の状態を受け持つ。
   - scene の状態、画面遷移、設定画面の開閉、無操作時の待機（inactivity）、画面の wake lock、会話の開始意図。
@@ -52,38 +52,36 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - native の各段階（準備・読み変換・合成）は `SupertonicErrorMapper.mapping` を通す。`CancellationError` は `.cancelled` にし、それ以外のエラーは `map` で会話のエラーに変換する（`map` に直接渡した `CancellationError` は `.speechSynthesisFailed` になる）。
 - **聞き取り**: `AppleSpeechRecognizer`（Speech framework）、`SpeechAssetPreparer`、`AppleAudioSessionController`（割り込みと route の変更を知らせる）。
 
-## 返答のモデルと記憶
+## 返答と会話の記録（Hermes）
 
-- **`ClaudeConversationService`**: Claude API とのやり取りの中心。
-  - ClaudeForFoundationModels 0.2.3 のセッション。
-  - 短期記憶（会話の要約と直近の往復）。
-  - tools: `move_head`、`express`、`look`、`remember`。
-- **`MotionReplyGenerator`**: Claude の返答を直接受け、生成が終わったことを首に知らせる。アプリ独自の利用量集計・保存と日次上限はなく、prewarm も日次上限で抑止しない。
-- **`ContextualAddressClassifier`**: 宛先の判定。`ConversationHistoryReading`（`ClaudeConversationService` が実装。準備前・忘却中・削除失敗中は空）から直近の往復を読み、確認待ちなら末尾の「元の発言 → 聞き返し」の往復を除き、新しい側から合計 4,000 文字（`ConversationBudget().retainedCharacters`）までを `recentTurns` として `ClaudeAddressModelClient`（Haiku 5.5、effort low、timeout 15 秒、fallback なし）へ JSON で渡す。端末内の分類はない。通常の指示文は「他の相手への呼びかけや独り言の明言なら notAddressed、猫を呼べば addressed、直前の話題と同じ事柄の続きなら addressed、別の話題を新しく尋ねるだけなら ambiguous」。確認待ち中（こちらを向いていない返事）は #29 の確認待ち用の指示文のままで、聞き返しへの肯定・否定・説明の返事を addressed として優先する（「ママに言ったの」のような訂正も、返事そのものは猫宛てなので addressed）。
-- **`ConversationFailureGuidance`**: 失敗の種類ごとの定型文（8 文）。`ConversationServiceError.spokenGuidance` が対応を決め、読み上げ・audio session・マイクの許可・取り消し・聞き取れなかった場合（`speechUnrecognized`）は声で案内しない。
-- **`LongTermMemoryManager`**: 長期メモを扱う。
-- **保存先**: Application Support の下（`ConversationMemoryLocation`）。
-  - 短期記憶は `current.json`、長期メモは `facts.json`。
-  - 保存先が使えないとき、短期記憶はエラーを表示する。長期メモはメモリ上だけで保持する。
-- **現行の保存形式と設定**: 今回は記憶エンジンを移行せず、次の形式を引き続き使う。旧メモ・履歴のための移行・互換処理は追加しない。
-  - 互換 ID の `claude-memory-v1`、snapshot の `schemaVersion` 1、ファイル名
-  - enum の raw 値（記憶のカテゴリ、声、モデル、effort）
-  - UserDefaults の key（声、首、オンボーディング、待機）
+- **`HermesConversationService`**: 通常の返事・会話の続き・履歴の正本を Hermes に置く adapter。返事（`MotionReplyGenerator` の内側）・可否・記憶・宛先判定に添える直近の往復・設定の履歴を 1 つのインスタンスが受け持つ（別々に作ると「新しい会話」が記憶の失敗を消せない）。
+  - ターンごとに `HermesConnectionSettings.connection()` を読む。未設定は `.hermesNotConfigured`、401 は `.hermesUnauthorized`。返事・後始末・stop・履歴のどの要求の 401 でも同じ接続の拒否として覚え、その接続では明示の確認のほかは何も送らない（返事・記憶の準備・設定の履歴は送らずに `.hermesUnauthorized`）。拒否は接続ごとに覚えるので、キーを替えた後に前のキーへ遅れて届いた 401 は前のキーだけを拒否にし、今のキーの記録を変えない（そのターンはそれ以上送らずに終える）。どの要求も出す直前にその要求の接続の拒否を確かめるので、「新しい会話」の後に前の worker へ届いた 401 のあとは、並行する新しい worker も再送・照会・後始末・stop・履歴を送らない（run id と受付の分からない送信の記録は残す）。別のキーを保存すれば次のターンから使う。同じキーは、会話画面の「もう一度確認」（`retryRecovery` → 開始の preflight の最初、同じ世代の中）でだけ `recheckAvailability()` が認証付きの `GET /v1/capabilities` を 1 回送って確かめ直す。確かな 401 と取り消された確認は拒否のまま、届かなかった確認は拒否を外して次のターンの答えに任せる。session・端末の記録・履歴は変えない。
+  - `POST /v1/runs`（明示 session、ターンごとに固定した Idempotency-Key と同じ body で再送）→ `GET /v1/runs/{id}` の poll。最終出力だけを読み上げへ渡す（2,000 文字までの最後の文末で切る。入力は 4,000 文字まで）。
+  - 取消は端末の世代を先に無効化し、run id が分かれば `POST /v1/runs/{id}/stop`。遅れて届いた結果は採用しない。stop の応答や切断を終了とみなさず、終端を確かめるまで run id を記録に残し、次のターンの前に stop と 1 回の照会で確かめる（ターンは待たせない）。
+  - 端末に残すのは識別子だけ（`HermesSessionRecord`: origin、session id、受付済みの有無、受付が分からない送信、終端未確認の run id）。会話の本文は保存しない。
+  - 「新しい会話を始める」は新しい session id へ切り替えるだけ。Hermes 側の削除・忘却や、前の run の停止の成功を意味しない。
+  - installed Hermes で終わらない（unknown の）run は、同じ session の後続を止める。端末は自動で resolve しない。返事の期限切れ（`.replyTimedOut`: 受付の分からない送信のまま、または受け付けられた run が終わらないまま期限を過ぎた）の表示から「新しい会話を始める」で抜ける。宛先判定（Haiku）の通信断や Hermes の 429・503（`.modelUnreachable`）では続けられる会話を捨てさせないので、この出口を出さない。
+  - 体の操作（首・表情・見る・覚える）の tool は Hermes の返事からは使えない（robot の実行 bridge は繋いでいない）。
+- **`HermesConnectionSettings`**: 接続先は https の root だけ（userinfo・path・query・fragment・IPv6 リテラルは拒否、scheme と host は小文字、443 は省く）を UserDefaults、API キーは Keychain（service `com.kamby.CatRobot.hermes`、account = origin）に置く。保存は「確かめる → キーをその origin へ → URL」の順で、キーを保存できなければ前の設定を残す。別の origin へ前のキーを送らない。通信は `HermesURLSessionTransport`（OS 標準の証明書の確認、redirect を追わない、cookie と cache なし）。
+- **`ContextualAddressClassifier`**（補助の経路）: 宛先の判定。`ConversationHistoryReading`（`HermesConversationService` が実装。準備前は空）から直近の往復を読み、確認待ちなら末尾の「元の発言 → 聞き返し」の往復を除き、新しい側から合計 4,000 文字（`ConversationBudget().retainedCharacters`）までを `recentTurns` として `ClaudeAddressModelClient`（Haiku 5.5、effort low、timeout 15 秒、fallback なし）へ JSON で渡す。端末内の分類はない。指示文は 2026-11-09 の Haiku 一本化のまま。声の会話には Claude の認証（Debug は開発用キー、Release は App Attest）が要る。文字の会話は Hermes だけで続けられ、宛先判定の失敗には「文字で話す」を出す。
+- **`ConversationFailureGuidance`**: 失敗の種類ごとの定型文（9 文）。Claude を名指ししない中立の文で、声の宛先判定（Claude）が使えないときだけ「文字で話しかけてね」の文（`voiceAddressing`）にする。`ConversationServiceError.spokenGuidance` が対応を決め、読み上げ・audio session・マイクの許可・取り消し・聞き取れなかった場合（`speechUnrecognized`）は声で案内しない。
+- **`MotionReplyGenerator`**: 返事（`HermesConversationService`）を直接受け、生成が終わったことを首に知らせる。アプリ独自の利用量集計・保存と日次上限はない。
+- **木に残るが通常の経路では使わないもの**: `ClaudeConversationService`、`ConversationModelSettings`、記憶の store（`current.json` / `facts.json`）、`LongTermMemoryManager`、robot の tool provider。live の組み立てから外し、Claude で返事を代わりに作ることはしない。以前の版が保存した記憶のファイルは読まず、消しもしない。
 
 ## 顔・視線・首
 
 - **顔の描画**: `CatFaceView`、`CatFaceShapes`、`CatFaceAppearance` の 3 ファイル。
   - `scripts/render_face.sh` と `tools/face-size-tuner` も、この 3 ファイルを直接コンパイルしている。
   - そのため `MouthPose` と `FaceExpression` のケースの名前と順序は、`scripts/face-render/Stubs.swift` と揃えておく必要がある。
-- **`FaceExpressionCoordinator`**: phase と `express` tool から表情を決める。
+- **`FaceExpressionCoordinator`**: phase と `express` tool から表情を決める（`express` は以前の Claude 構成の tool で、Hermes の返事からは呼ばれない）。
 - **カメラと視線**:
   - `ConversationCamera` と `AppleFaceCaptureSource` が前面カメラを扱う（画面の左に固定）。
-  - `LookCoordinator` は `look` tool の撮影と、画像を保持する期間を受け持つ。
+  - `LookCoordinator` は `look` tool の撮影と、画像を保持する期間を受け持つ（Hermes の返事からは呼ばれない）。
 - **`FaceTrackingCoordinator`**: 顔の位置から追尾の指令を作る。
   - 画像の鮮度は `isFresh`（`now − capturedAt < 0.4 − 0.000001`）で判定する。
   - 顔を見失ったとみなす 10 秒（`faceLossTimeout`）は、温度による休止の 10 秒とは別の値。
 - **`MotionCoordinator`**: 首の動作の調停。
-  - 返答のジェスチャの予約（1 ターンあたりの予算は 4 秒）、待機時の微動、追尾との調停、STOP の規則、強度（SET_LIMITS）を扱う。
+  - 返答のジェスチャの予約（1 ターンあたりの予算は 4 秒。`move_head` tool からの予約で、Hermes の返事からは呼ばれない）、待機時の微動、追尾との調停、STOP の規則、強度（SET_LIMITS）を扱う。
   - 待機時の微動は、顔の計画からの要求（`requestIdleFaceMotion`）だけで動く。4〜10 秒ごとに乱数で動かす旧来の内蔵スケジューラは、2026-11-07 に撤去した。
 - **`RobotLink`**: BLE の通信。
   - 接続、暗号化、handshake、heartbeat、STATUS の鮮度。
@@ -132,12 +130,13 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 
 | 対象 | 入口 |
 |---|---|
-| iOS の単体・統合テスト | README「Simulatorでビルド・テスト」（`xcodebuild … -scheme CatRobot test`）。Claude API には接続しない |
+| iOS の単体・統合テスト | README「Simulatorでビルド・テスト」（`xcodebuild … -scheme CatRobot test`）。Hermes と Claude API には接続しない（Hermes は `FakeHermesServer`） |
+| Hermes の会話 | `HermesConversationServiceTests`、`HermesSubmissionUncertaintyTests`、`HermesConversationBoundaryTests`、`HermesConnectionSettingsTests`、`HermesAuthorizationRecheckTests`、`HermesConversationExitTests`、`ConversationHistoryModelTests`、`HermesConversationLiveSupportTests`（受入試験の fault fixture） |
 | 会話の状態機械 | `ConversationViewModelTests`、`ConversationRecoveryTests`、`ConversationAutoResumeTests`、`ConversationNewSessionTests`、`ConversationMemoryIntegrationTests`、`ConversationIdleIntegrationTests`、`FailureGuidanceTests`（失敗の定型文と後始末） |
 | 再生と計測 | `SentenceReplyPlaybackTests`、`ReplyPlaybackCoordinatorTests`、`ReplyPlaybackIntegrationTests`、`ConversationLatencyTests`、`ReplyTraceTests`、`VoiceTurnLatencyRecorderTests` |
 | 表示と VoiceOver | `ConversationViewStateTests`、`ConversationAccessibilityTests`、`FaceConversationPresentationTests` |
 | 首と追尾 | `MotionCoordinatorTests`、`FaceTrackingMotionTests`、`RobotLinkTests`、`RobotLifecycleIntegrationTests`、`RobotProtocolTests` |
-| 実機専用（通常のテストではスキップ） | `SupertonicIntegrationDeviceTests` scheme と `scripts/run_supertonic_integration_device_test.sh`、`scripts/run_robot_motion_device_test.sh`（7 動作×3 強度。首が見える状態で実行する）、`scripts/run_haiku_addressing_model_tests.sh`（有料。`HaikuAddressingModelTests` の 23 fixture × 3 回を本番の Haiku で判定する） |
+| 実機専用（通常のテストではスキップ） | `scripts/run_hermes_conversation_live_test.py`（Debug 専用。Hermes の隔離 profile と Mac の LAN relay、偽の radio とカメラ。手順は `scripts/hermes-conversation-live-test.md`）、`SupertonicIntegrationDeviceTests` scheme と `scripts/run_supertonic_integration_device_test.sh`、`scripts/run_robot_motion_device_test.sh`（7 動作×3 強度。首が見える状態で実行する）、`scripts/run_haiku_addressing_model_tests.sh`（有料。`HaikuAddressingModelTests` の 23 fixture × 3 回を本番の Haiku で判定する） |
 | プロジェクト生成の契約 | `ruby scripts/generate_project.rb && ruby scripts/test_generate_project.rb`（pbxproj と共有 scheme は直接編集しない） |
 | 顔の描画計測 | `scripts/render_face.sh check` と `scripts/render_face.sh measure`。新しい round は顔が 9 から、寝顔が 3 から |
 | Python のスクリプト | `scripts/test_*.py`（音声資産の準備・検証、実機結果の集計） |

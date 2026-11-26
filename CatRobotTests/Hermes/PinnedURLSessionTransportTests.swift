@@ -99,7 +99,7 @@ final class PinnedURLSessionTransportTests: XCTestCase {
             _ = try await transport.send(request)
             XCTFail("1 MiB + 1 byte must be refused")
         } catch {
-            guard case .transport = (error as? HermesProbeError) else { return XCTFail("unexpected error \(error)") }
+            guard case .transport = (error as? HermesClientError) else { return XCTFail("unexpected error \(error)") }
         }
         HermesStubURLProtocol.install { _ in (200, [:], Data(count: 1_048_576)) }
         let response = try await transport.send(request)
@@ -115,7 +115,7 @@ final class PinnedURLSessionTransportTests: XCTestCase {
                                                            headers: [:], body: nil, timeout: 15))
             XCTFail("plain http must never leave the device")
         } catch {
-            XCTAssertEqual(error as? HermesProbeError, .insecureEndpoint)
+            XCTAssertEqual(error as? HermesClientError, .insecureEndpoint)
         }
         XCTAssertTrue(recorder.requests.isEmpty)
     }

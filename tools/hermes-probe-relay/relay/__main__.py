@@ -37,13 +37,17 @@ def _server(app, host: str, port: int, *, cert: str | None = None, key: str | No
 
 def build_servers(config: RelayConfig):
     relay_app = build_relay_app(config)
-    mcp_app = build_mcp_app(config, bridge=relay_app.state.bridge)
     servers = [_server(relay_app, host, port, cert=config.cert, key=config.key) for host, port in config.relay_listen]
-    servers.append(_server(mcp_app, *config.mcp_listen))
+    if not config.conversation_mode:
+        mcp_app = build_mcp_app(config, bridge=relay_app.state.bridge)
+        servers.append(_server(mcp_app, *config.mcp_listen))
     return servers
 
 
 def ready_line(config: RelayConfig) -> dict:
+    if config.conversation_mode:
+        return {"event": "ready", "pid": os.getpid(), "relayListen": [f"https://{h}:{p}" for h, p in config.relay_listen],
+                "tools": [], "config": config.public()}
     host, port = config.mcp_listen
     return {"event": "ready", "pid": os.getpid(), "relayListen": [f"https://{h}:{p}" for h, p in config.relay_listen],
             "mcpURL": f"http://{host}:{port}/mcp", "mcpServerName": "mockbridge", "tools": ["echo"], "config": config.public()}
