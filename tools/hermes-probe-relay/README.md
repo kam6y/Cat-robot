@@ -58,6 +58,8 @@ MCP URL `http://<mcpListen>/mcp`（例 `http://100.102.164.56:18643/mcp`）、`H
 
 `conversationMode: true` は text/history/取消用の試験fixtureです。0600設定に別値の `clientKey` と `upstreamKey` を指定します。端末には `clientKey` だけを渡し、relayは認証後に固定した `hermesBase` 向けの `upstreamKey` へ差し替えます。キーの値はready行・repr・access logに出しません。
 
+モデル選択では `GET /api/model/options` に `include_unconfigured=false` を付けて転送し、手動の再取得時だけ `refresh=true` も渡します。複数の provider を調べる再取得には時間がかかるため、検証用 relay で 504 が続く場合は `upstreamTimeoutSeconds`（既定 15 秒）を調整してください。旧版の Hermes が公開するモデルの別名は `GET /v1/models` で取得します。
+
 このmodeは `GET /api/sessions/{id}/messages`（order、1〜500のlimit、inline_images=false）も転送します。POSTの本文とIdempotency-KeyはそのままHermesへ送り、Hermesの永続idempotencyとsession turn queueを使います。relayの診断用single-run予約は使いません。MCP listenerを起動せず、`/bridge/*` は404です。既存のmcp設定項目は設定形式に残りますが、このmodeでは使いません。既定のprobe modeは従来のsingle-run/bridgeとallowlistを保ちます。
 
 `python -I -m relay --config <0600 JSON>` で起動します。従来の `relay.runner` はMCP echoのreadiness専用のため、このmodeには使いません。APIの実効toolsetを空にした一時profileと、既存の承認済み短期証明書を使う検証に限ります。製品の常設HTTPSを構築する機能ではなく、Releaseの標準OS trustを変更しません。2turnの成功は会話文脈・履歴の継続で、長期記憶やskillsの実証ではありません。

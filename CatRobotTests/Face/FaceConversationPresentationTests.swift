@@ -80,6 +80,30 @@ final class FaceConversationPresentationTests: XCTestCase {
         }
     }
 
+    func testHermesConnectionPaneCanRefreshTheServersModelList() async throws {
+        func inventory(_ model: String) -> String {
+            #"{"provider":"test","model":"\#(model)","providers":[{"slug":"test","models":["\#(model)"],"capabilities":{"\#(model)":{"reasoning":true}}}]}"#
+        }
+        let server = RoutedHermesTransport(["GET /api/model/options": [(200, inventory("first")), (200, inventory("updated"))]])
+        let fixture = SettingsFixture(authorization: .authorized, transport: server)
+        defer { fixture.tearDown() }
+        try await fixture.connectionSettings.save(endpointText: "https://hermes.test", apiKey: "fixture-key")
+        let (window, host, _) = try await hostInScene(fixture.view(.hermesConnection))
+        defer { releaseWindow(window) }
+        try await waitForAccessibilityTree(in: host.view)
+        for id in [ConversationSettingsIdentifier.hermesModelPicker, .hermesEffortPicker] {
+            let row = try await reachableAccessibilityElement(in: host.view, identifier: id.rawValue,
+                                                             scrollingIn: detailScrollView(in: host.view))
+            XCTAssertNotNil(row, id.rawValue)
+        }
+        try await activateAccessibilityElement(in: host.view, identifier: ConversationSettingsIdentifier.hermesModelRefresh.rawValue,
+                                              scrollingIn: detailScrollView(in: host.view))
+        let updated = try await waitUntil(settling: host.view) {
+            fixture.connectionSettings.models.catalog?.defaultModel == "updated"
+        }
+        XCTAssertTrue(updated, "手動の再取得でサーバーの新しい候補が届く")
+    }
+
     /// 接続の欄は接続先とキーの入力・保存・削除を出す。保存済みのキーは入力欄にも戻さない。
     func testHermesConnectionPaneOffersEndpointAndKeyWithoutShowingTheSavedKey() async throws {
         let fixture = SettingsFixture(authorization: .authorized)
@@ -631,7 +655,8 @@ final class FaceConversationPresentationTests: XCTestCase {
         let connectionSettings: HermesConnectionSettings
         let history: ScriptedTranscriptReader
 
-        init(authorization: FaceCameraAuthorization, history: ScriptedTranscriptReader? = nil) {
+        init(authorization: FaceCameraAuthorization, history: ScriptedTranscriptReader? = nil,
+             transport: any HermesTransport = RoutedHermesTransport([:])) {
             let defaultsName = "settings-fixture-\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: defaultsName)!
             let harness = RobotLinkHarness()
@@ -645,7 +670,9 @@ final class FaceConversationPresentationTests: XCTestCase {
             idleSettings = ConversationIdleSettings(defaults: defaults)
             let keys = HermesKeyStoresFake()
             self.keys = keys
-            connectionSettings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) })
+            // モデルの候補は外へ取りに行かない（自動試験で外部通信しない）。
+            connectionSettings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) },
+                                                          transport: transport)
             self.history = history ?? ScriptedTranscriptReader([.success([HermesTranscriptEntry(speaker: .user, text: "こんにちは"),
                                                                           HermesTranscriptEntry(speaker: .cat, text: "やあ")])])
         }

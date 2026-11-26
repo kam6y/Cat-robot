@@ -17,6 +17,8 @@ struct HermesTranscriptEntry: Equatable, Sendable {
 actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, ModelAvailabilityChecking, ConversationHistoryReading {
     nonisolated let supportsStableReplyPrefix = false
     private let connection: @Sendable () async -> HermesConnection?
+    /// その origin で run に付けるモデルと effort（設定「Hermes 接続」）。nil は Hermes の既定。
+    private let runOptions: @Sendable (String) async -> HermesRunOptions?
     private let transport: any HermesTransport
     private let records: any HermesSessionRecordStore
     private let clock: any HermesClock
@@ -66,6 +68,7 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private var subscribers: [UUID: AsyncStream<ConversationMemoryState>.Continuation] = [:]
 
     init(connection: @escaping @Sendable () async -> HermesConnection?,
+         runOptions: @escaping @Sendable (String) async -> HermesRunOptions? = { _ in nil },
          transport: any HermesTransport,
          records: any HermesSessionRecordStore,
          clock: any HermesClock = SystemHermesClock(),
@@ -73,6 +76,7 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
          makeSessionID: @escaping @Sendable () -> String = { "catrobot-" + UUID().uuidString.lowercased() },
          makeIdempotencyKey: @escaping @Sendable () -> UUID = { UUID() }) {
         self.connection = connection
+        self.runOptions = runOptions
         self.transport = transport
         self.records = records
         self.clock = clock
@@ -119,6 +123,9 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard refusalRevision(for: current) == nil else { throw ConversationServiceError.modelUnavailable(.hermesUnauthorized) }
         let prompt = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, prompt.count <= 4_000 else { throw ConversationServiceError.inputTooLong }
+        // ターンの初めに 1 回だけ読み、そのターンの再送では変えない（Hermes は body 全体で同じ送信かを判定する）。
+        // 読むのはこの接続の origin の選択だけ（別の接続先で選んだモデルを送らない）。
+        let options = await runOptions(current.origin)
         guard let selection = await selectRecord(for: current, requestedEpoch: requestedEpoch) else {
             throw ConversationServiceError.cancelled
         }
@@ -144,7 +151,8 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard refusalRevision(for: current) == nil else { throw ConversationServiceError.modelUnavailable(.hermesUnauthorized) }
         try checkPreparedHistory(for: selected)
         try Task.checkCancellation()
-        let operation = HermesReplyOperation(client: client(current), connection: current, selection: selected)
+        let operation = HermesReplyOperation(client: client(current), connection: current, selection: selected,
+                                             options: options)
         active = operation
         // A timed-out POST can outlive its stream. Only its owner may attach this exchange.
         let sentClarification = clarification?.delivery == .sending ? nil : clarification
@@ -209,7 +217,7 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                     accepted = try await operation.client.createRun(input: input, sessionID: operation.sessionID,
                                                                     idempotencyKey: key,
                                                                     instructions: HermesConversationInstructions.persona,
-                                                                    isolation: self)
+                                                                    options: operation.options, isolation: self)
                 } catch {
                     if Self.isDefiniteRefusal(error) {
                         if error as? HermesClientError == .unauthorized { noteRefusal(of: connection) }
@@ -856,14 +864,18 @@ private final class HermesReplyOperation: @unchecked Sendable {
     let client: HermesRunClient
     let connection: HermesConnection
     let selection: HermesRecordSelection
+    /// そのターンのモデルと effort（ターンの初めに固定）。
+    let options: HermesRunOptions?
     private let lock = NSLock()
     private var cancelled = false
     private var runID: String?
     private var stopClaimed = false
-    init(client: HermesRunClient, connection: HermesConnection, selection: HermesRecordSelection) {
+    init(client: HermesRunClient, connection: HermesConnection, selection: HermesRecordSelection,
+         options: HermesRunOptions? = nil) {
         self.client = client
         self.connection = connection
         self.selection = selection
+        self.options = options
     }
     var sessionID: String { selection.record.sessionID }
     var isCancelled: Bool { lock.withLock { cancelled } }

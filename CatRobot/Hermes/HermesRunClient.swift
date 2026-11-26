@@ -40,12 +40,32 @@ actor HermesRunClient {
     /// 明示 session の続き。同じターンの再送は同じ key と同じ body にする（Hermes は body 全体で同一性を判定する）。
     /// 履歴は Hermes が session から読むので、端末の会話は送らない。
     /// instructions は Hermes の ephemeral system prompt（その run だけに重ねる）。nil なら送らない。
+    /// options はその run のモデルと effort。nil（または既定）なら何も足さず、Hermes の既定で動く。
     // Forward the caller’s isolation so its final session check and transport handoff stay on the same actor.
     func createRun(input: String, sessionID: String, idempotencyKey: UUID, instructions: String? = nil,
+                   options: HermesRunOptions? = nil,
                    isolation: isolated (any Actor)? = nil) async throws -> HermesRunHandle {
         guard Self.isValidRunID(sessionID) else { throw HermesClientError.invalidSessionID }
-        return try await postRun(SessionRunInput(input: input, session_id: sessionID, instructions: instructions),
+        return try await postRun(SessionRunInput(input: input, sessionID: sessionID, instructions: instructions, options: options),
                                  idempotencyKey: idempotencyKey, isolation: isolation)
+    }
+
+    /// 設定に出すモデルの候補。Hermes の native inventory（未設定の provider は含めない）を読み、
+    /// 一覧に対応しない Hermes（404・405・501）だけ `/v1/models` の別名に落とす。401 はほかの要求と同じ `.unauthorized`。
+    /// refresh は利用者が明示したときだけ（Hermes が custom provider を probe し直し、cache を捨てる）。
+    func modelCatalog(refresh: Bool = false) async throws -> HermesModelCatalog {
+        var query = [URLQueryItem(name: "include_unconfigured", value: "false")]
+        if refresh { query.append(URLQueryItem(name: "refresh", value: "true")) }
+        let response = try await exchange("GET", path: "api/model/options", query: query)
+        switch response.statusCode {
+        case 200:
+            return try HermesModelCatalog.inventory(from: response.body)
+        case 404, 405, 501:
+            let routes = try await send("GET", path: "v1/models", expectedStatus: 200)
+            return try HermesModelCatalog.routes(from: routes.body)
+        default:
+            throw HermesClientError.httpStatus(response.statusCode)
+        }
     }
 
     /// Hermes が正本の会話履歴の最新ページ（古い順）。応答の session_id は圧縮後の tip を指すことがある。
@@ -157,7 +177,36 @@ actor HermesRunClient {
 
     private struct RunInput: Encodable { let input: String }
     private struct StopPayload: Decodable { let run_id: String?; let status: String? }
-    private struct SessionRunInput: Encodable { let input: String; let session_id: String; let instructions: String? }
+    /// nil の field は送らない（既定のときは、モデルの選択を足す前と同じ body）。
+    private struct SessionRunInput: Encodable {
+        let input: String
+        let session_id: String
+        let instructions: String?
+        let model: String?
+        let provider: String?
+        let model_options: ModelOptions?
+
+        init(input: String, sessionID: String, instructions: String?, options: HermesRunOptions?) {
+            self.input = input
+            session_id = sessionID
+            self.instructions = instructions
+            model = options?.model?.model
+            provider = options?.model?.provider
+            model_options = options?.effort.map(ModelOptions.init(effort:))
+        }
+    }
+    /// Hermes の `model_options.reasoning`。段階は effort、オフは enabled=false。
+    private struct ModelOptions: Encodable {
+        struct Reasoning: Encodable {
+            let effort: String?
+            let enabled: Bool?
+        }
+        let reasoning: Reasoning
+
+        init(effort: HermesReasoningEffort) {
+            reasoning = effort == .off ? Reasoning(effort: nil, enabled: false) : Reasoning(effort: effort.rawValue, enabled: nil)
+        }
+    }
     private struct HistoryPayload: Decodable { let session_id: String; let data: [HermesSessionMessage] }
     private struct ErrorEnvelope: Decodable {
         struct Detail: Decodable { let code: String? }

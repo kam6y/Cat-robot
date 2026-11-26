@@ -85,6 +85,15 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
     async def capabilities(request: Request) -> Response:
         return await forward(request, "GET", "/v1/capabilities")
 
+    async def model_options(request: Request) -> Response:
+        query = {"include_unconfigured": "false"}
+        if request.query_params.get("refresh") == "true":
+            query["refresh"] = "true"
+        return await forward(request, "GET", "/api/model/options?" + urlencode(query))
+
+    async def models(request: Request) -> Response:
+        return await forward(request, "GET", "/v1/models")
+
     async def create_run(request: Request) -> Response:
         body = await read_body(request, config.max_request_bytes)
         if body is None:
@@ -148,9 +157,13 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
         Route("/v1/runs", create_run, methods=["POST"]),
         Route("/v1/runs/{run_id}", get_run, methods=["GET"]),
         Route("/v1/runs/{run_id}/stop", stop_run, methods=["POST"]),
-        *([Route("/api/sessions/{session_id}/messages", session_messages, methods=["GET"])] if config.conversation_mode else []),
-        *(bridge_routes(bridge) if not config.conversation_mode else []),
     ]
+    if config.conversation_mode:
+        routes.extend([Route("/api/model/options", model_options, methods=["GET"]),
+                       Route("/v1/models", models, methods=["GET"]),
+                       Route("/api/sessions/{session_id}/messages", session_messages, methods=["GET"])])
+    else:
+        routes.extend(bridge_routes(bridge))
     for route in routes:
         route.methods.discard("HEAD")  # Starlette が GET に付ける暗黙の HEAD は契約の allowlist 外。
     app = Starlette(routes=routes, exception_handlers={404: not_found, 405: not_found}, lifespan=lifespan)

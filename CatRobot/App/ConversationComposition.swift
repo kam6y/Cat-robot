@@ -17,7 +17,6 @@ struct ConversationComposition {
 
     static func live(voiceSettings: SpeechVoiceSettings = SpeechVoiceSettings(),
                      connectionSettings: HermesConnectionSettings = HermesConnectionSettings(),
-                     hermesTransport: any HermesTransport = HermesURLSessionTransport(),
                      sessionRecords: any HermesSessionRecordStore = UserDefaultsHermesSessionRecordStore(),
                      auth: ClaudeAuthConfiguration = .live(),
                      robotTransport: (any RobotTransport)? = nil,
@@ -40,9 +39,10 @@ struct ConversationComposition {
                                                    motion.setControlMode($0)
                                                    faceTracking.setControlMode($0)
                                                })
-        // 接続先とキーはターンごとに設定から読む（保存した次のターンから効く）。
+        // 接続先とキー、モデルと effort はターンごとに設定から読む（保存した次のターンから効く）。
         let hermes = HermesConversationService(connection: { await connectionSettings.connection() },
-                                               transport: hermesTransport, records: sessionRecords)
+                                               runOptions: { await connectionSettings.models.options(for: $0) },
+                                               transport: connectionSettings.transport, records: sessionRecords)
         let reply = makeReplyGenerator(base: hermes, motion: replyTurnObserver)
         // 声の宛先判定は補助の経路として Claude Haiku のまま。直近の会話は返事と同じ Hermes の会話から読む。
         let classifier = makeAddressClassifier(claudeClient: ClaudeAddressModelClient(auth: auth), history: hermes)

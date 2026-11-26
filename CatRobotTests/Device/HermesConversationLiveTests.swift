@@ -93,6 +93,57 @@ final class HermesConversationLiveTests: XCTestCase {
     private var receipt: [String: Any] = [:]
     private var phase = "bootstrap"
 
+    /// Opt-in on the phone, using its saved HTTPS endpoint and Keychain credential. Use a separate
+    /// preferences suite and session so this check doesn't change the user's selection or conversation.
+    func testSavedConnectionOffersAndUsesSelectedModel() async throws {
+#if targetEnvironment(simulator)
+        throw XCTSkip("Run the selected-model live test on an iPhone")
+#else
+        let env = ProcessInfo.processInfo.environment
+        guard env["HERMES_MODEL_PICKER_LIVE"] == "1", env["HERMES_CONVERSATION_LIVE"] == "1" else {
+            throw XCTSkip("The live model-picker check requires explicit opt-in")
+        }
+        let endpoint = try XCTUnwrap(HermesConnectionSettings().endpoint, "実機に Hermes の接続先が保存されていません")
+        let suite = "com.kamby.CatRobot.model-picker-test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = ModelChoiceLiveTransport()
+        let settings = HermesConnectionSettings(defaults: defaults, transport: recorder)
+        try await settings.save(endpointText: endpoint.absoluteString, apiKey: "")
+        let connection = await settings.connection()
+        XCTAssertNotNil(connection?.origin, "実機の接続先に保存されたキーがありません")
+        guard connection != nil else { return }
+        await settings.refreshModels(force: false)
+        let catalog = try XCTUnwrap(settings.models.catalog, "実機でのモデル一覧の取得結果: \(settings.models.phase)")
+        let candidates = catalog.providers.flatMap { provider in
+            provider.models.map { (provider.slug, $0) }
+        }
+        print("HERMES_MODEL_LIVE catalog=\(catalog.source) count=\(candidates.count)")
+        let reasoning = candidates.filter { $0.1.reasoning == true }
+        let candidate = reasoning.first { $0.0 == catalog.defaultProvider && $0.1.id != catalog.defaultModel }
+            ?? reasoning.first { $0.0 != catalog.defaultProvider || $0.1.id != catalog.defaultModel }
+            ?? reasoning.first ?? candidates.first
+        let (provider, model) = try XCTUnwrap(candidate, "サーバーが選択可能なモデルを公開していません")
+        settings.models.select(model: .init(provider: provider, model: model.id))
+        let effort: HermesReasoningEffort? = settings.models.effortChoices.contains(.low) ? .low : nil
+        settings.models.select(effort: effort)
+        let composition = makeComposition(defaults, settings, InMemoryHermesSessionRecordStore(),
+                                          FakeRobotTransport(), FakeFaceCaptureSource(authorization: .denied),
+                                          RobotPreferences(defaults: defaults))
+        let output = try await collect(try await service(composition).streamReply(to: "外部ツールは使わず「にゃ」と一言だけ返してください。"))
+        XCTAssertFalse(output.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        let sent = await recorder.sent
+        XCTAssertEqual(sent?.model, model.id)
+        XCTAssertEqual(sent?.provider, provider)
+        XCTAssertEqual(sent?.effort, effort?.rawValue)
+        let acknowledged = await recorder.acknowledged
+        if let acknowledged { XCTAssertEqual(acknowledged, model.id) }
+        let served = await recorder.served
+        if catalog.source == .inventory, let served { XCTAssertEqual(served, model.id) }
+        print("HERMES_MODEL_LIVE requested=\(model.id) effort=\(effort?.rawValue ?? "default") acknowledged=\(acknowledged ?? "not reported") served=\(served ?? "not reported")")
+#endif
+    }
+
     func testNormalConversationLifecycle() async throws {
         let env = ProcessInfo.processInfo.environment
         guard env["HERMES_CONVERSATION_LIVE"] == "1",
@@ -140,14 +191,14 @@ final class HermesConversationLiveTests: XCTestCase {
             fault = transport
             let settings = HermesConnectionSettings(defaults: defaults, credentials: {
                 KeychainHermesCredentialStore(service: suite, account: $0)
-            })
+            }, transport: transport)
             try await settings.save(endpointText: configuration.endpoint.absoluteString, apiKey: "")
             let records = UserDefaultsHermesSessionRecordStore(defaults: defaults)
             recordsForCleanup = records
             let preferences = RobotPreferences(defaults: defaults)
             preferences.trackingEnabled = false
             preferences.idleEnabled = false
-            let first = makeComposition(defaults, settings, transport, records, radio, camera, preferences)
+            let first = makeComposition(defaults, settings, records, radio, camera, preferences)
             compositions.append(first)
             let firstService = try service(first)
             receipt["normalComposition"] = true
@@ -173,9 +224,9 @@ final class HermesConversationLiveTests: XCTestCase {
             let restoredDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
             let restoredSettings = HermesConnectionSettings(defaults: restoredDefaults, credentials: {
                 KeychainHermesCredentialStore(service: suite, account: $0)
-            })
+            }, transport: transport)
             let restoredRecords = UserDefaultsHermesSessionRecordStore(defaults: restoredDefaults)
-            let restored = makeComposition(restoredDefaults, restoredSettings, transport, restoredRecords, radio, camera, preferences)
+            let restored = makeComposition(restoredDefaults, restoredSettings, restoredRecords, radio, camera, preferences)
             compositions.append(restored)
             let restoredService = try service(restored)
             try require(restoredService !== firstService)
@@ -253,10 +304,10 @@ final class HermesConversationLiveTests: XCTestCase {
     }
 
     private func makeComposition(_ defaults: UserDefaults, _ settings: HermesConnectionSettings,
-                                 _ transport: any HermesTransport, _ records: any HermesSessionRecordStore,
+                                 _ records: any HermesSessionRecordStore,
                                  _ radio: FakeRobotTransport, _ camera: FakeFaceCaptureSource, _ preferences: RobotPreferences) -> ConversationComposition {
         ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults), connectionSettings: settings,
-            hermesTransport: transport, sessionRecords: records, auth: .missing, robotTransport: radio,
+            sessionRecords: records, auth: .missing, robotTransport: radio,
             robotPreferences: preferences, faceCaptureSource: camera)
     }
     private func service(_ composition: ConversationComposition) throws -> HermesConversationService {
@@ -340,6 +391,39 @@ final class HermesConversationLiveSupportTests: XCTestCase {
         let connection = HermesConnection(endpoint: URL(string: "https://hermes.test")!, credential: HermesCredential(apiKey: "dummy"))
         return HermesConversationService(connection: { connection }, transport: transport, records: InMemoryHermesSessionRecordStore(),
                                          clock: SteppingHermesClock(), makeSessionID: { "catrobot-fixture" })
+    }
+}
+
+/// Records only selection fields, never headers, conversation text or raw responses.
+private actor ModelChoiceLiveTransport: HermesTransport {
+    struct Selection: Sendable {
+        let model: String?
+        let provider: String?
+        let effort: String?
+    }
+    private let upstream = HermesURLSessionTransport()
+    private(set) var sent: Selection?
+    private(set) var acknowledged: String?
+    private(set) var served: String?
+
+    func send(_ request: HermesHTTPRequest) async throws -> HermesHTTPResponse {
+        if request.method == "POST", request.url.path == "/v1/runs", let body = request.body,
+           let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any] {
+            let options = payload["model_options"] as? [String: Any]
+            let reasoning = options?["reasoning"] as? [String: Any]
+            sent = Selection(model: payload["model"] as? String, provider: payload["provider"] as? String,
+                             effort: reasoning?["effort"] as? String)
+        }
+        let response = try await upstream.send(request)
+        if request.method == "GET", request.url.path.hasPrefix("/v1/runs/"),
+           let payload = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any],
+           let runtime = payload["runtime"] as? [String: Any] {
+            if let requested = runtime["requested"] as? [String: Any], let id = requested["model"] as? String, !id.isEmpty {
+                acknowledged = id
+            }
+            if let id = runtime["model"] as? String, !id.isEmpty { served = id }
+        }
+        return response
     }
 }
 

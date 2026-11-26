@@ -44,8 +44,8 @@ final class AppCompositionTests: XCTestCase {
         let keys = HermesKeyStoresFake(), server = FakeHermesServer()
         let composition = ConversationComposition.live(
             voiceSettings: SpeechVoiceSettings(defaults: defaults),
-            connectionSettings: HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) }),
-            hermesTransport: server, sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
+            connectionSettings: HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) }, transport: server),
+            sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
         let hermes = try XCTUnwrap(composition.dependencies.modelAvailability as? HermesConversationService)
         XCTAssertTrue((composition.dependencies.memory as? HermesConversationService) === hermes)
         let reply = try XCTUnwrap(composition.dependencies.reply as? MotionReplyGenerator)
@@ -65,10 +65,10 @@ final class AppCompositionTests: XCTestCase {
     func testLiveCompositionSendsTheTurnToTheSavedEndpointWithItsKey() async throws {
         let defaults = UserDefaults(suiteName: "composition-turn-\(UUID().uuidString)")!
         let keys = HermesKeyStoresFake()
-        let settings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) })
         let server = FakeHermesServer(runs: [hermesAccepted("run-1")], polls: ["run-1": [hermesRun("run-1", "completed", output: "やあ")]])
+        let settings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) }, transport: server)
         let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults), connectionSettings: settings,
-                                                       hermesTransport: server, sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
+                                                       sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
         let hermes = try XCTUnwrap(composition.dependencies.modelAvailability as? HermesConversationService)
         try await settings.save(endpointText: "https://hermes.test:8443", apiKey: "client-key")
         let availability = await hermes.availability()
@@ -87,8 +87,8 @@ final class AppCompositionTests: XCTestCase {
         defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
         let composition = ConversationComposition.live(
             voiceSettings: SpeechVoiceSettings(defaults: defaults),
-            connectionSettings: HermesConnectionSettings(defaults: defaults, credentials: { _ in InMemoryHermesCredentialStore() }),
-            hermesTransport: FakeHermesServer(), sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
+            connectionSettings: HermesConnectionSettings(defaults: defaults, credentials: { _ in InMemoryHermesCredentialStore() }, transport: FakeHermesServer()),
+            sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
         let reply = try XCTUnwrap(composition.dependencies.reply as? MotionReplyGenerator)
         XCTAssertTrue(reply.base is HermesConversationService, "\(type(of: reply.base)) must not sit between the motion observer and Hermes")
     }

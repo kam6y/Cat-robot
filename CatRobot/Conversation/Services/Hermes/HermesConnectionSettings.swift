@@ -4,6 +4,7 @@ import Observation
 /// 通常会話の接続設定。接続先は https の root（scheme・host・port）だけを UserDefaults に置き、
 /// API キーは Keychain に接続先の origin ごとに置く（別の接続先へ古いキーを送らない）。
 /// 会話はターンごとに `connection()` を読む。保存直後のターンからそのまま効く。
+/// モデルと effort の選択（`models`）も接続先の origin ごとに置き、候補は同じ transport でその接続先から読む。
 @MainActor @Observable
 final class HermesConnectionSettings {
     enum SaveError: Error, Equatable { case invalidEndpoint, invalidKey }
@@ -47,12 +48,19 @@ final class HermesConnectionSettings {
     @ObservationIgnored private var keyStatusRevision = UUID()
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let credentials: @Sendable (String) -> any HermesCredentialStore
+    /// 保存済みの接続先で選んだモデルと effort、その候補。
+    let models: HermesModelSettings
+    let transport: any HermesTransport
 
     init(defaults: UserDefaults = .standard,
-         credentials: @escaping @Sendable (String) -> any HermesCredentialStore = { HermesConnectionSettings.keychainStore(origin: $0) }) {
+         credentials: @escaping @Sendable (String) -> any HermesCredentialStore = { HermesConnectionSettings.keychainStore(origin: $0) },
+         transport: any HermesTransport = HermesURLSessionTransport()) {
+        self.transport = transport
         self.defaults = defaults
         self.credentials = credentials
-        endpoint = defaults.string(forKey: Self.endpointKey).flatMap(Self.endpoint(from:))
+        let saved = defaults.string(forKey: Self.endpointKey).flatMap(Self.endpoint(from:))
+        endpoint = saved
+        models = HermesModelSettings(defaults: defaults, transport: transport, origin: saved.map(HermesConnection.origin(of:)))
     }
 
     nonisolated static func keychainStore(origin: String) -> any HermesCredentialStore {
@@ -102,6 +110,7 @@ final class HermesConnectionSettings {
         defaults.set(url.absoluteString, forKey: Self.endpointKey)
         if endpoint != url { hasSavedKey = false }
         endpoint = url
+        models.connectionChanged(origin: HermesConnection.origin(of: url))
         let revision = UUID()
         keyStatusRevision = revision
         let saved = (try? await store.load()) != nil
@@ -120,6 +129,7 @@ final class HermesConnectionSettings {
         keyStatusRevision = revision
         try await credentials(HermesConnection.origin(of: endpoint)).delete()
         if self.endpoint == endpoint {
+            models.connectionChanged(origin: HermesConnection.origin(of: endpoint))
             if keyStatusRevision == revision {
                 keyStatusRevision = UUID()
                 hasSavedKey = false
@@ -136,6 +146,14 @@ final class HermesConnectionSettings {
         let revision = keyStatusRevision
         let saved = (try? await credentials(HermesConnection.origin(of: endpoint)).load()) != nil
         if keyStatusRevision == revision { hasSavedKey = saved }
+    }
+
+    /// モデルの候補を、保存済みの接続先とキーで読み直す。force は利用者の明示の再取得。
+    func refreshModels(force: Bool) async {
+        let revision = models.connectionRevision
+        let saved = await connection()
+        guard models.connectionRevision == revision, !Task.isCancelled else { return }
+        await models.refresh(connection: saved, force: force)
     }
 
     /// そのターンの接続。接続先と、その origin に保存されたキーがそろっていなければ nil（未設定）。

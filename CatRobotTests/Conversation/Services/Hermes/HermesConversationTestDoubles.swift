@@ -172,3 +172,25 @@ func hermesRun(_ id: String, _ status: String, output: String? = nil) -> FakeHer
 func hermesAccepted(_ id: String) -> FakeHermesServer.Reply {
     .json(202, #"{"run_id":"\#(id)","status":"started","replayed":false}"#)
 }
+
+/// method と path で応答を返す transport。指定した経路は最初の要求だけ gate で待つ。
+actor RoutedHermesTransport: HermesTransport {
+    private var replies: [String: [(Int, String)]]
+    private var gates: [String: ConversationTestGate]
+    private(set) var requests: [HermesHTTPRequest] = []
+
+    init(_ replies: [String: [(Int, String)]], gates: [String: ConversationTestGate] = [:]) {
+        self.replies = replies
+        self.gates = gates
+    }
+
+    func send(_ request: HermesHTTPRequest) async throws -> HermesHTTPResponse {
+        requests.append(request)
+        let route = "\(request.method) \(request.url.path)"
+        if let gate = gates.removeValue(forKey: route) { await gate.wait() }
+        guard var queue = replies[route], !queue.isEmpty else { throw HermesClientError.transport("not routed") }
+        let (status, body) = queue.removeFirst()
+        replies[route] = queue
+        return HermesHTTPResponse(statusCode: status, headers: ["Content-Type": "application/json"], body: Data(body.utf8))
+    }
+}

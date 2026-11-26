@@ -8,6 +8,7 @@ enum ConversationSettingsIdentifier: String, CaseIterable {
     case faceTrackingEnabled, faceTrackingStatus, faceTrackingYawCorrectionStepper
     case voicePresetPicker
     case hermesEndpointField, hermesAPIKeyField, hermesSaveButton, hermesDeleteKeyButton
+    case hermesModelPicker, hermesEffortPicker, hermesModelRefresh
     case historyReloadButton
 }
 

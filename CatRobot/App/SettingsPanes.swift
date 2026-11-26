@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定「会話」の右列。声と、居眠りまでの時間。返事を作るのは Hermes なので、モデルの選択はここに置かない。
+/// 設定「会話」の右列。声と、居眠りまでの時間。返事を作るのは Hermes なので、モデルと effort の選択は「Hermes 接続」に置く。
 struct ConversationSettingsPane: View {
     @Bindable var voiceSettings: SpeechVoiceSettings
     @Bindable var idleSettings: ConversationIdleSettings
@@ -25,7 +25,8 @@ struct ConversationSettingsPane: View {
     }
 }
 
-/// 設定「Hermes 接続」の右列。接続先（https の root）と API キー。保存済みのキーは表示せず、入力欄にも戻さない。
+/// 設定「Hermes 接続」の右列。接続先（https の root）と API キー、その Hermes で使うモデルと effort。
+/// 保存済みのキーは表示せず、入力欄にも戻さない。
 struct HermesConnectionSettingsPane: View {
     let settings: HermesConnectionSettings
     @State private var draft: HermesConnectionSettings.Draft
@@ -72,8 +73,11 @@ struct HermesConnectionSettingsPane: View {
             } footer: {
                 Text("普段使いできる常設の HTTPS 接続先はまだ用意されていません。接続先とキーを設定しないと、通常の返事は使えません（ほかのモデルが代わりに答えることはありません）。")
             }
+            HermesModelSection(settings: settings)
         }
         .task { await settings.refresh() }
+        // 開いたときと、接続先かキーを保存・削除したときに、Hermes の cache から候補を読む（probe し直すのは明示の再取得だけ）。
+        .task(id: settings.models.connectionRevision) { await settings.refreshModels(force: false) }
     }
 
     private var keyStatus: String {
@@ -125,6 +129,74 @@ struct HermesConnectionSettingsPane: View {
             } catch {
                 status = (draft, "キーを削除できませんでした。")
             }
+        }
+    }
+}
+
+/// 「Hermes 接続」のモデルと effort。候補は保存済みの接続先の Hermes から読み、選択は接続先ごとに保存する。
+/// 再取得のボタンは、読み込み中・失敗・未設定のときも出す（押せないときは disabled）。
+private struct HermesModelSection: View {
+    let settings: HermesConnectionSettings
+    private var models: HermesModelSettings { settings.models }
+    /// 保存済みの接続先に、その origin のキーがある（候補を読める）。
+    private var canLoad: Bool { models.origin != nil && settings.hasSavedKey }
+
+    var body: some View {
+        Section {
+            Picker("モデル", selection: Binding(get: { models.current.model }, set: { models.select(model: $0) })) {
+                Text(defaultModelLabel).tag(HermesModelID?.none)
+                if let saved = models.current.model, models.catalog?.model(for: saved) == nil {
+                    Text("\(saved.model)（保存済み）").tag(Optional(saved))
+                }
+                ForEach(models.catalog?.providers ?? []) { provider in
+                    Section(provider.name) {
+                        ForEach(provider.models) { model in
+                            Text(model.id).tag(Optional(HermesModelID(provider: provider.slug, model: model.id)))
+                        }
+                    }
+                }
+            }
+            .disabled(!canLoad)
+            .accessibilityIdentifier(ConversationSettingsIdentifier.hermesModelPicker.rawValue)
+            let efforts = models.effortChoices
+            if !efforts.isEmpty {
+                Picker("推論の深さ（effort）", selection: Binding(get: { models.current.effort }, set: { models.select(effort: $0) })) {
+                    Text("Hermes の既定").tag(HermesReasoningEffort?.none)
+                    ForEach(efforts, id: \.self) { Text($0.label).tag(Optional($0)) }
+                }
+                .disabled(!canLoad)
+                .accessibilityIdentifier(ConversationSettingsIdentifier.hermesEffortPicker.rawValue)
+            }
+            Button("モデルの候補を再取得") { Task { await settings.refreshModels(force: true) } }
+                .disabled(!canLoad || models.isLoading)
+                .accessibilityIdentifier(ConversationSettingsIdentifier.hermesModelRefresh.rawValue)
+            if let status { Text(status).foregroundStyle(.secondary) }
+            if let notice = models.notice { Text(notice).foregroundStyle(.secondary) }
+        } header: { Text("モデル") } footer: {
+            Text("選んだモデルと effort は次の返事から、この接続先にだけ使います。Hermes 側で /model を指定した会話では、そのモデルが優先されます。")
+        }
+    }
+
+    private var defaultModelLabel: String {
+        guard let catalog = models.catalog, let model = catalog.defaultModel else { return "Hermes の既定" }
+        let provider = catalog.defaultProvider.map { "\($0) / " } ?? ""
+        return "Hermes の既定（\(provider)\(model)）"
+    }
+
+    private var status: String? {
+        guard models.origin != nil else { return "接続先とキーを保存すると、この Hermes で使えるモデルを読み込めます。" }
+        guard settings.hasSavedKey else { return "この接続先の API キーを保存すると、使えるモデルを読み込めます。" }
+        switch models.phase {
+        case .idle: return nil
+        case .loading: return "モデルの候補を読み込んでいます…"
+        case .failed(let message): return message
+        case .loaded:
+            guard let catalog = models.catalog else { return nil }
+            if catalog.providers.isEmpty { return "選べるモデルが見つかりませんでした。" }
+            if catalog.source == .routes {
+                return "この Hermes はモデルの一覧に対応していないため、model_routes の別名だけを表示しています。"
+            }
+            return nil
         }
     }
 }
