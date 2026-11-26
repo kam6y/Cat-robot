@@ -70,7 +70,7 @@ final class ConversationInactivityTests: XCTestCase {
     }
 
     func testBusyTurnDefersStandbyWithoutResettingElapsedTime() async {
-        for phase in [ConversationPhase.preparing, .classifying, .thinking, .speaking, .clarifying] {
+        for phase in [ConversationPhase.preparing, .thinking, .speaking] {
             let clock = ManualRobotClock()
             let idle = ConversationInactivity(settings: settings(), clock: clock)
             idle.setMonitoring(true, phase: .listening)

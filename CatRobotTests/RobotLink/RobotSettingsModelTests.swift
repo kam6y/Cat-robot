@@ -6,7 +6,7 @@ import XCTest
 final class RobotSettingsModelTests: XCTestCase {
     func testCompositionDoesNotStartBluetooth() async {
         let h = RobotLinkHarness()
-        let composition = ConversationComposition.live(auth: .missing, robotTransport: h.transport,
+        let composition = ConversationComposition.live(robotTransport: h.transport,
                                                       robotClock: h.clock, robotPreferences: h.preferences)
         _ = AppRootView(dependencies: composition.dependencies, robotSettings: composition.robotSettings)
         _ = RobotConnectionView(model: composition.robotSettings)

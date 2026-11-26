@@ -2,11 +2,7 @@ import Foundation
 import XCTest
 @testable import CatRobot
 
-extension AddressClassifying {
-    func classify(_ utterance: String) async throws -> AddressTarget {
-        try await classify(AddressClassificationRequest(utterance: utterance))
-    }
-}
+
 
 @MainActor
 @discardableResult
@@ -32,7 +28,6 @@ enum ConversationTestCall: Equatable, Sendable {
     case prewarmReply
     case startRecognizer
     case stopRecognizer
-    case classify(String)
     case generateReply(String)
     case speak(String)
     case stopSpeaker
@@ -48,7 +43,6 @@ enum ConversationLatencyTestEvent: Equatable, Sendable {
         segmentationInterval: TimeInterval
     )
     case asrActivity(token: ConversationLatencyToken, at: TimeInterval)
-    case selected(token: ConversationLatencyToken, path: ConversationLatencyPath, at: TimeInterval)
     case caption(token: ConversationLatencyToken, at: TimeInterval)
     case speech(token: ConversationLatencyToken, at: TimeInterval)
     case cancelled(
@@ -61,7 +55,6 @@ enum ConversationLatencyTestEvent: Equatable, Sendable {
 @MainActor
 final class FakeConversationLatencyTracker: ConversationLatencyTracking {
     private struct Milestones {
-        var pathWasSelected = false
         var captionWasRecorded = false
         var speechWasRecorded = false
     }
@@ -94,20 +87,9 @@ final class FakeConversationLatencyTracker: ConversationLatencyTracking {
         events.append(.asrActivity(token: token, at: timestamp))
     }
 
-    func selectPath(
-        _ path: ConversationLatencyPath,
-        for token: ConversationLatencyToken,
-        at timestamp: TimeInterval
-    ) {
-        guard var state = milestones[token], !state.pathWasSelected else { return }
-        state.pathWasSelected = true
-        milestones[token] = state
-        events.append(.selected(token: token, path: path, at: timestamp))
-    }
 
     func firstCaptionVisible(for token: ConversationLatencyToken, at timestamp: TimeInterval) {
         guard var state = milestones[token],
-              state.pathWasSelected,
               !state.captionWasRecorded else { return }
         state.captionWasRecorded = true
         milestones[token] = state
@@ -116,7 +98,6 @@ final class FakeConversationLatencyTracker: ConversationLatencyTracking {
 
     func speechStarted(for token: ConversationLatencyToken, at timestamp: TimeInterval) {
         guard var state = milestones[token],
-              state.pathWasSelected,
               !state.speechWasRecorded else { return }
         state.speechWasRecorded = true
         milestones[token] = state
@@ -427,73 +408,6 @@ actor FakeSpeechRecognizer: SpeechRecognizing {
     }
 }
 
-actor FakeAddressClassifier: AddressClassifying {
-    private var result: AddressTarget
-    private var error: ConversationServiceError?
-    private let log: ConversationTestCallLog
-    var calls: [String] { requests.map(\.utterance) }
-    private(set) var requests: [AddressClassificationRequest] = []
-
-    init(result: AddressTarget, log: ConversationTestCallLog) {
-        self.result = result
-        self.log = log
-    }
-
-    func classify(_ request: AddressClassificationRequest) async throws -> AddressTarget {
-        requests.append(request)
-        log.append(.classify(request.utterance))
-        if let error { throw error }
-        return result
-    }
-
-    func setResult(_ result: AddressTarget) { self.result = result }
-    func setError(_ error: ConversationServiceError?) { self.error = error }
-}
-
-/// ConversationHistoryReading の fake。読み取り回数を数え、gate があれば読み取りの途中で待つ。
-actor FakeConversationHistory: ConversationHistoryReading {
-    private var turns: [ConversationMemoryTurn]
-    private let gate: ConversationTestGate?
-    private(set) var readCount = 0
-
-    init(turns: [ConversationMemoryTurn] = [], gate: ConversationTestGate? = nil) {
-        self.turns = turns
-        self.gate = gate
-    }
-
-    func recentTurns() async -> [ConversationMemoryTurn] {
-        readCount += 1
-        await gate?.wait()
-        return turns
-    }
-
-    func set(_ turns: [ConversationMemoryTurn]) { self.turns = turns }
-}
-
-/// 本物の ClaudeAddressClassifier の下で、モデル呼び出しだけを置き換える。
-actor RecordingAddressModelClient: AddressModelClient {
-    private var result: GeneratedAddressTarget
-    private let error: ConversationServiceError?
-    /// 指定すると要求を記録した後にこのゲートで待つ（分類中の期限切れや停止を再現する）。
-    private let gate: ConversationTestGate?
-    private(set) var requests: [AddressClassificationRequest] = []
-
-    init(result: GeneratedAddressTarget, error: ConversationServiceError? = nil, gate: ConversationTestGate? = nil) {
-        self.result = result
-        self.error = error
-        self.gate = gate
-    }
-
-    func classify(_ request: AddressClassificationRequest) async throws -> GeneratedAddressTarget {
-        requests.append(request)
-        await gate?.wait()
-        if let error { throw error }
-        return result
-    }
-
-    func setResult(_ result: GeneratedAddressTarget) { self.result = result }
-}
-
 actor FakeReplyService: ReplyGenerating {
     typealias Continuation = AsyncThrowingStream<String, Error>.Continuation
 
@@ -766,7 +680,7 @@ actor ConversationCompletionProbe {
 
 @MainActor
 final class ConversationTestAttention {
-    var isFacingScreen = false
+    var isFacingScreen = true
 }
 
 @MainActor
@@ -777,7 +691,6 @@ final class ConversationHarness {
     let microphone: FakeMicrophonePermission
     let modelAvailability: FakeModelAvailability
     let recognizer: FakeSpeechRecognizer
-    let classifier: FakeAddressClassifier
     let reply: FakeReplyService
     let speaker: FakeSpeechSpeaker
     let audio: FakeConversationAudioSession
@@ -792,9 +705,7 @@ final class ConversationHarness {
         replyTraceSink: any ReplyTraceSink = NoopReplyTraceSink(),
         memory: (any ConversationMemoryManaging)? = nil,
         memoryPrepareGate: ConversationTestGate? = nil,
-        classification: AddressTarget = .addressed,
         /// 指定すると fake の代わりにこの分類器（共有factoryの実routerなど）をVMへ渡す。
-        classifierOverride: (any AddressClassifying)? = nil,
         isFacingScreen: (@MainActor @Sendable () -> Bool)? = nil,
         microphoneAllowed: Bool = true,
         modelAvailabilityResult: ModelAvailability = .available,
@@ -819,9 +730,6 @@ final class ConversationHarness {
         audioActivateGate: ConversationTestGate? = nil,
         audioVolumeReadGate: ConversationTestGate? = nil,
         latency: FakeConversationLatencyTracker? = nil,
-        clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
-            try? await Task.sleep(for: duration)
-        },
         noticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
         },
@@ -847,7 +755,6 @@ final class ConversationHarness {
             prepareError: recognizerPrepareError,
             startError: recognizerStartError
         )
-        let classifier = FakeAddressClassifier(result: classification, log: calls)
         let reply = FakeReplyService(
             automaticSnapshots: replySnapshots,
             resetGate: replyResetGate,
@@ -883,7 +790,6 @@ final class ConversationHarness {
         self.microphone = microphone
         self.modelAvailability = modelAvailability
         self.recognizer = recognizer
-        self.classifier = classifier
         self.reply = reply
         self.speaker = speaker
         self.audio = audio
@@ -894,7 +800,6 @@ final class ConversationHarness {
             microphonePermission: microphone,
             modelAvailability: modelAvailabilityOverride ?? modelAvailability,
             recognizer: recognizerOverride ?? recognizer,
-            classifier: classifierOverride ?? classifier,
             reply: replyOverride ?? reply,
             speaker: speaker,
             audioSession: audio,
@@ -903,7 +808,6 @@ final class ConversationHarness {
             memory: effectiveMemory,
             isFacingScreen: isFacingScreen ?? { attention.isFacingScreen },
             now: { now.value },
-            clarificationDelay: clarificationDelay,
             noticeDelay: noticeDelay,
             lifecycleCheckpoint: lifecycleCheckpoint,
             serviceTeardown: { await teardownProbe.call() }

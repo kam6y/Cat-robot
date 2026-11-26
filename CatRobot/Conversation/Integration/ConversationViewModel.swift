@@ -27,10 +27,6 @@ struct ConversationOperationOwnership {
 @MainActor
 @Observable
 final class ConversationViewModel {
-    private enum EngagementUpdate {
-        case arm
-        case refresh
-    }
 
     private struct DetachedLifecycleTasks: Sendable {
         let preflight: Task<Void, Never>?
@@ -78,7 +74,6 @@ final class ConversationViewModel {
     private(set) var viewState: ConversationViewState = .idle
 
     @ObservationIgnored private var engagement = EngagementWindow()
-    @ObservationIgnored private var pendingClarification: PendingClarification?
     @ObservationIgnored private var lifecycleGeneration: UInt64 = 0
     @ObservationIgnored private var captureCounter: UInt64 = 0
     @ObservationIgnored private var turnCounter: UInt64 = 0
@@ -107,7 +102,6 @@ final class ConversationViewModel {
     @ObservationIgnored private var lifecycleTransitionTask: Task<Void, Never>?
     @ObservationIgnored private var failureCleanupTask: Task<Void, Never>?
     @ObservationIgnored private var failureSpeechTask: Task<Void, Never>?
-    @ObservationIgnored private var pendingClarificationExpirationTask: Task<Void, Never>?
     @ObservationIgnored private var audioEventTask: Task<Void, Never>?
     @ObservationIgnored private var shutdownTask: Task<Void, Never>?
 
@@ -169,7 +163,7 @@ final class ConversationViewModel {
             return
         }
         switch viewState.phase {
-        case .listening, .classifying, .clarifying, .thinking, .speaking:
+        case .listening, .thinking, .speaking:
             return
         case .idle, .preparing, .paused, .failed:
             break
@@ -198,7 +192,7 @@ final class ConversationViewModel {
         switch viewState.phase {
         case .idle, .paused, .failed:
             await startConversation()
-        case .preparing, .listening, .classifying, .clarifying, .thinking, .speaking:
+        case .preparing, .listening, .thinking, .speaking:
             resetTurnPresentation(stopping: .userStop)
             await pauseConversation(awaitsTapResume: true)
         }
@@ -293,7 +287,6 @@ final class ConversationViewModel {
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
         wantsListening = false
-        clearPendingClarification()
         engagement.clear()
         turnCounter &+= 1
         let turnID = turnCounter
@@ -340,7 +333,6 @@ final class ConversationViewModel {
         actionIntentCounter &+= 1
         lifecycleGeneration &+= 1
         wantsListening = false
-        clearPendingClarification()
         voiceLatency.cancel(reason: .lifecycle)
         microphonePermissionOwnership.invalidate()
         releaseMicrophonePermissionCompletion()
@@ -482,7 +474,7 @@ final class ConversationViewModel {
         transition(to: .paused)
     }
 
-    /// 通知は数秒で消す。次に話しかけた時点（transition で classifying / thinking に入る）でも消す。
+    /// 通知は数秒で消す。次に話しかけた時点（transition で thinking に入る）でも消す。
     private func showNotice(_ text: String) {
         noticeExpiryTask?.cancel()
         viewState.memoryNotice = text
@@ -965,137 +957,26 @@ final class ConversationViewModel {
     ) async {
         guard isCurrent(generation, turnID: turnID) else { return }
         let timestamp = dependencies.now()
-        if let pendingClarification,
-           timestamp >= pendingClarification.expiresAt {
-            clearPendingClarification()
-        }
-        // Keep the routing-start context even if the pending timer expires during classification.
-        let clarification = pendingClarification.map { ClarificationContext(originalUtterance: $0.utterance) }
-        let isCorrectingPending = clarification != nil
-        let wasEngaged = engagement.isActive(at: timestamp)
-        let isFacingScreen = dependencies.isFacingScreen()
         let route = dependencies.addresseePolicy.route(
-            utterance,
-            at: timestamp,
-            engagement: engagement,
-            pending: pendingClarification,
-            isFacingScreen: isFacingScreen
+            utterance, at: timestamp, engagement: engagement,
+            wakePhrase: dependencies.wakePhrase(), isFacingScreen: dependencies.isFacingScreen()
         )
-
         switch route {
+        case .wakeOnly:
+            clearNotice()
+            onAddressedActivity()
+            await acknowledgeWakePhrase(generation: generation, turnID: turnID)
         case .accept(let accepted):
             onAddressedActivity()
-            clearPendingClarification()
-            voiceLatency.selectPath(.fast, generation: generation, turnID: turnID)
-            await generateReply(
-                to: accepted,
-                engagementUpdate: isFacingScreen || !wasEngaged ? .arm : .refresh,
-                generation: generation,
-                turnID: turnID
-            )
-        case .classify(let candidate):
-            let request = AddressClassificationRequest(utterance: candidate, clarification: clarification)
-            voiceLatency.selectPath(.classified, generation: generation, turnID: turnID)
-            transition(to: .classifying)
-            await classifyAndRespond(
-                request,
-                wasCorrectingPending: isCorrectingPending,
-                generation: generation,
-                turnID: turnID
-            )
+            await generateReply(to: accepted, generation: generation, turnID: turnID)
         case .ignore:
             voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
             await resumeCapture(generation: generation, turnID: turnID)
         }
     }
 
-    /// Only the classifier call throws; the routed responses report their own failures.
-    private func classifyAndRespond(
-        _ request: AddressClassificationRequest,
-        wasCorrectingPending: Bool,
-        generation: UInt64,
-        turnID: UInt64
-    ) async {
-        let target: AddressTarget
-        do {
-            let trace = voiceLatency.trace
-            trace?.mark(.classificationStarted)
-            var classificationOutcome = ReplyTraceOutcome.generationFailure
-            target = try await ReplyTraceContext.$current.withValue(trace) {
-                defer { trace?.mark(.classificationFinished, outcome: classificationOutcome) }
-                let value = try await dependencies.classifier.classify(request)
-                classificationOutcome = .success
-                return value
-            }
-        } catch {
-            guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            await finishFailure(
-                .publish(Self.serviceError(from: error)),
-                origin: .turn(stopRecognizer: false),
-                owner: .turn(generation: generation, turnID: turnID)
-            )
-            return
-        }
-        guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-        switch target {
-        case .addressed:
-            onAddressedActivity()
-            clearPendingClarification()
-            await generateReply(
-                to: request.utterance,
-                engagementUpdate: .arm,
-                generation: generation,
-                turnID: turnID
-            )
-        case .notAddressed:
-            voiceLatency.cancel(reason: .noResponse, ifOwnedBy: .turn(generation: generation, turnID: turnID))
-            await resumeCapture(generation: generation, turnID: turnID)
-        case .ambiguous:
-            voiceLatency.cancel(reason: .ambiguous, ifOwnedBy: .turn(generation: generation, turnID: turnID))
-            if wasCorrectingPending {
-                await resumeCapture(generation: generation, turnID: turnID)
-            } else {
-                setPendingClarification(
-                    utterance: request.utterance,
-                    at: dependencies.now(),
-                    generation: generation
-                )
-                await askForClarification(candidate: request.utterance, generation: generation, turnID: turnID)
-            }
-        }
-    }
-
-    private func setPendingClarification(
-        utterance: String,
-        at timestamp: TimeInterval,
-        generation: UInt64
-    ) {
-        clearPendingClarification()
-        pendingClarification = PendingClarification(
-            utterance: utterance,
-            at: timestamp
-        )
-        let delay = dependencies.clarificationDelay
-
-        pendingClarificationExpirationTask = Task { @MainActor [weak self] in
-            await delay(.seconds(PendingClarification.duration))
-            guard !Task.isCancelled,
-                  let self,
-                  self.lifecycleGeneration == generation else { return }
-            self.pendingClarification = nil
-            self.pendingClarificationExpirationTask = nil
-        }
-    }
-
-    private func clearPendingClarification() {
-        pendingClarificationExpirationTask?.cancel()
-        pendingClarificationExpirationTask = nil
-        pendingClarification = nil
-    }
-
     private func generateReply(
         to utterance: String,
-        engagementUpdate: EngagementUpdate,
         generation: UInt64,
         turnID: UInt64
     ) async {
@@ -1115,10 +996,7 @@ final class ConversationViewModel {
                 }
             }
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            switch engagementUpdate {
-            case .arm: engagement.arm(at: dependencies.now())
-            case .refresh: engagement.refresh(afterReplyAt: dependencies.now())
-            }
+            engagement.arm(at: dependencies.now())
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
@@ -1126,12 +1004,10 @@ final class ConversationViewModel {
         }
     }
 
-    /// The turn's measurement already ended as ambiguous, so the fixed question is not traced.
-    /// The original comes from the routed candidate: the expiry task may clear the pending context while speaking.
-    private func askForClarification(candidate: String, generation: UInt64, turnID: UInt64) async {
-        let question = ClarificationContext.question
-        let original = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-        transition(to: .clarifying, caption: question)
+    private func acknowledgeWakePhrase(generation: UInt64, turnID: UInt64) async {
+        let question = "なあに？"
+        transition(to: .speaking, caption: question)
+        voiceLatency.recordFirstCaption(generation: generation, turnID: turnID)
         do {
             let stream = try await dependencies.speaker.speak(question)
             var finishedNormally = false
@@ -1140,6 +1016,7 @@ final class ConversationViewModel {
                 guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
                 switch event {
                 case .started:
+                    voiceLatency.recordSpeechStarted(generation: generation, turnID: turnID)
                     viewState.mouthPose = .small
                 case .willSpeak:
                     viewState.mouthPose = mouthSequence.nextWordPose()
@@ -1156,8 +1033,8 @@ final class ConversationViewModel {
                 throw ConversationServiceError.speechSynthesisFailed
             }
 
-            await dependencies.memory.recordExternalTurn(prompt: original, response: question)
-            guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            voiceLatency.trace?.finish(.success)
+            engagement.arm(at: dependencies.now())
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
@@ -1204,13 +1081,12 @@ final class ConversationViewModel {
 
     private func finishReplyFailure(_ error: any Error, owner: ConversationTurnOwner) async {
         let serviceError = Self.serviceError(from: error)
-        // A typed reply still needs speech synthesis. An exceeded context needs a new reply session.
+        // A typed reply still needs speech synthesis.
         let includesTypedFallback = serviceError != .speechSynthesisFailed && serviceError != .speechVoiceUnavailable
         await finishFailure(
             .publish(serviceError, includesTypedFallback: includesTypedFallback),
             origin: .turn(stopRecognizer: false),
-            owner: owner,
-            resetsReplySession: serviceError == .contextExceeded
+            owner: owner
         )
     }
 
@@ -1220,13 +1096,11 @@ final class ConversationViewModel {
     private func finishFailure(
         _ outcome: FailureOutcome,
         origin: FailureOrigin,
-        owner: ConversationTurnOwner,
-        resetsReplySession: Bool = false
+        owner: ConversationTurnOwner
     ) async {
         guard isActiveOwner(owner), !Task.isCancelled else { return }
         voiceLatency.cancel(reason: .failure, ifOwnedBy: owner)
         wantsListening = false
-        clearPendingClarification()
         engagement.clear()
         segmentationTask?.cancel()
         segmentationTask = nil
@@ -1238,7 +1112,6 @@ final class ConversationViewModel {
                 outcome,
                 origin: origin,
                 owner: owner,
-                resetsReplySession: resetsReplySession,
                 failureID: failureID
             )
         }
@@ -1248,13 +1121,12 @@ final class ConversationViewModel {
 
     /// failureCleanupTask の中身。所有確認は全起点で isActiveOwner を使う。
     /// 2: 再生の中断と、試みた認識の停止。3: 案内があり開始前で未有効化なら、音声出力の準備と有効化（失敗や所有喪失は案内を省くだけで、元の結果は保つ）。
-    /// 4: 所有が続く間、案内を最後まで読み上げる（失敗・取消・未完了は握りつぶす）。5: 音声出力を止め、試みた audio session を解除し、必要なら返答セッションを捨てる。
+    /// 4: 所有が続く間、案内を最後まで読み上げる（失敗・取消・未完了は握りつぶす）。5: 音声出力を止め、試みた audio session を解除し。
     /// 6: 所有が続いていれば結果を反映する（表示、または記憶の状態と一時停止）。既存の lifecycle / capture の後片付けもここ。
     private func performFailureOperation(
         _ outcome: FailureOutcome,
         origin: FailureOrigin,
         owner: ConversationTurnOwner,
-        resetsReplySession: Bool,
         failureID: UInt64
     ) async {
         // 所有の確認は activeID を読むだけ。finish は最後の後片付けの 1 か所だけで行う。
@@ -1312,9 +1184,6 @@ final class ConversationViewModel {
         await dependencies.speaker.stop()
         if audioActivationAttempted {
             await dependencies.audioSession.deactivate()
-        }
-        if resetsReplySession {
-            await dependencies.reply.reset()
         }
 
         // 6
@@ -1430,11 +1299,10 @@ final class ConversationViewModel {
     }
 
     /// The synchronous part of a pause once the generation has advanced:
-    /// drop the listening intent, engagement and clarification, then show paused.
+    /// drop the listening intent and engagement, then show paused.
     private func invalidateForPause() {
         wantsListening = false
         engagement.clear()
-        clearPendingClarification()
         transition(to: .paused)
     }
 
@@ -1512,7 +1380,7 @@ final class ConversationViewModel {
     ) {
         announcePhase(phase)
         switch phase {
-        case .classifying, .thinking, .clarifying:
+        case .thinking:
             clearNotice()   // 次に話しかけたら通知は役目を終える
         default:
             break

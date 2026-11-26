@@ -14,8 +14,7 @@ enum FaceExpression: String, CaseIterable, Sendable {
     static func automatic(for phase: ConversationPhase) -> Self {
         switch phase {
         case .idle, .listening, .paused: .neutral
-        case .preparing, .classifying, .thinking: .thinking
-        case .clarifying: .curious
+        case .preparing, .thinking: .thinking
         case .speaking: .speaking
         case .failed: .sorry
         }

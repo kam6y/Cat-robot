@@ -93,27 +93,6 @@ project.root_object.package_references << ort_package
   target.frameworks_build_phase.files << build_file
 end
 
-claude_package = project.new(Xcodeproj::Project::Object::XCRemoteSwiftPackageReference)
-claude_package.repositoryURL = "https://github.com/anthropics/ClaudeForFoundationModels.git"
-claude_package.requirement = { "kind" => "exactVersion", "version" => "0.2.3" }
-project.root_object.package_references << claude_package
-[app_target, test_target].each do |target|
-  product = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
-  product.package = claude_package
-  product.product_name = "ClaudeForFoundationModels"
-  target.package_product_dependencies << product
-  build_file = project.new(Xcodeproj::Project::Object::PBXBuildFile)
-  build_file.product_ref = product
-  target.frameworks_build_phase.files << build_file
-end
-
-# 開発用キーは Debug に同梱し、Release では下記の設定で除外する。
-dev_key_path = ROOT.join("CatRobot/LocalAssets/claude-api-key.txt")
-FileUtils.mkdir_p(dev_key_path.dirname)
-FileUtils.touch(dev_key_path) unless dev_key_path.file?
-app_target.add_resources([app_group.new_file("LocalAssets/claude-api-key.txt")])
-claude_client_id = JSON.parse(ROOT.join("CatRobot/Resources/claude-integration.json").read).fetch("clientID", "")
-
 app_target.add_resources([resources_group.new_file("supertonic-manifest.json")])
 asset = app_group.new_file("LocalAssets/Supertonic")
 asset.last_known_file_type = "folder"
@@ -209,9 +188,6 @@ app_target.build_configurations.each do |configuration|
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME" => "AccentColor",
     "CURRENT_PROJECT_VERSION" => "1",
     "CATROBOT_SOURCE_REVISION" => "unversioned",
-    "CATROBOT_CLAUDE_CLIENT_ID" => claude_client_id,
-    "CODE_SIGN_ENTITLEMENTS" => "CatRobot/Resources/CatRobot.entitlements",
-    "CATROBOT_APP_ATTEST_ENVIRONMENT" => (configuration.name == "Release" ? "production" : "development"),
     "DEVELOPMENT_ASSET_PATHS" => '"CatRobot/Preview Content"',
     "ENABLE_PREVIEWS" => "YES",
     # 「Remove codeless onnxruntime framework」が成果物を検査・削除できるよう、アプリターゲットだけ切る。
@@ -227,7 +203,7 @@ app_target.build_configurations.each do |configuration|
   )
   configuration.build_settings["ENABLE_TESTABILITY"] = "YES" if configuration.name == "Debug"
   if configuration.name == "Release"
-    configuration.build_settings["EXCLUDED_SOURCE_FILE_NAMES"] = ["$(inherited)", '"Preview Assets.xcassets"', '"claude-api-key.txt"']
+    configuration.build_settings["EXCLUDED_SOURCE_FILE_NAMES"] = ["$(inherited)", '"Preview Assets.xcassets"']
   end
 end
 

@@ -1,7 +1,7 @@
 import Foundation
 
 enum ReplyTracePoint: String, Codable, Sendable {
-    case captureBoundary, captureClosed, classificationStarted, classificationFinished
+    case captureBoundary, captureClosed
     case request, firstCaption, firstSentence, generationFinished, streamFinished
     case compactionStarted, compactionFinished, sessionStarted, sessionFinished
     case saveStarted, saveFinished, speechEnqueued, speechStarted, speechFinished, finished
@@ -9,11 +9,11 @@ enum ReplyTracePoint: String, Codable, Sendable {
     case synthesisStarted, synthesisFinished, toolStarted, toolFinished
 }
 enum ReplyTraceTool: String, Codable, Sendable {
-    case remember, express, look
+    case express, look
     case moveHead = "move_head"
 }
 enum ReplyTraceOutcome: String, Codable, Sendable {
-    case success, cancelled, generationFailure, speechFailure, saveWarning, noResponse, ambiguous
+    case success, cancelled, generationFailure, speechFailure, saveWarning, noResponse
 }
 enum ReplySpeechPart: String, Codable, Sendable { case first, remainder, full }
 enum ReplySpeechStartSource: String, Codable, Sendable { case started, willSpeakFallback }
@@ -40,7 +40,7 @@ final class ReplyTrace: @unchecked Sendable {
     private var once: Set<String> = []
     private var intervals: [ReplyTracePoint: Int] = [:]
     private static let ends: [ReplyTracePoint: ReplyTracePoint] = [
-        .classificationFinished: .classificationStarted, .compactionFinished: .compactionStarted,
+        .compactionFinished: .compactionStarted,
         .sessionFinished: .sessionStarted, .saveFinished: .saveStarted,
         .preparationFinished: .preparationStarted, .synthesisFinished: .synthesisStarted,
         .toolFinished: .toolStarted

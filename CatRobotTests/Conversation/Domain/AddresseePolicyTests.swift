@@ -1,130 +1,52 @@
 import XCTest
 @testable import CatRobot
 
+@MainActor
 final class AddresseePolicyTests: XCTestCase {
-    func testNamesAloneDoNotBypassClassifier() {
-        for utterance in ["ねこ、天気は？", "猫ちゃん", "Cat Robot: hello", "キャットロボット今日どう？"] {
-            XCTAssertEqual(AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-                           .classify(utterance))
+    private let policy = AddresseePolicy()
+
+    func testConfiguredPhraseMatchesAtAnyWordBoundaryByReading() {
+        for name in ["猫ちゃん", "ねこちゃん", "ネコチャン"] {
+            XCTAssertEqual(policy.route("ねこちゃん。", at: 0, engagement: .inactive, wakePhrase: name), .wakeOnly)
+            XCTAssertEqual(policy.route("猫ちゃん明日は雨？", at: 0, engagement: .inactive, wakePhrase: name), .accept("猫ちゃん明日は雨？"))
+            for addressed in ["ねえ猫ちゃん、元気？", "明日の天気は？ ねこちゃん"] {
+                XCTAssertEqual(policy.route(addressed, at: 0, engagement: .inactive, wakePhrase: name), .accept(addressed))
+            }
+            for other in ["今日は猫ちゃんねるの日", "猫ちゃんねる", "明日は雨？"] {
+                XCTAssertEqual(policy.route(other, at: 0, engagement: .inactive, wakePhrase: name), .ignore)
+            }
         }
+        XCTAssertEqual(policy.route("ＨＥＹ　ＭＩＫＥ！", at: 0, engagement: .inactive, wakePhrase: "hey mike"), .wakeOnly)
     }
 
-    func testEngagedTurnSkipsClassifierButHardExpiryDoesNotExtend() {
-        var engagement = EngagementWindow()
-        engagement.arm(at: 0)
-        engagement.refresh(afterReplyAt: 290)
-        XCTAssertEqual(AddresseePolicy().route("続けて", at: 299, engagement: engagement, pending: nil), .accept("続けて"))
-        XCTAssertEqual(AddresseePolicy().route("続けて", at: 300, engagement: engagement, pending: nil), .classify("続けて"))
-        XCTAssertEqual(AddresseePolicy().route("続けて", at: 301, engagement: engagement, pending: nil), .classify("続けて"))
+    func testTheSelectedPhraseMayBeChangedAndSurvivesRelaunch() {
+        let suite = "wake-phrase-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SpeechVoiceSettings(defaults: defaults)
+        XCTAssertEqual(settings.wakePhrase, "猫ちゃん")
+        XCTAssertTrue(settings.saveWakePhrase("  ミケ！  "))
+        XCTAssertFalse(settings.saveWakePhrase(" 、？ "))
+        let saved = SpeechVoiceSettings(defaults: defaults).wakePhrase
+        XCTAssertEqual(saved, "ミケ")
+        XCTAssertEqual(policy.route("みけ、お願い", at: 0, engagement: .inactive, wakePhrase: saved), .accept("みけ、お願い"))
+        XCTAssertEqual(policy.route("猫ちゃん、お願い", at: 0, engagement: .inactive, wakePhrase: saved), .ignore)
+        defaults.set("！？", forKey: "speech.wakePhrase")
+        XCTAssertEqual(SpeechVoiceSettings(defaults: defaults).wakePhrase, "猫ちゃん")
     }
 
-    func testPendingSpeechUsesActualWordsWithoutYesNoRewrite() {
-        let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
-        // 短い肯定・否定も言い方の違う返事も、元の発言へ置き換えず、文脈つきの宛先判定へ渡す。
-        for reply in ["はい", "うん。", "そうだよ", "いいえ", "ううん", "違う", "そうじゃない。",
-                      "言ったよ", "違うよ、ママに言ったの", "猫ちゃん、別の質問"] {
-            XCTAssertEqual(AddresseePolicy().route(reply, at: 2, engagement: .inactive, pending: pending),
-                           .classify(reply), reply)
+    func testFaceOrActiveWindowAllowsOrdinarySpeechWhileFillerIsIgnored() {
+        var window = EngagementWindow()
+        window.arm(at: 0)
+        func route(_ text: String, _ time: TimeInterval, facing: Bool = false) -> AddresseeRoute {
+            policy.route(text, at: time, engagement: window, wakePhrase: "ロボット", isFacingScreen: facing)
         }
-    }
-
-    func testEngagementUsesThirtySecondSoftExpiryAndCanBeCleared() {
-        var engagement = EngagementWindow()
-        engagement.arm(at: 0)
-        engagement.refresh(afterReplyAt: 10)
-        XCTAssertTrue(engagement.isActive(at: 39.999))
-        XCTAssertFalse(engagement.isActive(at: 40))
-
-        engagement.arm(at: 100)
-        engagement.clear()
-        XCTAssertFalse(engagement.isActive(at: 100))
-    }
-
-    func testWakeNameDoesNotMatchLaterTextOrConcatenatedWord() {
-        XCTAssertEqual(
-            AddresseePolicy().route("今日は猫ちゃんどう？", at: 0, engagement: .inactive, pending: nil),
-            .classify("今日は猫ちゃんどう？")
-        )
-
-        for utterance in [
-            "ねこまんまについて教えて",
-            "猫ちゃんねるを見せて",
-            "Cat Roboticsについて",
-            "キャットロボット工房について"
-        ] {
-            XCTAssertEqual(
-                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-                .classify(utterance)
-            )
-        }
-
-        XCTAssertEqual(
-            AddresseePolicy().route("Cat Robot2について", at: 0, engagement: .inactive, pending: nil),
-            .classify("Cat Robot2について")
-        )
-    }
-
-    func testClassificationPreservesFullOriginalTranscript() {
-        let utterance = "  ねこまんまについて教えて  "
-
-        XCTAssertEqual(
-            AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-            .classify(utterance)
-        )
-    }
-
-    func testEmptyAndFillerSpeechAreIgnored() {
-        for utterance in ["", "  \n", "えー", "えっと", "あの", "うーん"] {
-            XCTAssertEqual(
-                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-                .ignore
-            )
-        }
-    }
-
-    func testPunctuationOnlyNoiseIsIgnored() {
-        for utterance in ["…", "、", "。。。"] {
-            XCTAssertEqual(
-                AddresseePolicy().route(utterance, at: 0, engagement: .inactive, pending: nil),
-                .ignore
-            )
-        }
-    }
-
-    func testFillerDuringPendingIsIgnoredWithoutDismissingIt() {
-        let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
-
-        XCTAssertEqual(
-            AddresseePolicy().route("えっと", at: 2, engagement: .inactive, pending: pending),
-            .ignore
-        )
-    }
-
-    func testNonYesNoPendingResponseClassifiesCurrentUtteranceAsNaturalCorrection() {
-        var engagement = EngagementWindow()
-        engagement.arm(at: 0)
-        let pending = PendingClarification(utterance: "明日の予定は？", expiresAt: 15)
-
-        XCTAssertEqual(
-            AddresseePolicy().route("もう一度", at: 2, engagement: engagement, pending: pending),
-            .classify("もう一度")
-        )
-    }
-
-    func testPendingCreatedAtTrimsOriginalAndExpiresAfterFifteenSeconds() {
-        let pending = PendingClarification(utterance: "  明日の予定は？ \n", at: 10)
-        var engagement = EngagementWindow()
-        engagement.arm(at: 0)
-
-        XCTAssertEqual(pending.utterance, "明日の予定は？")
-        // 確認待ちの間は会話継続中でも宛先判定へ回し、期限ちょうどからは従来の振り分けへ戻る。
-        XCTAssertEqual(
-            AddresseePolicy().route("うん", at: 24.999, engagement: engagement, pending: pending),
-            .classify("うん")
-        )
-        XCTAssertEqual(
-            AddresseePolicy().route("うん", at: 25, engagement: engagement, pending: pending),
-            .accept("うん")
-        )
+        XCTAssertEqual(route("続けて", 29), .accept("続けて"))
+        XCTAssertEqual(route("続けて", 30), .ignore)
+        XCTAssertEqual(route(" 教えて ", 30, facing: true), .accept("教えて"))
+        for filler in ["……", "えっと", "  "] { XCTAssertEqual(route(filler, 2, facing: true), .ignore) }
+        window.arm(at: 295)
+        XCTAssertEqual(route("続けて", 324), .accept("続けて"))
+        XCTAssertEqual(route("続けて", 325), .ignore)
     }
 }

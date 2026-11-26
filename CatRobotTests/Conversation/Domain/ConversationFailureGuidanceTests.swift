@@ -6,19 +6,15 @@ final class ConversationFailureGuidanceTests: XCTestCase {
         let cases: [(ConversationServiceError, String?)] = [
             (.modelUnreachable, ConversationFailureGuidance.unreachable),
             (.replyTimedOut, ConversationFailureGuidance.unreachable),
-            (.modelUnavailable(.claudeUnreachable), ConversationFailureGuidance.unreachable),
             (.modelGenerationFailed, ConversationFailureGuidance.generationFailed),
             (.modelBusy, ConversationFailureGuidance.generationFailed),
             (.modelUnavailable(.available), ConversationFailureGuidance.configuration),
             (.modelUnavailable(.hermesNotConfigured), ConversationFailureGuidance.configuration),
             (.modelUnavailable(.hermesUnauthorized), ConversationFailureGuidance.configuration),
-            (.modelUnavailable(.claudeCredentialMissing), ConversationFailureGuidance.voiceAddressing),
-            (.modelUnavailable(.claudeAttestationUnsupported), ConversationFailureGuidance.voiceAddressing),
-            (.modelUnavailable(.claudeAttestationFailed), ConversationFailureGuidance.voiceAddressing),
-            (.modelLocaleUnsupported, ConversationFailureGuidance.configuration),
-            (.refusal, ConversationFailureGuidance.refused),
-            (.guardrailViolation, ConversationFailureGuidance.refused),
-            (.contextExceeded, ConversationFailureGuidance.contextExceeded),
+
+
+
+
             (.inputTooLong, ConversationFailureGuidance.inputTooLong),
             (.speechCaptureFailed, ConversationFailureGuidance.listening),
             (.speechEndpointingFailed, ConversationFailureGuidance.listening),
@@ -33,12 +29,11 @@ final class ConversationFailureGuidanceTests: XCTestCase {
         }
     }
 
-    /// 返事は Hermes が作るので、声の案内はモデルの名前を出さない。宛先判定の失敗は文字の会話へ案内する。
-    func testGuidanceNamesNoModelAndPointsVoiceAddressingFailuresToTyping() {
-        for text in [ConversationFailureGuidance.unreachable, ConversationFailureGuidance.configuration,
-                     ConversationFailureGuidance.voiceAddressing] {
+    /// 返事も宛先判定も Hermes が受け持つので、声の案内はモデルやサービスの名前を出さない。
+    func testGuidanceNamesNoModelOrService() {
+        for text in [ConversationFailureGuidance.unreachable, ConversationFailureGuidance.configuration] {
             XCTAssertFalse(text.contains("Claude"), text)
+            XCTAssertFalse(text.contains("Hermes"), text)
         }
-        XCTAssertTrue(ConversationFailureGuidance.voiceAddressing.contains("文字"))
     }
 }

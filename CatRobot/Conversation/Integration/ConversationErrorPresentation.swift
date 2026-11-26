@@ -51,32 +51,7 @@ struct ConversationErrorPresentation: Equatable, Sendable {
             case .hermesUnauthorized:
                 message = "Hermes が API キーを受け付けませんでした。設定でキーを確かめるか、Hermes 側を直してから「もう一度確認」を押してください。"
                 recoveries = [.connectionSettings, .checkAgain]
-            // Claude は声の宛先判定だけに使う。文字の会話は Hermes だけで続けられる。
-            case .claudeCredentialMissing:
-                message = "声の呼びかけの判定に使う Claude の接続設定がありません。開発ビルドではAPIキー、配布ビルドではApp Attestの登録が必要です。文字なら話しかけられます。"
-                recoveries = [.checkAgain, .typedInput]
-            case .claudeAttestationUnsupported:
-                message = "この端末ではApp Attestを使えないため、声の呼びかけの判定に使う Claude に接続できません。実機で実行するか、文字で話しかけてください。"
-                recoveries = [.checkAgain, .typedInput]
-            case .claudeAttestationFailed:
-                message = "声の呼びかけの判定に使う Claude の認証に失敗しました。ネットワークを確認して、もう一度お試しください。続く場合はアプリの登録が無効になっている可能性があります。文字なら話しかけられます。"
-                recoveries = [.checkAgain, .typedInput]
-            case .claudeUnreachable:
-                message = "声の呼びかけの判定に使う Claude に接続できません。ネットワークを確認するか、文字で話しかけてください。"
-                recoveries = [.checkAgain, .typedInput]
             }
-        case .modelLocaleUnsupported:
-            message = "この言語では会話モデルを利用できません。設定を確認してください。"
-            recoveries = [.settings]
-        case .guardrailViolation:
-            message = "その内容には答えられません。言い方を変えて話しかけてください。"
-            recoveries = [.retry]
-        case .refusal:
-            message = "そのお願いには答えられません。別の話題を話しかけてください。"
-            recoveries = [.retry]
-        case .contextExceeded:
-            message = "会話が長くなったため、短期の会話内容をリセットしました。もう一度話しかけてください。"
-            recoveries = [.retry]
         case .inputTooLong:
             message = "今回の内容は一度に扱える長さを超えています。短く分けて、もう一度話しかけてください。"
             recoveries = [.retry]

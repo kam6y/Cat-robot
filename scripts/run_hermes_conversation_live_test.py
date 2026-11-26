@@ -83,7 +83,7 @@ def validate_result(result: dict, *, run_id: str, source_hash: str, target: str)
                 "bootstrapRemoved": True, "taskStateRemoved": True}
     if any(result.get(key) != value for key, value in expected.items()):
         raise ValueError("result is stale, incomplete, or unsafe")
-    sections = {"twoTurns": {"contextMatched": True, "userRows": 2, "assistantRows": 2},
+    sections = {"twoTurns": {"ignoredWithoutWakePhrase": True, "contextMatched": True, "userRows": 2, "assistantRows": 2},
                 "reconstruction": {"sameSession": True, "historyMatched": True},
                 "cancellation": {"lateOutputRejected": True, "stopObserved": True, "gateTimedOut": False},
                 "reconnect": {"fault": "accepted-response-loss", "droppedOnce": True, "sameKeyAndBody": True,

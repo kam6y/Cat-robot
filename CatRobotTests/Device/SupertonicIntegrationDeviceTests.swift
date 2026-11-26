@@ -22,7 +22,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         guard env["SUPER_INTEGRATION_TESTS"] == "1", let id = env["SUPER_RUN_ID"], UUID(uuidString: id) != nil,
               let selectedStage = env["SUPER_STAGE"],
-              (Self.pronunciationStages.contains(selectedStage) || ["voices", "fixed", "lifecycle", "latency", "latency-cloud"].contains(selectedStage)) else {
+              (Self.pronunciationStages.contains(selectedStage) || ["voices", "fixed", "lifecycle", "latency"].contains(selectedStage)) else {
             throw XCTSkip("Use the dedicated device runner")
         }
         runID = id; stage = selectedStage; executionTimeAllowance = 3600
@@ -33,7 +33,7 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
             .appendingPathComponent("SupertonicIntegration/\(id)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try save()
-        if stage == "latency" || stage == "latency-cloud" {
+        if stage == "latency" {
             try await ResponseLatencyDeviceBenchmark.waitForForeground()
         }
         let session = AVAudioSession.sharedInstance()
@@ -49,10 +49,6 @@ final class SupertonicIntegrationDeviceTests: XCTestCase {
         }
         if stage == "latency" {
             try await ResponseLatencyDeviceBenchmark.run(engine: engine, runID: runID, revision: revision,
-                coolDown: { try await self.coolDown() }, sample: { self.sample() },
-                record: { row in self.records.append(row); try self.save() })
-        } else if stage == "latency-cloud" {
-            try await ResponseLatencyDeviceBenchmark.cloud(engine: engine, runID: runID, revision: revision,
                 coolDown: { try await self.coolDown() }, sample: { self.sample() },
                 record: { row in self.records.append(row); try self.save() })
         } else if stage == "voices" {

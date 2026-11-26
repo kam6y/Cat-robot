@@ -156,7 +156,7 @@ final class FaceTrackingCoordinatorTests: XCTestCase {
 
     func testAllOngoingConversationPhasesKeepOneCaptureSession() async {
         let h = FaceTrackingHarness()
-        for phase in [ConversationPhase.idle, .listening, .classifying, .thinking, .clarifying, .speaking] {
+        for phase in [ConversationPhase.idle, .listening, .thinking, .speaking] {
             h.environment(phase: phase)
             await robotDrain()
         }

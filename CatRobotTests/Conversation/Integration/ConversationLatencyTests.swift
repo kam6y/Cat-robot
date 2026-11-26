@@ -4,16 +4,16 @@ import XCTest
 @MainActor
 final class ConversationLatencyTests: XCTestCase {
     func testReplyTraceCorrelatesWithVoiceTokenAndEndsForNonResponses() async {
-        for (target, outcome) in [(AddressTarget.addressed, ReplyTraceOutcome.success),
-                                   (.notAddressed, .noResponse), (.ambiguous, .ambiguous)] {
+        for facing in [true, false] {
+            let outcome: ReplyTraceOutcome = facing ? .success : .noResponse
             let sink = RecordingReplyTraceSink()
-            let harness = ConversationHarness(replyTraceSink: sink, classification: target)
+            let harness = ConversationHarness(replyTraceSink: sink)
+            harness.attention.isFacingScreen = facing
             await harness.completeUnengagedTurn("今日どう？", at: 20)
             let token = try! XCTUnwrap(harness.latency.events.first?.token)
             XCTAssertEqual(Set(sink.events.map(\.id)), [token.rawValue])
             XCTAssertEqual(sink.events.filter { $0.point == .finished }.map(\.outcome), [outcome])
             XCTAssertTrue(sink.events.contains { $0.point == .captureClosed })
-            XCTAssertTrue(sink.events.contains { $0.point == .classificationFinished })
             await harness.sut.shutdown()
         }
     }
@@ -33,26 +33,13 @@ final class ConversationLatencyTests: XCTestCase {
         XCTAssertEqual(boundaryAt, 11.2, accuracy: 0.0001)
         XCTAssertEqual(lastASRActivityAt, 10)
         XCTAssertEqual(segmentationInterval, 1.2)
-        XCTAssertTrue(events.contains(.selected(token: token, path: .fast, at: 11.2)))
         XCTAssertTrue(events.contains(.caption(token: token, at: 11.2)))
         XCTAssertTrue(events.contains(.speech(token: token, at: 11.2)))
         XCTAssertFalse(String(describing: events).contains("元気"))
         XCTAssertFalse(String(describing: events).contains("最終"))
     }
 
-    func testClassifiedAddressUsesClassifiedPath() async {
-        let harness = ConversationHarness(classification: .addressed)
-
-        await harness.completeUnengagedTurn("今日どう？", at: 20)
-
-        let events = harness.latency.events
-        let token = try! XCTUnwrap(events.first?.token)
-        XCTAssertTrue(events.contains(.selected(token: token, path: .classified, at: 21.2)))
-        XCTAssertTrue(events.contains(.caption(token: token, at: 21.2)))
-        XCTAssertTrue(events.contains(.speech(token: token, at: 21.2)))
-    }
-
-    func testFacingNameOnlyUsesFastGeneratedCaptionAndSpeechMilestones() async {
+    func testWakePhraseAcknowledgementRecordsCaptionAndSpeechMilestones() async {
         let harness = ConversationHarness()
         harness.attention.isFacingScreen = true
 
@@ -60,31 +47,19 @@ final class ConversationLatencyTests: XCTestCase {
 
         let events = harness.latency.events
         let token = try! XCTUnwrap(events.first?.token)
-        XCTAssertTrue(events.contains(.selected(token: token, path: .fast, at: 1.2)))
         XCTAssertTrue(events.contains(.caption(token: token, at: 1.2)))
         XCTAssertTrue(events.contains(.speech(token: token, at: 1.2)))
     }
 
     func testNotAddressedTurnEndsAsNoResponse() async {
-        let harness = ConversationHarness(classification: .notAddressed)
+        let harness = ConversationHarness()
+        harness.attention.isFacingScreen = false
 
         await harness.completeUnengagedTurn("テレビ消した？", at: 0)
 
         let events = harness.latency.events
         let token = try! XCTUnwrap(events.first?.token)
-        XCTAssertTrue(events.contains(.selected(token: token, path: .classified, at: 1.2)))
         XCTAssertTrue(events.contains(.cancelled(token: token, reason: .noResponse, at: 1.2)))
-        XCTAssertFalse(events.contains { $0.isVisibleMilestone })
-    }
-
-    func testAmbiguousTurnCancelsBeforeLocalClarification() async {
-        let harness = ConversationHarness(classification: .ambiguous)
-
-        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
-
-        let events = harness.latency.events
-        let token = try! XCTUnwrap(events.first?.token)
-        XCTAssertTrue(events.contains(.cancelled(token: token, reason: .ambiguous, at: 1.2)))
         XCTAssertFalse(events.contains { $0.isVisibleMilestone })
     }
 
@@ -96,7 +71,6 @@ final class ConversationLatencyTests: XCTestCase {
 
         let events = harness.latency.events
         let token = try! XCTUnwrap(events.first?.token)
-        XCTAssertTrue(events.contains(.selected(token: token, path: .fast, at: 1.2)))
         XCTAssertTrue(events.contains(.cancelled(token: token, reason: .failure, at: 1.2)))
     }
 
@@ -189,7 +163,7 @@ final class ConversationLatencyTests: XCTestCase {
         XCTAssertTrue(events.contains(.cancelled(token: token, reason: .failure, at: 1.2)))
     }
 
-    func testSignpostTrackerBalancesFourUniqueIntervalsExactlyOnce() {
+    func testSignpostTrackerBalancesCaptionAndSpeechIntervalsExactlyOnce() {
         let signposts = RecordingConversationLatencySignposter()
         let tracker = ConversationLatencyTracker(signposts: signposts)
         let token = tracker.beginVoiceTurn(
@@ -199,27 +173,23 @@ final class ConversationLatencyTests: XCTestCase {
             segmentationInterval: 1.2
         )
 
-        tracker.selectPath(.fast, for: token, at: 10.1)
         tracker.firstCaptionVisible(for: token, at: 10.2)
         tracker.firstCaptionVisible(for: token, at: 10.3)
         tracker.speechStarted(for: token, at: 10.4)
         tracker.cancel(token, reason: .failure, at: 10.5)
 
-        XCTAssertEqual(signposts.begins.count, 4)
-        XCTAssertEqual(Set(signposts.begins.map(\.handle)).count, 4)
-        XCTAssertEqual(signposts.ends.count, 4)
-        XCTAssertEqual(Set(signposts.ends.map(\.handle)).count, 4)
+        XCTAssertEqual(signposts.begins.count, 2)
+        XCTAssertEqual(Set(signposts.begins.map(\.handle)).count, 2)
+        XCTAssertEqual(signposts.ends.count, 2)
+        XCTAssertEqual(Set(signposts.ends.map(\.handle)).count, 2)
         XCTAssertEqual(signposts.ends.filter { $0.outcome == .success }.map(\.metric), [
             .fastFirstCaption,
             .fastSpeechStart
         ])
-        XCTAssertEqual(
-            Set(signposts.ends.filter { $0.outcome != .success }.map(\.metric)),
-            Set([.classifiedFirstCaption, .classifiedSpeechStart])
-        )
+
     }
 
-    func testCancellationBeforePathSelectionBalancesAllIntervals() {
+    func testIgnoredUtteranceCancelsAllIntervals() {
         let signposts = RecordingConversationLatencySignposter()
         let tracker = ConversationLatencyTracker(signposts: signposts)
         let token = tracker.beginVoiceTurn(
@@ -232,8 +202,8 @@ final class ConversationLatencyTests: XCTestCase {
         tracker.cancel(token, reason: .noResponse, at: 2.1)
         tracker.cancel(token, reason: .failure, at: 2.2)
 
-        XCTAssertEqual(signposts.begins.count, 4)
-        XCTAssertEqual(signposts.ends.count, 4)
+        XCTAssertEqual(signposts.begins.count, 2)
+        XCTAssertEqual(signposts.ends.count, 2)
         XCTAssertTrue(signposts.ends.allSatisfy { $0.outcome == .cancelled(.noResponse) })
     }
 }
@@ -243,7 +213,6 @@ private extension ConversationLatencyTestEvent {
         switch self {
         case .began(let token, _, _, _, _),
              .asrActivity(let token, _),
-             .selected(let token, _, _),
              .caption(let token, _),
              .speech(let token, _),
              .cancelled(let token, _, _):

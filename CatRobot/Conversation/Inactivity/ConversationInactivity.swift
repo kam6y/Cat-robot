@@ -77,7 +77,7 @@ final class ConversationInactivity {
         guard state != .sleeping, monitoring, let lastActivity else { return }
         switch phase {
         case .idle, .listening, .paused, .failed: break
-        case .preparing, .classifying, .thinking, .speaking, .clarifying:
+        case .preparing, .thinking, .speaking:
             setState(.awake)
             return
         }

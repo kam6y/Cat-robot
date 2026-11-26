@@ -28,7 +28,9 @@ final class ConversationAppCoordinator {
     /// 会話メニューの「新しい会話を始める…」の確認を出している。前面でなくなる・modal を開く・眠ると閉じる。
     private(set) var confirmsNewConversation = false
     private(set) var isOpeningVoiceSettings = false
-    private var isVoiceSettingsClosed: Bool { !showsVoiceSettings && !isOpeningVoiceSettings }
+    /// 閉じた設定で、声で呼びかけを入力していた聞き取りがマイクを手放すのを待っている。終わるまで会話に戻らない。
+    private var isClosingVoiceSettings = false
+    private var isVoiceSettingsClosed: Bool { !showsVoiceSettings && !isOpeningVoiceSettings && !isClosingVoiceSettings }
     @ObservationIgnored private var voiceSettingsTask: Task<Void, Never>?
     private(set) var destination: ConversationAppDestination = .onboarding
     let inactivity: ConversationInactivity
@@ -48,6 +50,8 @@ final class ConversationAppCoordinator {
     @ObservationIgnored private let expressions: any FaceExpressionControlling
     @ObservationIgnored private let camera: ConversationCamera?
     @ObservationIgnored private let look: any LookControlling
+    /// 設定の「呼びかけ」を声で入力する。設定の画面にも同じものを渡す。
+    @ObservationIgnored let wakePhraseRecorder: WakePhraseRecorder?
     @ObservationIgnored private var hasStartedConversation = false
     @ObservationIgnored private let settingsModel: RobotSettingsModel?
     @ObservationIgnored private var scenePhase: ConversationAppScenePhase = .active
@@ -77,6 +81,7 @@ final class ConversationAppCoordinator {
         expressions: any FaceExpressionControlling = NoopFaceExpressionController(),
         camera: ConversationCamera? = nil,
         look: any LookControlling = NoopLookController(),
+        wakePhraseRecorder: WakePhraseRecorder? = nil,
         onboardingSettings: OnboardingSettings? = nil,
         idleSettings: ConversationIdleSettings? = nil,
         idleClock: any RobotClock = ConversationIdleClock(),
@@ -94,6 +99,7 @@ final class ConversationAppCoordinator {
         self.expressions = expressions
         self.camera = camera
         self.look = look
+        self.wakePhraseRecorder = wakePhraseRecorder
         self.beforeActionOperation = beforeActionOperation
         inactivity = ConversationInactivity(settings: idleSettings ?? ConversationIdleSettings(), clock: idleClock)
         viewModel.onAddressedActivity = { [weak self] in self?.inactivity.recordActivity() }
@@ -223,6 +229,7 @@ final class ConversationAppCoordinator {
 
     func scenePhaseDidChange(_ newPhase: ConversationAppScenePhase) {
         scenePhase = newPhase
+        updateWakePhraseRecorder()
         if newPhase == .active, needsInitialConversationStart {
             needsInitialConversationStart = false
             inactivity.recordActivity()
@@ -315,6 +322,7 @@ final class ConversationAppCoordinator {
             }
             self.isOpeningVoiceSettings = false
             self.showsVoiceSettings = true
+            self.updateWakePhraseRecorder()
         }
     }
 
@@ -337,10 +345,30 @@ final class ConversationAppCoordinator {
 
     /// 設定と履歴のどちらからも、同じ経路で会話に戻る。
     func closeVoiceSettings() {
-        guard !isOpeningVoiceSettings, settingsModel?.calibration == nil else { return }
+        guard !isOpeningVoiceSettings, !isClosingVoiceSettings, settingsModel?.calibration == nil else { return }
         showsVoiceSettings = false
+        updateWakePhraseRecorder()
+        guard let wakePhraseRecorder, wakePhraseRecorder.isRecording else {
+            updateInactivity()
+            resumeAfterSettings()
+            return
+        }
+        // 声で呼びかけを入力している途中なら、認識器と音声の session を手放し終わってから会話の聞き取りに戻る。
+        isClosingVoiceSettings = true
         updateInactivity()
-        resumeAfterSettings()
+        voiceSettingsTask = Task { @MainActor [weak self, wakePhraseRecorder] in
+            await wakePhraseRecorder.cancel()
+            guard let self else { return }
+            self.voiceSettingsTask = nil
+            self.isClosingVoiceSettings = false
+            self.resumeAfterSettings()
+        }
+    }
+
+    /// 声で呼びかけを入力できるのは、設定のシートを出し切っていて、閉じる途中でなく、場面が前面のときだけ。
+    private func updateWakePhraseRecorder() {
+        wakePhraseRecorder?.setAvailable(scenePhase == .active && showsVoiceSettings && !isClosingVoiceSettings
+                                         && sheet != .history)
     }
 
     private func resumeAfterSettings() {

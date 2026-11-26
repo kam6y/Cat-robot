@@ -1,7 +1,7 @@
 import Foundation
 
 /// 本番の依存関係を 1 か所で組み立てる。通常の返事・会話の記憶・履歴は 1 つの Hermes の会話が受け持ち、
-/// 声の宛先判定だけを Claude Haiku に残す（返事をほかのモデルで代わりに作ることはしない）。
+/// 音声は端末内で宛先を判定し、受け付けた発話を返答に使う。
 /// 構築時はネットワーク、マイク・音声の稼働、モデル生成・availability 照会、Keychain と会話の記録の読み書きを行わない。
 @MainActor
 struct ConversationComposition {
@@ -18,7 +18,6 @@ struct ConversationComposition {
     static func live(voiceSettings: SpeechVoiceSettings = SpeechVoiceSettings(),
                      connectionSettings: HermesConnectionSettings = HermesConnectionSettings(),
                      sessionRecords: any HermesSessionRecordStore = UserDefaultsHermesSessionRecordStore(),
-                     auth: ClaudeAuthConfiguration = .live(),
                      robotTransport: (any RobotTransport)? = nil,
                      robotClock: (any RobotClock)? = nil,
                      robotPreferences: RobotPreferences? = nil,
@@ -44,9 +43,6 @@ struct ConversationComposition {
                                                runOptions: { await connectionSettings.models.options(for: $0) },
                                                transport: connectionSettings.transport, records: sessionRecords)
         let reply = makeReplyGenerator(base: hermes, motion: replyTurnObserver)
-        // 声の宛先判定は補助の経路として Claude Haiku のまま。直近の会話は返事と同じ Hermes の会話から読む。
-        let classifier = makeAddressClassifier(claudeClient: ClaudeAddressModelClient(auth: auth), history: hermes)
-
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let smartTurn = SmartTurnService(root: resources.appendingPathComponent("SmartTurn"))
         let concreteRecognizer = AppleSpeechRecognizer(audioTurnService: smartTurn)
@@ -57,7 +53,6 @@ struct ConversationComposition {
             microphonePermission: MicrophonePermissionService(),
             modelAvailability: hermes,
             recognizer: concreteRecognizer,
-            classifier: classifier,
             reply: reply,
             speaker: speaker,
             audioSession: AppleAudioSessionController(),
@@ -68,6 +63,7 @@ struct ConversationComposition {
             look: look,
             replyTurnObserver: replyTurnObserver,
             memory: hermes,
+            wakePhrase: { voiceSettings.wakePhrase },
             isFacingScreen: { camera.hasFreshFacingFace(yawCorrection: preferences.trackingYawCorrection) },
             serviceTeardown: {
                 await MainActor.run {
@@ -89,11 +85,5 @@ struct ConversationComposition {
     static func makeReplyGenerator(base: any ReplyGenerating,
                                    motion: any ReplyTurnObserving) -> MotionReplyGenerator {
         MotionReplyGenerator(base: base, motion: motion)
-    }
-
-    /// 宛先判定の組み立て。直近の会話を添える decorator → Claude の分類器。liveと試験で同じ経路を使う。
-    static func makeAddressClassifier(claudeClient: any AddressModelClient,
-                                      history: any ConversationHistoryReading) -> ContextualAddressClassifier {
-        ContextualAddressClassifier(base: ClaudeAddressClassifier(client: claudeClient), history: history)
     }
 }

@@ -352,7 +352,7 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         XCTAssertEqual(failureBeforeCleanup, .modelGenerationFailed)
         XCTAssertEqual(player.played.count, 1)
     }
-    func testUnstableReplyWaitsForFinalAndMemoryKeepsOriginal() async throws {
+    func testUnstableReplyWaitsForFinalAndReturnsTheOriginalText() async throws {
         let reply = ControlledReply(stablePrefix: false)
         let player = ControlledPCMPlayer()
         let speaker = SupertonicSentenceSpeaker(player: player, prepare: {}, normalize: { $0 }, voice: { .f1 }, synthesize: { _, _ in SpeechPCM(samples: [1], sampleRate: 24_000) })
@@ -368,18 +368,14 @@ final class SentenceReplyPlaybackTests: XCTestCase {
         let result = try await run.value
         XCTAssertEqual(result, "確定。最後。")
 
-        let store = InMemoryConversationMemoryStore()
-        let claude = makeClaudeService(
-            StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["iPhoneです。", "Bluetoothです。"])]), store: store)
+        let fixed = FixedIntegrationReply(text: "iPhoneです。Bluetoothです。")
         let immediate = SupertonicSentenceSpeaker(player: TestPCMPlayer(), prepare: {}, normalize: { try await JapanesePronunciationService.shared.normalize($0) }, voice: { .f1 }, synthesize: { text, _ in
             XCTAssertFalse(text.contains("iPhone")); XCTAssertFalse(text.contains("Bluetooth"))
             return SpeechPCM(samples: [1], sampleRate: 24_000)
         })
-        let actual = ReplyPlaybackCoordinator(reply: claude, speaker: immediate)
+        let actual = ReplyPlaybackCoordinator(reply: fixed, speaker: immediate)
         let original = try await actual.run(prompt: "説明して", trace: nil, onUpdate: { _ in })
-        let saved = await store.load()
-        XCTAssertEqual(original, "iPhoneです。Bluetoothです。")
-        XCTAssertEqual(saved?.turns.last?.response, original)
+        XCTAssertEqual(original, "iPhoneです。Bluetoothです。", "読み上げは読みに直しても、返す文は元のまま")
     }
     func testNewestSnapshotsRetainAllSentencesWhilePlaybackIsBlocked() async throws {
         let reply = ControlledReply()

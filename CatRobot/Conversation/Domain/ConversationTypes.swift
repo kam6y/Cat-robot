@@ -4,18 +4,10 @@ enum ConversationPhase: Equatable, Sendable {
     case idle
     case preparing
     case listening
-    case classifying
-    case clarifying
     case thinking
     case speaking
     case paused
     case failed(ConversationServiceError)
-}
-
-enum AddressTarget: Equatable, Sendable {
-    case addressed
-    case ambiguous
-    case notAddressed
 }
 
 struct SpeechRecognitionEvent: Equatable, Sendable {
@@ -43,13 +35,9 @@ enum SpeechEvent: Equatable, Sendable {
     case cancelled
 }
 
-/// 会話モデルの可否。通常の返事は Hermes、宛先判定は Claude（Haiku）が受け持つ。
+/// 返答に使う Hermes の利用可否。
 enum ModelAvailability: Equatable, Sendable {
     case available
-    case claudeCredentialMissing
-    case claudeAttestationUnsupported
-    case claudeAttestationFailed
-    case claudeUnreachable
     /// Hermes の接続先か API キーが設定されていない。
     case hermesNotConfigured
     /// Hermes が API キーを受け付けなかった（401）。
@@ -68,10 +56,6 @@ enum ConversationServiceError: Error, Equatable, Sendable {
     case speechSynthesisFailed
     case audioSessionFailed
     case modelUnavailable(ModelAvailability)
-    case modelLocaleUnsupported
-    case guardrailViolation
-    case refusal
-    case contextExceeded
     case inputTooLong
     case modelBusy
     case modelGenerationFailed

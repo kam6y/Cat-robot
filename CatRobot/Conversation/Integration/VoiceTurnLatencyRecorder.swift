@@ -81,10 +81,6 @@ final class VoiceTurnLatencyRecorder {
         latency.noteASRActivity(at: now(), for: active.token)
     }
 
-    func selectPath(_ path: ConversationLatencyPath, generation: UInt64, turnID: UInt64) {
-        guard let active = matching(generation: generation, turnID: turnID) else { return }
-        latency.selectPath(path, for: active.token, at: now())
-    }
 
     func recordFirstCaption(generation: UInt64, turnID: UInt64) {
         guard let active = matching(generation: generation, turnID: turnID) else { return }
@@ -102,8 +98,7 @@ final class VoiceTurnLatencyRecorder {
         self.active = nil
         let outcome: ReplyTraceOutcome
         switch reason {
-        case .noResponse, .unselectedPath: outcome = .noResponse
-        case .ambiguous: outcome = .ambiguous
+        case .noResponse: outcome = .noResponse
         case .failure: outcome = .generationFailure
         default: outcome = .cancelled
         }

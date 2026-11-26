@@ -3,6 +3,15 @@ import Observation
 import XCTest
 @testable import CatRobot
 
+/// 返事の stream が通信失敗で終わる（Hermes に届かない）。
+struct UnreachableReply: ReplyGenerating {
+    func prewarm() async {}
+    func reset() async {}
+    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { $0.finish(throwing: ConversationServiceError.modelUnreachable) }
+    }
+}
+
 actor ControlledReply: ReplyGenerating {
     nonisolated let supportsStableReplyPrefix: Bool
     private var continuation: AsyncThrowingStream<String, Error>.Continuation?

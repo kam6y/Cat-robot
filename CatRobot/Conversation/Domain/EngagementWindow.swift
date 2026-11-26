@@ -2,30 +2,19 @@ import Foundation
 
 struct EngagementWindow: Equatable, Sendable {
     static let inactive = Self()
-
-    private static let softDuration: TimeInterval = 30
-    private static let hardDuration: TimeInterval = 300
-
-    private var armedAt: TimeInterval?
-    private var softExpiresAt: TimeInterval?
+    private static let followUpDuration: TimeInterval = 30
+    private var expiresAt: TimeInterval?
 
     mutating func arm(at timestamp: TimeInterval) {
-        armedAt = timestamp
-        softExpiresAt = timestamp + Self.softDuration
+        expiresAt = timestamp + Self.followUpDuration
     }
 
     func isActive(at timestamp: TimeInterval) -> Bool {
-        guard let armedAt, let softExpiresAt else { return false }
-        return timestamp < softExpiresAt && timestamp < armedAt + Self.hardDuration
-    }
-
-    mutating func refresh(afterReplyAt timestamp: TimeInterval) {
-        guard armedAt != nil else { return }
-        softExpiresAt = timestamp + Self.softDuration
+        guard let expiresAt else { return false }
+        return timestamp < expiresAt
     }
 
     mutating func clear() {
-        armedAt = nil
-        softExpiresAt = nil
+        expiresAt = nil
     }
 }

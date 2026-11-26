@@ -24,18 +24,16 @@ actor FaceReservingReply: ReplyGenerating {
     }
 }
 
-private actor FailingFaceSession: ConversationSessionClient {
+/// 返事の途中で express を予約してから、通信失敗で終わる返事。
+private actor FailingFaceReply: ReplyGenerating {
     let expressions: any FaceExpressionControlling
     private(set) var reservation = ""
     init(expressions: any FaceExpressionControlling) { self.expressions = expressions }
     func prewarm() async {}
-    func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
-        do {
-            reservation = try await ExpressTool(expressions: expressions).call(arguments: .init(expression: "happy", hold_seconds: 8))
-        } catch {
-            return AsyncThrowingStream { $0.finish(throwing: error) }
-        }
-        return AsyncThrowingStream { $0.finish(throwing: URLError(.notConnectedToInternet)) }
+    func reset() async {}
+    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
+        reservation = try await ExpressTool(expressions: expressions).call(arguments: .init(expression: "happy", hold_seconds: 8))
+        return AsyncThrowingStream { $0.finish(throwing: ConversationServiceError.modelUnreachable) }
     }
 }
 
@@ -138,11 +136,10 @@ final class FaceExpressionIntegrationTests: XCTestCase {
     func testFailureGuidanceNeverReleasesFailedPrimaryExpression() async throws {
         let h = FaceExpressionHarness(), motion = MotionControllerSpy()
         let observer = ReplyTurnMulticaster([motion, h.sut])
-        let client = FailingFaceSession(expressions: h.sut)
-        let primary = makeClaudeService(StubSessionFactory(scripts: [client]))
+        let primary = FailingFaceReply(expressions: h.sut)
         let speaker = ControlledSpeaker()
         let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: observer),
-            memory: primary, speaker: speaker, motion: motion, expressions: h.sut, replyTurnObserver: observer)
+            speaker: speaker, motion: motion, expressions: h.sut, replyTurnObserver: observer)
         let turn = Task { await playback.viewModel.submitTypedText("質問") }
         let observed = await playback.infrastructure.waitUntil {
             let texts = await speaker.texts
@@ -156,7 +153,7 @@ final class FaceExpressionIntegrationTests: XCTestCase {
         XCTAssertNil(h.sut.heldExpression, "The failed primary's expression must remain invalid during guidance")
         await speaker.complete()
         await turn.value
-        let reservation = await client.reservation
+        let reservation = await primary.reservation
         XCTAssertTrue(reservation.contains("予約しました"))
         XCTAssertNil(h.sut.heldExpression)
         XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))

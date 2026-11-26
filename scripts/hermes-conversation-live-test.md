@@ -50,7 +50,7 @@ service, history, settings and persisted session identifiers. Its own DEBUG laun
 flag suppresses the automatic app scene; the diagnostic echo/bridge probe is not
 selected. It checks:
 
-1. Two text turns, recall without resending the nonce, and exactly two user and
+1. Two text turns with a locally ignored utterance between them (no wake phrase, facing cue or active conversation; recorded as `ignoredWithoutWakePhrase`), recall without resending the nonce, and exactly two user and
    assistant rows from server history. This proves conversation context, not
    long-term memory or skills.
 2. A newly constructed consumer and store instances restore that same session and

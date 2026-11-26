@@ -38,11 +38,16 @@ final class FailureGuidanceTests: XCTestCase {
         }
     }
 
+    /// 返事の通信失敗は「つながらない」、事前確認で Hermes が使えないときは「設定を確認して」を話す。
+    private func guidance(for origin: Origin) -> String {
+        origin == .preflight ? ConversationFailureGuidance.configuration : ConversationFailureGuidance.unreachable
+    }
+
     private func beginFailure(_ origin: Origin, memory: (any ConversationMemoryManaging)? = nil,
                               speechStartGate: ConversationTestGate? = nil,
                               speakerAutomaticallyFinishes: Bool = false) async -> (ConversationHarness, Task<Void, Never>) {
         let harness = ConversationHarness(memory: memory, microphoneAllowed: origin != .typed,
-            modelAvailabilityResult: origin == .preflight ? .claudeUnreachable : .available,
+            modelAvailabilityResult: origin == .preflight ? .hermesUnauthorized : .available,
             replySnapshots: nil, speakerAutomaticallyFinishes: speakerAutomaticallyFinishes)
         await harness.speaker.setSpeechStartGate(speechStartGate)
         if origin == .preflight { return (harness, Task { await harness.sut.startConversation() }) }
@@ -136,7 +141,7 @@ final class FailureGuidanceTests: XCTestCase {
         for origin in Origin.allCases {
             for event in Event.allCases {
                 let (harness, turn) = await beginFailure(origin)
-                let started = await guidanceStarted(harness, text: ConversationFailureGuidance.unreachable)
+                let started = await guidanceStarted(harness, text: guidance(for: origin))
                 XCTAssertTrue(started, "\(origin), \(event)")
                 XCTAssertTrue(harness.sut.viewState.isSpeakingFailureGuidance)
                 let activations = await harness.audio.activateCount
@@ -150,7 +155,7 @@ final class FailureGuidanceTests: XCTestCase {
                 XCTAssertTrue(paused, "\(origin), \(event)")
                 XCTAssertEqual(afterActivations, activations)
                 XCTAssertEqual(deactivations, 1)
-                XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
+                XCTAssertEqual(texts, [guidance(for: origin)])
                 XCTAssertNil(harness.sut.viewState.errorMessage)
                 XCTAssertFalse(harness.sut.viewState.isSpeakingFailureGuidance)
                 if event == .shutdown {
@@ -170,7 +175,7 @@ final class FailureGuidanceTests: XCTestCase {
                 let memory = FakeConversationMemoryManager(state: stage == "memory" ? .restoreFailed(.readFailed) : .ready,
                     prepareGate: stage == "memory" ? gate : nil)
                 let harness = ConversationHarness(memory: memory,
-                    modelAvailabilityResult: stage == "memory" ? .available : .claudeUnreachable,
+                    modelAvailabilityResult: stage == "memory" ? .available : .hermesUnauthorized,
                     availabilityGate: stage == "availability" ? gate : nil,
                     audioActivateGate: stage == "activate" ? gate : nil)
                 let startup = Task { await harness.sut.startConversation() }
@@ -313,7 +318,6 @@ final class FailureGuidanceTests: XCTestCase {
         await harness.waitUntil { harness.sut.viewState.phase == .failed(.speechCaptureFailed) }
         let calls = harness.calls.values, texts = await harness.speaker.texts
         let starts = await harness.recognizer.startCount
-        XCTAssertFalse(calls.contains { if case .classify = $0 { true } else { false } })
         XCTAssertFalse(calls.contains { if case .generateReply = $0 { true } else { false } })
         XCTAssertEqual(texts, [ConversationFailureGuidance.listening])
         XCTAssertEqual(starts, 1)
@@ -321,12 +325,10 @@ final class FailureGuidanceTests: XCTestCase {
     }
 
     func testUnsavedWarningDoesNotSpeak() async {
-        let store = MemoryStoreFake()
-        // Use a real service and a failed save, rather than manufacturing the UI state.
-        let service = makeClaudeService(StubSessionFactory(), store: store)
-        await store.setSaveFailure(true)
-        let harness = ConversationHarness(replyOverride: service, memory: service)
+        let memory = FakeConversationMemoryManager()
+        let harness = ConversationHarness(memory: memory)
         await harness.completeUnengagedTurn("ねこ、質問", at: 0)
+        await memory.publish(.unsaved)
         let unsaved = await harness.waitUntil { harness.sut.viewState.memoryState == .unsaved }
         let texts = await harness.speaker.texts
         XCTAssertTrue(unsaved)
@@ -337,10 +339,7 @@ final class FailureGuidanceTests: XCTestCase {
     }
 
     func testGuidanceIsNotRecordedOrTraced() async {
-        let store = MemoryStoreFake()
-        let service = makeClaudeService(StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [],
-            failure: URLError(.notConnectedToInternet))]), store: store)
-        let playback = PlaybackIntegrationHarness(service: service, memory: service)
+        let playback = PlaybackIntegrationHarness(service: UnreachableReply())
         let turn = Task { await playback.viewModel.submitTypedText("質問") }
         let reached = await playback.infrastructure.waitUntil {
             let texts = await playback.speaker.texts
@@ -353,8 +352,6 @@ final class FailureGuidanceTests: XCTestCase {
         XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
         await playback.speaker.complete()
         await turn.value
-        let saved = await store.snapshot?.turns ?? []
-        XCTAssertEqual(saved, [])
         XCTAssertEqual(playback.traces.events.filter { $0.point == .speechStarted || $0.point == .speechEnqueued }.count, 0)
         XCTAssertEqual(playback.traces.events.filter { $0.point == .request }.count, 1)
         XCTAssertEqual(playback.viewModel.viewState.phase, .failed(.modelUnreachable))
@@ -385,41 +382,21 @@ final class FailureGuidanceTests: XCTestCase {
         }
     }
 
-    func testClassificationFailureSpeaksGuidanceBeforeFailing() async {
-        let harness = ConversationHarness()
-        await harness.classifier.setError(.modelUnreachable)
-        await harness.sut.startConversation()
-        await harness.completeUnengagedTurn("明日の予定は？", at: 0)
-
-        let texts = await harness.speaker.texts, starts = await harness.recognizer.startCount
-        XCTAssertEqual(texts, [ConversationFailureGuidance.unreachable])
-        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnreachable))
-        XCTAssertFalse(harness.sut.viewState.recoveries.contains { $0.action == .startNewConversation },
-                       "an addressing failure keeps the Hermes conversation")
-        XCTAssertFalse(harness.sut.viewState.isSpeakingFailureGuidance)
-        assertOrder(harness.calls.values, [.speak(ConversationFailureGuidance.unreachable), .stopSpeaker, .deactivateAudio])
-        XCTAssertEqual(starts, 1)
-        await harness.sut.shutdown()
-    }
 
     func testReplyFailureAfterPartialTextStillSpeaksGuidance() async {
-        let store = MemoryStoreFake(), client = ScriptedSessionClient(chunks: nil)
-        let primary = makeClaudeService(StubSessionFactory(scripts: [client]), store: store)
-        let harness = ConversationHarness(replyOverride: primary, memory: primary)
+        let harness = ConversationHarness(replySnapshots: nil)
         await harness.sut.startConversation()
         let turn = Task { await harness.emitCompletedUtterance("ねこ、質問", at: 0) }
-        let requested = await harness.waitUntil { !client.prompts.isEmpty }
+        let requested = await harness.waitUntil { await harness.reply.prompts.count == 1 }
         XCTAssertTrue(requested)
-        client.yield("今日は")
+        await harness.reply.yield("今日は")
         let partial = await harness.waitUntil { harness.sut.viewState.caption == "今日は" }
         XCTAssertTrue(partial)
-        client.fail(ConversationServiceError.modelGenerationFailed)
+        await harness.reply.fail(.modelGenerationFailed)
         await turn.value
 
         let texts = await harness.speaker.texts
-        let saved = await store.snapshot?.turns ?? []
         XCTAssertEqual(texts.last, ConversationFailureGuidance.generationFailed)
-        XCTAssertEqual(saved, [])
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
         await harness.sut.shutdown()
     }
@@ -487,14 +464,14 @@ final class FailureGuidanceTests: XCTestCase {
     }
 
     func testGuidanceSpeakerStartFailureStillPublishesOriginalError() async {
-        let harness = ConversationHarness(modelAvailabilityResult: .claudeUnreachable, speakerError: .speechSynthesisFailed)
+        let harness = ConversationHarness(modelAvailabilityResult: .hermesUnauthorized, speakerError: .speechSynthesisFailed)
         await harness.sut.startConversation()
         let prepares = await harness.speaker.prepareCount, activates = await harness.audio.activateCount
         let deactivates = await harness.audio.deactivateCount
         XCTAssertEqual(prepares, 1)
         XCTAssertEqual(activates, 1)
         XCTAssertEqual(deactivates, 1)
-        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnavailable(.claudeUnreachable)))
+        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnavailable(.hermesUnauthorized)))
         await harness.sut.shutdown()
     }
 
@@ -503,29 +480,25 @@ final class FailureGuidanceTests: XCTestCase {
             for memoryFails in [false, true] {
                 for speechFails in [false, true] {
                     let memory = FakeConversationMemoryManager(state: memoryFails ? .restoreFailed(.readFailed) : .ready)
-                    let store = MemoryStoreFake(), factory = StubSessionFactory()
-                    let primary = makeClaudeService(factory, store: store)
-                    let harness = ConversationHarness(replyOverride: primary, memory: memory, microphoneAllowed: voice,
-                        modelAvailabilityResult: memoryFails ? .available : .claudeUnreachable,
+                    let harness = ConversationHarness(memory: memory, microphoneAllowed: voice,
+                        modelAvailabilityResult: memoryFails ? .available : .hermesUnauthorized,
                         speakerAutomaticallyFinishes: !speechFails)
                     let turn = Task {
                         if voice { await harness.sut.startConversation() }
                         else { await harness.sut.submitTypedText("質問") }
                     }
-                    let guidance = memoryFails ? ConversationFailureGuidance.memory : ConversationFailureGuidance.unreachable
+                    let guidance = memoryFails ? ConversationFailureGuidance.memory : ConversationFailureGuidance.configuration
                     let started = await guidanceStarted(harness, text: guidance)
                     XCTAssertTrue(started, "voice=\(voice), memory=\(memoryFails), speech=\(speechFails)")
                     if speechFails { await harness.speaker.fail(run: 0, with: .speechSynthesisFailed) }
                     await turn.value
 
                     let texts = await harness.speaker.texts, active = await harness.audio.isActive
-                    let deactivations = await harness.audio.deactivateCount, sessions = await factory.sessions.count
-                    let snapshot = await store.snapshot
+                    let deactivations = await harness.audio.deactivateCount, prompts = await harness.reply.prompts
                     XCTAssertEqual(texts, [guidance])
                     XCTAssertFalse(active)
                     XCTAssertEqual(deactivations, 1)
-                    XCTAssertEqual(sessions, 0)
-                    XCTAssertNil(snapshot)
+                    XCTAssertEqual(prompts, [], "a failed preflight never asks for a reply")
                     XCTAssertFalse(harness.calls.values.contains(.prepareRecognizer))
                     if !voice { XCTAssertFalse(harness.calls.values.contains(.requestMicrophone)) }
                     if memoryFails {
@@ -536,7 +509,7 @@ final class FailureGuidanceTests: XCTestCase {
                         let restored = await memory.memoryState()
                         XCTAssertEqual(restored, .ready)
                     } else {
-                        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnavailable(.claudeUnreachable)))
+                        XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnavailable(.hermesUnauthorized)))
                         assertOrder(harness.calls.values, [.checkAvailability, .prepareSpeaker, .activateAudio,
                                                           .speak(guidance), .stopSpeaker, .deactivateAudio])
                     }
@@ -548,7 +521,7 @@ final class FailureGuidanceTests: XCTestCase {
 
     func testGuidanceAudioPreparationFailureSkipsSpeech() async {
         for speakerFails in [true, false] {
-            let harness = ConversationHarness(modelAvailabilityResult: .claudeUnreachable,
+            let harness = ConversationHarness(modelAvailabilityResult: .hermesUnauthorized,
                 speakerPrepareError: speakerFails ? .speechVoiceUnavailable : nil,
                 audioActivateError: speakerFails ? nil : .audioSessionFailed)
             await harness.sut.startConversation()
@@ -558,7 +531,7 @@ final class FailureGuidanceTests: XCTestCase {
             XCTAssertEqual(activates, speakerFails ? 0 : 1)
             XCTAssertEqual(deactivates, speakerFails ? 0 : 1)
             XCTAssertEqual(texts, [])
-            XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnavailable(.claudeUnreachable)))
+            XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelUnavailable(.hermesUnauthorized)))
             await harness.sut.shutdown()
         }
     }

@@ -46,7 +46,7 @@ actor HermesRunClient {
                    options: HermesRunOptions? = nil,
                    isolation: isolated (any Actor)? = nil) async throws -> HermesRunHandle {
         guard Self.isValidRunID(sessionID) else { throw HermesClientError.invalidSessionID }
-        return try await postRun(SessionRunInput(input: input, sessionID: sessionID, instructions: instructions, options: options),
+        return try await postRun(ModelInput(input: input, sessionID: sessionID, instructions: instructions, options: options),
                                  idempotencyKey: idempotencyKey, isolation: isolation)
     }
 
@@ -178,7 +178,7 @@ actor HermesRunClient {
     private struct RunInput: Encodable { let input: String }
     private struct StopPayload: Decodable { let run_id: String?; let status: String? }
     /// nil の field は送らない（既定のときは、モデルの選択を足す前と同じ body）。
-    private struct SessionRunInput: Encodable {
+    private struct ModelInput: Encodable {
         let input: String
         let session_id: String
         let instructions: String?

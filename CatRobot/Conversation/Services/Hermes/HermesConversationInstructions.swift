@@ -1,7 +1,7 @@
 import Foundation
 
 /// Hermes の run に重ねる instructions（ephemeral system prompt）。Hermes の transcript には入らないので、毎回同じ文を送る。
-/// 聞き返しの文脈は transcript に残る user 入力で運ぶ（`HermesClarificationReply`）。
+/// 送る user 入力は発話の文字だけ。以前の版の聞き返しが残した v1 の user 入力は、`HermesClarificationReply` が読むだけ。
 enum HermesConversationInstructions {
     static let persona = """
     あなたはロボットの猫「Cat Robot」です。iPhone から届いた利用者の発話に、日本語で自然に答えます。返事はそのまま音声で読み上げられます。
@@ -9,14 +9,13 @@ enum HermesConversationInstructions {
     絵文字・Markdown・箇条書き・URL・コードは使いません。自分を人間だと偽りません。
     首を動かす・表情を変える・カメラで見るといった体の操作は、今の接続ではできません。できたとは言いません。
     訂正された情報を優先し、利用者の好みと自分の好みを混同しません。
-    直前の会話を添えた JSON では、original は以前の利用者の発言、question は猫が実際に言った聞き返し、utterance は今の利用者の発話です。今の発話が聞き返しへの答えか、新しい話題かを文意で判断します。
-    猫宛てだと肯定されたら元の発言に答え、否定されたら短く受け止めて元の発言には答えません。
-    返答生成へ届いた別の話題には、その新しい話題として答えます。
+    会話の記録に「[CatRobot conversation v1]」で始まる JSON があれば、それは以前の版の記録で、original は利用者の発言、question は猫が言った聞き返し、utterance はその返事です。
     """
 }
 
-/// User-message format stored in Hermes history. Keep the prefix stable across app versions.
-struct HermesClarificationReply: Codable {
+/// User-message format that older releases stored in Hermes history after a clarification. Only read now; keep the prefix stable.
+/// `plainInput` still escapes typed or spoken text that starts with the prefix, so it is never read as such a record.
+struct HermesClarificationReply: Decodable {
     let id: UUID
     let original: String
     let question: String
@@ -24,12 +23,8 @@ struct HermesClarificationReply: Codable {
 
     private static let prefix = "[CatRobot conversation v1]\n"
     private static let escape = "\u{2060}"
-
-    func encoded() throws -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return Self.prefix + String(decoding: try encoder.encode(self), as: UTF8.self)
-    }
+    /// 以前の版が読み上げた聞き返し。これ以外の question の記録は、展開せずに文字どおり表示する。
+    private static let legacyQuestion = "今の、ぼくに言った？"
 
     private static func isReserved(_ text: String) -> Bool {
         text.hasPrefix(prefix) || text.hasPrefix(escape)
@@ -46,7 +41,7 @@ struct HermesClarificationReply: Codable {
         }
         guard text.hasPrefix(prefix),
               let exchange = try? JSONDecoder().decode(Self.self, from: Data(text.dropFirst(prefix.count).utf8)),
-              exchange.question == ClarificationContext.question,
+              exchange.question == legacyQuestion,
               !exchange.original.isEmpty, !exchange.utterance.isEmpty else {
             return [.init(speaker: .user, text: text)]
         }

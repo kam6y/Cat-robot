@@ -86,7 +86,7 @@ final class FaceExpressionCoordinator: FaceExpressionControlling {
 
     private var phaseAllowsTurn: Bool {
         switch phase {
-        case .listening, .classifying, .clarifying, .thinking, .speaking: true
+        case .listening, .thinking, .speaking: true
         case .idle, .preparing, .paused, .failed: false
         }
     }

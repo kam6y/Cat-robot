@@ -2,6 +2,7 @@ import XCTest
 @testable import CatRobot
 
 final class ConversationErrorPresentationTests: XCTestCase {
+
     func testMicrophoneDenialOffersTypedFallback() {
         let value = ConversationErrorPresentation(.microphoneDenied)
 
@@ -14,16 +15,6 @@ final class ConversationErrorPresentationTests: XCTestCase {
             .init(title: "設定を開く", action: .openSettings),
             .init(title: "文字で話す", action: .showTypedInput),
         ])
-    }
-
-    /// 声の宛先判定（Claude Haiku）が使えなくても、文字の会話は Hermes だけで続けられる。
-    func testVoiceAddressingFailuresOfferTypingBesideTheRecheck() {
-        for availability in [ModelAvailability.claudeCredentialMissing, .claudeAttestationUnsupported, .claudeAttestationFailed, .claudeUnreachable] {
-            let value = ConversationErrorPresentation(.modelUnavailable(availability))
-            XCTAssertEqual(value.recoveries, [.init(title: "もう一度確認", action: .retry), .init(title: "文字で話す", action: .showTypedInput)],
-                           "\(availability)")
-            XCTAssertTrue(value.message.contains("声"), "the message says only voice addressing is affected: \(value.message)")
-        }
     }
 
     /// 未設定・キーの拒否は、iOS の設定アプリではなくアプリ内の接続の欄へ案内する。
@@ -46,7 +37,7 @@ final class ConversationErrorPresentationTests: XCTestCase {
         XCTAssertTrue(value.message.contains("新しい会話"), value.message)
     }
 
-    /// 宛先判定（Claude Haiku）の通信断や Hermes の 429・503 では、続けられる会話を捨てさせない（新しい会話の出口は返事の期限切れだけ）。
+    /// Hermes（返事と宛先判定）の通信断や 429・503 では、続けられる会話を捨てさせない（新しい会話の出口は返事の期限切れだけ）。
     func testAnUnreachableModelDoesNotOfferANewConversation() {
         let value = ConversationErrorPresentation(.modelUnreachable)
         XCTAssertEqual(value.recoveries.map(\.action), [.retry, .showTypedInput])
@@ -72,16 +63,8 @@ final class ConversationErrorPresentationTests: XCTestCase {
             .speechSynthesisFailed,
             .audioSessionFailed,
             .modelUnavailable(.available),
-            .modelUnavailable(.claudeCredentialMissing),
-            .modelUnavailable(.claudeAttestationUnsupported),
-            .modelUnavailable(.claudeAttestationFailed),
-            .modelUnavailable(.claudeUnreachable),
             .modelUnavailable(.hermesNotConfigured),
             .modelUnavailable(.hermesUnauthorized),
-            .modelLocaleUnsupported,
-            .guardrailViolation,
-            .refusal,
-            .contextExceeded,
             .inputTooLong,
             .modelBusy,
             .modelGenerationFailed,
@@ -103,11 +86,7 @@ final class ConversationErrorPresentationTests: XCTestCase {
         }
     }
 
-    func testClaudeAvailabilityMessagesNameTheCause() {
-        XCTAssertTrue(ConversationErrorPresentation(.modelUnavailable(.claudeCredentialMissing)).message.contains("App Attest"))
-        XCTAssertTrue(ConversationErrorPresentation(.modelUnavailable(.claudeAttestationUnsupported)).message.contains("実機"))
-        XCTAssertTrue(ConversationErrorPresentation(.modelUnavailable(.claudeAttestationFailed)).message.contains("ネットワーク"))
-        XCTAssertTrue(ConversationErrorPresentation(.modelUnavailable(.claudeUnreachable)).message.contains("接続"))
+    func testUnreachableReplyOffersTypingAndRetry() {
         let unreachable = ConversationErrorPresentation(.modelUnreachable)
         XCTAssertTrue(unreachable.offersTypedInput)
         XCTAssertTrue(unreachable.recoveries.contains { $0.action == .retry })

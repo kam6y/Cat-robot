@@ -29,7 +29,7 @@ def timestamp():
 def snapshot(repo: Path):
     paths = subprocess.check_output(["git", "ls-files", "-c", "-o", "--exclude-standard", "-z"], cwd=repo).decode().split("\0")
     files = {path: hashlib.sha256((repo / path).read_bytes()).hexdigest()
-             for path in sorted(set(paths)) if path and path != "CatRobot/LocalAssets/claude-api-key.txt" and (repo / path).is_file()}
+             for path in sorted(set(paths)) if path and (repo / path).is_file()}
     return {"files": files, "sha256": hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()}
 
 

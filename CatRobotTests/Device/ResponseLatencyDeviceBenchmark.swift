@@ -94,35 +94,6 @@ struct ResponseLatencyDeviceBenchmark {
         }
     }
 
-    static func cloud(engine: SupertonicEngine, runID: String, revision: String,
-                      coolDown: @MainActor () async throws -> Double,
-                      sample: @escaping @MainActor () -> [String: Any],
-                      record: @MainActor ([String: Any]) throws -> Void) async throws {
-        let settings = ConversationModelSettings().configuration
-        let voice = SpeechVoiceSettings().selected
-        let auth = ClaudeAuthConfiguration.live()
-        guard auth != .missing else { throw XCTSkip("Current app has no Claude credential") }
-        let service = ClaudeConversationService(factory: ClaudeSessionFactory(auth: auth),
-            memoryStore: InMemoryConversationMemoryStore(), longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-            tools: RobotConversationToolProvider(motion: NoopRobotMotionController()), configuration: { settings })
-        let availability = await service.availability()
-        guard availability == .available else { throw ConversationServiceError.modelUnavailable(availability) }
-        await service.prewarm()
-        let prompts = ["猫ちゃん、こんにちは。短く返事して。", "猫ちゃん、家で何をして遊ぼうか。", "猫ちゃん、うれしい気分を短く教えて。"]
-        for (index, prompt) in prompts.enumerated() {
-            let cooldown = try await coolDown()
-            var row = try await trial(engine: engine, reply: service, prompt: prompt, expected: nil,
-                                      fixture: "cloud-\(index)", repetition: 0, enabled: true, voice: voice,
-                                      runID: runID, revision: revision, stage: "latency-cloud", requiresHit: false,
-                                      cooldown: cooldown, sample: sample)
-            row["model"] = settings.model.rawValue
-            row["effort"] = settings.effort.rawValue
-            row["memoryScope"] = "isolated test-only memory; robot/camera controllers are noops"
-            try record(row)
-            if row["outcome"] as? String != "success" { throw BenchmarkFailure.trialFailed }
-        }
-    }
-
     private static func trial(engine: SupertonicEngine, reply: any ReplyGenerating, prompt: String, expected: String?,
                               fixture: String, repetition: Int, enabled: Bool, voice: SpeechVoicePreset,
                               runID: String, revision: String, stage: String, requiresHit: Bool, cooldown: Double,

@@ -22,7 +22,7 @@ final class PlaybackIntegrationHarness {
         let base = infrastructure
         viewModel = ConversationViewModel(dependencies: ConversationDependencies(
             microphonePermission: base.microphone, modelAvailability: base.modelAvailability,
-            recognizer: base.recognizer, classifier: base.classifier,
+            recognizer: base.recognizer,
             reply: service ?? reply, speaker: sentenceSpeaker ?? speaker, audioSession: base.audio,
             latency: base.latency, replyTraceSink: traces, motion: motion,
             faceExpressions: expressions, look: look, replyTurnObserver: replyTurnObserver,
@@ -53,10 +53,8 @@ final class PlaybackIntegrationHarness {
 final class ReplyPlaybackIntegrationTests: XCTestCase {
     func testFailureGuidanceAddsNoNewMotionTurn() async {
         let motion = MotionControllerSpy()
-        let primary = makeClaudeService(StubSessionFactory(scripts: [ScriptedSessionClient(chunks: [],
-            failure: URLError(.notConnectedToInternet))]))
-        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: motion),
-            memory: primary, motion: motion, replyTurnObserver: motion)
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: UnreachableReply(), motion: motion),
+            motion: motion, replyTurnObserver: motion)
         let turn = Task { await playback.viewModel.submitTypedText("質問") }
         let observed = await playback.infrastructure.waitUntil {
             let texts = await playback.speaker.texts

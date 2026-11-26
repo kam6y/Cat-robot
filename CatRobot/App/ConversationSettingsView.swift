@@ -7,9 +7,11 @@ enum ConversationSettingsIdentifier: String, CaseIterable {
     case cameraPermissionButton
     case faceTrackingEnabled, faceTrackingStatus, faceTrackingYawCorrectionStepper
     case voicePresetPicker
+    case wakePhraseField, wakePhraseRecordButton, wakePhraseSaveButton
     case hermesEndpointField, hermesAPIKeyField, hermesSaveButton, hermesDeleteKeyButton
     case hermesModelPicker, hermesEffortPicker, hermesModelRefresh, replyModelOpenConnection
     case historyReloadButton
+    case settingsDoneButton
 }
 
 /// 設定の左列に並べるカテゴリ（使う目的ごとの名前）。開いたときは先頭の「声と待機時間」を選ぶ。
@@ -53,6 +55,7 @@ struct ConversationSettingsView: View {
     let faceTracking: FaceTrackingCoordinator?
     let camera: ConversationCamera?
     let robotSettings: RobotSettingsModel?
+    let wakePhraseRecorder: WakePhraseRecorder?
     let onDone: () -> Void
     @State private var selection: SettingsCategory
     /// 大きい文字のときの一覧から詳細への stack。校正の画面（isPresented / item の destination）も同じ stack に積まれる。
@@ -61,8 +64,10 @@ struct ConversationSettingsView: View {
 
     init(voiceSettings: SpeechVoiceSettings, connectionSettings: HermesConnectionSettings? = nil,
          idleSettings: ConversationIdleSettings, robotSettings: RobotSettingsModel? = nil, faceTracking: FaceTrackingCoordinator? = nil,
-         camera: ConversationCamera? = nil, initialCategory: SettingsCategory? = nil, onDone: @escaping () -> Void) {
+         camera: ConversationCamera? = nil, wakePhraseRecorder: WakePhraseRecorder? = nil, initialCategory: SettingsCategory? = nil,
+         onDone: @escaping () -> Void) {
         self.idleSettings = idleSettings
+        self.wakePhraseRecorder = wakePhraseRecorder
         self.faceTracking = faceTracking
         self.camera = camera
         self.robotSettings = robotSettings
@@ -129,10 +134,16 @@ struct ConversationSettingsView: View {
                 .font(.title3.weight(.bold))
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button("完了", action: onDone)
-                .buttonStyle(.glass)
-                .fontWeight(.semibold)
-                .disabled(robotSettings?.calibration != nil)
+            // 閉じる操作は押しやすく。見た目・当たり判定・VoiceOver の枠がそろうよう、大きさは label の内側で取る。
+            Button(action: onDone) {
+                Text("完了")
+                    .font(.body.weight(.semibold))
+                    .frame(minWidth: 36)
+            }
+            .buttonStyle(.glass)
+            .controlSize(.large)
+            .accessibilityIdentifier(ConversationSettingsIdentifier.settingsDoneButton.rawValue)
+            .disabled(robotSettings?.calibration != nil)
         }
         .padding(.leading, 16)
         .padding(.trailing, 8)
@@ -201,7 +212,7 @@ struct ConversationSettingsView: View {
     private func pane(for category: SettingsCategory, openConnection: (() -> Void)?) -> some View {
         switch category {
         case .conversation:
-            ConversationSettingsPane(voiceSettings: voiceSettings, idleSettings: idleSettings)
+            ConversationSettingsPane(voiceSettings: voiceSettings, idleSettings: idleSettings, wakePhraseRecorder: wakePhraseRecorder)
         case .replyModel:
             if let connectionSettings { ReplyModelSettingsPane(settings: connectionSettings, openConnection: openConnection) }
         case .hermesConnection:

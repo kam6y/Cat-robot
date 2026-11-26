@@ -10,10 +10,6 @@ extension ModelAvailabilityChecking {
     func recheckAvailability() async {}
 }
 
-protocol AddressClassifying: Sendable {
-    func classify(_ request: AddressClassificationRequest) async throws -> AddressTarget
-}
-
 protocol ReplyGenerating: Sendable {
     var supportsStableReplyPrefix: Bool { get }
     func prewarm() async

@@ -1,9 +1,9 @@
 import FoundationModels
 
-/// セッションに渡すツールの集合。セッションを作るたびに呼ばれ、memory はそのセッションの世代に固定された書き込み口。
-/// 首、表情、要求された静止画像は、同じ返答ターンのツールとして渡す。
+/// 返答のモデルに渡す体の操作の tool（首・表情・要求された静止画像）。同じ返答ターンの tool として渡す。
+/// 今の Hermes の返事からは呼ばれない（Hermes の API は呼び出し側の tool を実行しない）。Hermes への接続は別のタスク。
 protocol ConversationToolProvider: Sendable {
-    func tools(memory: any LongTermMemoryWriting) -> [any Tool]
+    func tools() -> [any Tool]
 }
 
 struct RobotConversationToolProvider: ConversationToolProvider {
@@ -18,7 +18,7 @@ struct RobotConversationToolProvider: ConversationToolProvider {
         self.look = look
     }
 
-    func tools(memory: any LongTermMemoryWriting) -> [any Tool] {
-        [RememberTool(memory: memory), MoveHeadTool(motion: motion), ExpressTool(expressions: expressions), LookTool(look: look)]
+    func tools() -> [any Tool] {
+        [MoveHeadTool(motion: motion), ExpressTool(expressions: expressions), LookTool(look: look)]
     }
 }

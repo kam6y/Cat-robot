@@ -76,7 +76,7 @@ class ConversationLiveRunnerTests(unittest.TestCase):
     def result():
         return {"schemaVersion": 1, "runID": RUN_ID, "sourceInputSHA256": SOURCE, "target": "device", "outcome": "success",
                 "normalComposition": True, "processRestart": False, "physicalOperations": False, "bootstrapRemoved": True, "taskStateRemoved": True,
-                "twoTurns": {"contextMatched": True, "userRows": 2, "assistantRows": 2},
+                "twoTurns": {"ignoredWithoutWakePhrase": True, "contextMatched": True, "userRows": 2, "assistantRows": 2},
                 "reconstruction": {"sameSession": True, "historyMatched": True},
                 "cancellation": {"lateOutputRejected": True, "stopObserved": True, "gateTimedOut": False, "terminal": "completed"},
                 "reconnect": {"fault": "accepted-response-loss", "droppedOnce": True, "sameKeyAndBody": True,
@@ -93,7 +93,7 @@ class ConversationLiveRunnerTests(unittest.TestCase):
         for section, key, value in (("cancellation", "terminal", "stopping"), ("cancellation", "lateOutputRejected", False),
                                     ("cancellation", "gateTimedOut", True), ("reconnect", "sameKeyAndBody", False),
                                     ("reconnect", "userRows", 5), ("reconnect", "uniqueRunCount", 2),
-                                    ("twoTurns", "contextMatched", False)):
+                                    ("twoTurns", "ignoredWithoutWakePhrase", False), ("twoTurns", "contextMatched", False)):
             invalid = copy.deepcopy(valid)
             invalid[section][key] = value
             variants.append(invalid)

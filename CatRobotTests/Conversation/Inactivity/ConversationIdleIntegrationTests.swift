@@ -64,9 +64,9 @@ final class ConversationIdleIntegrationTests: XCTestCase {
     }
 
     func testAddressedSpeechAndTypedTurnsResetButBackgroundSpeechDoesNot() async {
-        for kind in ["wake", "addressed", "typed", "notAddressed", "ambiguous"] {
-            let classification: AddressTarget = kind == "notAddressed" ? .notAddressed : kind == "ambiguous" ? .ambiguous : .addressed
-            let h = ConversationHarness(classification: classification), clock = ManualRobotClock()
+        for kind in ["wake", "addressed", "typed", "notAddressed"] {
+            let h = ConversationHarness(), clock = ManualRobotClock()
+            h.attention.isFacingScreen = kind == "addressed"
             let app = app(h, clock: clock)
             app.beginConversation(); await app.waitForOperations()
             await clock.advance(by: 350)
@@ -358,8 +358,7 @@ final class ConversationIdleIntegrationTests: XCTestCase {
         await app.waitForOperations()
         XCTAssertEqual(app.inactivity.state, .sleeping)
         XCTAssertEqual(h.sut.viewState.phase, .paused)
-        let classifications = await h.classifier.calls, prompts = await h.reply.prompts
-        XCTAssertTrue(classifications.isEmpty)
+        let prompts = await h.reply.prompts
         XCTAssertTrue(prompts.isEmpty)
         app.scenePhaseDidChange(.background); await app.waitForOperations()
         await h.sut.shutdown()

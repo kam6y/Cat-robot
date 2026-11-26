@@ -14,7 +14,7 @@ final class ConversationAccessibilityTests: XCTestCase {
     }
 
     func testReplyIsNotExposedWhileStreamingSleepingOrEmpty() {
-        for phase: ConversationPhase in [.preparing, .classifying, .thinking, .speaking, .clarifying] {
+        for phase: ConversationPhase in [.preparing, .thinking, .speaking] {
             var state = ConversationViewState.speaking(caption: "まだ途中の返事")
             state.phase = phase
             XCTAssertNil(state.accessibleReply, "\(phase)")
@@ -37,11 +37,6 @@ final class ConversationAccessibilityTests: XCTestCase {
         XCTAssertEqual(labels.microphoneValue, "一時停止中")
     }
 
-    func testClarificationIsAvailableWithoutMotion() {
-        let labels = ConversationAccessibility(phase: .clarifying)
-
-        XCTAssertEqual(labels.microphoneValue, "一時休止中")
-    }
 
     func testProvisionalTranscriptChangeDoesNotAnnounce() {
         let oldState = ConversationViewState.listening
@@ -157,12 +152,14 @@ final class ConversationAccessibilityTests: XCTestCase {
         // 端末のモデルとエフォートの選択は、返事を Hermes が作るようになって撤去した。
         // 2026-11-26 から、その Hermes が使えるモデルと effort を選ぶ（候補は Hermes から読む）。
         // 選ぶ欄は設定の「返答モデル」で、接続先かキーが無ければそこから「Hermes 接続を設定」へ進む。
+        // 同じ日に、宛先の判定を呼びかけの言葉と顔の向きだけにした。その言葉は「声と待機時間」で文字か声で入力する。
         XCTAssertEqual(ConversationSettingsIdentifier.allCases.map(\.rawValue),
                        ["sleepyMinutesStepper", "sleepingMinutesStepper", "cameraPermissionButton",
                         "faceTrackingEnabled", "faceTrackingStatus", "faceTrackingYawCorrectionStepper", "voicePresetPicker",
+                        "wakePhraseField", "wakePhraseRecordButton", "wakePhraseSaveButton",
                         "hermesEndpointField", "hermesAPIKeyField", "hermesSaveButton", "hermesDeleteKeyButton",
                         "hermesModelPicker", "hermesEffortPicker", "hermesModelRefresh", "replyModelOpenConnection",
-                        "historyReloadButton"])
+                        "historyReloadButton", "settingsDoneButton"])
     }
     /// 設定は構成だけ。会話の履歴は会話メニューから開く独立した画面で、設定のカテゴリには無い。
     func testSettingsCategoriesHaveNoMemoryUsageOrHistoryPane() {

@@ -5,68 +5,42 @@ import XCTest
 final class FacingAddressingTests: XCTestCase {
     func testFacingAcceptsFullTranscriptWithoutAName() {
         XCTAssertEqual(AddresseePolicy().route("  今日どう？  ", at: 0, engagement: .inactive,
-            pending: nil, isFacingScreen: true), .accept("今日どう？"))
+            wakePhrase: "猫ちゃん", isFacingScreen: true), .accept("今日どう？"))
         XCTAssertEqual(AddresseePolicy().route("猫ちゃん、今日どう？", at: 0, engagement: .inactive,
-            pending: nil, isFacingScreen: true), .accept("猫ちゃん、今日どう？"))
+            wakePhrase: "猫ちゃん", isFacingScreen: true), .accept("猫ちゃん、今日どう？"))
     }
 
-    func testFacingDuringPendingAcceptsActualWordsAndStillIgnoresFiller() {
-        let pending = PendingClarification(utterance: "明日の予定は？", at: 0)
-        XCTAssertEqual(AddresseePolicy().route("はい", at: 2, engagement: .inactive,
-            pending: pending, isFacingScreen: true), .accept("はい"))
-        XCTAssertEqual(AddresseePolicy().route("ううん", at: 2, engagement: .inactive,
-            pending: pending, isFacingScreen: true), .accept("ううん"))
-        XCTAssertEqual(AddresseePolicy().route("今日どう？", at: 2, engagement: .inactive,
-            pending: pending, isFacingScreen: true), .accept("今日どう？"))
-        XCTAssertEqual(AddresseePolicy().route("えっと", at: 2, engagement: .inactive,
-            pending: pending, isFacingScreen: true), .ignore)
-    }
-
-    func testFacingBypassesNegativeClassifierAndArmsThirtySecondFollowUp() async {
-        let h = ConversationHarness(classification: .notAddressed)
+    func testFacingArmsThirtySecondFollowUp() async {
+        let h = ConversationHarness()
         h.attention.isFacingScreen = true
         await h.completeTurn("今日どう？", at: 0)
         h.attention.isFacingScreen = false
         await h.completeTurn("続けて", at: 29)
         await h.completeTurn("期限後", at: 61)
-        let classified = await h.classifier.calls
+
         let replies = await h.reply.prompts
         XCTAssertEqual(replies, ["今日どう？", "続けて"])
-        XCTAssertEqual(classified, ["期限後"])
+
         await h.sut.shutdown()
     }
 
-    func testContinuedFacingRenewsHardDeadlineButFollowUpAloneDoesNot() async {
-        for renewedFacing in [false, true] {
-            let h = ConversationHarness(classification: .notAddressed)
-            h.attention.isFacingScreen = true
-            await h.completeTurn("開始", at: 0)
-            h.attention.isFacingScreen = false
-            for time in stride(from: 29.0, through: 290.0, by: 29.0) {
-                await h.completeTurn("続けて", at: time)
-            }
-            h.attention.isFacingScreen = renewedFacing
-            await h.completeTurn("今の質問", at: 295)
-            h.attention.isFacingScreen = false
-            await h.completeTurn("五分後", at: 310)
-            let classified = await h.classifier.calls
-            XCTAssertEqual(classified, renewedFacing ? [] : ["五分後"])
-            await h.sut.shutdown()
+    func testOrdinaryFollowUpsContinueBeyondFiveMinutesUntilThirtySecondsOfSilence() async {
+        let h = ConversationHarness()
+        h.attention.isFacingScreen = true
+        await h.completeTurn("開始", at: 0)
+        h.attention.isFacingScreen = false
+        for time in stride(from: 25.0, through: 600.0, by: 25.0) {
+            await h.completeTurn("続けて", at: time)
         }
-    }
-
-    func testFacingDuringPendingGeneratesFromActualWordsWithoutClassifier() async {
-        for answer in ["今日どう？", "いいえ"] {
-            let h = ConversationHarness(classification: .ambiguous)
-            await h.completeTurn("明日の予定は？", at: 0)
-            h.attention.isFacingScreen = true
-            await h.completeTurn(answer, at: 3)
-            let replies = await h.reply.prompts
-            let classified = await h.classifier.calls
-            XCTAssertEqual(replies, [answer])
-            XCTAssertEqual(classified, ["明日の予定は？"])
-            await h.sut.shutdown()
-        }
+        await h.completeTurn("まだ聞いてる？", at: 625)
+        await h.completeTurn("時間が空いた", at: 660)
+        await h.completeTurn("もう一度、猫ちゃん", at: 665)
+        let replies = await h.reply.prompts
+        XCTAssertEqual(replies.filter { $0 == "続けて" }.count, 24)
+        XCTAssertTrue(replies.contains("まだ聞いてる？"))
+        XCTAssertFalse(replies.contains("時間が空いた"))
+        XCTAssertEqual(replies.last, "もう一度、猫ちゃん")
+        await h.sut.shutdown()
     }
 
     func testCameraFacingUsesExistingHeadBoundsAndCurrentYawCorrection() async throws {
@@ -81,7 +55,7 @@ final class FacingAddressingTests: XCTestCase {
         h.camera.shutdown()
     }
 
-    func testMultipleFacesBypassClassifierWhenAnyEligibleFaceLooksTowardScreen() async throws {
+    func testMultipleFacesAcceptSpeechWhenAnyEligibleFaceLooksTowardScreen() async throws {
         let offCenterFacing = FaceRectangle(x: 0.1, y: 0.35, width: 0.12, height: 0.18,
             yawRadians: -8.5 * .pi / 180, pitchRadians: 0)
         let largerCentralTurned = FaceRectangle(x: 0.25, y: 0.25, width: 0.5, height: 0.5,
@@ -98,13 +72,13 @@ final class FacingAddressingTests: XCTestCase {
         ]
         for faces in cases {
             let camera = FacingCameraHarness()
-            let conversation = ConversationHarness(classification: .notAddressed,
+            let conversation = ConversationHarness(
                 isFacingScreen: { camera.isFacing })
             try await camera.emit(faces: faces)
             await conversation.completeTurn("今日どう？ この質問に答えてね。", at: 0)
-            let classified = await conversation.classifier.calls
+
             let replies = await conversation.reply.prompts
-            XCTAssertEqual(classified, [])
+
             XCTAssertEqual(replies, ["今日どう？ この質問に答えてね。"])
             await conversation.sut.shutdown()
             camera.camera.shutdown()
@@ -294,7 +268,7 @@ final class FacingAddressingTests: XCTestCase {
         preferences.trackingEnabled = false
         let source = FakeFaceCaptureSource()
         let clock = ManualRobotClock()
-        let composition = ConversationComposition.live(auth: .missing, robotTransport: FakeRobotTransport(),
+        let composition = ConversationComposition.live(robotTransport: FakeRobotTransport(),
             robotClock: clock, robotPreferences: preferences, faceCaptureSource: source)
         composition.camera.setEnvironment(conversationVisible: true, sceneActive: true,
             mode: .conversation, phase: .listening)

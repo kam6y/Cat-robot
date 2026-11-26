@@ -24,12 +24,10 @@ final class LookIntegrationTests: XCTestCase {
         let look = LookCoordinator(camera: ImmediateSnapshotCamera(), clock: SystemRobotClock())
         look.setVisible(true)
         let motion = MotionControllerSpy(), observer = ReplyTurnMulticaster([motion, look])
-        let client = FailingLookSession(look: look)
-        let factory = StubSessionFactory(scripts: [client, ScriptedSessionClient(chunks: ["もう一度話せるよ。"])])
-        let primary = makeClaudeService(factory)
+        let client = FailingThenSpeakingLookReply(look: look)
         let speaker = ControlledSpeaker()
-        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: observer),
-            memory: primary, speaker: speaker, motion: motion, replyTurnObserver: observer, look: look)
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: client, motion: observer),
+            speaker: speaker, motion: motion, replyTurnObserver: observer, look: look)
         let turn = Task { await playback.viewModel.submitTypedText("見て") }
         let observed = await playback.infrastructure.waitUntil {
             let texts = await speaker.texts
@@ -170,7 +168,7 @@ final class LookIntegrationTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "look-composition-\(UUID().uuidString)")!
         let preferences = RobotPreferences(defaults: defaults)
         preferences.trackingEnabled = false
-        let composition = ConversationComposition.live(auth: .missing, robotTransport: transport,
+        let composition = ConversationComposition.live(robotTransport: transport,
             robotClock: clock, robotPreferences: preferences, faceCaptureSource: source)
         XCTAssertTrue(composition.dependencies.look is LookCoordinator)
         await robotDrain()
@@ -204,16 +202,21 @@ final class LookIntegrationTests: XCTestCase {
     }
 }
 
-private actor FailingLookSession: ConversationSessionClient {
+/// 最初の返事は look で画像を受け取ってから通信失敗で終わり、次の返事は普通に話す。
+private actor FailingThenSpeakingLookReply: ReplyGenerating {
     let look: any LookControlling
     private(set) var receivedImage = false
+    private var replies = 0
     init(look: any LookControlling) { self.look = look }
     func prewarm() async {}
-    func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
-        do {
-            let output = try await LookTool(look: look).call(arguments: .init(purpose: "確認"))
-            receivedImage = output.image != nil
-            return AsyncThrowingStream { $0.finish(throwing: URLError(.notConnectedToInternet)) }
-        } catch { return AsyncThrowingStream { $0.finish(throwing: error) } }
+    func reset() async {}
+    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
+        replies += 1
+        guard replies == 1 else {
+            return AsyncThrowingStream { $0.yield("もう一度話せるよ。"); $0.finish() }
+        }
+        let output = try await LookTool(look: look).call(arguments: .init(purpose: "確認"))
+        receivedImage = output.image != nil
+        return AsyncThrowingStream { $0.finish(throwing: ConversationServiceError.modelUnreachable) }
     }
 }

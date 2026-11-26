@@ -164,12 +164,9 @@ final class HermesAuthorizationRecheckTests: XCTestCase {
 
         await service.recheckAvailability()
         try await service.prepareMemory()
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns, [ConversationMemoryTurn(prompt: "ただいま", response: "おかえり")],
-                       "after recovery the same conversation is read again")
         let requests = await calls(server)
         XCTAssertEqual(requests, ["GET /api/sessions/catrobot-old/messages", "GET /v1/capabilities",
-                                  "GET /api/sessions/catrobot-old/messages"])
+                                  "GET /api/sessions/catrobot-old/messages"], "after recovery the same conversation is read again")
         let record = await records.record
         XCTAssertEqual(record?.sessionID, "catrobot-old")
     }

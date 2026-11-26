@@ -55,7 +55,7 @@ struct ConversationAccessibility: Equatable {
             microphoneValue = "準備中"
         case .listening:
             microphoneValue = "聞き取り中"
-        case .classifying, .clarifying, .thinking, .speaking:
+        case .thinking, .speaking:
             microphoneValue = "一時休止中"
         case .paused:
             microphoneValue = "一時停止中"

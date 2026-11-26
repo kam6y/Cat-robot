@@ -58,6 +58,9 @@ struct AppRootView: View {
                 viewModel: viewModel,
                 wakeLock: wakeLock, link: robotLink, motion: dependencies.motion, settingsModel: robotSettings,
                 faceTracking: faceTracking, expressions: dependencies.faceExpressions, camera: camera, look: dependencies.look,
+                // 会話と同じ認識器と音声の session を使う。coordinator が会話と重ならない間だけ使えるようにする。
+                wakePhraseRecorder: WakePhraseRecorder(recognizer: dependencies.recognizer, audioSession: dependencies.audioSession,
+                                                       permission: dependencies.microphonePermission),
                 onboardingSettings: onboardingSettings
             )
         )
@@ -92,7 +95,7 @@ struct AppRootView: View {
             case .settings(let category):
                 ConversationSettingsView(voiceSettings: voiceSettings, connectionSettings: connectionSettings,
                                          idleSettings: coordinator.inactivity.settings, robotSettings: robotSettings, faceTracking: faceTracking, camera: camera,
-                                         initialCategory: category,
+                                         wakePhraseRecorder: coordinator.wakePhraseRecorder, initialCategory: category,
                                          onDone: coordinator.closeVoiceSettings)
             case .history:
                 ConversationHistorySheet(history: history, onDone: coordinator.closeVoiceSettings)

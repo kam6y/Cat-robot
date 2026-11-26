@@ -16,7 +16,7 @@ struct UtteranceSegmenter: Sendable {
 
     private let configuration: Configuration
     private var finalizedSegments: [String] = []
-    private var hasAudioEndpointActivity = false
+    private(set) var hasAudioEndpointActivity = false
     private var firstActivityAt: TimeInterval?
     private var latestActivityAt: TimeInterval?
 
@@ -27,6 +27,8 @@ struct UtteranceSegmenter: Sendable {
     init(configuration: Configuration = .init()) {
         self.configuration = configuration
     }
+
+    var finalizedText: String { finalizedSegments.joined() }
 
     var silenceInterval: TimeInterval { configuration.silenceInterval }
 
@@ -58,7 +60,7 @@ struct UtteranceSegmenter: Sendable {
     /// Punctuation alone cannot authorize a new audio-triggered turn.
     mutating func closeForAudioEndpoint() -> String? {
         guard hasAudioEndpointActivity else { return nil }
-        let prefix = finalizedSegments.joined()
+        let prefix = finalizedText
         reset()
         return prefix
     }
@@ -78,7 +80,7 @@ struct UtteranceSegmenter: Sendable {
         let silenceElapsed = timestamp >= latestActivityAt + silenceInterval
         guard silenceElapsed || maximumDurationElapsed else { return nil }
 
-        let utterance = finalizedSegments.joined()
+        let utterance = finalizedText
         reset()
         return utterance
     }

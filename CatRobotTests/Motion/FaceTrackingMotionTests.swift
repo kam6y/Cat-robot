@@ -135,7 +135,7 @@ final class FaceTrackingMotionTests: XCTestCase {
     }
 
     func testTrackingUsesSlowBoundedMovesDuringThinkingAndSpeaking() async {
-        for phase in [ConversationPhase.thinking, .speaking, .classifying, .clarifying] {
+        for phase in [ConversationPhase.thinking, .speaking] {
             let h = makeHarness()
             h.motion.setConversationPhase(phase)
             follow(h, yaw: 90, pitch: -30)

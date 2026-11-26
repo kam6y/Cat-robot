@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// 設定「声と待機時間」の右列。声と、居眠りまでの時間。返事のモデルと effort は「返答モデル」に置く。
+/// 設定「声と待機時間」の右列。呼びかけの言葉、声、居眠りまでの時間。返事のモデルと effort は「返答モデル」に置く。
 struct ConversationSettingsPane: View {
     @Bindable var voiceSettings: SpeechVoiceSettings
     @Bindable var idleSettings: ConversationIdleSettings
+    var wakePhraseRecorder: WakePhraseRecorder? = nil
 
     var body: some View {
         Form {
+            WakePhraseSection(voiceSettings: voiceSettings, recorder: wakePhraseRecorder)
             Section {
                 Picker("声", selection: $voiceSettings.selected) {
                     ForEach(SpeechVoicePreset.allCases, id: \.self) { Text("Supertonic \($0.rawValue)").tag($0) }
@@ -21,6 +23,84 @@ struct ConversationSettingsPane: View {
             } header: { Text("居眠り") } footer: {
                 Text("最後に話しかけてからの時間です。待機中はマイク・カメラ・ハードを止め、猫をタップすると起きます。")
             }
+        }
+        // 別のカテゴリへ移る・一覧へ戻るときは、声の入力だけを止める（会話の再開は設定を閉じたときだけ）。
+        // 行ではなく Form に付けるので、欄がスクロールで隠れても止めない。止めた聞き取りの結果は入力欄に入れない。
+        .onDisappear {
+            guard let wakePhraseRecorder else { return }
+            Task { await wakePhraseRecorder.cancel() }
+        }
+    }
+}
+
+/// 呼びかけの言葉。文字で直すか、声で入力して入力欄で確かめてから保存する（保存した後の発話から使う）。
+private struct WakePhraseSection: View {
+    static let guidance = "会話を始めるときは、この言葉を入れて話すか、画面を見て話しかけてください。返事の後 30 秒は、呼びかけなしで続けて話せます。"
+
+    @Bindable var voiceSettings: SpeechVoiceSettings
+    let recorder: WakePhraseRecorder?
+    @State private var draft: String
+    @State private var notice: String?
+
+    init(voiceSettings: SpeechVoiceSettings, recorder: WakePhraseRecorder?) {
+        self.voiceSettings = voiceSettings
+        self.recorder = recorder
+        _draft = State(initialValue: voiceSettings.wakePhrase)
+    }
+
+    private var isListening: Bool { recorder?.isBusy ?? false }
+    private var recordTitle: String { isListening ? "音声入力を停止" : "声で入力" }
+
+    var body: some View {
+        Section {
+            HStack {
+                TextField("呼びかけの言葉", text: $draft)
+                    .autocorrectionDisabled()
+                    .disabled(isListening)
+                    .accessibilityIdentifier(ConversationSettingsIdentifier.wakePhraseField.rawValue)
+                if let recorder {
+                    Button {
+                        if isListening {
+                            Task { await recorder.cancel() }
+                        } else {
+                            notice = nil
+                            Task { if let heard = await recorder.record() { draft = heard } }
+                        }
+                    } label: {
+                        Label(recordTitle, systemImage: isListening ? "stop.circle" : "mic")
+                            .labelStyle(.iconOnly)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!isListening && !recorder.isAvailable)
+                    .accessibilityIdentifier(ConversationSettingsIdentifier.wakePhraseRecordButton.rawValue)
+                }
+            }
+            Button("保存", action: save)
+                .disabled(isListening || SpeechVoiceSettings.cleanedWakePhrase(draft) == voiceSettings.wakePhrase)
+                .accessibilityIdentifier(ConversationSettingsIdentifier.wakePhraseSaveButton.rawValue)
+        } header: { Text("呼びかけ") } footer: { Text(status) }
+    }
+
+    private var status: String {
+        if let notice { return notice }
+        return switch recorder?.state {
+        case .requestingPermission?: "マイクの許可を確かめています。"
+        case .listening(let heard)?: heard.isEmpty ? "聞いています。呼びかけの言葉を話してください。" : "聞いています：\(heard)"
+        case .failed(.microphoneDenied)?: "マイクを使えません。設定で許可するか、文字で入力してください。"
+        case .failed(.notHeard)?: "聞き取れませんでした。もう一度試すか、文字で入力してください。"
+        case .failed(.unavailable)?: "声を入力できませんでした。もう一度試すか、文字で入力してください。"
+        case .idle?, nil: Self.guidance
+        }
+    }
+
+    private func save() {
+        if voiceSettings.saveWakePhrase(draft) {
+            draft = voiceSettings.wakePhrase
+            notice = "保存しました。この後の発話から使います。"
+        } else {
+            notice = "この言葉では呼びかけを聞き分けられません。別の言葉にしてください。"
         }
     }
 }
@@ -198,7 +278,7 @@ struct ReplyModelSettingsPane: View {
             if let status { Text(status).foregroundStyle(.secondary) }
             if let notice = models.notice { Text(notice).foregroundStyle(.secondary) }
         } header: { Text("モデル") } footer: {
-            Text("選んだモデルと effort は次の返事から、この接続先にだけ使います。Hermes 側で /model を指定した会話では、そのモデルが優先されます。")
+            Text("選んだモデルと effort は、この接続先での次の返事に使います。Hermes 側で /model を指定した会話では、その会話の返事にそのモデルが優先されます。")
         }
     }
 
@@ -233,13 +313,13 @@ struct AboutSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Text("返事は設定した Hermes の接続先で作り、会話の続きと履歴は Hermes に保存されます。この iPhone には会話の本文を保存しません。Hermes に送るのは話しかけた文字です。声で話しかけたときは、猫に話しかけたかの判定のため、聞き取った発話と直近の会話を Anthropic の Claude にも送ります。音声・映像・画像は送りません。聞き取り・読み上げ・顔追尾の映像処理はこのiPhoneの中で行います。")
+                Text("返事は設定した Hermes の接続先で作り、会話の続きと履歴は Hermes に保存されます。この iPhone には会話の本文を保存しません。Hermes に送るのは猫に話しかけた文字だけです。声で話しかけたときに猫への発話かどうかは、呼びかけの言葉と顔の向き、返事の後 30 秒の続きかで、このiPhoneの中で決めます。それ以外の発話は送りません。音声・映像・画像は送りません。聞き取り・読み上げ・顔追尾の映像処理もこのiPhoneの中で行います。")
             } header: { Text("送るもの・保存するもの") }
             Section {
                 Button("はじめの説明をもう一度見る") { showsOnboarding = true }
             }
             Section {
-                Text("音声の終了判定: Smart Turn v3.2（BSD-2-Clause）、Silero VAD（MIT）。音声合成: Supertonic 3（MIT / OpenRAIL-M）。推論: ONNX Runtime 1.24.2。Claude 連携: ClaudeForFoundationModels 0.2.3（Apache-2.0）。")
+                Text("音声の終了判定: Smart Turn v3.2（BSD-2-Clause）、Silero VAD（MIT）。音声合成: Supertonic 3（MIT / OpenRAIL-M）。推論: ONNX Runtime 1.24.2。")
                     .font(.footnote)
             } header: { Text("ライセンス") }
         }

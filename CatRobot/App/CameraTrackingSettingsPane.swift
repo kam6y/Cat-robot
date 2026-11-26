@@ -25,7 +25,7 @@ struct CameraTrackingSettingsPane: View {
                             .accessibilityIdentifier(ConversationSettingsIdentifier.cameraPermissionButton.rawValue)
                     }
                 } footer: {
-                    Text("聞き取り中は前面カメラで顔の向きを確認し、こちらを向いていれば宛先判定を省略します。顔の判定はこのiPhone内だけで行います。「見て」と頼んだときは静止画像を1枚Claudeへ送ります。画像は保存しません。")
+                    Text("聞き取り中は前面カメラで顔の向きを確認し、こちらを向いていれば呼びかけの言葉がなくても返事をします。顔の判定はこのiPhone内だけで行い、カメラの映像と画像は送信も保存もしません。")
                 }
             }
             if let faceTracking {

@@ -135,24 +135,18 @@ tests.build_configurations.each do |configuration|
 end
 
 package_objects = project.objects.select { |object| object.isa == "XCRemoteSwiftPackageReference" }
-assert(package_objects.length == 2, "expected exactly two runtime dependencies")
-assert(app.package_product_dependencies.map(&:product_name).sort == ["ClaudeForFoundationModels", "onnxruntime"], "app must link Claude and ONNX Runtime")
-assert(tests.package_product_dependencies.map(&:product_name) == ["ClaudeForFoundationModels"], "tests must link Claude for error-type tests")
-claude = project.root_object.package_references.find { |p| p.repositoryURL.end_with?("ClaudeForFoundationModels.git") }
-assert(claude && claude.requirement == { "kind" => "exactVersion", "version" => "0.2.3" }, "pinned ClaudeForFoundationModels missing")
+assert(package_objects.length == 1, "ONNX Runtime must be the only package dependency")
+assert(app.package_product_dependencies.map(&:product_name) == ["onnxruntime"], "app must link only ONNX Runtime")
+assert(tests.package_product_dependencies.empty?, "tests must not link a package")
+assert(project.root_object.package_references.none? { |p| p.repositoryURL.include?("ClaudeForFoundationModels") }, "ClaudeForFoundationModels must be gone")
 app.build_configurations.each do |configuration|
   settings = configuration.build_settings
-  assert(settings["CODE_SIGN_ENTITLEMENTS"] == "CatRobot/Resources/CatRobot.entitlements", "entitlements missing")
-  expected_env = configuration.name == "Release" ? "production" : "development"
-  assert(settings["CATROBOT_APP_ATTEST_ENVIRONMENT"] == expected_env, "App Attest environment for #{configuration.name}")
-  assert(settings.key?("CATROBOT_CLAUDE_CLIENT_ID"), "client id build setting missing")
+  %w[CODE_SIGN_ENTITLEMENTS CATROBOT_APP_ATTEST_ENVIRONMENT CATROBOT_CLAUDE_CLIENT_ID].each do |key|
+    assert(!settings.key?(key), "#{key} must be gone from #{configuration.name}")
+  end
+  assert(!Array(settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "no Claude key exclusion in #{configuration.name}")
 end
-dev_key = app.resources_build_phase.files.find { |f| f.file_ref&.path == "LocalAssets/claude-api-key.txt" }
-assert(dev_key, "development key must be a bundled resource reference")
-release = app.build_configurations.find { |c| c.name == "Release" }
-debug = app.build_configurations.find { |c| c.name == "Debug" }
-assert(Array(release.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Release must exclude the development key")
-assert(!Array(debug.build_settings["EXCLUDED_SOURCE_FILE_NAMES"]).include?('"claude-api-key.txt"'), "Debug must bundle the development key")
+assert(app.resources_build_phase.files_references.none? { |r| r&.path.to_s.include?("claude") }, "no Claude resource may be bundled")
 assert(project.build_configurations.all? { |c| c.build_settings["ENABLE_USER_SCRIPT_SANDBOXING"] == "YES" }, "script sandboxing must stay on")
 %w[GemmaDeviceTests GemmaAppDeviceTests ReplyLatencyDeviceTests].each do |name|
   assert(!PROJECT_PATH.join("xcshareddata/xcschemes/#{name}.xcscheme").file?, "#{name} scheme must be gone")

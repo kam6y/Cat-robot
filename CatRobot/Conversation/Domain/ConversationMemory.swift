@@ -1,30 +1,5 @@
 import Foundation
 
-struct ConversationMemoryTurn: Codable, Equatable, Sendable {
-    let prompt: String
-    let response: String
-}
-
-struct ConversationMemorySnapshot: Codable, Equatable, Sendable {
-    let schemaVersion: Int
-    let memoryCompatibilityID: String
-    let revision: UInt64
-    let savedAt: Date
-    let summary: String
-    let turns: [ConversationMemoryTurn]
-
-    func validate(expectedCompatibilityID: String) throws {
-        guard schemaVersion == 1 else { throw ConversationMemoryError.unsupportedSchema }
-        guard memoryCompatibilityID == expectedCompatibilityID else { throw ConversationMemoryError.incompatibleModel }
-        guard savedAt.timeIntervalSince1970.isFinite,
-              revision > 0 || (summary.isEmpty && turns.isEmpty),
-              turns.allSatisfy({ !$0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                  && !$0.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
-            throw ConversationMemoryError.invalidData
-        }
-    }
-}
-
 enum ConversationMemoryError: Error, Equatable, Sendable {
     case invalidData, unsupportedSchema, incompatibleModel, tooLarge
     case readFailed, writeFailed, deleteFailed, unavailable, unsupported
@@ -36,23 +11,10 @@ enum ConversationMemoryState: Equatable, Sendable {
     case forgetting, forgetFailed(ConversationMemoryError)
 }
 
-protocol ConversationMemoryStore: Sendable {
-    func load() async throws -> ConversationMemorySnapshot?
-    func save(_ snapshot: ConversationMemorySnapshot) async throws
-    func clear() async throws
-}
-
 protocol ConversationMemoryManaging: Sendable {
     func prepareMemory() async throws
-    func recordExternalTurn(prompt: String, response: String) async
     func memoryState() async -> ConversationMemoryState
     func memoryUpdates() async -> AsyncStream<ConversationMemoryState>
     func retryMemoryOperation() async throws
     func forgetConversation() async throws
-}
-
-/// 宛先判定に添える直近の会話の読み取り。短期記憶の往復をその時点の複製で返す（未保存を含む）。
-/// 未復元・削除中・削除失敗中は空。要約は含めない。
-protocol ConversationHistoryReading: Sendable {
-    func recentTurns() async -> [ConversationMemoryTurn]
 }

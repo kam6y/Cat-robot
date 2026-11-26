@@ -183,6 +183,26 @@ final class FaceConversationPresentationTests: XCTestCase {
         XCTAssertEqual(reads, 2, "the reload reads Hermes again; nothing is cached on the iPhone")
     }
 
+    /// 設定を閉じる「完了」は、標準の文字でも大きい文字でも 44pt 四方以上で押せる（label で探すので、識別子の無い版でも測れる）。
+    func testSettingsDoneIsAtLeastFortyFourPointsAtStandardAndAccessibilitySizes() async throws {
+        for size in [DynamicTypeSize.large, .accessibility5] {
+            let fixture = SettingsFixture(authorization: .authorized)
+            defer { fixture.tearDown() }
+            let (window, host, _) = try await hostInScene(fixture.view().environment(\.dynamicTypeSize, size))
+            defer { releaseWindow(window) }
+            try await waitForAccessibilityTree(in: host.view)
+            let done = try XCTUnwrap(accessibilityElement(in: host.view, label: "完了"), "「完了」が見つからない（\(size)）")
+            let frame = try accessibilityFrame(of: done, in: host.view)
+            XCTAssertGreaterThanOrEqual(frame.height, 44, "「完了」の高さ（\(size)）")
+            if size == .large {
+                XCTAssertLessThanOrEqual(frame.height, 54, "通常文字ではヘッダーをコンパクトに保つ")
+            }
+            XCTAssertGreaterThanOrEqual(frame.width, 44, "「完了」の幅（\(size)）")
+            XCTAssertTrue(host.view.bounds.contains(frame), "「完了」は画面の中に収まる（\(size)）")
+            try capture(host.view, size: host.view.bounds.size, name: "settings-done-\(size)")
+        }
+    }
+
     func testSettingsNavigationSwitchesCategoriesAndReviewsOnboarding() async throws {
         let fixture = SettingsFixture(authorization: .authorized)
         await fixture.connectRobot()

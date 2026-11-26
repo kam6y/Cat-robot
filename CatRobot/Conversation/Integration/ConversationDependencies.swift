@@ -11,7 +11,7 @@ struct ConversationDependencies: Sendable {
     let microphonePermission: any MicrophoneAuthorizing
     let modelAvailability: any ModelAvailabilityChecking
     let recognizer: any SpeechRecognizing
-    let classifier: any AddressClassifying
+    let wakePhrase: @MainActor @Sendable () -> String
     let reply: any ReplyGenerating
     let speaker: any SentenceSpeechSpeaking
     let audioSession: any AudioSessionControlling
@@ -25,7 +25,6 @@ struct ConversationDependencies: Sendable {
     let addresseePolicy: AddresseePolicy
     let isFacingScreen: @MainActor @Sendable () -> Bool
     let now: @Sendable () -> TimeInterval
-    let clarificationDelay: @Sendable (Duration) async -> Void
     /// 「新しい会話を始めました」などの通知を消すまでの待ち。テストでは差し替える。
     let noticeDelay: @Sendable (Duration) async -> Void
     let lifecycleCheckpoint: @Sendable (ConversationLifecycleCheckpoint) async -> Void
@@ -35,7 +34,6 @@ struct ConversationDependencies: Sendable {
         microphonePermission: any MicrophoneAuthorizing,
         modelAvailability: any ModelAvailabilityChecking,
         recognizer: any SpeechRecognizing,
-        classifier: any AddressClassifying,
         reply: any ReplyGenerating,
         speaker: any SentenceSpeechSpeaking,
         audioSession: any AudioSessionControlling,
@@ -47,12 +45,10 @@ struct ConversationDependencies: Sendable {
         replyTurnObserver: (any ReplyTurnObserving)? = nil,
         memory: any ConversationMemoryManaging = UnsupportedConversationMemoryManager(),
         addresseePolicy: AddresseePolicy = AddresseePolicy(),
+        wakePhrase: @escaping @MainActor @Sendable () -> String = { AddresseePolicy.defaultWakePhrase },
         isFacingScreen: @escaping @MainActor @Sendable () -> Bool = { false },
         now: @escaping @Sendable () -> TimeInterval = {
             ProcessInfo.processInfo.systemUptime
-        },
-        clarificationDelay: @escaping @Sendable (Duration) async -> Void = { duration in
-            try? await Task.sleep(for: duration)
         },
         noticeDelay: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
@@ -63,7 +59,7 @@ struct ConversationDependencies: Sendable {
         self.microphonePermission = microphonePermission
         self.modelAvailability = modelAvailability
         self.recognizer = recognizer
-        self.classifier = classifier
+        self.wakePhrase = wakePhrase
         self.reply = reply
         self.speaker = speaker
         self.audioSession = audioSession
@@ -77,7 +73,6 @@ struct ConversationDependencies: Sendable {
         self.addresseePolicy = addresseePolicy
         self.isFacingScreen = isFacingScreen
         self.now = now
-        self.clarificationDelay = clarificationDelay
         self.noticeDelay = noticeDelay
         self.lifecycleCheckpoint = lifecycleCheckpoint
         self.serviceTeardown = serviceTeardown

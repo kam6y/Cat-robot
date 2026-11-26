@@ -134,6 +134,7 @@ final class HermesModelSelectionTests: XCTestCase {
         XCTAssertNil(alias["model_options"])
     }
 
+
     private func runBody(options: HermesRunOptions?) async throws -> [String: Any] {
         let transport = RoutedHermesTransport(["POST /v1/runs": [(202, #"{"run_id":"run-1","status":"started"}"#)]])
         let client = HermesRunClient(endpoint: connection.endpoint, credential: connection.credential, transport: transport)

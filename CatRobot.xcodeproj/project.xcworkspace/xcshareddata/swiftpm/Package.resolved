@@ -1,15 +1,6 @@
 {
-  "originHash" : "e201f0eeca755c1b901e0d454923b3c00b8dd4b9fdb3d824e0e425804fea40a0",
+  "originHash" : "54a530a8a66c1ee0cc1c6dd34159a96243f09d436e10ae5178973082bff1ef28",
   "pins" : [
-    {
-      "identity" : "claudeforfoundationmodels",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/anthropics/ClaudeForFoundationModels.git",
-      "state" : {
-        "revision" : "0262e1a766c461a4268dcec656eca95dd74cebf8",
-        "version" : "0.2.3"
-      }
-    },
     {
       "identity" : "onnxruntime-swift-package-manager",
       "kind" : "remoteSourceControl",

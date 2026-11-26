@@ -144,12 +144,12 @@ final class FaceExpressionCoordinatorTests: XCTestCase {
         h.sut.beginTurn(turn)
         _ = h.sut.reserve(.init(expression: .happy), for: turn)
         h.sut.speechStarted(turn)
-        for phase in [ConversationPhase.listening, .classifying, .clarifying, .thinking, .speaking] {
+        for phase in [ConversationPhase.listening, .thinking, .speaking] {
             h.sut.setConversationPhase(phase)
             await h.clock.advance(by: 0.5)
             XCTAssertEqual(h.sut.heldExpression, .happy)
         }
-        await h.clock.advance(by: 0.5)
+        await h.clock.advance(by: 1.5)
         XCTAssertNil(h.sut.heldExpression)
     }
 

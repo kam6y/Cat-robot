@@ -114,11 +114,11 @@ final class MoveHeadToolTests: XCTestCase {
         XCTAssertTrue(h.sentCommands.isEmpty)
     }
 
-    func testReservationFailuresHaveShortDistinctResultsAndProviderKeepsRemember() async throws {
+    func testReservationFailuresHaveShortDistinctResultsAndProviderOffersTheBodyTools() async throws {
         let spy = MotionControllerSpy()
         let provider = RobotConversationToolProvider(motion: spy)
-        let tools = provider.tools(memory: RememberToolTests.Writer())
-        XCTAssertEqual(tools.map(\.name), ["remember", "move_head", "express", "look"])
+        let tools = provider.tools()
+        XCTAssertEqual(tools.map(\.name), ["move_head", "express", "look"], "端末の記憶（remember）は Hermes の記憶に任せて撤去した")
         let tool = try XCTUnwrap(tools.first { $0.name == "move_head" } as? MoveHeadTool)
         for (outcome, expected) in [(MotionReservationResult.unavailable, "今は首を動かせません"),
                                     (.budgetExceeded, "この返答の動作枠を超えるため追加しません"),

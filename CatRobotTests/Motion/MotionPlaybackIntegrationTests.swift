@@ -17,18 +17,20 @@ actor ReservingMotionReply: ReplyGenerating {
     }
 }
 
-actor ReservingFailingMotionSession: ConversationSessionClient {
+/// 返事のターンの中で首の動きを予約してから、通信失敗で終わる返事。
+actor ReservingFailingMotionReply: ReplyGenerating {
     let motion: any RobotMotionControlling
     private(set) var reservation: MotionReservationResult?
     private(set) var reservationCount = 0
     init(motion: any RobotMotionControlling) { self.motion = motion }
     func prewarm() async {}
-    func snapshots(for prompt: String) async -> AsyncThrowingStream<String, Error> {
+    func reset() async {}
+    func streamReply(to utterance: String) async throws -> AsyncThrowingStream<String, Error> {
         if let id = MotionTurnContext.current {
             reservationCount += 1
             reservation = await motion.reserve(.init(gesture: .nod, intensity: .large, repeats: 1), for: id)
         }
-        return AsyncThrowingStream { $0.finish(throwing: URLError(.notConnectedToInternet)) }
+        return AsyncThrowingStream { $0.finish(throwing: ConversationServiceError.modelUnreachable) }
     }
 }
 
@@ -104,11 +106,10 @@ final class MotionPlaybackIntegrationTests: XCTestCase {
 
     func testFailureGuidanceCannotReleaseFailedPrimaryReservations() async throws {
         let h = MotionHarness()
-        let client = ReservingFailingMotionSession(motion: h.motion)
-        let primary = makeClaudeService(StubSessionFactory(scripts: [client]))
+        let client = ReservingFailingMotionReply(motion: h.motion)
         let speaker = ControlledSpeaker()
-        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: primary, motion: h.motion),
-            memory: primary, speaker: speaker, motion: h.motion)
+        let playback = PlaybackIntegrationHarness(service: MotionReplyGenerator(base: client, motion: h.motion),
+            speaker: speaker, motion: h.motion)
         let turn = Task { await playback.viewModel.submitTypedText("質問") }
         let observed = await playback.infrastructure.waitUntil {
             let texts = await speaker.texts

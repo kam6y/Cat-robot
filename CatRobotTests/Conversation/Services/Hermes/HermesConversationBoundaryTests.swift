@@ -74,8 +74,6 @@ final class HermesConversationBoundaryTests: XCTestCase {
             XCTAssertEqual(error as? ConversationServiceError, .replyTimedOut)
         }
         await records.waitUntil { $0?.unsettledRunIDs.isEmpty == true && $0?.hasUncertainSubmission == false }
-        let turns = await service.recentTurns()
-        XCTAssertTrue(turns.isEmpty)
         let settled = await records.record
         XCTAssertTrue(settled?.unsettledRunIDs.isEmpty == true)
         XCTAssertFalse(settled?.hasUncertainSubmission ?? true)
@@ -98,12 +96,7 @@ final class HermesConversationBoundaryTests: XCTestCase {
         try await checkLateAcceptanceDuringNewSubmission(reset: false, newOrigin: other)
     }
 
-    func testLateAcceptanceDoesNotAttachOneClarificationToTwoInFlightRuns() async throws {
-        try await checkLateAcceptanceDuringNewSubmission(reset: false, afterClarification: true)
-    }
-
-    private func checkLateAcceptanceDuringNewSubmission(reset: Bool, newOrigin: HermesConnection? = nil,
-                                                        afterClarification: Bool = false) async throws {
+    private func checkLateAcceptanceDuringNewSubmission(reset: Bool, newOrigin: HermesConnection? = nil) async throws {
         let clock = ManualTurnClock()
         let records = InMemoryHermesSessionRecordStore()
         let server = FakeHermesServer(
@@ -115,9 +108,6 @@ final class HermesConversationBoundaryTests: XCTestCase {
         let service = HermesConversationService(connection: { connections.next() }, transport: server, records: records,
                                                 clock: clock, timing: .init(turnDeadline: .seconds(10)),
                                                 makeSessionID: { ids.next() })
-        if afterClarification {
-            await service.recordExternalTurn(prompt: "今日の天気は？", response: ClarificationContext.question)
-        }
         let stream = try await service.streamReply(to: "old turn")
         let finished = expectation(description: "old turn expires before accepting")
         let reader = Task {
@@ -138,12 +128,6 @@ final class HermesConversationBoundaryTests: XCTestCase {
             XCTAssertTrue(newHeld && oldHeld)
         } catch {
             XCTFail("new turn could not start while the old submission was held: \(error)")
-        }
-        if afterClarification {
-            let inputs = await server.runPosts.compactMap { $0.jsonBody?["input"] }
-            XCTAssertEqual(inputs.count, 2)
-            XCTAssertTrue(inputs.first?.contains("今日の天気は？") == true)
-            XCTAssertEqual(inputs.last, "new turn")
         }
         await server.release("old-submit")
         await server.waitUntilBlocked("old-stop")
@@ -173,8 +157,6 @@ final class HermesConversationBoundaryTests: XCTestCase {
         await records.waitUntil { $0?.unsettledRunIDs.isEmpty == true && $0?.hasUncertainSubmission == false }
         let paths = await server.requests.map(\.url.path)
         XCTAssertFalse(paths.contains("/v1/runs/old-run"))
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns.map(\.response), afterClarification ? [ClarificationContext.question, "new reply"] : ["new reply"])
         let settled = await records.record
         XCTAssertEqual(settled?.unsettledRunIDs, [])
         XCTAssertEqual(settled?.hasUncertainSubmission, false)
@@ -260,16 +242,13 @@ final class HermesConversationBoundaryTests: XCTestCase {
         let submitted = try XCTUnwrap(JSONSerialization.jsonObject(with: submittedBody) as? [String: String])
         XCTAssertEqual(submitted["session_id"], "catrobot-old")
         XCTAssertEqual(submitted["input"], "same prompt")
-        await service.recordExternalTurn(prompt: "same prompt", response: "same reply")
         await server.release("history")
         try await restore.value
-        let repeated = ConversationMemoryTurn(prompt: "same prompt", response: "same reply")
-        let middle = ConversationMemoryTurn(prompt: "middle prompt", response: "middle reply")
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns, [repeated, middle, repeated, repeated])
+        let state = await service.memoryState()
+        XCTAssertEqual(state, .ready)
     }
 
-    func testPrepareKeepsEqualTextFromANewRunSubmittedAfterTheHistorySnapshot() async throws {
+    func testANewRunWaitsForTheHistorySnapshotInProgress() async throws {
         let records = InMemoryHermesSessionRecordStore(HermesSessionRecord(origin: connection.origin,
                                                                          sessionID: "catrobot-old", hasTurns: true))
         let server = FakeHermesServer(runs: [hermesAccepted("run-new")],
@@ -291,93 +270,13 @@ final class HermesConversationBoundaryTests: XCTestCase {
         XCTAssertEqual(output, ["same reply"])
         let requests = await server.requests.map { $0.url.path }
         XCTAssertEqual(requests, ["/api/sessions/catrobot-old/messages", "/v1/runs", "/v1/runs/run-new"])
-        let turns = await service.recentTurns()
-        let repeated = ConversationMemoryTurn(prompt: "same prompt", response: "same reply")
-        XCTAssertEqual(turns, [repeated, repeated])
     }
 
-    func testTransientPrepareFailureKeepsTheWholeCacheInOrder() async throws {
-        try await checkWholeCacheAfterHistory(.transportFailure, keepsPrevious: true)
-    }
-
-    func testSuccessfulEmptyPrepareReplacesOldCacheAndKeepsTheConcurrentAppend() async throws {
-        try await checkWholeCacheAfterHistory(.json(200, #"{"session_id":"catrobot-old","data":[]}"#),
-                                             keepsPrevious: false)
-    }
-
-    private func checkWholeCacheAfterHistory(_ reply: FakeHermesServer.Reply, keepsPrevious: Bool) async throws {
-        let records = InMemoryHermesSessionRecordStore(HermesSessionRecord(origin: connection.origin,
-                                                                         sessionID: "catrobot-old", hasTurns: true))
-        let server = FakeHermesServer(runs: [hermesAccepted("run-cached")],
-                                      polls: ["run-cached": [hermesRun("run-cached", "completed", output: "cached")]],
-                                      history: [.gated("history", reply)])
-        let service = makeService(server, records: records)
-        let preexisting = ConversationMemoryTurn(prompt: "before", response: "cached")
-        let concurrent = ConversationMemoryTurn(prompt: "during", response: "appended")
-        let replies = try await probeCollect(try await service.streamReply(to: preexisting.prompt))
-        XCTAssertEqual(replies, [preexisting.response])
-        let beforeRead = await service.recentTurns()
-        XCTAssertEqual(beforeRead, [preexisting])
-        let restore = Task { try await service.prepareMemory() }
-        await server.waitUntilBlocked("history")
-        await service.recordExternalTurn(prompt: concurrent.prompt, response: concurrent.response)
-        await server.release("history")
-        try await restore.value
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns, keepsPrevious ? [preexisting, concurrent] : [concurrent])
-    }
-
-    func testFirstPrepareAndRepeatedReadsKeepDistinctLocalEvents() async throws {
-        let records = InMemoryHermesSessionRecordStore(HermesSessionRecord(origin: connection.origin,
-                                                                         sessionID: "catrobot-old", hasTurns: true))
-        let nonempty = FakeHermesServer.Reply.json(200, #"""
-            {"session_id":"catrobot-old","data":[
-              {"id":1,"role":"user","content":"repeat"},{"id":2,"role":"assistant","content":"answer"},
-              {"id":3,"role":"user","content":"server"},{"id":4,"role":"assistant","content":"middle"},
-              {"id":5,"role":"user","content":"repeat"},{"id":6,"role":"assistant","content":"answer"}
-            ]}
-            """#)
-        let empty = FakeHermesServer.Reply.json(200, #"{"session_id":"catrobot-old","data":[]}"#)
-        let server = FakeHermesServer(history: [.gated("nonempty", nonempty), .gated("empty", empty),
-                                               nonempty, nonempty, empty])
-        let service = makeService(server, records: records)
-        let repeatTurn = ConversationMemoryTurn(prompt: "repeat", response: "answer")
-        let localMiddle = ConversationMemoryTurn(prompt: "local", response: "middle")
-        let serverMiddle = ConversationMemoryTurn(prompt: "server", response: "middle")
-        let duringEmpty = ConversationMemoryTurn(prompt: "empty", response: "append")
-        await service.recordExternalTurn(prompt: repeatTurn.prompt, response: repeatTurn.response)
-        await service.recordExternalTurn(prompt: localMiddle.prompt, response: localMiddle.response)
-        let first = Task { try await service.prepareMemory() }
-        await server.waitUntilBlocked("nonempty")
-        await service.recordExternalTurn(prompt: repeatTurn.prompt, response: repeatTurn.response)
-        await server.release("nonempty")
-        try await first.value
-        let afterFirst = await service.recentTurns()
-        let local = [repeatTurn, localMiddle, repeatTurn]
-        let restored = [repeatTurn, serverMiddle, repeatTurn]
-        XCTAssertEqual(afterFirst, restored + local)
-
-        let second = Task { try await service.retryMemoryOperation() }
-        await server.waitUntilBlocked("empty")
-        await service.recordExternalTurn(prompt: duringEmpty.prompt, response: duringEmpty.response)
-        await server.release("empty")
-        try await second.value
-        let afterEmpty = await service.recentTurns()
-        XCTAssertEqual(afterEmpty, local + [duringEmpty])
-
-        for expected in [restored + local + [duringEmpty], restored + local + [duringEmpty], local + [duringEmpty]] {
-            try await service.retryMemoryOperation()
-            let actual = await service.recentTurns()
-            XCTAssertEqual(actual, expected)
-        }
-        let requests = await server.requests.map { $0.url.path }
-        XCTAssertEqual(requests, Array(repeating: "/api/sessions/catrobot-old/messages", count: 5))
-    }
-
-    func testReturnToOriginalOriginDiscardsItsOldLocalEventsAndPendingHistory() async throws {
+    /// 読みかけの履歴は、別の接続先へ移って元の接続先へ戻った後も採らない（新しい session のまま）。
+    func testReturnToOriginalOriginDiscardsPendingHistory() async throws {
         let other = HermesConnection(endpoint: URL(string: "https://other.test")!,
                                      credential: HermesCredential(apiKey: "synthetic-other"))
-        let connections = ProbeSequenced([connection, connection, other, connection, connection])
+        let connections = ProbeSequenced([connection, other, connection])
         let records = InMemoryHermesSessionRecordStore(HermesSessionRecord(origin: connection.origin,
                                                                          sessionID: "catrobot-old", hasTurns: true))
         let server = FakeHermesServer(history: [.gated("stale", .json(200, #"""
@@ -386,24 +285,25 @@ final class HermesConversationBoundaryTests: XCTestCase {
             """#))])
         let service = HermesConversationService(connection: { connections.next() }, transport: server, records: records,
                                                 clock: SteppingHermesClock(), makeSessionID: { "catrobot-new" })
-        await service.recordExternalTurn(prompt: "first A", response: "local")
         let old = Task { try await service.prepareMemory() }
         await server.waitUntilBlocked("stale")
-        await service.recordExternalTurn(prompt: "B", response: "local")
-        let inB = await service.recentTurns()
-        XCTAssertEqual(inB, [.init(prompt: "B", response: "local")])
-        await service.recordExternalTurn(prompt: "second A", response: "local")
-        try await service.prepareMemory()
+        let inOther = try await service.transcript()
+        XCTAssertEqual(inOther, [])
+        let backInA = try await service.transcript()
+        XCTAssertEqual(backInA, [])
         await server.release("stale")
         try await old.value
-        let inA = await service.recentTurns()
-        XCTAssertEqual(inA, [.init(prompt: "second A", response: "local")])
         let record = await records.record
         XCTAssertEqual(record?.origin, connection.origin)
         XCTAssertEqual(record?.sessionID, "catrobot-new")
+        XCTAssertEqual(record?.hasTurns, false, "the stale history must not be adopted")
+        let afterRelease = try await service.transcript()
+        XCTAssertEqual(afterRelease, [])
+        let reads = await server.requests.map(\.url.path)
+        XCTAssertEqual(reads, ["/api/sessions/catrobot-old/messages"])
     }
 
-    func testPendingPrepareCannotMixTurnsAcrossResetOrOriginSwitch() async throws {
+    func testPendingPrepareCannotAdoptHistoryAcrossResetOrOriginSwitch() async throws {
         for switchOrigin in [false, true] {
             let other = HermesConnection(endpoint: URL(string: "https://other.test")!,
                                          credential: HermesCredential(apiKey: "synthetic-other"))
@@ -421,43 +321,16 @@ final class HermesConversationBoundaryTests: XCTestCase {
             let blocked = await server.isBlocked("history")
             XCTAssertTrue(blocked)
             if !switchOrigin { await service.reset() }
-            let expected = ConversationMemoryTurn(prompt: "replacement", response: "keep only this")
-            await service.recordExternalTurn(prompt: expected.prompt, response: expected.response)
+            // 今の接続先で選び直す（接続先が変わっていれば、ここで新しい session になる）。新しい session には履歴が無い。
+            let current = try await service.transcript()
+            XCTAssertEqual(current, [])
             await server.release("history")
             try await restore.value
-            let actual = await service.recentTurns()
             let record = await records.record
-            XCTAssertEqual(actual, [expected])
             XCTAssertEqual(record?.sessionID, "catrobot-new")
             XCTAssertEqual(record?.origin, switchOrigin ? other.origin : connection.origin)
+            XCTAssertEqual(record?.hasTurns, false, "the stale history must not be adopted")
         }
-    }
-
-    func testDelayedSameTipHistorySuccessKeepsAConcurrentAppend() async throws {
-        try await checkDelayedHistory(.json(200, #"{"session_id":"catrobot-old","data":[{"role":"user","content":"old prompt"},{"role":"assistant","content":"old reply"}]}"#),
-                                      expected: ["old reply", "concurrent reply"])
-    }
-
-    func testDelayedSameTipHistoryFailureKeepsAConcurrentAppend() async throws {
-        try await checkDelayedHistory(.transportFailure, expected: ["concurrent reply"])
-    }
-
-    private func checkDelayedHistory(_ reply: FakeHermesServer.Reply, expected: [String]) async throws {
-        let records = InMemoryHermesSessionRecordStore(HermesSessionRecord(origin: connection.origin,
-                                                                         sessionID: "catrobot-old", hasTurns: true))
-        let server = FakeHermesServer(history: [.gated("history", reply)])
-        let service = makeService(server, records: records)
-        let restore = Task { try await service.prepareMemory() }
-        await server.waitUntilBlocked("history")
-        let held = await server.isBlocked("history")
-        XCTAssertTrue(held)
-        await service.recordExternalTurn(prompt: "concurrent prompt", response: "concurrent reply")
-        await server.release("history")
-        try await restore.value
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns.map(\.response), expected)
-        let record = await records.record
-        XCTAssertEqual(record?.sessionID, "catrobot-old")
     }
 
     func testTypedNotFoundSettlesAnActiveRunWithoutPollingAgainOrStopping() async throws {
@@ -568,8 +441,6 @@ final class HermesConversationBoundaryTests: XCTestCase {
         await server.release("current")
         let posted = await raceEventually { await server.isBlocked("post") }
         XCTAssertTrue(posted)
-        let cache = await service.recentTurns()
-        XCTAssertEqual(cache, [.init(prompt: "latest", response: "restored")])
         let posts = await server.runPosts
         XCTAssertEqual(posts.count, 1)
         XCTAssertEqual(posts.first?.url.absoluteString, "https://hermes.test:8443/v1/runs")
@@ -724,8 +595,6 @@ final class HermesConversationBoundaryTests: XCTestCase {
             XCTAssertEqual(error as? ConversationServiceError, .replyTimedOut)
         case (.cancelledReply, .failure(let error)):
             XCTAssertTrue(error is CancellationError)
-            let restored = await service.recentTurns()
-            XCTAssertEqual(restored, [.init(prompt: "latest", response: "restored")])
         case (.failure, .failure(let error)), (.cancelledPreparation, .failure(let error)),
              (.movesBeforePost, .failure(let error)), (.movesAgain, .failure(let error)):
             XCTAssertEqual(error as? ConversationMemoryError, .unavailable)

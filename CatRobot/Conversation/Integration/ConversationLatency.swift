@@ -5,26 +5,18 @@ struct ConversationLatencyToken: Hashable, Sendable {
     let rawValue: UUID
 }
 
-enum ConversationLatencyPath: UInt8, Hashable, Sendable {
-    case fast
-    case classified
-}
-
 enum ConversationLatencyCancellation: UInt8, Hashable, Sendable {
-    case unselectedPath
-    case noResponse
-    case ambiguous
-    case failure
-    case lifecycle
-    case typedReplacement
-    case shutdown
+    // Preserve historical outcome values in signpost recordings.
+    case noResponse = 1
+    case failure = 3
+    case lifecycle = 4
+    case typedReplacement = 5
+    case shutdown = 6
 }
 
 enum ConversationLatencyMetric: UInt8, CaseIterable, Hashable, Sendable {
-    case fastFirstCaption
-    case classifiedFirstCaption
-    case fastSpeechStart
-    case classifiedSpeechStart
+    case fastFirstCaption = 0
+    case fastSpeechStart = 2
 }
 
 struct ConversationLatencySignpostContext: Equatable, Sendable {
@@ -55,12 +47,6 @@ protocol ConversationLatencyTracking: AnyObject, Sendable {
     func noteASRActivity(
         at timestamp: TimeInterval,
         for token: ConversationLatencyToken
-    )
-
-    func selectPath(
-        _ path: ConversationLatencyPath,
-        for token: ConversationLatencyToken,
-        at timestamp: TimeInterval
     )
 
     func firstCaptionVisible(
@@ -101,7 +87,6 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
     private struct ActiveTurn {
         var context: ConversationLatencySignpostContext
         var handles: [ConversationLatencyMetric: ConversationLatencySignpostHandle]
-        var selectedPath: ConversationLatencyPath?
     }
 
     private let signposts: any ConversationLatencySignposting
@@ -136,8 +121,7 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
 
         activeTurns[token] = ActiveTurn(
             context: context,
-            handles: handles,
-            selectedPath: nil
+            handles: handles
         )
         return token
     }
@@ -151,32 +135,12 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
         activeTurns[token] = turn
     }
 
-    func selectPath(
-        _ path: ConversationLatencyPath,
-        for token: ConversationLatencyToken,
-        at timestamp: TimeInterval
-    ) {
-        guard var turn = activeTurns[token], turn.selectedPath == nil else { return }
-        turn.selectedPath = path
-
-        for metric in metrics(for: alternatePath(to: path)) {
-            end(
-                metric,
-                in: &turn,
-                outcome: .cancelled(.unselectedPath),
-                at: timestamp
-            )
-        }
-
-        store(turn, for: token)
-    }
-
     func firstCaptionVisible(
         for token: ConversationLatencyToken,
         at timestamp: TimeInterval
     ) {
-        guard var turn = activeTurns[token], let path = turn.selectedPath else { return }
-        end(firstCaptionMetric(for: path), in: &turn, outcome: .success, at: timestamp)
+        guard var turn = activeTurns[token] else { return }
+        end(.fastFirstCaption, in: &turn, outcome: .success, at: timestamp)
         store(turn, for: token)
     }
 
@@ -184,8 +148,8 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
         for token: ConversationLatencyToken,
         at timestamp: TimeInterval
     ) {
-        guard var turn = activeTurns[token], let path = turn.selectedPath else { return }
-        end(speechStartMetric(for: path), in: &turn, outcome: .success, at: timestamp)
+        guard var turn = activeTurns[token] else { return }
+        end(.fastSpeechStart, in: &turn, outcome: .success, at: timestamp)
         store(turn, for: token)
     }
 
@@ -226,40 +190,7 @@ final class ConversationLatencyTracker: ConversationLatencyTracking {
         )
     }
 
-    private func alternatePath(to path: ConversationLatencyPath) -> ConversationLatencyPath {
-        switch path {
-        case .fast:
-            .classified
-        case .classified:
-            .fast
-        }
-    }
 
-    private func metrics(for path: ConversationLatencyPath) -> [ConversationLatencyMetric] {
-        [firstCaptionMetric(for: path), speechStartMetric(for: path)]
-    }
-
-    private func firstCaptionMetric(
-        for path: ConversationLatencyPath
-    ) -> ConversationLatencyMetric {
-        switch path {
-        case .fast:
-            .fastFirstCaption
-        case .classified:
-            .classifiedFirstCaption
-        }
-    }
-
-    private func speechStartMetric(
-        for path: ConversationLatencyPath
-    ) -> ConversationLatencyMetric {
-        switch path {
-        case .fast:
-            .fastSpeechStart
-        case .classified:
-            .classifiedSpeechStart
-        }
-    }
 }
 
 @MainActor
@@ -295,21 +226,9 @@ private final class OSConversationLatencySignposter: ConversationLatencySignpost
                 id: signpostID,
                 "turnID=\(context.turnID) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval)"
             )
-        case .classifiedFirstCaption:
-            state = signposter.beginInterval(
-                "ClassifiedFirstCaption",
-                id: signpostID,
-                "turnID=\(context.turnID) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval)"
-            )
         case .fastSpeechStart:
             state = signposter.beginInterval(
                 "FastPathSpeechStart",
-                id: signpostID,
-                "turnID=\(context.turnID) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval)"
-            )
-        case .classifiedSpeechStart:
-            state = signposter.beginInterval(
-                "ClassifiedSpeechStart",
                 id: signpostID,
                 "turnID=\(context.turnID) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval)"
             )
@@ -341,21 +260,9 @@ private final class OSConversationLatencySignposter: ConversationLatencySignpost
                 interval.state,
                 "turnID=\(context.turnID) at=\(timestamp) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval) elapsedFromBoundary=\(elapsedFromBoundary) elapsedFromASR=\(elapsedFromASR) outcome=\(outcomeCode)"
             )
-        case .classifiedFirstCaption:
-            signposter.endInterval(
-                "ClassifiedFirstCaption",
-                interval.state,
-                "turnID=\(context.turnID) at=\(timestamp) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval) elapsedFromBoundary=\(elapsedFromBoundary) elapsedFromASR=\(elapsedFromASR) outcome=\(outcomeCode)"
-            )
         case .fastSpeechStart:
             signposter.endInterval(
                 "FastPathSpeechStart",
-                interval.state,
-                "turnID=\(context.turnID) at=\(timestamp) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval) elapsedFromBoundary=\(elapsedFromBoundary) elapsedFromASR=\(elapsedFromASR) outcome=\(outcomeCode)"
-            )
-        case .classifiedSpeechStart:
-            signposter.endInterval(
-                "ClassifiedSpeechStart",
                 interval.state,
                 "turnID=\(context.turnID) at=\(timestamp) boundaryAt=\(context.boundaryAt) lastASRActivityAt=\(lastASRActivityAt) segmentationInterval=\(context.segmentationInterval) elapsedFromBoundary=\(elapsedFromBoundary) elapsedFromASR=\(elapsedFromASR) outcome=\(outcomeCode)"
             )
@@ -376,12 +283,8 @@ private extension ConversationLatencyMetric {
         switch self {
         case .fastFirstCaption:
             "FastPathFirstCaption"
-        case .classifiedFirstCaption:
-            "ClassifiedFirstCaption"
         case .fastSpeechStart:
             "FastPathSpeechStart"
-        case .classifiedSpeechStart:
-            "ClassifiedSpeechStart"
         }
     }
 }

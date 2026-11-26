@@ -126,7 +126,7 @@ struct ConversationViewState: Equatable, Sendable {
         guard !isSleeping, !caption.isEmpty else { return nil }
         switch phase {
         case .idle, .listening, .paused, .failed: return caption
-        case .preparing, .classifying, .thinking, .speaking, .clarifying: return nil
+        case .preparing, .thinking, .speaking: return nil
         }
     }
     var displayedActivityStatus: String { isSleeping ? Self.standbyStatus : activityStatus }
@@ -162,9 +162,9 @@ struct ConversationActions {
 extension ConversationPhase {
     var allowsTypedSubmission: Bool {
         switch self {
-        case .idle, .listening, .clarifying, .paused, .failed:
+        case .idle, .listening, .paused, .failed:
             true
-        case .preparing, .classifying, .thinking, .speaking:
+        case .preparing, .thinking, .speaking:
             false
         }
     }
@@ -180,7 +180,6 @@ extension ConversationViewState {
     static let preparing = entering(.preparing)
     static let listening = entering(.listening)
     static let thinking = entering(.thinking)
-    static let clarifying = entering(.clarifying, caption: ClarificationContext.question)
 
     static func speaking(caption: String) -> Self {
         entering(.speaking, caption: caption)
@@ -210,12 +209,6 @@ extension ConversationViewState {
         case .listening:
             mouthPose = .closed
             activityStatus = "話しかけてください"
-        case .classifying:
-            mouthPose = .closed
-            activityStatus = "呼びかけを確認しています"
-        case .clarifying:
-            mouthPose = .small
-            activityStatus = "聞き返しています"
         case .thinking:
             mouthPose = .closed
             activityStatus = "考えています"

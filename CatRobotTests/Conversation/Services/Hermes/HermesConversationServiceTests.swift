@@ -180,6 +180,7 @@ final class HermesConversationServiceTests: XCTestCase {
         XCTAssertEqual(record?.sessionID, "catrobot-s2")
     }
 
+
     // MARK: - 1 ターン
 
     func testTurnPostsOneFixedIdentityAndYieldsOnlyTheCompletedOutput() async throws {
@@ -341,8 +342,6 @@ final class HermesConversationServiceTests: XCTestCase {
         XCTAssertEqual(consumed ?? [], [])
         let stops = await server.stops
         XCTAssertEqual(stops.count, 1)
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns, [], "a cancelled turn is not adopted locally")
         let record = await records.record
         XCTAssertEqual(record?.unsettledRunIDs, [], "the terminal status seen after the stop settles the run")
         XCTAssertEqual(record?.hasTurns, true)
@@ -640,7 +639,7 @@ final class HermesConversationServiceTests: XCTestCase {
         XCTAssertEqual(record?.unsettledRunIDs, [])
     }
 
-    // MARK: - 聞き返し
+    // MARK: - 以前の版の聞き返しの記録（読むだけ）
 
     private func storedHistory(_ messages: [[String: String]]) throws -> FakeHermesServer.Reply {
         let body = try JSONSerialization.data(withJSONObject: [
@@ -649,161 +648,52 @@ final class HermesConversationServiceTests: XCTestCase {
         return .json(200, String(decoding: body, as: UTF8.self))
     }
 
-    @MainActor
-    func testConfirmedClarificationSurvivesInHermesHistoryAndRestoresInSpokenOrder() async throws {
+    private static let legacyQuestion = "今の、ぼくに言った？"
+
+    /// 以前の版が聞き返しの後に Hermes へ送った user 入力（v1）。今の版はこれを送らず、履歴から読むだけ。
+    private static func legacyClarificationInput(id: UUID = UUID(), original: String, utterance: String) throws -> String {
+        let fields = ["id": id.uuidString, "original": original, "question": legacyQuestion, "utterance": utterance]
+        let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys, .withoutEscapingSlashes])
+        return "[CatRobot conversation v1]\n" + String(decoding: data, as: UTF8.self)
+    }
+
+    func testAClarificationStoredByAnOlderReleaseRestoresInSpokenOrder() async throws {
         let original = "明日の天気は？\n「京都」の話だよ"
-        let question = ClarificationContext.question
         let confirmation = "言ったよ"
         let answer = "京都は晴れだよ"
-        let records = InMemoryHermesSessionRecordStore()
-        let server = FakeHermesServer(runs: [hermesAccepted("run-1"), hermesAccepted("run-2")],
-                                      polls: ["run-1": [hermesRun("run-1", "completed", output: answer)],
-                                              "run-2": [hermesRun("run-2", "completed", output: "どういたしまして")]])
-        let service = makeService(server, records: records)
-        let harness = ConversationHarness(replyOverride: service, memory: service, classification: .ambiguous)
-        await harness.completeUnengagedTurn(original, at: 0)
-        let spoken = await harness.speaker.texts
-        XCTAssertEqual(spoken, [question])
-        await harness.classifier.setResult(.addressed)
-        await harness.completeUnengagedTurn(confirmation, at: 3)
-        let expectedTurns = [ConversationMemoryTurn(prompt: original, response: question),
-                             ConversationMemoryTurn(prompt: confirmation, response: answer)]
-        let liveTurns = await service.recentTurns()
-        XCTAssertEqual(liveTurns, expectedTurns)
-
-        // Hermes persists the submitted user message and completed output. Build the history from
-        // the actual POST so the test cannot pass just because its fixture already knows the exchange.
-        let bodies = await server.runPosts.compactMap(\.jsonBody)
-        XCTAssertEqual(bodies.count, 1, "the local question must not start a separate model run")
-        let input = try XCTUnwrap(bodies.first?["input"])
-        XCTAssertTrue(input.contains("明日の天気は？"))
-        XCTAssertTrue(input.contains(question))
-        XCTAssertTrue(input.contains(confirmation))
-        let history = try storedHistory([["role": "user", "content": input], ["role": "assistant", "content": answer]])
-        await server.enqueueHistory(history)
-        try await service.retryMemoryOperation()
-        let refreshed = await service.recentTurns()
-        XCTAssertEqual(refreshed, expectedTurns, "rereading the same service must not duplicate its local question")
-        let restarted = makeService(FakeHermesServer(history: [history, history]), records: records)
-        let transcript = try await restarted.transcript()
-        XCTAssertEqual(transcript, [.init(speaker: .user, text: original), .init(speaker: .cat, text: question),
+        let stored = try Self.legacyClarificationInput(original: original, utterance: confirmation)
+        let history = try storedHistory([["role": "user", "content": stored], ["role": "assistant", "content": answer]])
+        let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
+                                      polls: ["run-1": [hermesRun("run-1", "completed", output: "どういたしまして")]],
+                                      history: [history, history])
+        let service = makeService(server, records: continued())
+        let transcript = try await service.transcript()
+        XCTAssertEqual(transcript, [.init(speaker: .user, text: original), .init(speaker: .cat, text: Self.legacyQuestion),
                                     .init(speaker: .user, text: confirmation), .init(speaker: .cat, text: answer)])
-        try await restarted.prepareMemory()
-        let restored = await restarted.recentTurns()
-        XCTAssertEqual(restored, expectedTurns)
 
+        try await service.prepareMemory()
         _ = try await collectReplies(try await service.streamReply(to: "ありがとう"))
-        let next = await server.runPosts.last?.jsonBody
-        XCTAssertEqual(next?["input"], "ありがとう")
-        XCTAssertEqual(next?["instructions"], HermesConversationInstructions.persona)
-        await harness.sut.shutdown()
+        let bodies = await server.runPosts.compactMap(\.jsonBody)
+        XCTAssertEqual(bodies.compactMap { $0["input"] }, ["ありがとう"], "the next turn sends only what was said")
+        XCTAssertEqual(bodies.first?["instructions"], HermesConversationInstructions.persona)
     }
 
-    func testAcceptedConfirmationThatNeverReachedHistoryCanBeAnsweredAgain() async throws {
-        let question = ClarificationContext.question
-        let original = "今日は雨かな？"
-        let empty = FakeHermesServer.Reply.json(200, #"{"session_id":"catrobot-s1","data":[]}"#)
-        let server = FakeHermesServer(runs: [hermesAccepted("run-1"), hermesAccepted("run-2")],
-                                      polls: ["run-1": [hermesRun("run-1", "failed")],
-                                              "run-2": [hermesRun("run-2", "completed", output: "晴れだよ")]],
-                                      history: Array(repeating: empty, count: 3))
-        let service = makeService(server)
-        await service.recordExternalTurn(prompt: original, response: question)
-        let error = await failure(of: try await service.streamReply(to: "言ったよ"))
-        XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed)
-
-        try await service.retryMemoryOperation()
-        let local = await service.recentTurns()
-        XCTAssertEqual(local, [ConversationMemoryTurn(prompt: original, response: question)])
-        _ = try await collectReplies(try await service.streamReply(to: "そう、言ったよ"))
-        let input = await server.runPosts.last?.jsonBody?["input"]
-        XCTAssertTrue(input?.contains(original) == true)
-        XCTAssertTrue(input?.contains(question) == true)
-        XCTAssertTrue(input?.contains("そう、言ったよ") == true)
-    }
-
-    func testConfirmationRetryReportsALostExistingSessionButCanStartAnUnwrittenFirstSession() async throws {
-        for hasPriorTurns in [true, false] {
-            let records = hasPriorTurns ? continued() : InMemoryHermesSessionRecordStore()
-            let server = FakeHermesServer(runs: [hermesAccepted("r1"), hermesAccepted("r2")],
-                                          polls: ["r1": [hermesRun("r1", "interrupted")],
-                                                  "r2": [hermesRun("r2", "completed", output: "晴れだよ")]],
-                                          history: [Self.sessionNotFound, Self.sessionNotFound])
-            let service = makeService(server, records: records)
-            await service.recordExternalTurn(prompt: "今日は晴れ？", response: ClarificationContext.question)
-            _ = await failure(of: try await service.streamReply(to: "言ったよ"))
-            if hasPriorTurns {
-                do {
-                    _ = try await collectReplies(try await service.streamReply(to: "そう、言ったよ"))
-                    XCTFail("The server explicitly reported that the old conversation was lost")
-                } catch {
-                    XCTAssertEqual(error as? ConversationMemoryError, .unavailable)
-                }
-                let requests = await server.runPosts
-                XCTAssertEqual(requests.count, 1)
-                let state = await service.memoryState()
-                XCTAssertEqual(state, .restoreFailed(.unavailable))
-            } else {
-                try await service.retryMemoryOperation()
-                _ = try await collectReplies(try await service.streamReply(to: "そう、言ったよ"))
-                let input = await server.runPosts.last?.jsonBody?["input"]
-                XCTAssertTrue(input?.contains("今日は晴れ？") == true)
-            }
-        }
-    }
-
-    func testRefusedConfirmationKeepsTheExchangeForTheNextAttempt() async throws {
-        let server = FakeHermesServer(runs: [.json(503, "{}"), hermesAccepted("run-2")],
-                                      polls: ["run-2": [hermesRun("run-2", "completed", output: "晴れだよ")]])
-        let service = makeService(server)
-        await service.recordExternalTurn(prompt: "明日の天気は？", response: ClarificationContext.question)
-        let error = await failure(of: try await service.streamReply(to: "言ったよ"))
-        XCTAssertEqual(error as? ConversationServiceError, .modelUnreachable)
-        _ = try await collectReplies(try await service.streamReply(to: "そう、猫に言ったよ"))
-        let body = await server.runPosts.last?.jsonBody
-        let input = try XCTUnwrap(body?["input"])
-        XCTAssertTrue(input.contains("明日の天気は？"))
-        XCTAssertTrue(input.contains(ClarificationContext.question))
-        XCTAssertTrue(input.contains("そう、猫に言ったよ"))
-    }
-
-    func testRetryReusesThePreviousQuestionOnlyWhenMissingFromRemoteHistory() async throws {
-        for historyAvailable in [true, false] {
-            let original = "窓を開けたほうがいい？"
-            let question = ClarificationContext.question
-            let answer = "いいお天気だよ"
-            let server = FakeHermesServer(runs: [hermesAccepted("r1"), hermesAccepted("r2")],
-                                          polls: ["r1": [hermesRun("r1", "interrupted")],
-                                                  "r2": [hermesRun("r2", "completed", output: answer)]])
-            let service = makeService(server)
-            await service.recordExternalTurn(prompt: original, response: question)
-            _ = await failure(of: try await service.streamReply(to: "言ったよ"))
-            let firstBody = await server.runPosts.first?.jsonBody
-            let first = try XCTUnwrap(firstBody?["input"])
-            let firstRow = ["role": "user", "content": first]
-            let history = try storedHistory([firstRow])
-            await server.enqueueHistory(historyAvailable ? history : .transportFailure)
-            _ = try await collectReplies(try await service.streamReply(to: "そうだよ"))
-            let secondBody = await server.runPosts.last?.jsonBody
-            let second = try XCTUnwrap(secondBody?["input"])
-            if historyAvailable {
-                XCTAssertEqual(second, "そうだよ")
-            } else {
-                XCTAssertTrue(second.contains(original))
-            }
-            await server.enqueueHistory(try storedHistory([firstRow, ["role": "user", "content": second],
-                                                           ["role": "assistant", "content": answer]]))
-            let transcript = try await service.transcript()
-            XCTAssertEqual(transcript, [.init(speaker: .user, text: original), .init(speaker: .cat, text: question),
-                                        .init(speaker: .user, text: "言ったよ"), .init(speaker: .user, text: "そうだよ"),
-                                        .init(speaker: .cat, text: answer)])
-        }
+    /// 以前の版は、受付の分からない送信をやり直すと同じ記録を二度送ることがあった。質問は一度だけ展開する。
+    func testAnOlderReleaseRecordSentTwiceExpandsItsQuestionOnce() async throws {
+        let id = UUID()
+        let first = try Self.legacyClarificationInput(id: id, original: "窓を開けたほうがいい？", utterance: "言ったよ")
+        let again = try Self.legacyClarificationInput(id: id, original: "窓を開けたほうがいい？", utterance: "そうだよ")
+        let history = try storedHistory([["role": "user", "content": first], ["role": "user", "content": again],
+                                         ["role": "assistant", "content": "いいお天気だよ"]])
+        let transcript = try await makeService(FakeHermesServer(history: [history]), records: continued()).transcript()
+        XCTAssertEqual(transcript, [.init(speaker: .user, text: "窓を開けたほうがいい？"), .init(speaker: .cat, text: Self.legacyQuestion),
+                                    .init(speaker: .user, text: "言ったよ"), .init(speaker: .user, text: "そうだよ"),
+                                    .init(speaker: .cat, text: "いいお天気だよ")])
     }
 
     func testTypedTextShapedLikeAClarificationReplyRestoresAsTyped() async throws {
         // Someone types the reserved shape verbatim. It is sent escaped and reads back as one typed line.
-        let typed = try HermesClarificationReply(id: UUID(), original: "明日の天気は？",
-                                                 question: ClarificationContext.question, utterance: "言ったよ").encoded()
+        let typed = try Self.legacyClarificationInput(original: "明日の天気は？", utterance: "言ったよ")
         let records = InMemoryHermesSessionRecordStore()
         let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
                                       polls: ["run-1": [hermesRun("run-1", "completed", output: "なるほど")]])
@@ -819,30 +709,7 @@ final class HermesConversationServiceTests: XCTestCase {
         XCTAssertEqual(transcript, [.init(speaker: .user, text: typed), .init(speaker: .cat, text: "なるほど")])
     }
 
-    // MARK: - 宛先判定用の直近の会話と履歴
-
-    func testRecentTurnsComeFromTheHermesHistoryAndGrowWithAdoptedTurns() async throws {
-        let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
-                                      polls: ["run-1": [hermesRun("run-1", "completed", output: "三毛猫だよ")]],
-                                      history: [.json(200, #"""
-            {"object":"list","session_id":"catrobot-old","data":[
-              {"role":"user","content":"天気を調べて"},
-              {"role":"assistant","content":"調べるね","tool_calls":[{"id":"c1"}]},
-              {"role":"tool","content":"晴れ","tool_call_id":"c1"},
-              {"role":"assistant","content":"晴れだよ"},
-              {"role":"assistant","content":"","display_kind":"hidden"}
-            ]}
-            """#)])
-        let service = makeService(server, records: continued())
-        try await service.prepareMemory()
-        let restored = await service.recentTurns()
-        XCTAssertEqual(restored, [ConversationMemoryTurn(prompt: "天気を調べて", response: "晴れだよ")])
-        _ = try await collectReplies(try await service.streamReply(to: "君は何猫？"))
-        let grown = await service.recentTurns()
-        XCTAssertEqual(grown.last, ConversationMemoryTurn(prompt: "君は何猫？", response: "三毛猫だよ"))
-        let state = await service.memoryState()
-        XCTAssertEqual(state, .ready)
-    }
+    // MARK: - 履歴
 
     func testAFreshSessionDoesNotReadHistoryAtPreparation() async throws {
         let server = FakeHermesServer()
@@ -879,8 +746,8 @@ final class HermesConversationServiceTests: XCTestCase {
         try await service.retryMemoryOperation()
         let state = await service.memoryState()
         XCTAssertEqual(state, .ready)
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns, [ConversationMemoryTurn(prompt: "ただいま", response: "おかえり")])
+        let reads = await server.requests.filter { $0.method == "GET" && $0.url.path.hasSuffix("/messages") }
+        XCTAssertEqual(reads.count, 2, "the retry reads the history again")
     }
 
     /// 受付の分からない送信しかない session は、Hermes に無くても失われたのではなく、まだ始まっていない。
@@ -910,8 +777,6 @@ final class HermesConversationServiceTests: XCTestCase {
         try await service.prepareMemory()
         let state = await service.memoryState()
         XCTAssertEqual(state, .ready)
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns, [])
     }
 
     func testTheTranscriptShowsTheUserAndTheFinalCatTextOnly() async throws {

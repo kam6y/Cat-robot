@@ -13,7 +13,7 @@ final class ConversationViewStateTests: XCTestCase {
             state.provisionalTranscript = "ねこ"
             XCTAssertFalse(state.allowsIdleFaceLife)
         }
-        for phase in [ConversationPhase.preparing, .classifying, .thinking, .speaking, .clarifying, .failed(.modelBusy)] {
+        for phase in [ConversationPhase.preparing, .thinking, .speaking, .failed(.modelBusy)] {
             var state = ConversationViewState.idle
             state.phase = phase
             XCTAssertFalse(state.allowsIdleFaceLife)
@@ -43,7 +43,7 @@ final class ConversationViewStateTests: XCTestCase {
 
 
     func testOnlyListeningShowsAMicrophoneChipDuringOrdinaryConversation() {
-        for phase in [ConversationPhase.idle, .preparing, .listening, .thinking, .speaking, .clarifying, .paused] {
+        for phase in [ConversationPhase.idle, .preparing, .listening, .thinking, .speaking, .paused] {
             var state = ConversationViewState.listening
             state.phase = phase
             state.caption = "前の返事"
@@ -139,12 +139,6 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(state.activityStatus, "話しています")
     }
 
-    func testClarifyingShowsTheFixedQuestionWhileCaptureIsPaused() {
-        let state = ConversationViewState.clarifying
-
-        XCTAssertEqual(state.caption, "今の、ぼくに言った？")
-        XCTAssertEqual(state.activityStatus, "聞き返しています")
-    }
 
     func testEnteringAPhaseKeepsTheCaptionAndUnsentInput() {
         var state = ConversationViewState.listening
@@ -169,8 +163,6 @@ final class ConversationViewStateTests: XCTestCase {
             (.idle, true),
             (.preparing, false),
             (.listening, true),
-            (.classifying, false),
-            (.clarifying, true),
             (.thinking, false),
             (.speaking, false),
             (.paused, true),

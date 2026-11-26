@@ -29,7 +29,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>顔がこちらを向いているかをiPhone内で確認して話しかけられたか判断し、顔の方向にハードを向けます。カメラの映像と画像は送信も保存もしません。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。音声は端末上で処理されます。</string>
+	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。設定で呼びかけの言葉を声で入力するときも使います。音声は端末上で処理されます。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>返事に使う Hermes の接続先が同じネットワーク上にあるときに、その接続先へ HTTPS で接続します。開発用の診断では、同じネットワーク上の Mac にある検証用 relay へ接続します。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
@@ -49,7 +49,5 @@
 	</array>
 	<key>CatRobotSourceRevision</key>
 	<string>$(CATROBOT_SOURCE_REVISION)</string>
-	<key>CatRobotClaudeClientID</key>
-	<string>$(CATROBOT_CLAUDE_CLIENT_ID)</string>
 </dict>
 </plist>

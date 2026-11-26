@@ -6,7 +6,7 @@ final class AppCompositionTests: XCTestCase {
     func testLiveCompositionIsInertAndUsesOneExpressionCoordinator() async {
         let clock = ManualRobotClock(), transport = FakeRobotTransport()
         let source = FakeFaceCaptureSource(authorization: .notDetermined)
-        let composition = ConversationComposition.live(auth: .missing, robotTransport: transport,
+        let composition = ConversationComposition.live(robotTransport: transport,
                                                        robotClock: clock, faceCaptureSource: source)
         let dependencies = composition.dependencies
         XCTAssertTrue(dependencies.faceExpressions is FaceExpressionCoordinator)
@@ -30,7 +30,7 @@ final class AppCompositionTests: XCTestCase {
 
     func testLiveCompositionLeavesInjectedCameraInert() async {
         let source = FakeFaceCaptureSource(authorization: .notDetermined)
-        let composition = ConversationComposition.live(auth: .missing, faceCaptureSource: source)
+        let composition = ConversationComposition.live(faceCaptureSource: source)
         await robotDrain()
         XCTAssertNotNil(composition.faceTracking)
         XCTAssertEqual(source.requests, 0)
@@ -45,14 +45,15 @@ final class AppCompositionTests: XCTestCase {
         let composition = ConversationComposition.live(
             voiceSettings: SpeechVoiceSettings(defaults: defaults),
             connectionSettings: HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) }, transport: server),
-            sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
+            sessionRecords: InMemoryHermesSessionRecordStore())
         let hermes = try XCTUnwrap(composition.dependencies.modelAvailability as? HermesConversationService)
         XCTAssertTrue((composition.dependencies.memory as? HermesConversationService) === hermes)
         let reply = try XCTUnwrap(composition.dependencies.reply as? MotionReplyGenerator)
         XCTAssertTrue((reply.base as? HermesConversationService) === hermes, "\(type(of: reply.base)) must not sit between the motion observer and Hermes")
         XCTAssertTrue((composition.history as? HermesConversationService) === hermes)
+        XCTAssertTrue(composition.voiceSettings.saveWakePhrase("ミケ"))
+        XCTAssertEqual(composition.dependencies.wakePhrase(), "ミケ")
         XCTAssertTrue(composition.dependencies.motion is MotionCoordinator)
-        XCTAssertTrue(composition.dependencies.classifier is ContextualAddressClassifier)
         // 構築だけでは Hermes にも Keychain にも触れない。未設定は未設定として報告し、別のモデルで代わりに答えない。
         let requests = await server.requests
         XCTAssertTrue(requests.isEmpty)
@@ -68,7 +69,7 @@ final class AppCompositionTests: XCTestCase {
         let server = FakeHermesServer(runs: [hermesAccepted("run-1")], polls: ["run-1": [hermesRun("run-1", "completed", output: "やあ")]])
         let settings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) }, transport: server)
         let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults), connectionSettings: settings,
-                                                       sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
+                                                       sessionRecords: InMemoryHermesSessionRecordStore())
         let hermes = try XCTUnwrap(composition.dependencies.modelAvailability as? HermesConversationService)
         try await settings.save(endpointText: "https://hermes.test:8443", apiKey: "client-key")
         let availability = await hermes.availability()
@@ -88,91 +89,9 @@ final class AppCompositionTests: XCTestCase {
         let composition = ConversationComposition.live(
             voiceSettings: SpeechVoiceSettings(defaults: defaults),
             connectionSettings: HermesConnectionSettings(defaults: defaults, credentials: { _ in InMemoryHermesCredentialStore() }, transport: FakeHermesServer()),
-            sessionRecords: InMemoryHermesSessionRecordStore(), auth: .missing)
+            sessionRecords: InMemoryHermesSessionRecordStore())
         let reply = try XCTUnwrap(composition.dependencies.reply as? MotionReplyGenerator)
         XCTAssertTrue(reply.base is HermesConversationService, "\(type(of: reply.base)) must not sit between the motion observer and Hermes")
-    }
-
-    func testReplyPipelineCompletesAndPersistsWithRetiredDailyLimitSetting() async throws {
-        let name = "retired-limit-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defer { defaults.removePersistentDomain(forName: name) }
-        defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
-        let settings = ConversationModelSettings(defaults: defaults)
-        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["応答。"])])
-        let service = makeClaudeService(factory, configuration: { await settings.configuration })
-        let reply = ConversationComposition.makeReplyGenerator(
-            base: service, motion: ReplyTurnMulticaster([]))
-
-        var response = ""
-        for try await text in try await reply.streamReply(to: "こんにちは") { response = text }
-
-        let sessions = await factory.sessions
-        let turns = await service.recentTurns()
-        XCTAssertEqual(response, "応答。")
-        XCTAssertEqual(sessions.count, 1)
-        XCTAssertEqual(turns, [.init(prompt: "こんにちは", response: "応答。")])
-    }
-
-    func testCompletedReplyLeavesRetiredAccountingAndUnrelatedPreferencesUntouched() async throws {
-        let name = "retired-accounting-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defer { defaults.removePersistentDomain(forName: name) }
-        let oldAccounting = Data("retired accounting record".utf8)
-        defaults.set(oldAccounting, forKey: "conversation.claude.usage")
-        defaults.set(1, forKey: "conversation.claude.dailyTurnLimit")
-        defaults.set("keep-calibration", forKey: "unrelated-test-preference")
-        let settings = ConversationModelSettings(defaults: defaults)
-        let factory = StubSessionFactory(scripts: [ScriptedSessionClient(chunks: ["応答。"])])
-        let service = ClaudeConversationService(
-            factory: factory, memoryStore: InMemoryConversationMemoryStore(),
-            longTermMemory: LongTermMemoryManager(store: InMemoryLongTermMemoryStore()),
-            tools: StaticToolProvider([]), configuration: { await settings.configuration })
-
-        var response = ""
-        for try await text in try await service.streamReply(to: "こんにちは") { response = text }
-
-        XCTAssertEqual(response, "応答。")
-        XCTAssertEqual(defaults.data(forKey: "conversation.claude.usage"), oldAccounting)
-        XCTAssertEqual(defaults.integer(forKey: "conversation.claude.dailyTurnLimit"), 1)
-        XCTAssertEqual(defaults.string(forKey: "unrelated-test-preference"), "keep-calibration")
-    }
-
-    func testAddressClassifierSendsClarificationRepliesOnlyToHaikuThroughLiveWrappers() async throws {
-        let turns = [ConversationMemoryTurn(prompt: "ねこ、おはよう", response: "おはよう！")]
-        let haiku = RecordingAddressModelClient(result: .addressed)
-        let history = FakeConversationHistory(turns: turns)
-        let classifier = ConversationComposition.makeAddressClassifier(claudeClient: haiku, history: history)
-        let reply = AddressClassificationRequest(utterance: "いいえ、あなたには言ってない",
-                                                 clarification: .init(originalUtterance: "今日の天気はどう？"))
-        let requestsBeforeUse = await haiku.requests
-        XCTAssertEqual(requestsBeforeUse, [])
-        let target = try await classifier.classify(reply)
-        let requests = await haiku.requests, reads = await history.readCount
-        XCTAssertEqual(target, .addressed)
-        XCTAssertEqual(requests, [.init(utterance: reply.utterance, clarification: reply.clarification, recentTurns: turns)],
-                       "the live wrapper attaches the recent conversation read from the shared history")
-        XCTAssertEqual(reads, 1)
-    }
-
-    func testAddressClassifierUsesHaikuWithoutClarification() async throws {
-        let turns = [ConversationMemoryTurn(prompt: "今日の天気はどう？", response: "晴れだよ")]
-        let haiku = RecordingAddressModelClient(result: .addressed)
-        let classifier = ConversationComposition.makeAddressClassifier(claudeClient: haiku, history: FakeConversationHistory(turns: turns))
-        let target = try await classifier.classify("それで、あしたは？")
-        let requests = await haiku.requests
-        XCTAssertEqual(target, .addressed)
-        XCTAssertEqual(requests, [.init(utterance: "それで、あしたは？", recentTurns: turns)])
-    }
-
-    func testAddressClassifierReportsClarificationHaikuFailureWithoutRetry() async {
-        let haiku = RecordingAddressModelClient(result: .addressed, error: .modelUnreachable)
-        let classifier = ConversationComposition.makeAddressClassifier(claudeClient: haiku, history: FakeConversationHistory())
-        let reply = AddressClassificationRequest(utterance: "言ったよ", clarification: .init(originalUtterance: "今日の天気はどう？"))
-        do { _ = try await classifier.classify(reply); XCTFail("The cloud failure must propagate") }
-        catch { XCTAssertEqual(error as? ConversationServiceError, .modelUnreachable) }
-        let requests = await haiku.requests
-        XCTAssertEqual(requests, [reply])
     }
 
     func testRootConstructionLeavesAllConversationServicesLazy() async {
@@ -200,8 +119,8 @@ final class AppCompositionTests: XCTestCase {
     }
 
     func testCompositionRootConstructionLeavesInjectedServicesAndCaptureLazy() async {
-        let store = MemoryStoreFake()
-        let harness = ConversationHarness(memory: makeClaudeService(store: store))
+        let memory = FakeConversationMemoryManager()
+        let harness = ConversationHarness(memory: memory)
         let defaults = UserDefaults(suiteName: "composition-root-\(UUID().uuidString)")!
         let clock = ManualRobotClock()
         let link = RecordingRobotLink(clock: clock)
@@ -230,7 +149,7 @@ final class AppCompositionTests: XCTestCase {
         let recognizerStarts = await harness.recognizer.startCount
         let audioActivations = await harness.audio.activateCount
         let replyPrewarms = await harness.reply.prewarmCount
-        let memoryLoads = await store.loadCount
+        let memoryLoads = await memory.prepareCount
         XCTAssertEqual(microphoneRequests, 0)
         XCTAssertEqual(availabilityChecks, 0)
         XCTAssertEqual(speakerPreparations, 0)

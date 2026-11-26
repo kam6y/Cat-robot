@@ -207,11 +207,15 @@ final class HermesConversationLiveTests: XCTestCase {
             let nonce = "cat" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
             let prompt = "会話の確認です。合言葉は \(nonce) です。覚えたら短く返事をしてください。"
             _ = try await collect(try await first.dependencies.reply.streamReply(to: prompt))
+            let ignored = first.dependencies.addresseePolicy.route("山田さん、明日の打ち合わせは何時にしましょうか",
+                at: 0, engagement: .inactive, wakePhrase: first.dependencies.wakePhrase()) == .ignore
+            try require(ignored)
             // No nonce and no local transcript in turn two: only the server can supply the context.
             let recalled = try await collect(try await first.dependencies.reply.streamReply(to: "さっき教えた合言葉を、そのまま答えてください。"))
             let history = try await transcript(first, users: 2)
             let two = counts(history)
-            receipt["twoTurns"] = ["contextMatched": recalled.joined().contains(nonce),
+            receipt["twoTurns"] = ["ignoredWithoutWakePhrase": ignored,
+                                   "contextMatched": recalled.joined().contains(nonce),
                                    "userRows": two.users, "assistantRows": two.assistants]
             try require(recalled.joined().contains(nonce) && two.users == 2 && two.assistants == 2)
             let storedRecord = await records.load()
@@ -266,8 +270,8 @@ final class HermesConversationLiveTests: XCTestCase {
             let finalHistory = try await transcript(restored, users: 4)
             let finalCounts = counts(finalHistory)
             let replay = await transport.proof
-            let localTurns = await restoredService.recentTurns()
-            let lateRejected = cancelledOutput.isEmpty && !localTurns.contains { $0.prompt == cancelPrompt }
+            // The app keeps no local copy of turns. A late output is rejected when the cancelled stream yields nothing.
+            let lateRejected = cancelledOutput.isEmpty
             var cancellation = receipt["cancellation"] as? [String: Any] ?? [:]
             cancellation["lateOutputRejected"] = lateRejected
             receipt["cancellation"] = cancellation
@@ -275,7 +279,7 @@ final class HermesConversationLiveTests: XCTestCase {
                                     "sameKeyAndBody": replay.sameKeyAndBody, "replayed": replay.replayed,
                                     "uniqueRunCount": replay.uniqueRunCount, "userRows": finalCounts.users,
                                     "assistantRows": finalCounts.assistants]
-            try require(lateRejected && localTurns.count == 3 && replay.droppedOnce && replay.sameKeyAndBody
+            try require(lateRejected && replay.droppedOnce && replay.sameKeyAndBody
                         && replay.replayed && replay.uniqueRunCount == 1 && finalCounts.users == 4 && finalCounts.assistants == 4)
             try require(radio.starts == 0 && radio.writtenData.isEmpty && camera.requests == 0
                         && camera.starts.isEmpty && camera.snapshotRequests.isEmpty)
@@ -307,7 +311,7 @@ final class HermesConversationLiveTests: XCTestCase {
                                  _ records: any HermesSessionRecordStore,
                                  _ radio: FakeRobotTransport, _ camera: FakeFaceCaptureSource, _ preferences: RobotPreferences) -> ConversationComposition {
         ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults), connectionSettings: settings,
-            sessionRecords: records, auth: .missing, robotTransport: radio,
+            sessionRecords: records, robotTransport: radio,
             robotPreferences: preferences, faceCaptureSource: camera)
     }
     private func service(_ composition: ConversationComposition) throws -> HermesConversationService {
@@ -357,8 +361,6 @@ final class HermesConversationLiveSupportTests: XCTestCase {
         XCTAssertTrue(proof.sameKeyAndBody)
         XCTAssertTrue(proof.replayed)
         XCTAssertEqual(proof.uniqueRunCount, 1)
-        let turns = await service.recentTurns()
-        XCTAssertEqual(turns.count, 1)
     }
 
     func testCancellationRejectsAHeldCompletedResponseAndSendsTheRealStop() async throws {
@@ -379,8 +381,6 @@ final class HermesConversationLiveSupportTests: XCTestCase {
         await transport.releaseHeld()
         await server.waitForRequest { $0.url.path.hasSuffix("/stop") }
         XCTAssertTrue(adopted.isEmpty)
-        let turns = await service.recentTurns()
-        XCTAssertTrue(turns.isEmpty)
         let proof = await transport.proof
         XCTAssertEqual(proof.heldRunID, "run-late")
         XCTAssertTrue(proof.stopObserved)

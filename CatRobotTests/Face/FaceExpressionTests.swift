@@ -5,8 +5,8 @@ final class FaceExpressionTests: XCTestCase {
     func testAutomaticExpressionMatchesConversationPhase() {
         let cases: [(ConversationPhase, FaceExpression)] = [
             (.idle, .neutral), (.paused, .neutral),
-            (.preparing, .thinking), (.classifying, .thinking), (.thinking, .thinking),
-            (.listening, .neutral), (.clarifying, .curious), (.speaking, .speaking),
+            (.preparing, .thinking), (.thinking, .thinking),
+            (.listening, .neutral), (.speaking, .speaking),
             (.failed(.modelBusy), .sorry), (.failed(.microphoneDenied), .sorry)
         ]
         for (phase, expected) in cases {
