@@ -665,6 +665,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(speakerStops - stopsBeforeTurn, 1)
         XCTAssertEqual(deactivations, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.modelGenerationFailed))
+        XCTAssertEqual(harness.sut.viewState.recoveries.map(\.action), [.retry, .showTypedInput])
         let calls = harness.calls.values
         XCTAssertLessThan(
             calls.lastIndex(of: .stopSpeaker)!,
@@ -689,6 +690,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(speakerStops - stopsBeforeTurn, 1)
         XCTAssertEqual(deactivations, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
+        XCTAssertEqual(harness.sut.viewState.recoveries.map(\.action), [.retry])
         let calls = harness.calls.values
         XCTAssertLessThan(
             calls.lastIndex(of: .stopSpeaker)!,
@@ -765,6 +767,7 @@ final class ConversationRecoveryTests: XCTestCase {
         XCTAssertEqual(speakerStops, 1)
         XCTAssertEqual(recognizerStops, 1)
         XCTAssertEqual(harness.sut.viewState.phase, .failed(.speechSynthesisFailed))
+        XCTAssertEqual(harness.sut.viewState.recoveries.map(\.action), [.retry, .showTypedInput])
         let calls = harness.calls.values
         guard let stopSpeaker = calls.lastIndex(of: .stopSpeaker),
               let deactivateAudio = calls.lastIndex(of: .deactivateAudio) else {

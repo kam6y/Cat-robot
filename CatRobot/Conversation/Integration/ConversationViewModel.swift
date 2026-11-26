@@ -32,15 +32,6 @@ final class ConversationViewModel {
         case refresh
     }
 
-    /// How a failed reply turn ends; typed and voice turns share the decision.
-    private struct ReplyFailurePolicy {
-        let error: ConversationServiceError
-        /// A synthesis failure would fail a typed reply as well.
-        var includesTypedFallback: Bool { error != .speechSynthesisFailed && error != .speechVoiceUnavailable }
-        /// An exceeded context cannot recover within the same reply session.
-        var resetsReplySession: Bool { error == .contextExceeded }
-    }
-
     private struct DetachedLifecycleTasks: Sendable {
         let preflight: Task<Void, Never>?
         let turn: Task<Void, Never>?
@@ -57,8 +48,25 @@ final class ConversationViewModel {
 
     /// 失敗の終わりに反映する結果。
     private enum FailureOutcome {
-        case publish(ConversationServiceError, includesTypedFallback: Bool)
+        case publish(ConversationServiceError, includesTypedFallback: Bool = false)
         case memoryPaused(ConversationMemoryState)
+
+        var spokenGuidance: String? {
+            switch self {
+            case .publish(let error, _): error.spokenGuidance
+            case .memoryPaused: ConversationFailureGuidance.memory
+            }
+        }
+
+        /// ログ用の種類名（case 名だけ）。判定には使わない。
+        var logKind: String {
+            switch self {
+            case .publish(let error, _):
+                String(String(describing: error).prefix { $0 != "(" })
+            case .memoryPaused:
+                "memory"
+            }
+        }
     }
 
     private static let guidanceLogger = Logger(subsystem: "com.kamby.CatRobot", category: "ConversationFailureGuidance")
@@ -71,20 +79,16 @@ final class ConversationViewModel {
 
     @ObservationIgnored private var engagement = EngagementWindow()
     @ObservationIgnored private var pendingClarification: PendingClarification?
-    @ObservationIgnored private var pendingClarificationExpirationCounter: UInt64 = 0
-    @ObservationIgnored private var activePendingClarificationExpirationID: UInt64?
     @ObservationIgnored private var lifecycleGeneration: UInt64 = 0
     @ObservationIgnored private var captureCounter: UInt64 = 0
     @ObservationIgnored private var turnCounter: UInt64 = 0
     @ObservationIgnored private var actionIntentCounter: UInt64 = 0
-    @ObservationIgnored private var failureCounter: UInt64 = 0
-    @ObservationIgnored private var microphonePermissionAwaitCounter: UInt64 = 0
-    @ObservationIgnored private var activeMicrophonePermissionAwaitID: UInt64?
+    @ObservationIgnored private var microphonePermissionOwnership = ConversationOperationOwnership()
     @ObservationIgnored private var deferredMicrophonePermissionAwaitID: UInt64?
     @ObservationIgnored private var microphonePermissionCompletionWaiter: CheckedContinuation<Void, Never>?
     @ObservationIgnored private var preflightOwnership = ConversationOperationOwnership()
     @ObservationIgnored private var transitionOwnership = ConversationOperationOwnership()
-    @ObservationIgnored private var activeFailureID: UInt64?
+    @ObservationIgnored private var failureOwnership = ConversationOperationOwnership()
     @ObservationIgnored private var activeCaptureID: UInt64?
     @ObservationIgnored private var activeTurnID: UInt64?
     @ObservationIgnored private var captureIsClosing = false
@@ -140,7 +144,7 @@ final class ConversationViewModel {
     var hasPendingSpeech: Bool { segmenter.hasActivity || captureIsClosing }
 
     var isAwaitingMicrophonePermission: Bool {
-        activeMicrophonePermissionAwaitID != nil
+        microphonePermissionOwnership.activeID != nil
     }
 
     /// rechecksAvailability は「もう一度確認」の操作だけが true にする（使えなかった会話モデルを開始の中で 1 回確かめ直す）。
@@ -319,8 +323,8 @@ final class ConversationViewModel {
     }
 
     func deferMicrophonePermissionCompletion() {
-        guard let activeMicrophonePermissionAwaitID else { return }
-        deferredMicrophonePermissionAwaitID = activeMicrophonePermissionAwaitID
+        guard let activeID = microphonePermissionOwnership.activeID else { return }
+        deferredMicrophonePermissionAwaitID = activeID
     }
 
     func releaseMicrophonePermissionCompletion() {
@@ -338,7 +342,7 @@ final class ConversationViewModel {
         wantsListening = false
         clearPendingClarification()
         voiceLatency.cancel(reason: .lifecycle)
-        activeMicrophonePermissionAwaitID = nil
+        microphonePermissionOwnership.invalidate()
         releaseMicrophonePermissionCompletion()
     }
 
@@ -532,19 +536,15 @@ final class ConversationViewModel {
             guard isCurrent(generation) else { return }
         }
         do {
-            microphonePermissionAwaitCounter &+= 1
-            let permissionAwaitID = microphonePermissionAwaitCounter
-            activeMicrophonePermissionAwaitID = permissionAwaitID
+            let permissionAwaitID = microphonePermissionOwnership.begin()
             let allowed = await dependencies.microphonePermission.requestAccess()
             await waitForMicrophonePermissionCompletionIfDeferred(permissionAwaitID)
-            if activeMicrophonePermissionAwaitID == permissionAwaitID {
-                activeMicrophonePermissionAwaitID = nil
-            }
+            microphonePermissionOwnership.finish(permissionAwaitID)
             guard isCurrent(generation) else { return }
             guard allowed else {
                 microphoneWasAllowed = false
                 // マイク拒否は声なし（spokenGuidance が nil）。音声出力の準備もしない。
-                await finishFailure(.publish(.microphoneDenied, includesTypedFallback: false), guidance: nil,
+                await finishFailure(.publish(.microphoneDenied),
                                     origin: .preflight(audioActivationAttempted: false, recognizerAttempted: false),
                                     owner: owner)
                 return
@@ -554,8 +554,7 @@ final class ConversationViewModel {
             let availability = await dependencies.modelAvailability.availability()
             guard isCurrent(generation) else { return }
             guard availability == .available else {
-                let error = ConversationServiceError.modelUnavailable(availability)
-                await finishFailure(.publish(error, includesTypedFallback: false), guidance: error.spokenGuidance,
+                await finishFailure(.publish(.modelUnavailable(availability)),
                                     origin: .preflight(audioActivationAttempted: false, recognizerAttempted: false),
                                     owner: owner)
                 return
@@ -584,13 +583,10 @@ final class ConversationViewModel {
             if error is ConversationMemoryError {
                 let state = await dependencies.memory.memoryState()
                 guard isCurrent(generation) else { return }
-                await finishFailure(.memoryPaused(state), guidance: ConversationFailureGuidance.memory,
-                                    origin: origin, owner: owner)
+                await finishFailure(.memoryPaused(state), origin: origin, owner: owner)
                 return
             }
-            let serviceError = Self.serviceError(from: error)
-            await finishFailure(.publish(serviceError, includesTypedFallback: false),
-                                guidance: serviceError.spokenGuidance, origin: origin, owner: owner)
+            await finishFailure(.publish(Self.serviceError(from: error)), origin: origin, owner: owner)
         }
     }
 
@@ -623,7 +619,8 @@ final class ConversationViewModel {
                 await oldCapture?.value
             }
         }
-        guard isTypedTurnCurrent(generation, turnID: turnID),
+        let owner = ConversationTurnOwner.turn(generation: generation, turnID: turnID)
+        guard isActiveOwner(owner),
               !Task.isCancelled else { return }
         viewState.provisionalTranscript = ""
         if viewState.typedText == submitted {
@@ -635,32 +632,30 @@ final class ConversationViewModel {
         var audioActivationAttempted = inheritsAudioSession
         do {
             let availability = await dependencies.modelAvailability.availability()
-            guard isTypedTurnCurrent(generation, turnID: turnID),
+            guard isActiveOwner(owner),
                   !Task.isCancelled else { return }
             guard availability == .available else {
-                await finishTypedTurn(
-                    with: .modelUnavailable(availability),
-                    includesTypedFallback: true,
+                await finishFailure(
+                    .publish(.modelUnavailable(availability), includesTypedFallback: true),
                     origin: .preflight(audioActivationAttempted: audioActivationAttempted, recognizerAttempted: false),
-                    generation: generation,
-                    turnID: turnID
+                    owner: owner
                 )
                 return
             }
 
             try await dependencies.memory.prepareMemory()
-            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            guard isActiveOwner(owner), !Task.isCancelled else { return }
             viewState.memoryState = await dependencies.memory.memoryState()
-            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            guard isActiveOwner(owner), !Task.isCancelled else { return }
             await dependencies.reply.prewarm()
-            guard isTypedTurnCurrent(generation, turnID: turnID),
+            guard isActiveOwner(owner),
                   !Task.isCancelled else { return }
             try await dependencies.speaker.prepare()
-            guard isTypedTurnCurrent(generation, turnID: turnID),
+            guard isActiveOwner(owner),
                   !Task.isCancelled else { return }
             audioActivationAttempted = true
             try await dependencies.audioSession.activate()
-            guard isTypedTurnCurrent(generation, turnID: turnID),
+            guard isActiveOwner(owner),
                   !Task.isCancelled else { return }
             await generateTypedReply(
                 to: submitted,
@@ -669,22 +664,19 @@ final class ConversationViewModel {
                 turnID: turnID
             )
         } catch {
-            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            guard isActiveOwner(owner), !Task.isCancelled else { return }
             let origin = FailureOrigin.preflight(audioActivationAttempted: audioActivationAttempted,
                                                  recognizerAttempted: false)
             if error is ConversationMemoryError {
                 let state = await dependencies.memory.memoryState()
-                guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-                await finishFailure(.memoryPaused(state), guidance: ConversationFailureGuidance.memory,
-                                    origin: origin, owner: .turn(generation: generation, turnID: turnID))
+                guard isActiveOwner(owner), !Task.isCancelled else { return }
+                await finishFailure(.memoryPaused(state), origin: origin, owner: owner)
                 return
             }
-            await finishTypedTurn(
-                with: Self.serviceError(from: error),
-                includesTypedFallback: true,
+            await finishFailure(
+                .publish(Self.serviceError(from: error), includesTypedFallback: true),
                 origin: origin,
-                generation: generation,
-                turnID: turnID
+                owner: owner
             )
         }
     }
@@ -695,41 +687,39 @@ final class ConversationViewModel {
         generation: UInt64,
         turnID: UInt64
     ) async {
+        let owner = ConversationTurnOwner.turn(generation: generation, turnID: turnID)
         let trace = ReplyTrace(sink: dependencies.replyTraceSink, now: dependencies.now)
         transition(to: .thinking)
         playbackMouthSequence = SpeechMouthPoseSequence()
         do {
             _ = try await replyPlayback.run(prompt: submitted, trace: trace) { [weak self] update in
-                guard let self, self.isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+                guard let self, self.isActiveOwner(owner), !Task.isCancelled else { return }
                 self.applyPlaybackUpdate(update)
             }
-            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+            guard isActiveOwner(owner), !Task.isCancelled else { return }
             if shouldResumeVoice {
                 engagement.arm(at: dependencies.now())
                 wantsListening = true
                 do {
                     try await startCapture(generation: generation, recognizerIsPrepared: false)
                 } catch {
-                    guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+                    guard isActiveOwner(owner), !Task.isCancelled else { return }
                     wantsListening = false
                     await dependencies.recognizer.stop()
-                    await finishTypedTurn(with: Self.serviceError(from: error), generation: generation, turnID: turnID)
+                    await finishFailure(
+                        .publish(Self.serviceError(from: error)),
+                        origin: .turn(stopRecognizer: false),
+                        owner: owner
+                    )
                 }
             } else {
                 await dependencies.audioSession.deactivate()
-                guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
+                guard isActiveOwner(owner), !Task.isCancelled else { return }
                 transition(to: .paused)
             }
         } catch {
-            guard isTypedTurnCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            let policy = ReplyFailurePolicy(error: Self.serviceError(from: error))
-            await finishTypedTurn(
-                with: policy.error,
-                includesTypedFallback: policy.includesTypedFallback,
-                resetsReplySession: policy.resetsReplySession,
-                generation: generation,
-                turnID: turnID
-            )
+            guard isActiveOwner(owner), !Task.isCancelled else { return }
+            await finishReplyFailure(error, owner: owner)
         }
     }
 
@@ -747,24 +737,6 @@ final class ConversationViewModel {
             transition(to: .thinking)
             viewState.mouthPose = .closed
         }
-    }
-
-    /// 文字入力ターンの失敗。所有者は .turn(generation, turnID)（ownsVoiceFailure の判定は isTypedTurnCurrent と同じ条件）。
-    private func finishTypedTurn(
-        with error: ConversationServiceError,
-        includesTypedFallback: Bool = false,
-        resetsReplySession: Bool = false,
-        origin: FailureOrigin = .turn(stopRecognizer: false),
-        generation: UInt64,
-        turnID: UInt64
-    ) async {
-        await finishFailure(
-            .publish(error, includesTypedFallback: includesTypedFallback),
-            guidance: error.spokenGuidance,
-            origin: origin,
-            owner: .turn(generation: generation, turnID: turnID),
-            resetsReplySession: resetsReplySession
-        )
     }
 
     private func startCapture(
@@ -1057,9 +1029,9 @@ final class ConversationViewModel {
             }
         } catch {
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            await finishVoiceFailure(
-                with: Self.serviceError(from: error),
-                stopRecognizer: false,
+            await finishFailure(
+                .publish(Self.serviceError(from: error)),
+                origin: .turn(stopRecognizer: false),
                 owner: .turn(generation: generation, turnID: turnID)
             )
             return
@@ -1103,19 +1075,14 @@ final class ConversationViewModel {
             utterance: utterance,
             at: timestamp
         )
-        pendingClarificationExpirationCounter &+= 1
-        let expirationID = pendingClarificationExpirationCounter
-        activePendingClarificationExpirationID = expirationID
         let delay = dependencies.clarificationDelay
 
         pendingClarificationExpirationTask = Task { @MainActor [weak self] in
             await delay(.seconds(PendingClarification.duration))
             guard !Task.isCancelled,
                   let self,
-                  self.lifecycleGeneration == generation,
-                  self.activePendingClarificationExpirationID == expirationID else { return }
+                  self.lifecycleGeneration == generation else { return }
             self.pendingClarification = nil
-            self.activePendingClarificationExpirationID = nil
             self.pendingClarificationExpirationTask = nil
         }
     }
@@ -1123,7 +1090,6 @@ final class ConversationViewModel {
     private func clearPendingClarification() {
         pendingClarificationExpirationTask?.cancel()
         pendingClarificationExpirationTask = nil
-        activePendingClarificationExpirationID = nil
         pendingClarification = nil
     }
 
@@ -1155,15 +1121,8 @@ final class ConversationViewModel {
             }
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
-            let policy = ReplyFailurePolicy(error: Self.serviceError(from: error))
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            await finishVoiceFailure(
-                with: policy.error,
-                includesTypedFallback: policy.includesTypedFallback,
-                resetsReplySession: policy.resetsReplySession,
-                stopRecognizer: false,
-                owner: .turn(generation: generation, turnID: turnID)
-            )
+            await finishReplyFailure(error, owner: .turn(generation: generation, turnID: turnID))
         }
     }
 
@@ -1202,9 +1161,9 @@ final class ConversationViewModel {
             await resumeCapture(generation: generation, turnID: turnID)
         } catch {
             guard isCurrent(generation, turnID: turnID), !Task.isCancelled else { return }
-            await finishVoiceFailure(
-                with: Self.serviceError(from: error),
-                stopRecognizer: false,
+            await finishFailure(
+                .publish(Self.serviceError(from: error)),
+                origin: .turn(stopRecognizer: false),
                 owner: .turn(generation: generation, turnID: turnID)
             )
         }
@@ -1220,9 +1179,9 @@ final class ConversationViewModel {
             try await startCapture(generation: generation, recognizerIsPrepared: false)
         } catch {
             guard isCurrent(generation), !Task.isCancelled else { return }
-            await finishVoiceFailure(
-                with: Self.serviceError(from: error),
-                stopRecognizer: true,
+            await finishFailure(
+                .publish(Self.serviceError(from: error)),
+                origin: .turn(stopRecognizer: true),
                 owner: .lifecycle(generation: generation)
             )
         }
@@ -1236,27 +1195,22 @@ final class ConversationViewModel {
         guard isCurrent(generation),
               activeCaptureID == captureID,
               !captureIsClosing else { return }
-        await finishVoiceFailure(
-            with: Self.serviceError(from: error),
-            stopRecognizer: true,
+        await finishFailure(
+            .publish(Self.serviceError(from: error)),
+            origin: .turn(stopRecognizer: true),
             owner: .capture(generation: generation, captureID: captureID)
         )
     }
 
-    /// 音声ターン・聞き取り・開始後の再開の失敗。audio session は有効なので origin は .turn。
-    private func finishVoiceFailure(
-        with error: ConversationServiceError,
-        includesTypedFallback: Bool = false,
-        resetsReplySession: Bool = false,
-        stopRecognizer: Bool,
-        owner: ConversationTurnOwner
-    ) async {
+    private func finishReplyFailure(_ error: any Error, owner: ConversationTurnOwner) async {
+        let serviceError = Self.serviceError(from: error)
+        // A typed reply still needs speech synthesis. An exceeded context needs a new reply session.
+        let includesTypedFallback = serviceError != .speechSynthesisFailed && serviceError != .speechVoiceUnavailable
         await finishFailure(
-            .publish(error, includesTypedFallback: includesTypedFallback),
-            guidance: error.spokenGuidance,
-            origin: .turn(stopRecognizer: stopRecognizer),
+            .publish(serviceError, includesTypedFallback: includesTypedFallback),
+            origin: .turn(stopRecognizer: false),
             owner: owner,
-            resetsReplySession: resetsReplySession
+            resetsReplySession: serviceError == .contextExceeded
         )
     }
 
@@ -1265,12 +1219,11 @@ final class ConversationViewModel {
     /// 手順 2〜6 を 1 つの Task にして failureCleanupTask に登録してから待つ。最初の await より前に登録する。
     private func finishFailure(
         _ outcome: FailureOutcome,
-        guidance: String?,
         origin: FailureOrigin,
         owner: ConversationTurnOwner,
         resetsReplySession: Bool = false
     ) async {
-        guard ownsVoiceFailure(owner), !Task.isCancelled else { return }
+        guard isActiveOwner(owner), !Task.isCancelled else { return }
         voiceLatency.cancel(reason: .failure, ifOwnedBy: owner)
         wantsListening = false
         clearPendingClarification()
@@ -1278,14 +1231,11 @@ final class ConversationViewModel {
         segmentationTask?.cancel()
         segmentationTask = nil
 
-        failureCounter &+= 1
-        let failureID = failureCounter
-        activeFailureID = failureID
+        let failureID = failureOwnership.begin()
         let cleanup = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.performFailureOperation(
                 outcome,
-                guidance: guidance,
                 origin: origin,
                 owner: owner,
                 resetsReplySession: resetsReplySession,
@@ -1296,19 +1246,19 @@ final class ConversationViewModel {
         await cleanup.value
     }
 
-    /// failureCleanupTask の中身。所有確認は全起点で ownsVoiceFailure を使う。
+    /// failureCleanupTask の中身。所有確認は全起点で isActiveOwner を使う。
     /// 2: 再生の中断と、試みた認識の停止。3: 案内があり開始前で未有効化なら、音声出力の準備と有効化（失敗や所有喪失は案内を省くだけで、元の結果は保つ）。
     /// 4: 所有が続く間、案内を最後まで読み上げる（失敗・取消・未完了は握りつぶす）。5: 音声出力を止め、試みた audio session を解除し、必要なら返答セッションを捨てる。
     /// 6: 所有が続いていれば結果を反映する（表示、または記憶の状態と一時停止）。既存の lifecycle / capture の後片付けもここ。
     private func performFailureOperation(
         _ outcome: FailureOutcome,
-        guidance: String?,
         origin: FailureOrigin,
         owner: ConversationTurnOwner,
         resetsReplySession: Bool,
         failureID: UInt64
     ) async {
-        func owned() -> Bool { activeFailureID == failureID && ownsVoiceFailure(owner) }
+        // 所有の確認は activeID を読むだけ。finish は最後の後片付けの 1 か所だけで行う。
+        func owned() -> Bool { failureOwnership.activeID == failureID && isActiveOwner(owner) }
         var audioActivationAttempted: Bool
         let stopsRecognizer: Bool
         switch origin {
@@ -1327,6 +1277,7 @@ final class ConversationViewModel {
         }
 
         // 3
+        let guidance = outcome.spokenGuidance
         var speaksGuidance = guidance != nil && owned()
         if speaksGuidance, !audioActivationAttempted {
             do {
@@ -1342,7 +1293,7 @@ final class ConversationViewModel {
 
         // 4
         if let guidance, speaksGuidance, owned() {
-            Self.guidanceLogger.info("event=failureGuidance kind=\(Self.failureKind(outcome), privacy: .public)")
+            Self.guidanceLogger.info("event=failureGuidance kind=\(outcome.logKind, privacy: .public)")
             viewState.isSpeakingFailureGuidance = true
             transition(to: .speaking, caption: guidance)
             // 開始前の actor hop も取り消す。後始末の Task 自体は取り消さず、子を待ってから手順 5 に進む。
@@ -1352,7 +1303,7 @@ final class ConversationViewModel {
             }
             failureSpeechTask = speech
             await speech.value
-            if activeFailureID == failureID { failureSpeechTask = nil }
+            if failureOwnership.activeID == failureID { failureSpeechTask = nil }
             viewState.mouthPose = .closed
             viewState.isSpeakingFailureGuidance = false
         }
@@ -1390,14 +1341,13 @@ final class ConversationViewModel {
                 transition(to: .paused)
             }
         }
-        if activeFailureID == failureID {
-            activeFailureID = nil
+        if failureOwnership.finish(failureID) {
             failureCleanupTask = nil
         }
     }
 
     private func speakFailureGuidance(_ guidance: String, owner: ConversationTurnOwner, failureID: UInt64) async {
-        func owned() -> Bool { activeFailureID == failureID && ownsVoiceFailure(owner) && !Task.isCancelled }
+        func owned() -> Bool { failureOwnership.activeID == failureID && isActiveOwner(owner) && !Task.isCancelled }
         guard owned() else { return }
         var mouthSequence = SpeechMouthPoseSequence()
         do {
@@ -1416,21 +1366,11 @@ final class ConversationViewModel {
         } catch {}
     }
 
-    /// ログ用の種類名（case 名だけ）。判定には使わない。
-    private static func failureKind(_ outcome: FailureOutcome) -> String {
-        switch outcome {
-        case .publish(let error, _):
-            String(String(describing: error).prefix { $0 != "(" })
-        case .memoryPaused:
-            "memory"
-        }
-    }
-
     private func pauseConversation(force: Bool = false, awaitsTapResume: Bool = false) async {
         viewState.isAwaitingTapToResume = awaitsTapResume
         actionIntentCounter &+= 1
         voiceLatency.cancel(reason: .lifecycle)
-        activeMicrophonePermissionAwaitID = nil
+        microphonePermissionOwnership.invalidate()
         releaseMicrophonePermissionCompletion()
         if let failureCleanupTask {
             lifecycleGeneration &+= 1
@@ -1544,10 +1484,10 @@ final class ConversationViewModel {
 
     private func waitForMicrophonePermissionCompletionIfDeferred(_ id: UInt64) async {
         while deferredMicrophonePermissionAwaitID == id,
-              activeMicrophonePermissionAwaitID == id {
+              microphonePermissionOwnership.activeID == id {
             await withCheckedContinuation { continuation in
                 guard deferredMicrophonePermissionAwaitID == id,
-                      activeMicrophonePermissionAwaitID == id else {
+                      microphonePermissionOwnership.activeID == id else {
                     continuation.resume()
                     return
                 }
@@ -1560,14 +1500,8 @@ final class ConversationViewModel {
         isCurrent(generation) && activeTurnID == turnID
     }
 
-    private func isTypedTurnCurrent(_ generation: UInt64, turnID: UInt64) -> Bool {
-        lifecycleGeneration == generation
-            && activeTurnID == turnID
-            && !isShutdown
-            && !isShuttingDown
-    }
-
-    private func ownsVoiceFailure(_ owner: ConversationTurnOwner) -> Bool {
+    /// Typed input and failure cleanup retain ownership after listening stops.
+    private func isActiveOwner(_ owner: ConversationTurnOwner) -> Bool {
         guard !isShutdown, !isShuttingDown else { return false }
         return owner.isOwned(generation: lifecycleGeneration, turnID: activeTurnID, captureID: activeCaptureID)
     }
