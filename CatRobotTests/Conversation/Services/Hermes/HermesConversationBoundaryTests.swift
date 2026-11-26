@@ -98,7 +98,12 @@ final class HermesConversationBoundaryTests: XCTestCase {
         try await checkLateAcceptanceDuringNewSubmission(reset: false, newOrigin: other)
     }
 
-    private func checkLateAcceptanceDuringNewSubmission(reset: Bool, newOrigin: HermesConnection? = nil) async throws {
+    func testLateAcceptanceDoesNotAttachOneClarificationToTwoInFlightRuns() async throws {
+        try await checkLateAcceptanceDuringNewSubmission(reset: false, afterClarification: true)
+    }
+
+    private func checkLateAcceptanceDuringNewSubmission(reset: Bool, newOrigin: HermesConnection? = nil,
+                                                        afterClarification: Bool = false) async throws {
         let clock = ManualTurnClock()
         let records = InMemoryHermesSessionRecordStore()
         let server = FakeHermesServer(
@@ -110,6 +115,9 @@ final class HermesConversationBoundaryTests: XCTestCase {
         let service = HermesConversationService(connection: { connections.next() }, transport: server, records: records,
                                                 clock: clock, timing: .init(turnDeadline: .seconds(10)),
                                                 makeSessionID: { ids.next() })
+        if afterClarification {
+            await service.recordExternalTurn(prompt: "今日の天気は？", response: ClarificationContext.question)
+        }
         let stream = try await service.streamReply(to: "old turn")
         let finished = expectation(description: "old turn expires before accepting")
         let reader = Task {
@@ -130,6 +138,12 @@ final class HermesConversationBoundaryTests: XCTestCase {
             XCTAssertTrue(newHeld && oldHeld)
         } catch {
             XCTFail("new turn could not start while the old submission was held: \(error)")
+        }
+        if afterClarification {
+            let inputs = await server.runPosts.compactMap { $0.jsonBody?["input"] }
+            XCTAssertEqual(inputs.count, 2)
+            XCTAssertTrue(inputs.first?.contains("今日の天気は？") == true)
+            XCTAssertEqual(inputs.last, "new turn")
         }
         await server.release("old-submit")
         await server.waitUntilBlocked("old-stop")
@@ -160,7 +174,7 @@ final class HermesConversationBoundaryTests: XCTestCase {
         let paths = await server.requests.map(\.url.path)
         XCTAssertFalse(paths.contains("/v1/runs/old-run"))
         let turns = await service.recentTurns()
-        XCTAssertEqual(turns.map(\.response), ["new reply"])
+        XCTAssertEqual(turns.map(\.response), afterClarification ? [ClarificationContext.question, "new reply"] : ["new reply"])
         let settled = await records.record
         XCTAssertEqual(settled?.unsettledRunIDs, [])
         XCTAssertEqual(settled?.hasUncertainSubmission, false)

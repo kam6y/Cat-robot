@@ -34,10 +34,18 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private var state: ConversationMemoryState = .unprepared
     private struct CachedTurn {
         let turn: ConversationMemoryTurn
-        let isLocalOnly: Bool
+        // Present until the exchange is adopted or observed in Hermes history.
+        var localID: UUID?
+    }
+    private struct RecordedClarification {
+        enum Delivery { case pending, sending, verifyHistory }
+        let id: UUID
+        let turn: ConversationMemoryTurn
+        var knownSession: Bool
+        var delivery: Delivery = .pending
     }
     private var turns: [CachedTurn] = []
-    private var clarification: ConversationMemoryTurn?
+    private var clarification: RecordedClarification?
     /// 401 を受けた接続（接続ごと）。どの要求の 401 でも記録し、明示の確認（recheckAvailability）でその接続を外すまで、その接続では何も送らない。
     /// 接続ごとに覚えるので、キーを替えた後に前のキーへ遅れて届いた 401 が今のキーの拒否を消すことはない。
     private var rejectedConnections: [(connection: HermesConnection, revision: UUID)] = []
@@ -114,7 +122,22 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard let selection = await selectRecord(for: current, requestedEpoch: requestedEpoch) else {
             throw ConversationServiceError.cancelled
         }
-        try await waitForHistory(in: selection, deadline: start.addingTimeInterval(turnLimit))
+        let deadline = start.addingTimeInterval(turnLimit)
+        try await waitForHistory(in: selection, deadline: deadline)
+        if let pending = clarification, pending.delivery == .verifyHistory, let selected = latestSelection(in: selection) {
+            try checkPreparedHistory(for: selected)
+            // Admission and transcript persistence are separate. Use the ordinary session restore rules,
+            // including the latest session id after compaction and the explicit lost-session error.
+            do {
+                if let result = try await readHistory(current, selected),
+                   Self.decodeHistory(result.history).clarificationIDs.contains(pending.id) {
+                    markStored(pending.id)
+                }
+            } catch is HermesClientError {
+                // A temporary history outage can safely repeat the same exchange id.
+            }
+            try await waitForHistory(in: selection, deadline: deadline)
+        }
         guard starting == reservation, let selected = latestSelection(in: selection) else {
             throw ConversationServiceError.cancelled
         }
@@ -123,8 +146,9 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         try Task.checkCancellation()
         let operation = HermesReplyOperation(client: client(current), connection: current, selection: selected)
         active = operation
-        let instructions = HermesConversationInstructions.text(clarification: clarification)
-        clarification = nil
+        // A timed-out POST can outlive its stream. Only its owner may attach this exchange.
+        let sentClarification = clarification?.delivery == .sending ? nil : clarification
+        if sentClarification != nil { clarification?.delivery = .sending }
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
         continuation.onTermination = { [weak self] termination in
             if case .cancelled = termination {
@@ -132,12 +156,14 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                 Task { await self?.scheduleStop(for: operation) }
             }
         }
-        generation = Task { await self.generate(prompt, instructions: instructions, key: self.makeIdempotencyKey(),
-                                                 operation: operation, startingAt: start, into: continuation) }
+        generation = Task { await self.generate(prompt, clarification: sentClarification,
+                                                 key: self.makeIdempotencyKey(), operation: operation,
+                                                 startingAt: start, into: continuation) }
         return stream
     }
 
-    private func generate(_ prompt: String, instructions: String, key: UUID, operation: HermesReplyOperation,
+    private func generate(_ prompt: String, clarification sentClarification: RecordedClarification?,
+                          key: UUID, operation: HermesReplyOperation,
                           startingAt start: Date, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
         let connection = operation.connection
         let deadline = start.addingTimeInterval(turnLimit)
@@ -148,12 +174,22 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         defer { timer.cancel() }
         var submissionPending = false
         var hadUncertainAttempt = false
-        defer { if active === operation { releaseActiveTurn() } }
+        var verifyOnRetry = sentClarification?.delivery == .verifyHistory
+        defer {
+            if let sentClarification, clarification?.id == sentClarification.id {
+                clarification?.delivery = verifyOnRetry ? .verifyHistory : .pending
+            }
+            if active === operation { releaseActiveTurn() }
+        }
         do {
             // Reserve most of the turn for submission and polling. Keep any run whose end is still unknown.
             try await cleanUpRuns(for: operation, startingAt: start)
             guard isCurrent(operation.selection), !operation.isCancelled else { throw ConversationServiceError.cancelled }
             guard refusalRevision(for: connection) == nil else { throw ConversationServiceError.modelUnavailable(.hermesUnauthorized) }
+            let input = try sentClarification.map {
+                try HermesClarificationReply(id: $0.id, original: $0.turn.prompt, question: $0.turn.response,
+                                             utterance: prompt).encoded()
+            } ?? HermesClarificationReply.plainInput(prompt)
             pendingSubmissions.insert(ObjectIdentifier(operation))
             submissionPending = true
             await updateRecord(for: operation) { $0.hasUncertainSubmission = true }
@@ -170,8 +206,9 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                     needsFreshHistory = false
                 }
                 do {
-                    accepted = try await operation.client.createRun(input: prompt, sessionID: operation.sessionID,
-                                                                    idempotencyKey: key, instructions: instructions,
+                    accepted = try await operation.client.createRun(input: input, sessionID: operation.sessionID,
+                                                                    idempotencyKey: key,
+                                                                    instructions: HermesConversationInstructions.persona,
                                                                     isolation: self)
                 } catch {
                     if Self.isDefiniteRefusal(error) {
@@ -186,6 +223,7 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             }
             guard let accepted else { throw ConversationServiceError.modelGenerationFailed }
             submissionPending = false
+            verifyOnRetry = true
             await finishSubmission(for: operation, accepted: accepted.runID, uncertain: false)
             // Publish the id only after its durable bookkeeping, so cancellation cannot settle it before it is recorded.
             operation.accept(accepted.runID)
@@ -224,8 +262,8 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                     guard isCurrent(operation.selection), operation.claimAdoption() else {
                         throw ConversationServiceError.cancelled
                     }
-                    turns.append(CachedTurn(turn: ConversationMemoryTurn(prompt: prompt, response: spoken),
-                                            isLocalOnly: false))
+                    if let sentClarification { markStored(sentClarification.id) }
+                    turns.append(CachedTurn(turn: ConversationMemoryTurn(prompt: prompt, response: spoken)))
                     turns = Array(turns.suffix(100))
                     continuation.yield(spoken)
                     setState(.ready)
@@ -247,6 +285,7 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                 expire(operation, into: continuation)
             }
             if submissionPending {
+                if hadUncertainAttempt { verifyOnRetry = true }
                 await finishSubmission(for: operation, accepted: nil, uncertain: hadUncertainAttempt)
             }
             continuation.finish(throwing: operation.isCancelled ? ConversationServiceError.cancelled : error)
@@ -528,8 +567,10 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                     }
                     try Task.checkCancellation()
                     if case .restoreFailed = state { throw ConversationMemoryError.unavailable }
-                    let restored = Self.pairs(Self.entries(result.history)).map { CachedTurn(turn: $0, isLocalOnly: false) }
-                    turns = restored + turns.filter(\.isLocalOnly)
+                    let history = Self.decodeHistory(result.history)
+                    if let clarification, history.clarificationIDs.contains(clarification.id) { self.clarification = nil }
+                    let local = turns.filter { $0.localID.map { !history.clarificationIDs.contains($0) } ?? false }
+                    turns = Self.pairs(history.entries).map { CachedTurn(turn: $0) } + local
                     hasUnsubmittedHistory = true
                 } catch is HermesClientError {
                     // The ordinary offline fallback preserves the existing cache.
@@ -554,7 +595,9 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
               selected.record.hasTurns || selected.record.hasUncertainSubmission else { return [] }
         guard let result = try await readHistory(current, selected, fromTranscript: true),
               isCurrent(selected, tipRevision: result.tipRevision) else { return [] }
-        return Self.entries(result.history)
+        let history = Self.decodeHistory(result.history)
+        if let clarification, history.clarificationIDs.contains(clarification.id) { markStored(clarification.id) }
+        return history.entries
     }
 
     /// 前の会話を Hermes から読む（返事の準備と設定の履歴の共通の規則）。世代が進んでいたら nil（結果を捨てる）。
@@ -580,14 +623,23 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                 }
             }
             updated.sessionID = history.sessionID
-            if !history.messages.isEmpty { updated.hasTurns = true }
+            if !history.messages.isEmpty {
+                updated.hasTurns = true
+                clarification?.knownSession = true
+            }
             let write = enqueueSave(updated)
             let adoptedTipRevision = tipRevision
             await write.value
             return isCurrent(selected, tipRevision: adoptedTipRevision) ? (history, adoptedTipRevision) : nil
         } catch HermesClientError.sessionNotFound {
             guard isCurrent(selected, tipRevision: selected.tipRevision) else { return nil }
-            guard snapshot.hasTurns else { return (HermesSessionHistory(sessionID: snapshot.sessionID, messages: []), tipRevision) }
+            // A first admitted confirmation can fail before Hermes creates the conversation.
+            // A successful prior turn (including one that finished during a retry) makes a 404 a lost session.
+            let unwrittenFirstTurn = clarification?.knownSession == false && clarification?.delivery != .pending
+                && turns.allSatisfy { $0.localID != nil }
+            guard snapshot.hasTurns && !unwrittenFirstTurn else {
+                return (HermesSessionHistory(sessionID: snapshot.sessionID, messages: []), tipRevision)
+            }
             setState(.restoreFailed(.unavailable))
             throw ConversationMemoryError.unavailable
         } catch HermesClientError.unauthorized {
@@ -607,9 +659,17 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         } else if requestedEpoch != epoch {
             return
         }
+        let id = UUID()
         let turn = ConversationMemoryTurn(prompt: prompt, response: response)
-        clarification = turn
-        turns.append(CachedTurn(turn: turn, isLocalOnly: true))
+        turns.append(CachedTurn(turn: turn, localID: id))
+        if response == ClarificationContext.question {
+            clarification = RecordedClarification(id: id, turn: turn, knownSession: record?.hasTurns == true)
+        }
+    }
+
+    private func markStored(_ id: UUID) {
+        if clarification?.id == id { clarification = nil }
+        if let index = turns.lastIndex(where: { $0.localID == id }) { turns[index].localID = nil }
     }
 
     func memoryState() -> ConversationMemoryState { state }
@@ -755,16 +815,18 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard let end = prefix.lastIndex(where: { "。！？!?\n".contains($0) }) else { return prefix }
         return String(prefix[...end])
     }
-    private static func entries(_ history: HermesSessionHistory) -> [HermesTranscriptEntry] {
-        history.messages.compactMap { message in
+    private static func decodeHistory(_ history: HermesSessionHistory) -> (entries: [HermesTranscriptEntry], clarificationIDs: Set<UUID>) {
+        var seen = Set<UUID>()
+        let entries = history.messages.flatMap { message -> [HermesTranscriptEntry] in
             guard !message.hasToolCalls, message.displayKind != "hidden",
-                  let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+                  let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return [] }
             switch message.role {
-            case "user": return HermesTranscriptEntry(speaker: .user, text: text)
-            case "assistant": return HermesTranscriptEntry(speaker: .cat, text: text)
-            default: return nil
+            case "user": return HermesClarificationReply.userEntries(from: text, seen: &seen)
+            case "assistant": return [HermesTranscriptEntry(speaker: .cat, text: text)]
+            default: return []
             }
         }
+        return (entries, seen)
     }
     private static func pairs(_ entries: [HermesTranscriptEntry]) -> [ConversationMemoryTurn] {
         var prompt: String?

@@ -32,6 +32,8 @@ actor FakeHermesServer: HermesTransport {
         capabilityReplies = capabilities
     }
 
+    func enqueueHistory(_ reply: Reply) { historyReplies.append(reply) }
+
     func send(_ request: HermesHTTPRequest) async throws -> HermesHTTPResponse {
         requests.append(request)
         let path = request.url.path

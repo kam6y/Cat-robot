@@ -56,7 +56,8 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 
 - **`HermesConversationService`**: 通常の返事・会話の続き・履歴の正本を Hermes に置く adapter。返事（`MotionReplyGenerator` の内側）・可否・記憶・宛先判定に添える直近の往復・設定の履歴を 1 つのインスタンスが受け持つ（別々に作ると「新しい会話」が記憶の失敗を消せない）。
   - ターンごとに `HermesConnectionSettings.connection()` を読む。未設定は `.hermesNotConfigured`、401 は `.hermesUnauthorized`。返事・後始末・stop・履歴のどの要求の 401 でも同じ接続の拒否として覚え、その接続では明示の確認のほかは何も送らない（返事・記憶の準備・設定の履歴は送らずに `.hermesUnauthorized`）。拒否は接続ごとに覚えるので、キーを替えた後に前のキーへ遅れて届いた 401 は前のキーだけを拒否にし、今のキーの記録を変えない（そのターンはそれ以上送らずに終える）。どの要求も出す直前にその要求の接続の拒否を確かめるので、「新しい会話」の後に前の worker へ届いた 401 のあとは、並行する新しい worker も再送・照会・後始末・stop・履歴を送らない（run id と受付の分からない送信の記録は残す）。別のキーを保存すれば次のターンから使う。同じキーは、会話画面の「もう一度確認」（`retryRecovery` → 開始の preflight の最初、同じ世代の中）でだけ `recheckAvailability()` が認証付きの `GET /v1/capabilities` を 1 回送って確かめ直す。確かな 401 と取り消された確認は拒否のまま、届かなかった確認は拒否を外して次のターンの答えに任せる。session・端末の記録・履歴は変えない。
-  - `POST /v1/runs`（明示 session、ターンごとに固定した Idempotency-Key と同じ body で再送）→ `GET /v1/runs/{id}` の poll。最終出力だけを読み上げへ渡す（2,000 文字までの最後の文末で切る。入力は 4,000 文字まで）。
+  - `POST /v1/runs`（明示 session、ターンごとに固定した Idempotency-Key と同じ body で再送）→ `GET /v1/runs/{id}` の poll。最終出力だけを読み上げへ渡す（2,000 文字までの最後の文末で切る。今回の発話は 4,000 文字まで）。
+  - 聞き返しを読み終えたら、元の発言と猫の質問に ID を付けてメモリに保持する。次の `input` にこの会話と今回の発話をまとめ、`instructions` は固定のまま送る。1 件の聞き返しを同時に借りる run は 1 つ。返事が完了するか Hermes 履歴に同じ ID があれば送信済みとし、受付後に失敗したときは次の送信前に履歴を確認する。履歴に到達できず再掲した場合も、表示と宛先判定には同じ ID の質問を 1 回だけ展開する。
   - 取消は端末の世代を先に無効化し、run id が分かれば `POST /v1/runs/{id}/stop`。遅れて届いた結果は採用しない。stop の応答や切断を終了とみなさず、終端を確かめるまで run id を記録に残し、次のターンの前に stop と 1 回の照会で確かめる（ターンは待たせない）。
   - 端末に残すのは識別子だけ（`HermesSessionRecord`: origin、session id、受付済みの有無、受付が分からない送信、終端未確認の run id）。会話の本文は保存しない。
   - 「新しい会話を始める」は新しい session id へ切り替えるだけ。Hermes 側の削除・忘却や、前の run の停止の成功を意味しない。
