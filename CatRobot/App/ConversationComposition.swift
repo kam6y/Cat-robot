@@ -39,9 +39,12 @@ struct ConversationComposition {
                                                    faceTracking.setControlMode($0)
                                                })
         // 接続先とキー、モデルと effort はターンごとに設定から読む（保存した次のターンから効く）。
+        // Hermes の返事が頼んだ首・表情・カメラは、その返事のターンの中で端末が実行する。
+        let deviceTools = RobotConversationToolProvider(motion: motion, expressions: expressions, look: look)
         let hermes = HermesConversationService(connection: { await connectionSettings.connection() },
                                                runOptions: { await connectionSettings.models.options(for: $0) },
-                                               transport: connectionSettings.transport, records: sessionRecords)
+                                               transport: connectionSettings.transport, records: sessionRecords,
+                                               deviceActions: { try await deviceTools.perform($0) })
         let reply = makeReplyGenerator(base: hermes, motion: replyTurnObserver)
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let smartTurn = SmartTurnService(root: resources.appendingPathComponent("SmartTurn"))

@@ -1,7 +1,6 @@
 import FoundationModels
 
-/// 返答のモデルに渡す体の操作の tool（首・表情・要求された静止画像）。同じ返答ターンの tool として渡す。
-/// 今の Hermes の返事からは呼ばれない（Hermes の API は呼び出し側の tool を実行しない）。Hermes への接続は別のタスク。
+/// 会話で使う首・表情・前面カメラの操作をまとめる。
 protocol ConversationToolProvider: Sendable {
     func tools() -> [any Tool]
 }

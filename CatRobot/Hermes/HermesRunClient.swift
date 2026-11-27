@@ -41,12 +41,15 @@ actor HermesRunClient {
     /// 履歴は Hermes が session から読むので、端末の会話は送らない。
     /// instructions は Hermes の ephemeral system prompt（その run だけに重ねる）。nil なら送らない。
     /// options はその run のモデルと effort。nil（または既定）なら何も足さず、Hermes の既定で動く。
+    /// image は JPEG 1 枚。あれば input を、Hermes の /v1/runs が画像として受け取る形（user の message 1 件に、
+    /// text と image_url の data URL）にする。無ければ input は今までどおりの文字列。
     // Forward the caller’s isolation so its final session check and transport handoff stay on the same actor.
     func createRun(input: String, sessionID: String, idempotencyKey: UUID, instructions: String? = nil,
-                   options: HermesRunOptions? = nil,
+                   options: HermesRunOptions? = nil, image: Data? = nil,
                    isolation: isolated (any Actor)? = nil) async throws -> HermesRunHandle {
         guard Self.isValidRunID(sessionID) else { throw HermesClientError.invalidSessionID }
-        return try await postRun(ModelInput(input: input, sessionID: sessionID, instructions: instructions, options: options),
+        let content: RunContent = image.map { .withImage(text: input, jpeg: $0) } ?? .text(input)
+        return try await postRun(ModelInput(input: content, sessionID: sessionID, instructions: instructions, options: options),
                                  idempotencyKey: idempotencyKey, isolation: isolation)
     }
 
@@ -172,20 +175,50 @@ actor HermesRunClient {
     private struct StopPayload: Decodable { let run_id: String?; let status: String? }
     /// nil の field は送らない（既定のときは、モデルの選択を足す前と同じ body）。
     private struct ModelInput: Encodable {
-        let input: String
+        let input: RunContent
         let session_id: String
         let instructions: String?
         let model: String?
         let provider: String?
         let model_options: ModelOptions?
 
-        init(input: String, sessionID: String, instructions: String?, options: HermesRunOptions?) {
+        init(input: RunContent, sessionID: String, instructions: String?, options: HermesRunOptions?) {
             self.input = input
             session_id = sessionID
             self.instructions = instructions
             model = options?.model?.model
             provider = options?.model?.provider
             model_options = options?.effort.map(ModelOptions.init(effort:))
+        }
+    }
+    /// run の input。Hermes が画像として読むのは、最後の message の content にある `image_url` の data URL だけ。
+    private enum RunContent: Encodable {
+        case text(String)
+        case withImage(text: String, jpeg: Data)
+
+        private struct Message: Encodable {
+            let role: String
+            let content: [Part]
+        }
+        private struct Part: Encodable {
+            struct ImageURL: Encodable { let url: String }
+            let type: String
+            let text: String?
+            let image_url: ImageURL?
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .text(let text):
+                try container.encode(text)
+            case let .withImage(text, jpeg):
+                let image = Part.ImageURL(url: "data:image/jpeg;base64," + jpeg.base64EncodedString())
+                try container.encode([Message(role: "user", content: [
+                    Part(type: "text", text: text, image_url: nil),
+                    Part(type: "image_url", text: nil, image_url: image),
+                ])])
+            }
         }
     }
     /// Hermes の `model_options.reasoning`。段階は effort、オフは enabled=false。

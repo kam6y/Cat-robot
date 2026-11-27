@@ -63,7 +63,7 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
   - 端末に残すのは識別子だけ（`HermesSessionRecord`: origin、session id、受付済みの有無、受付が分からない送信、終端未確認の run id）。会話の本文は保存しない。
   - 「新しい会話を始める」は新しい session id へ切り替えるだけ。Hermes 側の削除・忘却や、前の run の停止の成功を意味しない。
   - installed Hermes で終わらない（unknown の）run は、同じ session の後続を止める。端末は自動で resolve しない。返事の期限切れ（`.replyTimedOut`: 受付の分からない送信のまま、または受け付けられた run が終わらないまま期限を過ぎた）の表示から「新しい会話を始める」で抜ける。通信断や Hermes の 429・503（`.modelUnreachable`）では続けられる会話を捨てさせないので、この出口を出さない。
-  - 体の操作（首・表情・見る）の tool は Hermes の返事からは使えない（robot の実行 bridge は繋いでいない）。
+  - 通常の返事は 1 run で完了する。Hermes の返事が端末操作を指定すると、`HermesDeviceActions` が同じターンの首と表情を予約する。首や表情を予約できたかにかかわらず、最初の返事の言葉を読み上げる。撮影を求めた場合だけ、取得結果と任意の JPEG 1 枚を同じ session の 2 回目の run に渡し、その答えを読み上げる。再送には同じ入力とキーを使い、撮影を繰り返さない。
 - **`HermesConnectionSettings`**: 接続先は https の root だけ（userinfo・path・query・fragment・IPv6 リテラルは拒否、scheme と host は小文字、443 は省く）を UserDefaults、API キーは Keychain（service `com.kamby.CatRobot.hermes`、account = origin）に置く。保存は「確かめる → キーをその origin へ → URL」の順で、キーを保存できなければ前の設定を残す。別の origin へ前のキーを送らない。通信は `HermesURLSessionTransport`（OS 標準の証明書の確認、redirect を追わない、cookie と cache なし）。
   - `models`（`HermesModelSettings`）: 設定の「返答モデル」で選ぶモデルと effort。候補は `HermesRunClient.modelCatalog`（`GET /api/model/options?include_unconfigured=false`、明示の再取得だけ `refresh=true`。ほかの一覧には切り替えない）を、返事と同じ transport で読む（`ConversationComposition.live` が共有する）。未認証の行・`unavailable_models`・空の行は除き、既定の行は `is_current` か `aliases` で解く（custom provider の `custom:<key>`）。effort は Hermes の標準の段階とオフで、`capabilities[model].reasoning == false` なら出さず、`can_disable_reasoning == false` ならオフを出さない（Hermes はモデルごとの段階を返さない）。選択は origin ごとに UserDefaults（`hermesRunOptions.<origin>`）。接続先かキーを保存・削除したら前の候補と読み込み中の結果を捨てる。通常取得の候補に無いモデルは保持し、手動で再取得した候補にも無いモデルは既定に戻し、401 を受けた接続は明示の再取得かキーの変更まで自動で読み直さない（会話の拒否の記録には触れない）。
 - **声の宛先判定**は端末の中だけで行い、そのための通信はしません。`AddresseePolicy` は間投詞だけの発話を捨て、設定の呼びかけの言葉（`SpeechVoiceSettings.wakePhrase`、初期値「キャロット」）を発話の単語の区切りに沿って、文の頭・途中・最後のどこでも照合します（読みに直して比べるので「きゃろっと」の書き起こしにも一致し、単語の途中だけの一致は除く）。言葉だけなら `.wakeOnly`、言葉を含むか、顔が向いているか、会話継続窓の中なら全文で `.accept`、それ以外は `.ignore` で、捨てた発話はどこにも送りません。
@@ -77,15 +77,15 @@ iPhone アプリ（SwiftUI、iOS 27、Swift 6 の strict concurrency）
 - **顔の描画**: `CatFaceView`、`CatFaceShapes`、`CatFaceAppearance` の 3 ファイル。
   - `scripts/render_face.sh` と `tools/face-size-tuner` も、この 3 ファイルを直接コンパイルしている。
   - そのため `MouthPose` と `FaceExpression` のケースの名前と順序は、`scripts/face-render/Stubs.swift` と揃えておく必要がある。
-- **`FaceExpressionCoordinator`**: phase と `express` tool から表情を決める（`express` は以前の Claude 構成の tool で、Hermes の返事からは呼ばれない）。
+- **`FaceExpressionCoordinator`**: 会話の状態と Hermes が選んだ `express` から表情を決める。予約した表情は読み上げの開始に合わせて表示する。
 - **カメラと視線**:
   - `ConversationCamera` と `AppleFaceCaptureSource` が前面カメラを扱う（画面の左に固定）。
-  - `LookCoordinator` は `look` tool の撮影と、画像を保持する期間を受け持つ（Hermes の返事からは呼ばれない）。
+  - `LookCoordinator` は `look` の撮影と、ターンへの画像の引き渡しを受け持つ。アプリはその場で JPEG に変換して送る。会話の履歴は画像を取得せず、利用者の発言と猫の返事を表示する。
 - **`FaceTrackingCoordinator`**: 顔の位置から追尾の指令を作る。
   - 画像の鮮度は `isFresh`（`now − capturedAt < 0.4 − 0.000001`）で判定する。
   - 顔を見失ったとみなす 10 秒（`faceLossTimeout`）は、温度による休止の 10 秒とは別の値。
 - **`MotionCoordinator`**: 首の動作の調停。
-  - 返答のジェスチャの予約（1 ターンあたりの予算は 4 秒。`move_head` tool からの予約で、Hermes の返事からは呼ばれない）、待機時の微動、追尾との調停、STOP の規則、強度（SET_LIMITS）を扱う。
+  - Hermes が `move_head` で選んだジェスチャの予約（1 ターンあたりの予算は 4 秒）、待機時の微動、追尾との調停、STOP の規則、強度（SET_LIMITS）を扱う。
   - 待機時の微動は、顔の計画からの要求（`requestIdleFaceMotion`）だけで動く。4〜10 秒ごとに乱数で動かす旧来の内蔵スケジューラは、2026-11-07 に撤去した。
 - **`RobotLink`**: BLE の通信。
   - 接続、暗号化、handshake、heartbeat、STATUS の鮮度。

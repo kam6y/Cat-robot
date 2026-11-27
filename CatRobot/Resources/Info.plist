@@ -29,7 +29,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>CaRotは、ハードに接続して動かすためにBluetoothを使用します。</string>
 	<key>NSCameraUsageDescription</key>
-	<string>顔がこちらを向いているかをiPhone内で確認して話しかけられたか判断し、顔の方向にハードを向けます。カメラの映像と画像は送信も保存もしません。</string>
+	<string>顔の向きはiPhone内で判定します。「これを見て」などの依頼に答えるため、前面カメラの写真を1枚、設定したHermesに送ります。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>CaRotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。設定で呼びかけの言葉を声で入力するときも使います。音声は端末上で処理されます。</string>
 	<key>NSLocalNetworkUsageDescription</key>

@@ -160,13 +160,43 @@ actor SteppingHermesClock: HermesClock {
 
 extension HermesHTTPRequest {
     var jsonBody: [String: String]? {
-        body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] }
+        jsonObject as? [String: String]
+    }
+    /// 文字以外の値（画像つきの input など）を含む body。
+    var jsonObject: [String: Any]? {
+        body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+}
+
+/// Hermes の返事が選んだ端末の動作を記録し、決めた結果を返す。gate があれば、そこで止まる。
+actor DeviceActionRecorder {
+    private(set) var didCancel = false
+    private func recordCancellation() { didCancel = true }
+    private(set) var plans: [HermesDeviceActions] = []
+    private(set) var turns: [MotionTurnID?] = []
+    private let feedback: HermesDeviceFeedback
+    private let gate: ConversationTestGate?
+
+    init(_ feedback: HermesDeviceFeedback, gate: ConversationTestGate? = nil) {
+        self.feedback = feedback
+        self.gate = gate
+    }
+
+    func perform(_ plan: HermesDeviceActions) async throws -> HermesDeviceFeedback {
+        plans.append(plan)
+        turns.append(MotionTurnContext.current)
+        if let gate {
+            await withTaskCancellationHandler { await gate.wait() } onCancel: { Task { await self.recordCancellation() } }
+        }
+        return feedback
     }
 }
 
 func hermesRun(_ id: String, _ status: String, output: String? = nil) -> FakeHermesServer.Reply {
-    let outputField = output.map { #","output":"\#($0)""# } ?? ""
-    return .json(200, #"{"run_id":"\#(id)","status":"\#(status)","session_id":"s"\#(outputField)}"#)
+    var fields = ["run_id": id, "status": status, "session_id": "s"]
+    fields["output"] = output
+    let data = try! JSONSerialization.data(withJSONObject: fields)
+    return .json(200, String(decoding: data, as: UTF8.self))
 }
 
 func hermesAccepted(_ id: String) -> FakeHermesServer.Reply {

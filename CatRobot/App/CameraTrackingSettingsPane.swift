@@ -25,7 +25,7 @@ struct CameraTrackingSettingsPane: View {
                             .accessibilityIdentifier(ConversationSettingsIdentifier.cameraPermissionButton.rawValue)
                     }
                 } footer: {
-                    Text("聞き取り中は前面カメラで顔の向きを確認し、こちらを向いていれば呼びかけの言葉がなくても返事をします。顔の判定はこのiPhone内だけで行い、カメラの映像と画像は送信も保存もしません。")
+                    Text("聞き取り中は前面カメラで顔の向きを確認し、こちらを向いていれば呼びかけの言葉がなくても返事をします。顔の向きはiPhone内で判定します。「これを見て」などの依頼には、前面カメラの写真を1枚Hermesに送り、返事に使います。")
                 }
             }
             if let faceTracking {
@@ -40,7 +40,7 @@ struct CameraTrackingSettingsPane: View {
                     if camera == nil, faceTracking.needsSystemSettings { openSystemSettingsButton }
                     if let preferences { TrackingAimRows(preferences: preferences) }
                 } header: { Text("顔追尾（ハードの接続が必要）") } footer: {
-                    Text("映像はこのiPhone内だけで処理し、保存・送信しません。補正は左側のカメラと画面中央のずれを直します（iPhoneに自動保存）。")
+                    Text("顔追尾の映像はiPhone内で処理します。補正は左側のカメラと画面中央のずれを直します（iPhoneに自動保存）。")
                 }
             }
         }

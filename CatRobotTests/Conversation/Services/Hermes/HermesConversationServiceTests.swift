@@ -19,11 +19,14 @@ final class HermesConversationServiceTests: XCTestCase {
                              deadline: Duration = .seconds(10),
                              sessionIDs: [String] = ["catrobot-s1", "catrobot-s2", "catrobot-s3"],
                              keys: [UUID] = (0..<5).map { _ in UUID() },
-                             clock: any HermesClock = SteppingHermesClock()) -> HermesConversationService {
+                             clock: any HermesClock = SteppingHermesClock(),
+                             device: DeviceActionRecorder? = nil) -> HermesConversationService {
         let resolved = connection ?? self.connection
         let current: @Sendable () async -> HermesConnection?
         if let provider { current = provider } else { current = { resolved } }
         let ids = Sequenced(sessionIDs), uuids = Sequenced(keys)
+        var deviceActions: (@Sendable (HermesDeviceActions) async throws -> HermesDeviceFeedback)?
+        if let device { deviceActions = { try await device.perform($0) } }
         return HermesConversationService(
             connection: current,
             transport: server,
@@ -31,7 +34,8 @@ final class HermesConversationServiceTests: XCTestCase {
             clock: clock,
             timing: HermesConversationTiming(pollInterval: .seconds(1), turnDeadline: deadline, submitRetryDelay: .seconds(1)),
             makeSessionID: { ids.next() },
-            makeIdempotencyKey: { uuids.next() })
+            makeIdempotencyKey: { uuids.next() },
+            deviceActions: deviceActions)
     }
 
     private func continued(_ sessionID: String = "catrobot-old", unsettled: [String] = []) -> InMemoryHermesSessionRecordStore {
@@ -665,6 +669,272 @@ final class HermesConversationServiceTests: XCTestCase {
         let restarted = makeService(FakeHermesServer(history: [history]), records: records)
         let transcript = try await restarted.transcript()
         XCTAssertEqual(transcript, [.init(speaker: .user, text: shaped), .init(speaker: .cat, text: "なるほど")])
+    }
+
+    // MARK: - 端末の動作（look・move_head・express）
+
+    private static let lookAndSmile = "CAROT_ACTIONS\n" + #"{"look":true,"express":{"expression":"happy"}}"#
+    private static let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0xFF, 0xD9])
+
+    /// 制御の返事は読み上げず、端末で 1 回だけ実行して、同じ session に続きを 1 回送る。続きの返事だけを話す。
+    func testAControlReplyRunsTheDeviceOnceAndOnlyTheContinuationIsSpoken() async throws {
+        let keys = (0..<3).map { _ in UUID() }
+        let device = DeviceActionRecorder(HermesDeviceFeedback(cameraMessage: "画像を取得しました", jpeg: Self.jpeg))
+        let server = FakeHermesServer(runs: [hermesAccepted("run-1"), hermesAccepted("run-2")],
+                                      polls: ["run-1": [hermesRun("run-1", "completed", output: Self.lookAndSmile)],
+                                              "run-2": [hermesRun("run-2", "completed", output: "青いコップが見えるよ")]])
+        let service = makeService(server, keys: keys, device: device)
+        let turn = MotionTurnID()
+        let outputs = try await MotionTurnContext.$current.withValue(turn) {
+            try await collectReplies(try await service.streamReply(to: "これ何？"))
+        }
+        XCTAssertEqual(outputs, ["青いコップが見えるよ"])
+        let plans = await device.plans
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertEqual(plans.first?.look, true)
+        XCTAssertEqual(plans.first?.express?.expression, "happy")
+        let turns = await device.turns
+        XCTAssertEqual(turns, [turn], "the device runs inside the reply turn")
+
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 2)
+        let first = try XCTUnwrap(posts.first?.jsonObject), second = try XCTUnwrap(posts.last?.jsonObject)
+        XCTAssertEqual(first["input"] as? String, "これ何？")
+        XCTAssertEqual(first["instructions"] as? String, HermesConversationInstructions.devicePersona)
+        XCTAssertEqual(second["session_id"] as? String, first["session_id"] as? String)
+        XCTAssertEqual(posts.first?.headers["Idempotency-Key"], keys[0].uuidString)
+        XCTAssertEqual(posts.last?.headers["Idempotency-Key"], keys[1].uuidString)
+        XCTAssertEqual(second["instructions"] as? String, HermesConversationInstructions.continuation)
+
+        let messages = try XCTUnwrap(second["input"] as? [[String: Any]])
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?["role"] as? String, "user")
+        let parts = try XCTUnwrap(messages.first?["content"] as? [[String: Any]])
+        XCTAssertEqual(parts.map { $0["type"] as? String }, ["text", "image_url"])
+        let text = try XCTUnwrap(parts.first?["text"] as? String)
+        XCTAssertEqual(text.split(separator: "\n").first.map(String.init), "CAROT_RESULT " + keys[1].uuidString)
+        XCTAssertTrue(text.contains("画像を取得しました"))
+        let image = try XCTUnwrap((parts.last?["image_url"] as? [String: Any])?["url"] as? String)
+        XCTAssertEqual(image, "data:image/jpeg;base64," + Self.jpeg.base64EncodedString())
+    }
+
+    func testNeckAndFaceRideWithTheFirstReply() async throws {
+        let control = "CAROT_ACTIONS\n" + #"{"move_head":{"gesture":"nod","intensity":"small"},"express":{"expression":"happy"}}"#
+            + "\nうん、いいね。\nまた話そう。"
+        let device = DeviceActionRecorder(HermesDeviceFeedback())
+        let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
+                                      polls: ["run-1": [hermesRun("run-1", "completed", output: control)]])
+        let outputs = try await collectReplies(try await makeService(server, device: device).streamReply(to: "これでいい？"))
+        XCTAssertEqual(outputs, ["うん、いいね。\nまた話そう。"])
+        let plans = await device.plans
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertEqual(plans.first?.moveHead?.gesture, "nod")
+        XCTAssertEqual(plans.first?.express?.expression, "happy")
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 1)
+    }
+
+    func testUnavailableCameraSendsOnlyTheReasonAndStillAnswers() async throws {
+        let device = DeviceActionRecorder(HermesDeviceFeedback(cameraMessage: "カメラを許可してください。"))
+        let server = FakeHermesServer(runs: [hermesAccepted("first"), hermesAccepted("answer")],
+                                      polls: ["first": [hermesRun("first", "completed", output: Self.lookAndSmile)],
+                                              "answer": [hermesRun("answer", "completed", output: "カメラを許可してね。")]])
+        let outputs = try await collectReplies(try await makeService(server, device: device).streamReply(to: "見て"))
+        XCTAssertEqual(outputs, ["カメラを許可してね。"])
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 2)
+        XCTAssertTrue(try XCTUnwrap(posts.last?.jsonBody?["input"]).contains("カメラを許可してください。"))
+    }
+
+    /// 動作が無い返事では端末を呼ばず、続きも送らない。入力は今までどおり文字だけ。
+    func testAnOrdinaryReplyNeverTouchesTheDevice() async throws {
+        let device = DeviceActionRecorder(HermesDeviceFeedback())
+        let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
+                                      polls: ["run-1": [hermesRun("run-1", "completed", output: "CAROT_ACTIONS の話？")]])
+        let service = makeService(server, device: device)
+        let outputs = try await collectReplies(try await service.streamReply(to: "ねえ"))
+        XCTAssertEqual(outputs, ["CAROT_ACTIONS の話？"])
+        let plans = await device.plans
+        XCTAssertTrue(plans.isEmpty)
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 1)
+        XCTAssertEqual(posts.first?.jsonObject?["input"] as? String, "ねえ")
+    }
+
+    /// 崩れた制御、言葉の無い首・表情の制御、続きの返事にまた出た制御、端末を持たない service に来た制御は、
+    /// 話さずに失敗にする（look 以外は何も動かさない）。
+    func testControlThatCannotBeServedFailsWithoutSpeakingIt() async throws {
+        let cases: [(output: String, continuation: String?, device: Bool, performed: Int, posts: Int)] = [
+            ("CAROT_ACTIONS\nnot json\nこんにちは", nil, true, 0, 1),
+            ("CAROT_ACTIONS\n" + #"{"express":{"expression":"sorry"}}"#, nil, true, 0, 1),
+            (Self.lookAndSmile, Self.lookAndSmile, true, 1, 2),
+            (Self.lookAndSmile, nil, false, 0, 1),
+        ]
+        for (output, continuation, hasDevice, performed, postCount) in cases {
+            let device = DeviceActionRecorder(HermesDeviceFeedback())
+            var polls = ["run-1": [hermesRun("run-1", "completed", output: output)]]
+            if let continuation { polls["run-2"] = [hermesRun("run-2", "completed", output: continuation)] }
+            let server = FakeHermesServer(runs: [hermesAccepted("run-1"), hermesAccepted("run-2")], polls: polls)
+            let service = makeService(server, device: hasDevice ? device : nil)
+            do {
+                _ = try await collectReplies(try await service.streamReply(to: "ねえ"))
+                XCTFail("\(output) / \(continuation ?? "-") must not be spoken")
+            } catch {
+                XCTAssertEqual(error as? ConversationServiceError, .modelGenerationFailed)
+            }
+            let plans = await device.plans
+            XCTAssertEqual(plans.count, performed)
+            let posts = await server.runPosts
+            XCTAssertEqual(posts.count, postCount)
+            if !hasDevice {
+                XCTAssertEqual(posts.first?.jsonObject?["instructions"] as? String, HermesConversationInstructions.persona,
+                               "without a device the persona does not offer actions")
+            }
+        }
+    }
+
+    /// 端末の動作の間に取り消されたら、続きを送らない。
+    func testCancellingDuringTheDeviceStepSendsNoContinuation() async throws {
+        let gate = ConversationTestGate()
+        let device = DeviceActionRecorder(HermesDeviceFeedback(cameraMessage: "画像を取得しました", jpeg: Self.jpeg), gate: gate)
+        let server = FakeHermesServer(runs: [hermesAccepted("run-1"), hermesAccepted("run-2")],
+                                      polls: ["run-1": [hermesRun("run-1", "completed", output: Self.lookAndSmile)],
+                                              "run-2": [hermesRun("run-2", "completed", output: "見えたよ")]])
+        let service = makeService(server, device: device)
+        let stream = try await service.streamReply(to: "見て")
+        let consumer = Task { try await collectReplies(stream) }
+        await gate.waitUntilEntered()
+        consumer.cancel()
+        for _ in 0..<100 where !(await device.didCancel) { try await Task.sleep(for: .milliseconds(5)) }
+        let didCancel = await device.didCancel
+        XCTAssertTrue(didCancel, "cancelling the caller must interrupt an in-flight capture")
+        await gate.open()
+        _ = try? await consumer.value
+        try await Task.sleep(for: .milliseconds(100))
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 1, "a cancelled turn never sends the device result")
+    }
+
+    /// 続きの送信が届いたか分からないときは、同じ key と同じ body で送り直す（Hermes の idempotency に任せる）。
+    func testAnUncertainContinuationIsResentWithTheSameKeyAndBody() async throws {
+        let device = DeviceActionRecorder(HermesDeviceFeedback(cameraMessage: "画像を取得しました", jpeg: Self.jpeg))
+        let server = FakeHermesServer(runs: [hermesAccepted("run-1"), .transportFailure, hermesAccepted("run-2")],
+                                      polls: ["run-1": [hermesRun("run-1", "completed", output: Self.lookAndSmile)],
+                                              "run-2": [hermesRun("run-2", "completed", output: "見えたよ")]])
+        let service = makeService(server, device: device)
+        let outputs = try await collectReplies(try await service.streamReply(to: "見て"))
+        XCTAssertEqual(outputs, ["見えたよ"])
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 3)
+        XCTAssertEqual(posts[1].headers["Idempotency-Key"], posts[2].headers["Idempotency-Key"])
+        XCTAssertEqual(posts[1].body, posts[2].body)
+        let plans = await device.plans
+        XCTAssertEqual(plans.count, 1, "resending never repeats the device actions")
+    }
+
+    /// 履歴では、制御の返事と、それに続く端末の結果の行を出さない。利用者の発言は、同じ形の文字でもそのまま出す。
+    func testHistoryHidesOnlyTheDeviceExchange() async throws {
+        let id = UUID()
+        let example = "CAROT_RESULT \(id.uuidString)\nこの書式の意味を教えて"
+        let result = HermesDeviceResult.text(id: id, cameraMessage: "画像を取得しました。") + "\n\n[Image attached at: /cache/api_1.jpg]"
+        let history = try storedHistory([
+            ["role": "user", "content": example],
+            ["role": "user", "content": "これ何？"],
+            ["role": "assistant", "content": Self.lookAndSmile],
+            ["role": "tool", "content": "サーバー内部の処理"],
+            ["role": "user", "content": result],
+            ["role": "assistant", "content": "青いコップが見えるよ"],
+            ["role": "user", "content": result],
+            ["role": "assistant", "content": Self.lookAndSmile],
+            ["role": "user", "content": "続きが届かなかった次の発言"],
+            ["role": "assistant", "content": "なあに？"],
+            ["role": "user", "content": "うなずいて"],
+            ["role": "assistant", "content": "CAROT_ACTIONS\n" + #"{"move_head":{"gesture":"nod","intensity":"small"}}"# + "\nはい、どうぞ。"],
+            ["role": "assistant", "content": "CAROT_ACTIONS\nnot json\n話していない言葉"],
+            ["role": "user", "content": "見て"],
+            ["role": "assistant", "content": Self.lookAndSmile],
+            ["role": "tool", "content": "サーバー内部の処理"],
+            ["role": "user", "content": result],
+            ["role": "assistant", "content": "CAROT_ACTIONS\n" + #"{"express":{"expression":"happy"}}"# + "\n二重の指示で棄却した返事"],
+        ])
+        let service = makeService(FakeHermesServer(history: [history]), records: continued("catrobot-s1"))
+        let transcript = try await service.transcript()
+        XCTAssertEqual(transcript, [
+            .init(speaker: .user, text: example),
+            .init(speaker: .user, text: "これ何？"),
+            .init(speaker: .cat, text: "青いコップが見えるよ"),
+            .init(speaker: .user, text: result),
+            .init(speaker: .user, text: "続きが届かなかった次の発言"),
+            .init(speaker: .cat, text: "なあに？"),
+            .init(speaker: .user, text: "うなずいて"),
+            .init(speaker: .cat, text: "はい、どうぞ。"),
+            .init(speaker: .user, text: "見て"),
+        ])
+
+        // 読んだページが結果の行から始まるとき、直前の制御はページの外にある。
+        let page = try storedHistory([["role": "user", "content": result], ["role": "assistant", "content": "見えたよ"]])
+        let paged = makeService(FakeHermesServer(history: [page]), records: continued("catrobot-s1"))
+        let pagedTranscript = try await paged.transcript()
+        XCTAssertEqual(pagedTranscript, [.init(speaker: .cat, text: "見えたよ")])
+    }
+
+    /// 表示するのは最新の 100 行だけ。その前の 20 行は、境界の状態を知るためだけに読む。
+    /// 写真の続きで棄却した制御が表示の先頭に来ても、その言葉は出さない。本物の首の返事は、普通の境界ならそのまま残す。
+    func testHistoryReadsContextRowsBeforeTheDisplayedRows() async throws {
+        func chat(_ count: Int, _ tag: String) -> [[String: String]] {
+            (0..<count).flatMap { i in
+                [["role": "user", "content": "\(tag)の発言\(i)"], ["role": "assistant", "content": "\(tag)の返事\(i)"]]
+            }
+        }
+        func shown(_ rows: [[String: String]]) -> [HermesTranscriptEntry] {
+            rows.map { HermesTranscriptEntry(speaker: $0["role"] == "user" ? .user : .cat, text: $0["content"] ?? "") }
+        }
+        let result = HermesDeviceResult.text(id: UUID(), cameraMessage: "画像を取得しました。") + "\n\n[Image attached at: /cache/api_1.jpg]"
+        let tail = chat(49, "後") + [["role": "user", "content": "最後の発言"]]
+        // 前の 20 行の最後が写真の結果の行で、表示の先頭が棄却した続きの制御。
+        let rejected = chat(8, "前") + [
+            ["role": "user", "content": "見て"],
+            ["role": "assistant", "content": Self.lookAndSmile],
+            ["role": "tool", "content": "サーバー内部の処理"],
+            ["role": "user", "content": result],
+            ["role": "assistant", "content": "CAROT_ACTIONS\n" + #"{"express":{"expression":"happy"}}"# + "\n二重の指示で棄却した返事"],
+        ] + tail
+        // 前の 20 行の最後が利用者の発言で、表示の先頭が本物の首の返事。
+        let nod = [["role": "tool", "content": "サーバー内部の処理"]] + chat(9, "前") + [
+            ["role": "user", "content": "うなずいて"],
+            ["role": "assistant", "content": "CAROT_ACTIONS\n" + #"{"move_head":{"gesture":"nod","intensity":"small"}}"# + "\nはい、どうぞ。"],
+        ] + tail
+        XCTAssertEqual(rejected.count, 120)
+        XCTAssertEqual(nod.count, 120)
+
+        let server = FakeHermesServer(history: [try storedHistory(rejected), try storedHistory(nod)])
+        let service = makeService(server, records: continued("catrobot-s1"))
+        let afterRejected = try await service.transcript()
+        XCTAssertEqual(afterRejected, shown(tail))
+        let afterNod = try await service.transcript()
+        XCTAssertEqual(afterNod, [HermesTranscriptEntry(speaker: .cat, text: "はい、どうぞ。")] + shown(tail))
+        let requests = await server.requests
+        let limits = requests.filter { $0.url.path.hasSuffix("/messages") }.map { request in
+            URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "limit" }?.value
+        }
+        XCTAssertEqual(limits, ["120", "120"])
+    }
+
+    /// 前の行が無いか、tool の行だけで状態が分からないときは、先頭の首・表情の制御を出さない（話したか分からない）。
+    /// 普通の返事は先頭でもそのまま出す。
+    func testAnUnknownLeadingControlIsNotShown() async throws {
+        let unknownStart = try storedHistory([
+            ["role": "tool", "content": "サーバー内部の処理"],
+            ["role": "assistant", "content": "CAROT_ACTIONS\n" + #"{"express":{"expression":"happy"}}"# + "\n境界で分からない返事"],
+            ["role": "user", "content": "次の発言"],
+            ["role": "assistant", "content": "うん"],
+        ])
+        let ordinaryStart = try storedHistory([["role": "assistant", "content": "前の返事"], ["role": "user", "content": "次"]])
+        let service = makeService(FakeHermesServer(history: [unknownStart, ordinaryStart]), records: continued("catrobot-s1"))
+        let unknown = try await service.transcript()
+        XCTAssertEqual(unknown, [.init(speaker: .user, text: "次の発言"), .init(speaker: .cat, text: "うん")])
+        let ordinary = try await service.transcript()
+        XCTAssertEqual(ordinary, [.init(speaker: .cat, text: "前の返事"), .init(speaker: .user, text: "次")])
     }
 
     // MARK: - 履歴

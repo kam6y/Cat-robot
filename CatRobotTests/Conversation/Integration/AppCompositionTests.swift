@@ -3,6 +3,39 @@ import XCTest
 
 @MainActor
 final class AppCompositionTests: XCTestCase {
+    func testLiveReplyUsesHermesExpressionAtSpeechStartAndKeepsSpeakingWithADisconnectedNeck() async throws {
+        let defaults = UserDefaults(suiteName: "composition-device-\(UUID().uuidString)")!
+        let keys = HermesKeyStoresFake()
+        let answer = """
+        CAROT_ACTIONS
+        {"move_head":{"gesture":"nod","intensity":"small"},"express":{"expression":"happy"}}
+        こんにちは。
+        """
+        let server = FakeHermesServer(runs: [hermesAccepted("greeting")],
+                                      polls: ["greeting": [hermesRun("greeting", "completed", output: answer)]])
+        let settings = HermesConnectionSettings(defaults: defaults, credentials: { keys.store(for: $0) }, transport: server)
+        let composition = ConversationComposition.live(voiceSettings: SpeechVoiceSettings(defaults: defaults),
+            connectionSettings: settings, sessionRecords: InMemoryHermesSessionRecordStore(), robotTransport: FakeRobotTransport())
+        try await settings.save(endpointText: "https://hermes.test:8443", apiKey: "client-key")
+        let dependencies = composition.dependencies
+        dependencies.faceExpressions.setVisible(true)
+        dependencies.faceExpressions.setConversationPhase(.thinking)
+        let turn = MotionTurnID()
+        dependencies.replyTurnObserver.beginTurn(turn)
+        let speech = try await MotionTurnContext.$current.withValue(turn) {
+            var last = ""
+            for try await text in try await dependencies.reply.streamReply(to: "笑顔でうなずいて") { last = text }
+            return last
+        }
+        let posts = await server.runPosts
+        XCTAssertEqual(posts.count, 1)
+        XCTAssertEqual(speech, "こんにちは。", "an unavailable neck does not interrupt the spoken reply")
+        XCTAssertNil(dependencies.faceExpressions.heldExpression)
+        dependencies.replyTurnObserver.speechStarted(turn)
+        XCTAssertEqual(dependencies.faceExpressions.heldExpression, .happy)
+        await dependencies.serviceTeardown()
+    }
+
     func testLiveCompositionIsInertAndUsesOneExpressionCoordinator() async {
         let clock = ManualRobotClock(), transport = FakeRobotTransport()
         let source = FakeFaceCaptureSource(authorization: .notDetermined)

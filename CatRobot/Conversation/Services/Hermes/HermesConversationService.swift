@@ -25,6 +25,8 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
     private let timing: HermesConversationTiming
     private let makeSessionID: @Sendable () -> String
     private let makeIdempotencyKey: @Sendable () -> UUID
+    /// 返事が頼んだ首・表情・カメラを端末で実行する。nil なら動作を頼ませない（persona もそう伝える）。
+    private let deviceActions: (@Sendable (HermesDeviceActions) async throws -> HermesDeviceFeedback)?
     private var load: Task<HermesSessionRecord?, Never>?
     private var loaded = false
     private var record: HermesSessionRecord?
@@ -60,7 +62,9 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
          clock: any HermesClock = SystemHermesClock(),
          timing: HermesConversationTiming = HermesConversationTiming(),
          makeSessionID: @escaping @Sendable () -> String = { "catrobot-" + UUID().uuidString.lowercased() },
-         makeIdempotencyKey: @escaping @Sendable () -> UUID = { UUID() }) {
+         makeIdempotencyKey: @escaping @Sendable () -> UUID = { UUID() },
+         deviceActions: (@Sendable (HermesDeviceActions) async throws -> HermesDeviceFeedback)? = nil) {
+        self.deviceActions = deviceActions
         self.connection = connection
         self.runOptions = runOptions
         self.transport = transport
@@ -140,26 +144,56 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
 
     private func generate(_ prompt: String, key: UUID, operation: HermesReplyOperation,
                           startingAt start: Date, into continuation: AsyncThrowingStream<String, Error>.Continuation) async {
-        let connection = operation.connection
         let deadline = start.addingTimeInterval(turnLimit)
         let timer = Task { [weak self, clock] in
             do { try await clock.sleepUntilTurnDeadline(deadline) } catch { return }
             await self?.expire(operation, into: continuation)
         }
-        defer { timer.cancel() }
-        var submissionPending = false
-        var hadUncertainAttempt = false
-        defer { if active === operation { releaseActiveTurn() } }
+        defer {
+            timer.cancel()
+            if active === operation { releaseActiveTurn() }
+        }
         do {
-            // Reserve most of the turn for submission and polling. Keep any run whose end is still unknown.
             try await cleanUpRuns(for: operation, startingAt: start)
-            guard isCurrent(operation.selection), !operation.isCancelled else { throw ConversationServiceError.cancelled }
-            guard refusalRevision(for: connection) == nil else { throw ConversationServiceError.modelUnavailable(.hermesUnauthorized) }
-            pendingSubmissions.insert(ObjectIdentifier(operation))
-            submissionPending = true
-            await updateRecord(for: operation) { $0.hasUncertainSubmission = true }
-            var accepted: HermesRunHandle?
-            while accepted == nil {
+            let input = HermesTurnLeg(input: prompt, image: nil, key: key,
+                                      instructions: deviceActions == nil ? HermesConversationInstructions.persona
+                                                                         : HermesConversationInstructions.devicePersona)
+            var output = try await submitAndAwait(input, for: operation, startingAt: start)
+            if let control = try HermesDeviceActions.parse(output) {
+                guard let deviceActions else { throw ConversationServiceError.modelGenerationFailed }
+                let feedback = try await performDevice(control.actions, perform: deviceActions, for: operation, startingAt: start)
+                if control.actions.look == true {
+                    output = try await submitAndAwait(followUp(with: feedback), for: operation, startingAt: start)
+                    guard try HermesDeviceActions.parse(output) == nil else { throw ConversationServiceError.modelGenerationFailed }
+                } else {
+                    output = control.speech
+                }
+            }
+            guard await withinDeadline(start) else { throw ConversationServiceError.replyTimedOut }
+            guard isCurrent(operation.selection), operation.claimAdoption() else { throw ConversationServiceError.cancelled }
+            continuation.yield(Self.speechPrefix(output))
+            setState(.ready)
+            continuation.finish()
+        } catch {
+            let onTime = await withinDeadline(start)
+            if !onTime || error as? ConversationServiceError == .replyTimedOut {
+                expire(operation, into: continuation)
+            }
+            continuation.finish(throwing: operation.isCancelled ? ConversationServiceError.cancelled : error)
+        }
+    }
+
+    /// 受理が不明な POST だけ同じ入力とキーで再送し、受理された run の終端を待つ。
+    private func submitAndAwait(_ leg: HermesTurnLeg, for operation: HermesReplyOperation, startingAt start: Date) async throws -> String {
+        let connection = operation.connection
+        guard isCurrent(operation.selection), !operation.isCancelled else { throw ConversationServiceError.cancelled }
+        try ensureNotRefused(connection)
+        pendingSubmissions.insert(ObjectIdentifier(operation))
+        await updateRecord(for: operation) { $0.hasUncertainSubmission = true }
+        var hadUncertainAttempt = false
+        let accepted: HermesRunHandle
+        do {
+            while true {
                 guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
                 guard await withinDeadline(start) else { throw ConversationServiceError.replyTimedOut }
                 guard isCurrent(operation.selection), !operation.isCancelled else { throw ConversationServiceError.cancelled }
@@ -171,86 +205,101 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                     needsFreshHistory = false
                 }
                 do {
-                    accepted = try await operation.client.createRun(input: prompt, sessionID: operation.sessionID,
-                                                                    idempotencyKey: key,
-                                                                    instructions: HermesConversationInstructions.persona,
-                                                                    options: operation.options, isolation: self)
+                    accepted = try await operation.client.createRun(input: leg.input, sessionID: operation.sessionID,
+                                                                    idempotencyKey: leg.key, instructions: leg.instructions,
+                                                                    options: operation.options, image: leg.image, isolation: self)
+                    break
                 } catch {
                     if Self.isDefiniteRefusal(error) {
                         if error as? HermesClientError == .unauthorized { noteRefusal(of: connection) }
                         throw Self.present(error)
                     }
                     hadUncertainAttempt = true
-                    // Retrying an uncertain, cancelled POST could start work that was never accepted.
                     guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
                     try await clock.sleep(for: timing.submitRetryDelay)
                 }
             }
-            guard let accepted else { throw ConversationServiceError.modelGenerationFailed }
-            submissionPending = false
-            await finishSubmission(for: operation, accepted: accepted.runID, uncertain: false)
-            // Publish the id only after its durable bookkeeping, so cancellation cannot settle it before it is recorded.
-            operation.accept(accepted.runID)
-            guard !operation.isCancelled else {
-                // The submit worker may already be cancelled. Use the same one-shot stop as stream cancellation.
-                scheduleStop(for: operation)
-                throw ConversationServiceError.cancelled
-            }
-            while await withinDeadline(start) {
-                // 待ちの間に取り消されたら、次の照会を出さない。
-                guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
-                try ensureNotRefused(connection)
-                let result: HermesRunState
-                do {
-                    result = try await operation.client.run(id: accepted.runID)
-                } catch HermesClientError.runNotFound {
-                    operation.markTerminal()
-                    await settle(accepted.runID, for: operation)
-                    throw ConversationServiceError.modelGenerationFailed
-                } catch {
-                    if error as? HermesClientError == .unauthorized { try throwRefusal(of: connection) }
-                    guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
-                    try await clock.sleep(for: timing.pollInterval)
-                    continue
-                }
-                if result.status.isTerminal {
-                    operation.markTerminal()
-                    await settle(accepted.runID, for: operation)
-                    guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
-                    guard result.status == .completed,
-                          let output = result.output?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty else {
-                        throw ConversationServiceError.modelGenerationFailed
-                    }
-                    let spoken = Self.speechPrefix(output)
-                    guard await withinDeadline(start) else { throw ConversationServiceError.replyTimedOut }
-                    guard isCurrent(operation.selection), operation.claimAdoption() else {
-                        throw ConversationServiceError.cancelled
-                    }
-                    continuation.yield(spoken)
-                    setState(.ready)
-                    continuation.finish()
-                    return
-                }
-                guard await withinDeadline(start) else { throw ConversationServiceError.replyTimedOut }
-                guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
-                if result.status.rawValue == "waiting_for_approval" {
-                    await stop(operation)
-                    throw ConversationServiceError.modelGenerationFailed
-                }
-                try await clock.sleep(for: timing.pollInterval)
-            }
-            throw ConversationServiceError.replyTimedOut
         } catch {
-            let onTime = await withinDeadline(start)
-            if !onTime || error as? ConversationServiceError == .replyTimedOut {
-                expire(operation, into: continuation)
+            await finishSubmission(for: operation, accepted: nil, uncertain: hadUncertainAttempt)
+            throw error
+        }
+        await finishSubmission(for: operation, accepted: accepted.runID, uncertain: false)
+        // Publish the id after the durable save so a late acceptance can still be stopped.
+        operation.accept(accepted.runID)
+        guard !operation.isCancelled else {
+            scheduleStop(for: operation)
+            throw ConversationServiceError.cancelled
+        }
+        return try await finalOutput(of: accepted.runID, for: operation, startingAt: start)
+    }
+
+    /// run の終端まで poll し、完了した出力を返す。終端を見たら、その run は stop の対象と記録から外す。
+    private func finalOutput(of runID: String, for operation: HermesReplyOperation, startingAt start: Date) async throws -> String {
+        let connection = operation.connection
+        while await withinDeadline(start) {
+            // 待ちの間に取り消されたら、次の照会を出さない。
+            guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
+            try ensureNotRefused(connection)
+            let result: HermesRunState
+            do {
+                result = try await operation.client.run(id: runID)
+            } catch HermesClientError.runNotFound {
+                operation.markTerminal()
+                await settle(runID, for: operation)
+                throw ConversationServiceError.modelGenerationFailed
+            } catch {
+                if error as? HermesClientError == .unauthorized { try throwRefusal(of: connection) }
+                guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
+                try await clock.sleep(for: timing.pollInterval)
+                continue
             }
-            if submissionPending {
-                await finishSubmission(for: operation, accepted: nil, uncertain: hadUncertainAttempt)
+            if result.status.isTerminal {
+                operation.markTerminal()
+                await settle(runID, for: operation)
+                guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
+                guard result.status == .completed,
+                      let output = result.output?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty else {
+                    throw ConversationServiceError.modelGenerationFailed
+                }
+                return output
             }
-            continuation.finish(throwing: operation.isCancelled ? ConversationServiceError.cancelled : error)
+            guard await withinDeadline(start) else { throw ConversationServiceError.replyTimedOut }
+            guard !operation.isCancelled else { throw ConversationServiceError.cancelled }
+            if result.status.rawValue == "waiting_for_approval" {
+                await stop(operation)
+                throw ConversationServiceError.modelGenerationFailed
+            }
+            try await clock.sleep(for: timing.pollInterval)
+        }
+        throw ConversationServiceError.replyTimedOut
+    }
+
+    /// 返事が頼んだ動作を、そのターンのうちに 1 回だけ実行する。古いターン・取消・期限切れなら何も動かさない。
+    private func performDevice(_ actions: HermesDeviceActions,
+                               perform: @escaping @Sendable (HermesDeviceActions) async throws -> HermesDeviceFeedback,
+                               for operation: HermesReplyOperation, startingAt start: Date) async throws -> HermesDeviceFeedback {
+        guard await withinDeadline(start) else { throw ConversationServiceError.replyTimedOut }
+        guard isCurrent(operation.selection), !operation.isCancelled else { throw ConversationServiceError.cancelled }
+        try Task.checkCancellation()
+        do {
+            return try await operation.performDevice { try await perform(actions) }
+        } catch is CancellationError {
+            throw ConversationServiceError.cancelled
+        } catch {
+            return HermesDeviceFeedback(cameraMessage: "今はカメラの画像を取得できません。")
         }
     }
+
+    private func followUp(with feedback: HermesDeviceFeedback) -> HermesTurnLeg {
+        let oversized = (feedback.jpeg?.count ?? 0) > Self.maximumImageBytes
+        let message = oversized ? "画像が大きすぎるため送れませんでした。" : (feedback.cameraMessage ?? "画像を取得できませんでした。")
+        let key = makeIdempotencyKey()
+        return HermesTurnLeg(input: HermesDeviceResult.text(id: key, cameraMessage: message),
+                             image: oversized ? nil : feedback.jpeg, key: key, instructions: HermesConversationInstructions.continuation)
+    }
+
+    /// Hermes の API server は body を 10 MB までしか受けない。base64 で 4/3 倍になる分と本文の余裕を残す。
+    private static let maximumImageBytes = 6_000_000
 
     private func expire(_ operation: HermesReplyOperation,
                         into continuation: AsyncThrowingStream<String, Error>.Continuation) {
@@ -563,7 +612,8 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard isCurrent(selected, tipRevision: selected.tipRevision) else { return nil }
         do {
             try ensureNotRefused(current)
-            let history = try await client(current).history(sessionID: snapshot.sessionID)
+            let history = try await client(current).history(
+                sessionID: snapshot.sessionID, limit: fromTranscript ? Self.transcriptRows + Self.transcriptContextRows : 100)
             guard isCurrent(selected, tipRevision: selected.tipRevision), var updated = record else { return nil }
             try Task.checkCancellation()
             if fromTranscript, updated.sessionID != history.sessionID,
@@ -736,18 +786,67 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard let end = prefix.lastIndex(where: { "。！？!?\n".contains($0) }) else { return prefix }
         return String(prefix[...end])
     }
+    /// 履歴画面に出すのは最新の `transcriptRows` 行。その前の `transcriptContextRows` 行は、境界の状態を知るためだけに読む
+    /// （写真の頼み・結果・答えのやり取りは、間に Hermes の tool の行が入っても、ページの境界をまたぐことがある）。
+    private static let transcriptRows = 100
+    private static let transcriptContextRows = 20
+
     /// Hermes の履歴を表示の行にする。利用者の発言と猫の最終の返事だけを、届いた文字のまま並べる。
+    /// 制御の行は話していないので出さない（首・表情の返事は言葉の部分だけ、look の返事と見た結果の行は出さない）。
     private static func decodeHistory(_ history: HermesSessionHistory) -> [HermesTranscriptEntry] {
-        history.messages.compactMap { message -> HermesTranscriptEntry? in
+        // 読んだ範囲の先頭では、直前の行が分からない（撮影の頼みが前のページにあることもある）。
+        enum PhotoExchange { case unknown, ordinary, awaitingResult, awaitingAnswer }
+        var photo: PhotoExchange = .unknown
+        let firstShown = max(0, history.messages.count - transcriptRows)
+        var entries: [HermesTranscriptEntry] = []
+        for (index, message) in history.messages.enumerated() {
             guard !message.hasToolCalls, message.displayKind != "hidden",
-                  let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+                  let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { continue }
+            let entry: HermesTranscriptEntry?
             switch message.role {
-            case "user": return HermesTranscriptEntry(speaker: .user, text: text)
-            case "assistant": return HermesTranscriptEntry(speaker: .cat, text: text)
-            default: return nil
+            case "user":
+                if (photo == .unknown || photo == .awaitingResult), HermesDeviceResult.isResult(text) {
+                    photo = .awaitingAnswer
+                    entry = nil
+                } else {
+                    photo = .ordinary
+                    entry = HermesTranscriptEntry(speaker: .user, text: text)
+                }
+            case "assistant":
+                let previous = photo
+                photo = .ordinary
+                do {
+                    if let control = try HermesDeviceActions.parse(text) {
+                        if previous == .awaitingAnswer {
+                            entry = nil  // 写真の答えの位置の制御は、棄却して話していない。
+                        } else if control.actions.look == true {
+                            photo = .awaitingResult
+                            entry = nil
+                        } else if previous == .unknown {
+                            entry = nil  // 直前が分からない先頭の首・表情は、写真の答えとして棄却したものかもしれない。
+                        } else {
+                            entry = HermesTranscriptEntry(speaker: .cat, text: control.speech)
+                        }
+                    } else {
+                        entry = HermesTranscriptEntry(speaker: .cat, text: text)
+                    }
+                } catch {
+                    entry = nil
+                }
+            default: continue
             }
+            if index >= firstShown, let entry { entries.append(entry) }
         }
+        return entries
     }
+}
+
+/// 1 ターンの中の 1 回の run（発話か、端末の結果を渡す続き）。届いたか分からない送信は同じ key と同じ body で送り直す。
+private struct HermesTurnLeg {
+    let input: String
+    let image: Data?
+    let key: UUID
+    let instructions: String
 }
 
 private struct HermesRecordSelection: Sendable {
@@ -768,6 +867,7 @@ private final class HermesReplyOperation: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
     private var runID: String?
+    private var deviceTask: Task<HermesDeviceFeedback, Error>?
     private var stopClaimed = false
     init(client: HermesRunClient, connection: HermesConnection, selection: HermesRecordSelection,
          options: HermesRunOptions? = nil) {
@@ -778,8 +878,35 @@ private final class HermesReplyOperation: @unchecked Sendable {
     }
     var sessionID: String { selection.record.sessionID }
     var isCancelled: Bool { lock.withLock { cancelled } }
-    func cancel() { lock.withLock { cancelled = true } }
-    func accept(_ id: String) { lock.withLock { runID = id } }
+    func cancel() {
+        let task = lock.withLock {
+            cancelled = true
+            return deviceTask
+        }
+        task?.cancel()
+    }
+
+    /// 中断をカメラにも届ける。HTTP の送信中は、遅れて返る run ID を受け取って停止できるようにしておく。
+    func performDevice(_ action: @escaping @Sendable () async throws -> HermesDeviceFeedback) async throws -> HermesDeviceFeedback {
+        let task = try lock.withLock {
+            guard !cancelled else { throw CancellationError() }
+            let task = Task {
+                try Task.checkCancellation()
+                return try await action()
+            }
+            deviceTask = task
+            return task
+        }
+        defer { lock.withLock { deviceTask = nil } }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// 同じターンの続きの run も受け付ける。前の run は終端済みなので、stop の権利は新しい run に移す。
+    func accept(_ id: String) { lock.withLock { runID = id; stopClaimed = false } }
     func markTerminal() { lock.withLock { stopClaimed = true } }
     func claimStop() -> String? {
         lock.withLock {
