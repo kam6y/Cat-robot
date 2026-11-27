@@ -244,7 +244,7 @@ final class CoreBluetoothRobotTransport: NSObject, RobotTransport,
     }
 
     private func device(_ peripheral: CBPeripheral, name: String? = nil, rssi: Int?) -> RobotDevice {
-        RobotDevice(id: peripheral.identifier, name: name ?? peripheral.name ?? "CatRobot", rssi: rssi)
+        RobotDevice(id: peripheral.identifier, name: name ?? peripheral.name ?? ProductName.display, rssi: rssi)
     }
 
     private func finish(attempt: UUID, reason: RobotLinkFailure) {

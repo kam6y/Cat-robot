@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum ProductName {
+    static let display = "CaRot"
+    static let spoken = "キャロット"
+}
+
 @main
 struct CatRobotApp: App {
     let composition: ConversationComposition?

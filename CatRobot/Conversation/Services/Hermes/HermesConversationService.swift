@@ -155,7 +155,6 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
             try await cleanUpRuns(for: operation, startingAt: start)
             guard isCurrent(operation.selection), !operation.isCancelled else { throw ConversationServiceError.cancelled }
             guard refusalRevision(for: connection) == nil else { throw ConversationServiceError.modelUnavailable(.hermesUnauthorized) }
-            let input = HermesClarificationReply.plainInput(prompt)
             pendingSubmissions.insert(ObjectIdentifier(operation))
             submissionPending = true
             await updateRecord(for: operation) { $0.hasUncertainSubmission = true }
@@ -172,7 +171,7 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
                     needsFreshHistory = false
                 }
                 do {
-                    accepted = try await operation.client.createRun(input: input, sessionID: operation.sessionID,
+                    accepted = try await operation.client.createRun(input: prompt, sessionID: operation.sessionID,
                                                                     idempotencyKey: key,
                                                                     instructions: HermesConversationInstructions.persona,
                                                                     options: operation.options, isolation: self)
@@ -737,16 +736,15 @@ actor HermesConversationService: ReplyGenerating, ConversationMemoryManaging, Mo
         guard let end = prefix.lastIndex(where: { "。！？!?\n".contains($0) }) else { return prefix }
         return String(prefix[...end])
     }
-    /// Hermes の履歴を表示の行にする。以前の版の聞き返し（v1 の user 入力）は、元の発言・質問・返事の 3 行に展開する。
+    /// Hermes の履歴を表示の行にする。利用者の発言と猫の最終の返事だけを、届いた文字のまま並べる。
     private static func decodeHistory(_ history: HermesSessionHistory) -> [HermesTranscriptEntry] {
-        var seen = Set<UUID>()
-        return history.messages.flatMap { message -> [HermesTranscriptEntry] in
+        history.messages.compactMap { message -> HermesTranscriptEntry? in
             guard !message.hasToolCalls, message.displayKind != "hidden",
-                  let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return [] }
+                  let text = message.content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
             switch message.role {
-            case "user": return HermesClarificationReply.userEntries(from: text, seen: &seen)
-            case "assistant": return [HermesTranscriptEntry(speaker: .cat, text: text)]
-            default: return []
+            case "user": return HermesTranscriptEntry(speaker: .user, text: text)
+            case "assistant": return HermesTranscriptEntry(speaker: .cat, text: text)
+            default: return nil
             }
         }
     }

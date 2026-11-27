@@ -298,9 +298,6 @@ struct ReplyModelSettingsPane: View {
         case .loaded:
             guard let catalog = models.catalog else { return nil }
             if catalog.providers.isEmpty { return "選べるモデルが見つかりませんでした。" }
-            if catalog.source == .routes {
-                return "この Hermes はモデルの一覧に対応していないため、model_routes の別名だけを表示しています。"
-            }
             return nil
         }
     }
@@ -312,6 +309,10 @@ struct AboutSettingsPane: View {
 
     var body: some View {
         Form {
+            Section {
+                Text("\(ProductName.display)（\(ProductName.spoken)）は、話しかけると返事をするロボットの猫です。")
+                    .accessibilityLabel("\(ProductName.spoken)は、話しかけると返事をするロボットの猫です。")
+            }
             Section {
                 Text("返事は設定した Hermes の接続先で作り、会話の続きと履歴は Hermes に保存されます。この iPhone には会話の本文を保存しません。Hermes に送るのは猫に話しかけた文字だけです。声で話しかけたときに猫への発話かどうかは、呼びかけの言葉と顔の向き、返事の後 30 秒の続きかで、このiPhoneの中で決めます。それ以外の発話は送りません。音声・映像・画像は送りません。聞き取り・読み上げ・顔追尾の映像処理もこのiPhoneの中で行います。")
             } header: { Text("送るもの・保存するもの") }

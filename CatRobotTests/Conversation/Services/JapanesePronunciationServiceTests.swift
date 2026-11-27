@@ -117,6 +117,7 @@ final class JapanesePronunciationServiceTests: XCTestCase {
     func testRealDictionaryReadsNamesOperatorsAndJapanese() async throws {
         let service = JapanesePronunciationService(root: dictionary)
         for (input, expected) in [
+            ("ぼくはCaRotだよ。", "ぼくはキャロットだよ。"),
             ("YouTubeを見よう。", "ユーチューブを見よう。"),
             ("+ボタンを押してね。", "プラスボタンを押してね。"),
             ("iPhoneとBluetooth。", "アイフォーンとブルートゥース。"),

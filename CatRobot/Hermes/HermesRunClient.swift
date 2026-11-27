@@ -50,22 +50,15 @@ actor HermesRunClient {
                                  idempotencyKey: idempotencyKey, isolation: isolation)
     }
 
-    /// 設定に出すモデルの候補。Hermes の native inventory（未設定の provider は含めない）を読み、
-    /// 一覧に対応しない Hermes（404・405・501）だけ `/v1/models` の別名に落とす。401 はほかの要求と同じ `.unauthorized`。
+    /// 設定に出すモデルの候補。Hermes の native inventory（未設定の provider は含めない）を読む。
+    /// 401 はほかの要求と同じ `.unauthorized`、ほかの失敗はその HTTP status。
     /// refresh は利用者が明示したときだけ（Hermes が custom provider を probe し直し、cache を捨てる）。
     func modelCatalog(refresh: Bool = false) async throws -> HermesModelCatalog {
         var query = [URLQueryItem(name: "include_unconfigured", value: "false")]
         if refresh { query.append(URLQueryItem(name: "refresh", value: "true")) }
         let response = try await exchange("GET", path: "api/model/options", query: query)
-        switch response.statusCode {
-        case 200:
-            return try HermesModelCatalog.inventory(from: response.body)
-        case 404, 405, 501:
-            let routes = try await send("GET", path: "v1/models", expectedStatus: 200)
-            return try HermesModelCatalog.routes(from: routes.body)
-        default:
-            throw HermesClientError.httpStatus(response.statusCode)
-        }
+        guard response.statusCode == 200 else { throw HermesClientError.httpStatus(response.statusCode) }
+        return try HermesModelCatalog.inventory(from: response.body)
     }
 
     /// Hermes が正本の会話履歴の最新ページ（古い順）。応答の session_id は圧縮後の tip を指すことがある。

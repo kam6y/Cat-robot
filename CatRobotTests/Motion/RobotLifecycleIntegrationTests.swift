@@ -237,7 +237,7 @@ final class RobotLifecycleIntegrationTests: XCTestCase {
         await h.freshAdvance(1.52)
         h.ble.receiveStatus(robotStatus(state: .active, flags: [.link, .torque]))
         await h.ble.drain()
-        XCTAssertEqual(h.commands.filter { if case .gesture = $0 { true } else { false } }.count, 1)
+        XCTAssertEqual(h.commands.filter { if case .gestureAt = $0 { true } else { false } }.count, 1)
         XCTAssertTrue(h.commands.contains { if case .ping = $0 { true } else { false } })
         XCTAssertFalse(h.commands.contains(.stop))
         await h.playback.viewModel.shutdown()
@@ -277,7 +277,7 @@ final class RobotLifecycleIntegrationTests: XCTestCase {
     func testPermissionInactiveKeepsEncryptedHandshakeAndPausesOnlyItsUserWait() async {
         let h = RobotAppHarness()
         await h.ble.beginGatt()
-        h.ble.transport.emit(.value(attempt: h.ble.attempt, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        h.ble.transport.emit(.value(attempt: h.ble.attempt, characteristic: .info, data: Data([1, 0, 2, 0, 1, 2, 0, 0])))
         await h.ble.drain()
         h.coordinator.beginConversation()
         await h.coordinator.waitForOperations()
@@ -513,7 +513,7 @@ final class RobotLifecycleIntegrationTests: XCTestCase {
         await h.drain()
     }
 
-    func testAppWiringDisablesLegacyIdleBeforeFreshWaiting() async {
+    func testAppWiringWaitsForFaceCueBeforeStartingIdleMotion() async {
         // No SwiftUI view exists here, so no face neck cue can request motion.
         let h = MotionHarness()
         h.preferences.idleEnabled = true

@@ -109,18 +109,14 @@ void Supervisor::onCommand(const Command& command, uint32_t nowMillis) {
             noteAccepted(false);
             return;
         }
-        case CommandType::Gesture:
         case CommandType::GestureAt: {
             GestureSpec spec{};
             spec.id = command.gesture.id;
             spec.ampDeg = command.gesture.ampDeci / 10.0f;
             spec.repeats = command.gesture.repeats;
             spec.speedPercent = command.gesture.speed;
-            spec.anchored = command.type == CommandType::GestureAt;
-            if (spec.anchored) {
-                spec.yawCenter = command.gesture.yawCenterDeci / 10.0f;
-                spec.pitchCenter = command.gesture.pitchCenterDeci / 10.0f;
-            }
+            spec.yawCenter = command.gesture.yawCenterDeci / 10.0f;
+            spec.pitchCenter = command.gesture.pitchCenterDeci / 10.0f;
             saturated = fitGesture(spec);
             const JointTargets amplitudes = gestureAmplitudes(spec.id, spec.ampDeg);
             saturated = saturated || std::fabs(amplitudes.yaw) > yaw_.axis.limits().maxAngle ||
@@ -413,7 +409,6 @@ bool Supervisor::plannersAtRest() const {
 // ずらす（FW-PWR-1）。再生中の波形は開始時の上限で完走し、SET_LIMITS は以後の移動に効く。
 
 bool Supervisor::fitGesture(GestureSpec& spec) const {
-    if (!spec.anchored) return false;
     bool yawClamped = false, pitchClamped = false;
     spec.yawCenter = yaw_.axis.clampJoint(spec.yawCenter, &yawClamped);
     spec.pitchCenter = pitch_.axis.clampJoint(spec.pitchCenter, &pitchClamped);

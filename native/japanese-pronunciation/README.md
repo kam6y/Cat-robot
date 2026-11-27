@@ -39,7 +39,7 @@ inferred semantically. Quantity spans containing more than 24 literal digits rem
 next NJD unit 𥝱 is absent from the bundled synthesis vocabulary. Small counters
 (`3人で25個`), integer-temperature examples and year inputs retain the prior notation.
 Known terms use NJD pronunciation with devoicing marks removed, never phoneme labels.
-Case aliases select dictionary spellings, not a hand-maintained pronunciation vocabulary.
+The product name `CaRot` has the spoken reading `キャロット`. Other case aliases select dictionary spellings.
 Standalone plus means
 「プラス」; identifiers and C++ keep their lexical meaning. An operational failure
 is an error, never a retry through the old normalizer.

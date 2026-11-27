@@ -4,6 +4,15 @@ import XCTest
 
 @MainActor
 final class RobotSettingsModelTests: XCTestCase {
+    func testVoiceOverPronouncesOnlyCurrentFactoryNames() {
+        for (advertised, spoken) in [
+            ("CaRot", "キャロット"), ("CaRot-1234", "キャロット-1234"),
+            ("CatRobot-5E8E", "CatRobot-5E8E"), ("ミケ", "ミケ")
+        ] {
+            XCTAssertEqual(RobotDevice(id: UUID(), name: advertised, rssi: nil).spokenName, spoken)
+        }
+    }
+
     func testCompositionDoesNotStartBluetooth() async {
         let h = RobotLinkHarness()
         let composition = ConversationComposition.live(robotTransport: h.transport,

@@ -11,6 +11,7 @@
 namespace catneck {
 namespace {
 
+constexpr char kDeviceName[] = "CaRot";
 constexpr const char* kServiceUuid = "C47B0000-6D1F-4B9E-9C9A-2A3B4C5D6E7F";
 constexpr const char* kCommandUuid = "C47B0001-6D1F-4B9E-9C9A-2A3B4C5D6E7F";
 constexpr const char* kStatusUuid = "C47B0002-6D1F-4B9E-9C9A-2A3B4C5D6E7F";
@@ -57,10 +58,10 @@ void BleTransport::begin(Supervisor& supervisor, uint32_t nowMillis) {
     windowOpen_ = true;  // 電源投入後 60 秒は新規ペアリングを受け付ける
     windowStartMillis_ = nowMillis;
 
-    NimBLEDevice::init("CatRobot");
+    NimBLEDevice::init(kDeviceName);
     const NimBLEAddress address = NimBLEDevice::getAddress();
     const uint8_t* val = address.getVal();  // LSB が先頭
-    std::snprintf(name_, sizeof name_, "CatRobot-%02X%02X", val[1], val[0]);
+    std::snprintf(name_, sizeof name_, "%s-%02X%02X", kDeviceName, val[1], val[0]);
     std::snprintf(address_, sizeof address_, "%s", address.toString().c_str());
     NimBLEDevice::setDeviceName(name_);
     NimBLEDevice::setSecurityAuth(true, false, true);  // bond あり、MITM なし、Secure Connections あり

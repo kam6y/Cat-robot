@@ -7,7 +7,7 @@ final class ConversationMemoryPresentationTests: XCTestCase {
         XCTAssertFalse(unsaved.blocksConversation)
         XCTAssertTrue(unsaved.canRetry)
         XCTAssertNotNil(unsaved.message)
-        for state in [ConversationMemoryState.restoreFailed(.invalidData), .forgetFailed(.deleteFailed), .forgetting] {
+        for state in [ConversationMemoryState.restoreFailed(.unavailable), .forgetFailed(.unavailable), .forgetting] {
             XCTAssertTrue(ConversationMemoryPresentation(state: state).blocksConversation)
         }
         XCTAssertFalse(ConversationMemoryPresentation(state: .unsupported).supportsForget)

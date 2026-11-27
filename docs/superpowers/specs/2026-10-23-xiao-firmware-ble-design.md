@@ -161,7 +161,7 @@ firmware/
 
 ### 4.4 定型動作（GESTURE） 【判断】
 
-- 起点は中立。現在角が中立でなければ、まず S 字で中立へ移動してから波形を再生する
+- 起点は命令で指定した姿勢。現在角が起点と異なる場合は、S 字で起点へ移動してから波形を再生する
 - 波形は始端（t = 0）と終端（t = T）で位置 0・速度 0・加速度 0 に静止から始まり静止に終わる滑らかな形（C²）とし、途中で極値 ±amp に達する（nod は −amp が先）。関数形（窓つき正弦、5 次多項式の連結など）は作り手に任せる。単純な sin(2πt/T) は始端の速度が 0 でないので使わない
 - 【実装での確定（2026-10-23、ledger Task 6 → Task 12 で改定）】Task 6 では「波形を tick ごとに Planner に追従させる」と nod 15° が 1.56 秒・振幅 13.4° になったため、極値を経由する静止→静止の S 字移動の列に置き換えた。Task 12 の実機で両方式を利用者が見比べ、**波形をそのままサーボ角にする方式**（正弦波の丸い折り返し）を採用した。実装: Planner は各 tick の標本に静止で追従させ、中断（切断・無通信の RETURNING）では直前 3 標本から速度・加速度を推定して Planner に引き渡し、上限内で止めて中立へ戻す。ピッチは 3 tick 遅らせて両軸の始動をずらす（FW-PWR-1）。再生中の波形は開始時の上限で完走し、SET_LIMITS は以後の移動に効く（標本は角度上限で毎 tick 飽和する）。STOP／TORQUE 0 は即時に破棄する
 - `speed` は波形の時間を 100/speed 倍にする（当初案どおり）。上限で伸びる分は別に掛かる
@@ -220,7 +220,7 @@ firmware/
 
 #### アドバタイズと接続
 
-- 名前 `CatRobot-XXXX`。XXXX は Bluetooth アドレス末尾 2 バイトの大文字 16 進（本機の見込みは `CatRobot-5E8E`）。スキャン応答にサービス UUID（128 bit）を載せる
+- 名前 `CaRot-XXXX`。XXXX は Bluetooth アドレス末尾 2 バイトの大文字 16 進（例 `CaRot-5E8E`）。スキャン応答にサービス UUID（128 bit）を載せる
 - 接続間隔は 15〜30 ms を要求（12〜24 単位）。1 台の central のみ。接続中はアドバタイズを止める
 - セキュリティ: Just Works ボンディング（bond = 有効、MITM = 無効、Secure Connections = 有効）。Info 以外の特性は暗号化リンクでのみ読み書き・通知できる
 - ペアリング窓: ボンド済み端末が 1 台も無ければ常時受け付ける。1 台以上あれば、電源投入後 **60 秒** とシリアルの `PAIR OPEN` 後 60 秒だけ新規ペアリングを受け付け、それ以外は未ボンドの central を接続直後に切断する。ボンドはシリアルの `BONDS CLEAR` で全消去
@@ -257,14 +257,13 @@ Calibration（6 B）: ヨーオフセット int16（0.1°）、ピッチオフ�
 
 Limits（8 B）: ヨー速度上限 uint16（0.1°/s）、ピッチ速度上限 uint16、ヨー角度上限 int16（0.1°、対称な絶対値）、ピッチ角度上限 int16。Read は適用中の値。
 
-Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 major/minor/patch 各 uint8（初版 0.1.0）、ハードウェア ID uint8（= 1、E17 配線）、能力 uint8（bit0 電圧計測あり = 0、bit1 姿勢指定GESTURE_AT対応。FW0.2.0はbit1=1）、予約 uint16（0）。
+Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 major/minor/patch 各 uint8、ハードウェア ID uint8（= 1、E17 配線）、能力 uint8（bit0 電圧計測あり = 0、bit1 姿勢指定GESTURE_AT対応。アプリは接続時にbit1を必須とする）、予約 uint16（0）。
 
 #### コマンド（先頭 1 バイトが種別、長さは固定）
 
 | 種別 | 名称 | 長さ | ペイロード | 動作 |
 |---|---|---|---|---|
 | 0x01 | MOVE | 6 | yaw int16、pitch int16、speed uint8 | 両軸の目標を差し替え。設定上限で飽和（SATURATED） |
-| 0x02 | GESTURE | 5 | id uint8（1〜6）、amp uint8（0.1°）、repeats uint8、speed uint8 | §4.4 |
 | 0x03 | STOP | 1 | なし | 補間と保留を破棄し即時脱力（IDLE） |
 | 0x04 | CENTER | 2 | speed uint8 | 目標 (0, 0) へ移動。GESTURE 中は完了後 |
 | 0x05 | TORQUE | 2 | on uint8（0/1） | 0: IDLE へ。1: 現在の指令角で出力開始（ACTIVE） |
@@ -272,9 +271,9 @@ Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 majo
 | 0x07 | SAVE_CAL | 2 | req uint8（1〜255。0 は拒否） | 適用中の値を NVS に保存。保存値が既に同じなら書き込みを省略して成功扱い。成功（書き込み後の読み戻しが一致）で CAL_DIRTY と SAVE_ERROR を下げ、失敗で SAVE_ERROR を立てる。処理後に `save_seq` = req とし、変化による即時 Status 通知で結果を伝える。同じ req の再送は同じ処理を繰り返す（冪等）。保守要求 |
 | 0x08 | SET_LIMITS | 9 | yaw_v uint16、pitch_v uint16、yaw_a int16、pitch_a int16 | 絶対上限の内側、下限 5.0°/s・5.0° に飽和して更新。各欄 0 は「変更しない」。即時に有効で、角度上限は現在の目標の再飽和としてサーボ角目標に反映（S 字で移る）、速度上限は §4.3 の減速規則で反映。保守要求 |
 | 0x09 | PING | 2 | seq uint8 | キープアライブ。Status の seq に反映。保守要求 |
-| 0x0A | GESTURE_AT | 9 | id/amp/repeats/speed 各uint8、yawCenter/pitchCenter 各int16 | FW0.2.0以降・Info能力bit1。指定姿勢へPlannerで収束後、同姿勢を基準に定型波形を再生し、同姿勢で終了。基準を軸上限で制限し、全軸共通倍率で振幅を縮めて範囲内へ収める。保留と中断はGESTUREと同じ |
+| 0x0A | GESTURE_AT | 9 | id/amp/repeats/speed 各uint8、yawCenter/pitchCenter 各int16 | Info能力bit1。指定姿勢へPlannerで収束後、同姿勢を基準に定型波形を再生し、同姿勢で終了。基準を軸上限で制限し、全軸共通倍率で振幅を縮めて範囲内へ収める。基準 (0, 0) は中立を表す |
 
-- 拒否（無視して REJECTED を立て、累計に加える。通信に数えない）: 長さ不一致、未知の種別、GESTURE/GESTURE_AT の id が 1〜6 以外、TORQUE の on が 0/1 以外、SET_LIMITS の角度上限が負、SAVE_CAL の req が 0
+- 拒否（無視して REJECTED を立て、累計に加える。通信に数えない）: 長さ不一致、未知の種別、GESTURE_AT の id が 1〜6 以外、TORQUE の on が 0/1 以外、SET_LIMITS の角度上限が負、SAVE_CAL の req が 0
 - 拒否以外の範囲外は飽和して受理し SATURATED を立てる
 - MOVE は 50 Hz まで連続受信できる。同じ tick に複数届いたら最後の値を使う
 - クライアントへの指針（サブ計画 3 向け）: Command は Write Without Response なので BLE 層の到達確認はない。校正の保存は次の手順で確かめる。(1) 保存したい値を SET_CAL で送る（プレビューは何度送ってもよい）。(2) 直前の Status の `save_seq` と異なる `req`（1〜255）を選び SAVE_CAL(req) を送る。(3) `save_seq` = req の Status を待つ。SAVE_ERROR = 0 なら保存成功、1 なら失敗。1 秒以内に来なければ同じ req で再送する（冪等）。(4) 成功後に Calibration を Read し、`saved` = 1 かつ値が意図どおりかを照合する。違えば（途中の SET_CAL が落ちた場合）SET_CAL から新しい req でやり直す。シリアルの `CAL`／`GAIN` も同じ校正状態を変えるが、`save_seq` は SAVE_CAL/`SAVE` 以外では変わらない
@@ -287,7 +286,7 @@ Info（8 B）: プロトコル版 uint8（= 1）、ファームウェア版 majo
 | 行 | 動作 |
 |---|---|
 | `MOVE <yaw> <pitch> [speed]` | MOVE |
-| `GESTURE <id または名称> <amp> [repeats] [speed]` | GESTURE |
+| `GESTURE <id または名称> <amp> [repeats] [speed]` | GESTURE_AT（基準 0, 0） |
 | `STOP` / `CENTER [speed]` / `TORQUE 0\|1` / `PING [seq]` | 同名のコマンド |
 | `CAL <yaw_off> <pitch_off> <invert>` / `SAVE [req]` | SET_CAL / SAVE_CAL（req 省略時は前回 +1。応答は保存結果を待ってから `OK seq=<req>` または `ERR SAVE`） |
 | `LIMITS <yaw_v> <pitch_v> <yaw_a> <pitch_a>` | SET_LIMITS（0 は変更しない） |

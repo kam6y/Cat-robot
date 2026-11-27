@@ -806,6 +806,7 @@ final class ConversationHarness {
             latency: latency,
             replyTraceSink: replyTraceSink,
             memory: effectiveMemory,
+            wakePhrase: { "猫ちゃん" },
             isFacingScreen: isFacingScreen ?? { attention.isFacingScreen },
             now: { now.value },
             noticeDelay: noticeDelay,

@@ -1,8 +1,7 @@
 import Foundation
 
 enum ConversationMemoryError: Error, Equatable, Sendable {
-    case invalidData, unsupportedSchema, incompatibleModel, tooLarge
-    case readFailed, writeFailed, deleteFailed, unavailable, unsupported
+    case unavailable, unsupported
 }
 
 enum ConversationMemoryState: Equatable, Sendable {

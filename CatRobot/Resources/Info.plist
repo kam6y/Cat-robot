@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Cat Robot</string>
+	<string>CaRot</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,9 +13,11 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>CaRot</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleSpokenName</key>
+	<string>キャロット</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -25,15 +27,15 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Cat Robotは、ハードに接続して動かすためにBluetoothを使用します。</string>
+	<string>CaRotは、ハードに接続して動かすためにBluetoothを使用します。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>顔がこちらを向いているかをiPhone内で確認して話しかけられたか判断し、顔の方向にハードを向けます。カメラの映像と画像は送信も保存もしません。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cat Robotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。設定で呼びかけの言葉を声で入力するときも使います。音声は端末上で処理されます。</string>
+	<string>CaRotは、この会話画面を開いている間、AIの猫と話すためにマイクを使用します。設定で呼びかけの言葉を声で入力するときも使います。音声は端末上で処理されます。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>返事に使う Hermes の接続先が同じネットワーク上にあるときに、その接続先へ HTTPS で接続します。開発用の診断では、同じネットワーク上の Mac にある検証用 relay へ接続します。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Cat Robotは、AIの猫との会話を文字にするため、端末上の音声認識を使用します。</string>
+	<string>CaRotは、AIの猫との会話を文字にするため、端末上の音声認識を使用します。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

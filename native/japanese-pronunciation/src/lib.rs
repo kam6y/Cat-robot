@@ -220,6 +220,9 @@ impl Pronouncer {
         // Eligibility was checked on the original characters. Fold width only:
         // compatibility forms such as Roman numerals/ligatures stay untouched.
         let composed = fold_width(original);
+        if composed.eq_ignore_ascii_case("CaRot") {
+            return Ok("キャロット".to_owned());
+        }
         let canonical = ALIASES.replace_all(&composed, |captures: &Captures<'_>| {
             CANONICAL_ALIASES
                 .iter()

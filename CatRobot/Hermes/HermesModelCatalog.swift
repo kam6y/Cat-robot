@@ -1,12 +1,9 @@
 import Foundation
 
-/// Hermes で選べるモデルの候補（設定「返答モデル」が表示する）。
-/// - native inventory（`GET /api/model/options?include_unconfigured=false`）: provider ごとのモデルと、推論の対応。
-/// - 一覧に対応しない古い Hermes（404・405・501）: `GET /v1/models` の model_routes の別名だけ（provider は持たない）。
+/// Hermes で選べるモデルの候補（設定「返答モデル」が表示する）。native inventory
+/// （`GET /api/model/options?include_unconfigured=false`）の、provider ごとのモデルと推論の対応。
 /// Hermes はモデルごとの effort の段階を返さない。推論に対応するかと、推論を止められるかだけを読む。
 struct HermesModelCatalog: Equatable, Sendable {
-    enum Source: Equatable, Sendable { case inventory, routes }
-
     struct Model: Equatable, Sendable, Identifiable {
         let id: String
         /// false なら推論の設定を持たない（effort の欄を出さない）。nil は Hermes の catalog に記載がない。
@@ -16,16 +13,15 @@ struct HermesModelCatalog: Equatable, Sendable {
     }
 
     struct Provider: Equatable, Sendable, Identifiable {
-        /// Hermes の provider の slug。model_routes の別名（provider を送らない）は nil。
-        let slug: String?
+        /// Hermes の provider の slug。
+        let slug: String
         let name: String
         let models: [Model]
-        var id: String { slug ?? "" }
+        var id: String { slug }
     }
 
-    let source: Source
     let providers: [Provider]
-    /// Hermes が既定で使うモデル（config の model.default。別名の一覧では Hermes の仮想 model 名）。
+    /// Hermes が既定で使うモデル（config の model.default）。
     let defaultModel: String?
     /// 既定の provider。行が分かれば、その行の slug（custom provider の `custom:<key>` も行の slug にそろえる）。
     let defaultProvider: String?
@@ -35,13 +31,13 @@ struct HermesModelCatalog: Equatable, Sendable {
     }
 
     /// 選んだモデル（nil は Hermes の既定）で出す effort。空なら effort の欄を出さない。
-    /// 段階は Hermes の UI と同じ標準の全段階。推論に対応しないモデル、別名の一覧（対応が分からない）では出さない。
+    /// 段階は Hermes の UI と同じ標準の全段階。推論に対応しないモデルでは出さない。
     func effortChoices(for selected: HermesModelID?) -> [HermesReasoningEffort] {
-        guard source == .inventory, !providers.isEmpty else { return [] }
+        guard !providers.isEmpty else { return [] }
         let info: Model?
         if let selected {
             info = model(for: selected)
-        } else if let defaultModel {
+        } else if let defaultModel, let defaultProvider {
             info = model(for: HermesModelID(provider: defaultProvider, model: defaultModel))
         } else {
             info = nil
@@ -62,9 +58,9 @@ enum HermesReasoningEffort: String, CaseIterable, Codable, Sendable {
     var label: String { self == .off ? "オフ" : rawValue }
 }
 
-/// 選んだモデル。provider が nil なら model だけを送る（model_routes の別名）。
+/// 選んだモデル。provider は inventory の行の slug、model はその行のモデル名。
 struct HermesModelID: Codable, Hashable, Sendable {
-    let provider: String?
+    let provider: String
     let model: String
 }
 
@@ -95,23 +91,8 @@ extension HermesModelCatalog {
         let current = rows.first { $0.isCurrent } ?? payload.provider.flatMap { provider in
             rows.first { $0.slug == provider || $0.aliases.contains(provider) }
         }
-        return HermesModelCatalog(source: .inventory, providers: rows.compactMap(\.provider),
+        return HermesModelCatalog(providers: rows.compactMap(\.provider),
                                   defaultModel: payload.model, defaultProvider: current?.slug ?? payload.provider)
-    }
-
-    /// `GET /v1/models` の本文。parent の無い先頭が Hermes の仮想 model（既定）、残りが model_routes の別名。
-    static func routes(from body: Data) throws -> HermesModelCatalog {
-        guard let payload = try? JSONDecoder().decode(RoutesPayload.self, from: body) else {
-            throw HermesClientError.malformedResponse
-        }
-        let entries = payload.data.compactMap(\.value)
-        let base = entries.first { $0.parent == nil }?.id
-        var seen = Set<String>()
-        let aliases = entries
-            .filter { $0.parent != nil && !$0.id.isEmpty && $0.id != base && seen.insert($0.id).inserted }
-            .map { Model(id: $0.id, reasoning: nil, canDisableReasoning: nil) }
-        let providers = aliases.isEmpty ? [] : [Provider(slug: nil, name: "Hermes の別名（model_routes）", models: aliases)]
-        return HermesModelCatalog(source: .routes, providers: providers, defaultModel: base, defaultProvider: nil)
     }
 }
 
@@ -193,12 +174,4 @@ private struct InventoryRow: Decodable {
         case isCurrent = "is_current"
         case unavailable = "unavailable_models"
     }
-}
-
-private struct RoutesPayload: Decodable {
-    struct Entry: Decodable {
-        let id: String
-        let parent: String?
-    }
-    let data: [Lenient<Entry>]
 }

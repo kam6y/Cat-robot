@@ -109,7 +109,7 @@ final class WakePhraseSettingsTests: XCTestCase {
     func testVoiceEntryFillsTheFieldAndIsSavedOnlyAfterConfirmation() async throws {
         let f = try await openSettings()
         defer { release(f) }
-        XCTAssertEqual(f.voice.wakePhrase, "猫ちゃん")
+        XCTAssertEqual(f.voice.wakePhrase, "キャロット")
 
         let unavailable = try await reachableAccessibilityElement(in: f.view, identifier: ConversationSettingsIdentifier.wakePhraseRecordButton.rawValue,
                                                                   scrollingIn: self.detailScrollView(in: f.view))
@@ -120,7 +120,7 @@ final class WakePhraseSettingsTests: XCTestCase {
         await f.recognizer.emit(.finalized("ミケ"))
         let finished = try await waitUntil(settling: f.view) { f.recorder.state == .idle && !f.recorder.isRecording }
         XCTAssertTrue(finished)
-        XCTAssertEqual(f.voice.wakePhrase, "猫ちゃん", "声で入力しただけでは保存しない")
+        XCTAssertEqual(f.voice.wakePhrase, "キャロット", "声で入力しただけでは保存しない")
 
         // 音声入力をやり直して失敗しても、入力欄に残った言葉を保存できる。
         try await startVoiceEntry(in: f)
@@ -151,6 +151,6 @@ final class WakePhraseSettingsTests: XCTestCase {
         XCTAssertFalse(running)
         XCTAssertEqual(f.recorder.state, .idle, "止めただけで失敗は出さない")
         XCTAssertEqual(f.log.values.last, .deactivateAudio)
-        XCTAssertEqual(f.voice.wakePhrase, "猫ちゃん")
+        XCTAssertEqual(f.voice.wakePhrase, "キャロット")
     }
 }

@@ -91,9 +91,6 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
             query["refresh"] = "true"
         return await forward(request, "GET", "/api/model/options?" + urlencode(query))
 
-    async def models(request: Request) -> Response:
-        return await forward(request, "GET", "/v1/models")
-
     async def create_run(request: Request) -> Response:
         body = await read_body(request, config.max_request_bytes)
         if body is None:
@@ -160,7 +157,6 @@ def build_relay_app(config: RelayConfig, *, upstream_transport: httpx.AsyncBaseT
     ]
     if config.conversation_mode:
         routes.extend([Route("/api/model/options", model_options, methods=["GET"]),
-                       Route("/v1/models", models, methods=["GET"]),
                        Route("/api/sessions/{session_id}/messages", session_messages, methods=["GET"])])
     else:
         routes.extend(bridge_routes(bridge))

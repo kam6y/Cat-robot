@@ -22,7 +22,7 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
         prepareCount += 1
         await prepareGate?.wait()
         if case .restoreFailed(let error) = state { throw error }
-        if case .forgetFailed = state { throw ConversationMemoryError.deleteFailed }
+        if case .forgetFailed = state { throw ConversationMemoryError.unavailable }
     }
     func memoryState() -> ConversationMemoryState { state }
     func memoryUpdates() -> AsyncStream<ConversationMemoryState> {
@@ -41,7 +41,7 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
     func forgetConversation() async throws {
         forgets += 1
         await forgetGate?.wait()
-        if failsForget { publish(.forgetFailed(.deleteFailed)); throw ConversationMemoryError.deleteFailed }
+        if failsForget { publish(.forgetFailed(.unavailable)); throw ConversationMemoryError.unavailable }
         publish(.ready)
     }
 }
@@ -50,12 +50,12 @@ actor FakeConversationMemoryManager: ConversationMemoryManaging {
 final class ConversationMemoryIntegrationTests: XCTestCase {
     func testRestoreFailureBlocksVoiceAndTypedReply() async {
         for typed in [false, true] {
-            let memory = FakeConversationMemoryManager(state: .restoreFailed(.invalidData))
+            let memory = FakeConversationMemoryManager(state: .restoreFailed(.unavailable))
             let harness = ConversationHarness(memory: memory)
             if typed { await harness.sut.submitTypedText("こんにちは") }
             else { await harness.sut.startConversation() }
             XCTAssertEqual(harness.sut.viewState.phase, .paused)
-            XCTAssertEqual(harness.sut.viewState.memoryState, .restoreFailed(.invalidData))
+            XCTAssertEqual(harness.sut.viewState.memoryState, .restoreFailed(.unavailable))
             XCTAssertFalse(harness.calls.values.contains(.startRecognizer))
             let prompts = await harness.reply.prompts
             XCTAssertTrue(prompts.isEmpty)
@@ -112,7 +112,7 @@ final class ConversationMemoryIntegrationTests: XCTestCase {
         await memory.setForgetFailure(true)
         await harness.sut.forgetConversation()
         XCTAssertNil(harness.sut.viewState.memoryNotice)
-        XCTAssertEqual(harness.sut.viewState.memoryState, .forgetFailed(.deleteFailed))
+        XCTAssertEqual(harness.sut.viewState.memoryState, .forgetFailed(.unavailable))
         XCTAssertFalse(harness.sut.viewState.allowsTypedSubmission)
         await memory.setForgetFailure(false)
         await harness.sut.retryMemoryOperation()

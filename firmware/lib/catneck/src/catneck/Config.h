@@ -45,7 +45,7 @@ constexpr uint32_t kStatusPeriodMs = 200;
 // 版数
 constexpr uint8_t kProtocolVersion = 1;
 constexpr uint8_t kFwMajor = 0;
-constexpr uint8_t kFwMinor = 2;
+constexpr uint8_t kFwMinor = 3;
 constexpr uint8_t kFwPatch = 0;
 constexpr uint8_t kHwId = 1;
 

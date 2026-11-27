@@ -58,7 +58,7 @@ final class RobotPreferences {
             defaults.object(forKey: Self.trackingYawCorrectionKey) as? Double ?? Self.defaultTrackingYawCorrection)
         if let rawID = defaults.string(forKey: "robot.device.id"), let id = UUID(uuidString: rawID) {
             selectedDevice = RobotDevice(id: id,
-                                         name: defaults.string(forKey: "robot.device.name") ?? "CatRobot",
+                                         name: defaults.string(forKey: "robot.device.name") ?? ProductName.display,
                                          rssi: nil)
         } else {
             selectedDevice = nil

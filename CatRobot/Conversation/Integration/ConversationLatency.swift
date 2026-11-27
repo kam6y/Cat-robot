@@ -6,17 +6,11 @@ struct ConversationLatencyToken: Hashable, Sendable {
 }
 
 enum ConversationLatencyCancellation: UInt8, Hashable, Sendable {
-    // Preserve historical outcome values in signpost recordings.
-    case noResponse = 1
-    case failure = 3
-    case lifecycle = 4
-    case typedReplacement = 5
-    case shutdown = 6
+    case noResponse, failure, lifecycle, typedReplacement, shutdown
 }
 
-enum ConversationLatencyMetric: UInt8, CaseIterable, Hashable, Sendable {
-    case fastFirstCaption = 0
-    case fastSpeechStart = 2
+enum ConversationLatencyMetric: CaseIterable, Hashable, Sendable {
+    case fastFirstCaption, fastSpeechStart
 }
 
 struct ConversationLatencySignpostContext: Equatable, Sendable {

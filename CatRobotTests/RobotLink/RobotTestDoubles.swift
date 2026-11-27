@@ -94,7 +94,6 @@ final class FakeRobotTransport: RobotTransport {
         func s(_ i: Int) -> Int16 { Int16(bitPattern: u(i)) }
         switch (type, b.count) {
         case (1, 6): return .move(yawDeci: s(1), pitchDeci: s(3), speed: b[5])
-        case (2, 5): return .gesture(id: b[1], ampDeci: b[2], repeats: b[3], speed: b[4])
         case (10, 9): return .gestureAt(id: b[1], ampDeci: b[2], repeats: b[3], speed: b[4], yawDeci: s(5), pitchDeci: s(7))
         case (3, 1): return .stop
         case (4, 2): return .center(speed: b[1])
@@ -154,9 +153,9 @@ final class RobotLinkHarness {
         await drain()
     }
 
-    func finishPreparation(status: RobotStatus = robotStatus(), capabilities: UInt8 = 0) async {
+    func finishPreparation(status: RobotStatus = robotStatus(), capabilities: UInt8 = 2) async {
         transport.emit(.value(attempt: attempt, characteristic: .info,
-                              data: Data([1, 0, 1, 0, 1, capabilities, 0, 0])))
+                              data: Data([1, 0, 2, 0, 1, capabilities, 0, 0])))
         await drain()
         receiveStatus(status)
         await drain()
@@ -170,7 +169,7 @@ final class RobotLinkHarness {
         await drain()
     }
 
-    func connectReady(status: RobotStatus = robotStatus(), capabilities: UInt8 = 0) async {
+    func connectReady(status: RobotStatus = robotStatus(), capabilities: UInt8 = 2) async {
         await beginGatt()
         await finishPreparation(status: status, capabilities: capabilities)
     }

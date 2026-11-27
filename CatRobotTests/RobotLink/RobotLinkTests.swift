@@ -16,7 +16,7 @@ final class RobotLinkTests: XCTestCase {
         await h.beginGatt()
         XCTAssertEqual(h.transport.reads.map(\.characteristic), [.info])
         XCTAssertFalse(h.link.snapshot.motionAvailable)
-        h.transport.emit(.value(attempt: h.attempt, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        h.transport.emit(.value(attempt: h.attempt, characteristic: .info, data: Data([1, 0, 2, 0, 1, 2, 0, 0])))
         await h.drain()
         XCTAssertEqual(h.transport.reads.map(\.characteristic), [.info, .status])
         h.receiveStatus(robotStatus())
@@ -180,7 +180,7 @@ final class RobotLinkTests: XCTestCase {
     func testInitialEncryptedReadHasThirtyActiveSecondsForPairing() async {
         let h = RobotLinkHarness()
         await h.beginGatt()
-        h.transport.emit(.value(attempt: h.attempt, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        h.transport.emit(.value(attempt: h.attempt, characteristic: .info, data: Data([1, 0, 2, 0, 1, 2, 0, 0])))
         await h.drain()
         await h.clock.advance(by: 20)
         XCTAssertTrue(h.transport.disconnects.isEmpty)
@@ -228,7 +228,7 @@ final class RobotLinkTests: XCTestCase {
         XCTAssertNotEqual(first, second)
         h.transport.emit(.gattReady(attempt: second))
         await h.drain()
-        h.transport.emit(.value(attempt: second, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        h.transport.emit(.value(attempt: second, characteristic: .info, data: Data([1, 0, 2, 0, 1, 2, 0, 0])))
         await h.drain()
         await h.clock.advance(by: 1)
         h.link.setApplicationActive(false)
@@ -255,7 +255,7 @@ final class RobotLinkTests: XCTestCase {
         let retry = h.attempt
         h.transport.emit(.gattReady(attempt: retry))
         await h.drain()
-        h.transport.emit(.value(attempt: retry, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        h.transport.emit(.value(attempt: retry, characteristic: .info, data: Data([1, 0, 2, 0, 1, 2, 0, 0])))
         await h.drain()
         h.link.setApplicationActive(false)
         await h.clock.advance(by: 60)
@@ -276,7 +276,7 @@ final class RobotLinkTests: XCTestCase {
         let retry = h.attempt
         h.transport.emit(.gattReady(attempt: retry))
         await h.drain()
-        h.transport.emit(.value(attempt: retry, characteristic: .info, data: Data([1, 0, 1, 0, 1, 0, 0, 0])))
+        h.transport.emit(.value(attempt: retry, characteristic: .info, data: Data([1, 0, 2, 0, 1, 2, 0, 0])))
         await h.drain()
         await h.clock.advance(by: 5.1)
         XCTAssertEqual(h.transport.disconnects, [retry])
@@ -330,7 +330,7 @@ final class RobotLinkTests: XCTestCase {
         let latestMove = RobotCommand.move(yawDeci: 20, pitchDeci: -5, speed: 100)
         let latest = Task { try await self.send(latestMove, h: h) }
         let token = UUID()
-        let invalidated = Task { try await self.send(.gesture(id: 1, ampDeci: 10, repeats: 1, speed: 100),
+        let invalidated = Task { try await self.send(.gestureAt(id: 1, ampDeci: 10, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0),
                                                     h: h, token: token) }
         let expired = Task { try await self.send(.center(speed: 100), h: h, lifetime: 0.05) }
         let stop = Task { try await self.send(.stop, h: h, priority: .manualStop, lifetime: 1) }
@@ -424,7 +424,7 @@ final class RobotLinkTests: XCTestCase {
     }
 
     func testQueuedGestureAndIdlePowerOffRecheckRestBeforeWrite() async {
-        for (command, priority) in [(RobotCommand.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100), RobotCommandPriority.motion),
+        for (command, priority) in [(RobotCommand.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0), RobotCommandPriority.motion),
                                     (.torque(false), .idlePowerOff)] {
             let h = RobotLinkHarness()
             h.preferences.idleEnabled = false
@@ -547,7 +547,8 @@ final class RobotLinkTests: XCTestCase {
         let command = RobotCommand.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60)
         let unsupported = RobotLinkHarness()
         await unsupported.connectReady(capabilities: 1) // bit0 belongs to voltage measurement
-        await assertFailure(.notReady) { try await self.send(command, h: unsupported, priority: .toolMotion) }
+        XCTAssertEqual(unsupported.link.snapshot.state, .unsupported)
+        XCTAssertFalse(unsupported.link.snapshot.motionAvailable)
         for owner: RobotCommandPriority in [.tracking, .calibration] {
             let h = RobotLinkHarness()
             await h.connectReady(capabilities: 2)
@@ -587,7 +588,7 @@ final class RobotLinkTests: XCTestCase {
     }
 
     func testOnlyWrittenTrackingCanBeReplacedByToolWhileMoving() async throws {
-        for tool in [RobotCommand.gesture(id: 1, ampDeci: 50, repeats: 1, speed: 100), .center(speed: 100)] {
+        for tool in [RobotCommand.gestureAt(id: 1, ampDeci: 50, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0), .center(speed: 100)] {
             let h = RobotLinkHarness()
             await h.connectReady()
             try await send(.move(yawDeci: 200, pitchDeci: 0, speed: 20), h: h, priority: .tracking)
@@ -606,7 +607,7 @@ final class RobotLinkTests: XCTestCase {
         h.receiveStatus(robotStatus(flags: [.link, .moving]))
         await h.drain()
         h.transport.canSendWriteWithoutResponse = false
-        let tool = Task { try await self.send(.gesture(id: 1, ampDeci: 50, repeats: 1, speed: 100), h: h) }
+        let tool = Task { try await self.send(.gestureAt(id: 1, ampDeci: 50, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0), h: h) }
         await h.drain()
         let manual = Task { try await self.send(.move(yawDeci: -200, pitchDeci: 0, speed: 10), h: h, priority: .calibration) }
         await h.drain()
@@ -614,7 +615,7 @@ final class RobotLinkTests: XCTestCase {
         h.transport.emit(.readyToWrite(attempt: h.attempt))
         try await manual.value
         await assertTaskFailure(tool, .notReady)
-        XCTAssertFalse(h.transport.commands.contains { if case .gesture = $0 { true } else { false } })
+        XCTAssertFalse(h.transport.commands.contains { if case .gestureAt = $0 { true } else { false } })
     }
 
     func testQueuedLookAtUserMoveCannotOverrideManualCenter() async throws {

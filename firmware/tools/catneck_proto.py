@@ -1,4 +1,4 @@
-"""CatRobot 首ファームウェア プロトコル版 1 の符号化・復号（設計書 §4.6）。
+"""CaRot 首ファームウェア プロトコル版 1 の符号化・復号（設計書 §4.6）。
 
 ble_client.py と serial_cli.py が共有する。依存なし（標準ライブラリのみ）。
 多バイトはリトルエンディアン。角度は 0.1° 単位 int16、速度は 0.1°/s 単位 uint16。
@@ -15,7 +15,8 @@ CHAR_CALIBRATION = "c47b0003-6d1f-4b9e-9c9a-2a3b4c5d6e7f"
 CHAR_LIMITS = "c47b0004-6d1f-4b9e-9c9a-2a3b4c5d6e7f"
 CHAR_INFO = "c47b0005-6d1f-4b9e-9c9a-2a3b4c5d6e7f"
 
-NAME_PREFIX = "CatRobot-"
+NAME_PREFIX = "CaRot-"
+ANCHORED_GESTURE_CAPABILITY = 1 << 1
 
 FLAG_BITS = [
     ("LINK", 1 << 0),
@@ -79,7 +80,7 @@ def encode_gesture(gesture: str | int, amp_deg: float, repeats: int = 1, speed: 
     if not 1 <= gesture_id <= 6:
         raise ValueError(f"GESTURE id は 1〜6: {gesture_id}")
     amp = min(255, max(0, deci(amp_deg)))  # uint8 の上限 25.5° で飽和
-    return struct.pack("<BBBBB", 0x02, gesture_id, amp, _u8(repeats, "repeats"), _u8(speed, "speed"))
+    return struct.pack("<BBBBBhh", 0x0A, gesture_id, amp, _u8(repeats, "repeats"), _u8(speed, "speed"), 0, 0)
 
 
 def encode_stop() -> bytes:

@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import CatRobot
 
-/// 設定「Hermes 接続」のモデルと effort。候補の読み取り（native inventory と古い Hermes の別名）、run の body、
+/// 設定「Hermes 接続」のモデルと effort。候補の読み取り（native inventory）、run の body、
 /// 接続先ごとの保存、ターンごとの固定を確かめる。
 final class HermesModelSelectionTests: XCTestCase {
     private let connection = HermesConnection(endpoint: URL(string: "https://hermes.test:8443/")!,
@@ -22,16 +22,11 @@ final class HermesModelSelectionTests: XCTestCase {
        "capabilities":{"gpt-5":{"reasoning":false}}}
     ]}
     """#
-    private static let routes = #"""
-    {"object":"list","data":[{"id":"hermes-agent","object":"model","root":"hermes-agent","parent":null},
-      {"id":"fast","object":"model","root":"gpt-5-mini","parent":"hermes-agent"}]}
-    """#
 
     // MARK: - 候補の読み取り
 
     func testInventoryOffersOnlyUsableProvidersAndModels() throws {
         let catalog = try HermesModelCatalog.inventory(from: Data(Self.inventory.utf8))
-        XCTAssertEqual(catalog.source, .inventory)
         XCTAssertEqual(catalog.providers.map(\.slug), ["openrouter", "lab"], "unauthenticated, empty and unreadable rows are left out")
         XCTAssertEqual(catalog.providers.first?.models.map(\.id), ["a"], "unavailable and duplicate models are left out")
         XCTAssertEqual(catalog.defaultModel, "gpt-5")
@@ -49,21 +44,8 @@ final class HermesModelSelectionTests: XCTestCase {
         XCTAssertEqual(HermesReasoningEffort.levels.map(\.rawValue), ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
     }
 
-    func testOlderHermesOffersItsRouteAliasesWithoutAProviderOrEffort() throws {
-        let catalog = try HermesModelCatalog.routes(from: Data(Self.routes.utf8))
-        XCTAssertEqual(catalog.source, .routes)
-        XCTAssertEqual(catalog.defaultModel, "hermes-agent")
-        XCTAssertEqual(catalog.providers.map(\.slug), [nil])
-        XCTAssertEqual(catalog.providers.first?.models.map(\.id), ["fast"])
-        XCTAssertEqual(catalog.effortChoices(for: HermesModelID(provider: nil, model: "fast")), [])
-        XCTAssertEqual(catalog.effortChoices(for: nil), [])
-    }
-
     func testUnreadableCatalogIsMalformed() {
         XCTAssertThrowsError(try HermesModelCatalog.inventory(from: Data(#"{"providers":"no"}"#.utf8))) {
-            XCTAssertEqual($0 as? HermesClientError, .malformedResponse)
-        }
-        XCTAssertThrowsError(try HermesModelCatalog.routes(from: Data("[]".utf8))) {
             XCTAssertEqual($0 as? HermesClientError, .malformedResponse)
         }
     }
@@ -82,25 +64,22 @@ final class HermesModelSelectionTests: XCTestCase {
         XCTAssertTrue(authorized)
     }
 
-    func testCatalogFallsBackToRouteAliasesOnlyWhenTheInventoryIsMissing() async throws {
-        for status in [404, 405, 501] {
-            let transport = RoutedHermesTransport(["GET /api/model/options": [(status, "{}")], "GET /v1/models": [(200, Self.routes)]])
-            let client = HermesRunClient(endpoint: connection.endpoint, credential: connection.credential, transport: transport)
-            let catalog = try await client.modelCatalog()
-            XCTAssertEqual(catalog.source, .routes, "HTTP \(status)")
-        }
-        let refusals: [(Int, HermesClientError)] = [(401, .unauthorized), (500, .httpStatus(500))]
-        for (status, expected) in refusals {
-            let transport = RoutedHermesTransport(["GET /api/model/options": [(status, "{}")], "GET /v1/models": [(200, Self.routes)]])
+    /// モデルの一覧（/api/model/options）が無い Hermes には、別の一覧を探しに行かず、その状態をそのまま失敗として出す。
+    func testAHermesWithoutTheModelInventoryReportsItsStatusWithoutAnotherLookup() async throws {
+        let aliases = #"{"object":"list","data":[{"id":"hermes-agent","object":"model","parent":null}]}"#
+        let failures: [(Int, HermesClientError)] = [(404, .httpStatus(404)), (405, .httpStatus(405)), (501, .httpStatus(501)),
+                                                    (401, .unauthorized), (500, .httpStatus(500))]
+        for (status, expected) in failures {
+            let transport = RoutedHermesTransport(["GET /api/model/options": [(status, "{}")], "GET /v1/models": [(200, aliases)]])
             let client = HermesRunClient(endpoint: connection.endpoint, credential: connection.credential, transport: transport)
             do {
                 _ = try await client.modelCatalog()
-                XCTFail("HTTP \(status) is not a missing inventory")
+                XCTFail("HTTP \(status) has no model inventory")
             } catch {
-                XCTAssertEqual(error as? HermesClientError, expected)
+                XCTAssertEqual(error as? HermesClientError, expected, "HTTP \(status)")
             }
             let paths = await transport.requests.map(\.url.path)
-            XCTAssertEqual(paths, ["/api/model/options"], "HTTP \(status) does not fall back")
+            XCTAssertEqual(paths, ["/api/model/options"], "HTTP \(status) does not look anywhere else")
         }
     }
 
@@ -127,11 +106,6 @@ final class HermesModelSelectionTests: XCTestCase {
         let disabled = (off["model_options"] as? [String: Any])?["reasoning"] as? [String: Any]
         XCTAssertEqual(disabled?["enabled"] as? Bool, false)
         XCTAssertNil(disabled?["effort"])
-
-        let alias = try await runBody(options: HermesRunOptions(model: HermesModelID(provider: nil, model: "fast")))
-        XCTAssertEqual(alias["model"] as? String, "fast")
-        XCTAssertNil(alias["provider"], "a route alias is sent without a provider")
-        XCTAssertNil(alias["model_options"])
     }
 
 
@@ -191,6 +165,17 @@ final class HermesModelSelectionTests: XCTestCase {
         settings.select(model: nil)
         settings.select(effort: nil)
         XCTAssertNil(settings.options(for: connection.origin), "choosing the defaults again stops sending a selection")
+    }
+
+    /// 以前の版は model_routes の別名を provider 無しで保存していた。そうした保存値は読まず、Hermes の既定で始める。
+    @MainActor
+    func testASavedSelectionWithoutAProviderIsNotUsed() throws {
+        let (defaults, name) = try isolatedDefaults()
+        defer { UserDefaults.standard.removePersistentDomain(forName: name) }
+        defaults.set(Data(#"{"model":{"model":"fast"}}"#.utf8), forKey: "hermesRunOptions." + connection.origin)
+        let settings = HermesModelSettings(defaults: defaults, transport: RoutedHermesTransport([:]), origin: connection.origin)
+        XCTAssertEqual(settings.current, HermesRunOptions())
+        XCTAssertNil(settings.options(for: connection.origin))
     }
 
     @MainActor

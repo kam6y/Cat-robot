@@ -1,4 +1,4 @@
-# Cat Robot 首ファームウェア（XIAO ESP32C3）
+# CaRot 首ファームウェア（XIAO ESP32C3）
 
 iPhone アプリから BLE で首（ヨー・ピッチの 2 軸サーボ）を動かすファームウェアと、Mac 用の試験ツール。設計は
 [設計書](../docs/superpowers/specs/2026-10-23-xiao-firmware-ble-design.md)、実測は
@@ -41,11 +41,11 @@ python3 tools/test_servo_driver.py                                # PWM停止・
 - 待機中（IDLE）は PWM を止めるが、DS3218 は一度指令を受けると最後の位置を保持し続ける（サーボ電源の再投入で解ける。
   2026-10-23 実測、要件定義書 §7.4）。首を手で動かしたいときは 19 V を切る
 
-## 顔追尾中の定型動作（FW 0.2.0以降）
+## 顔追尾中の定型動作
 
-対応アプリはInfoの能力bit1を確認し、顔追尾オンの会話中は`GESTURE_AT`で現在の指令姿勢を基準に動かす。
+アプリは接続時にInfoの能力bit1（姿勢を指定したジェスチャー）を確認する。顔追尾オンの会話中は`GESTURE_AT`で現在の指令姿勢を基準に動かす。
 頷き・首振り・首かしげ・見上げる／見下ろす動作は同じ姿勢へ戻り、可動端では振幅を縮める。
-既存の`GESTURE`とシリアル`GESTURE`は中立基準のまま。背景・切断時の安全復帰は正面へ戻る。
+顔追尾オフ・シリアル・Macの試験ツールでは、同じ命令の基準を中立（0°, 0°）に指定する。背景・切断時の安全復帰は正面へ戻る。
 
 ## 試験ツール（Mac）
 
@@ -56,7 +56,7 @@ uv run tools/serial_cli.py --port /dev/cu.usbmodem101 STATUS        # 1 行送�
 uv run tools/serial_cli.py --port /dev/cu.usbmodem101 --watch       # WATCH ON の流し読み（Ctrl-C で WATCH OFF）
 uv run tools/serial_cli.py --port /dev/cu.usbmodem101 --encode ping 7   # HEX 09 07 を送る（BLE と同じ復号器を通す）
 
-uv run tools/ble_client.py scan                 # CatRobot-XXXX を探す（初回は Bluetooth の権限ダイアログ）
+uv run tools/ble_client.py scan                 # CaRot-XXXX を探す（初回は Bluetooth の権限ダイアログ）
 uv run tools/ble_client.py info                 # Info を読む（暗号化不要）
 uv run tools/ble_client.py watch --seconds 3    # Status 通知（初回はペアリングのダイアログ）
 uv run tools/ble_client.py move 20 -5 --speed 50

@@ -79,7 +79,7 @@ async def serve(config: RelayConfig, out=sys.stdout) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -I -m relay", description="Cat Robot Hermes probe relay (diagnostic use only)")
+    parser = argparse.ArgumentParser(prog="python -I -m relay", description="CaRot Hermes probe relay (diagnostic use only)")
     parser.add_argument("--config", default=os.environ.get("HERMES_PROBE_RELAY_CONFIG"), help="0600 JSON config path")
     args = parser.parse_args(argv)
     if not args.config:

@@ -112,7 +112,7 @@ final class MotionCoordinatorTests: XCTestCase {
         h.motion.speechFinished(turn)
         h.motion.generationFinished(turn, outcome: .success)
         await h.drain()
-        XCTAssertEqual(h.gestureCommands, [.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100)])
+        XCTAssertEqual(h.gestureCommands, [.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0)])
         await h.completeCycle(after: 1.52)
         XCTAssertFalse(h.sentCommands.contains(.stop))
         XCTAssertEqual(h.motion.reserve(nod, for: turn), .invalidated)
@@ -128,7 +128,7 @@ final class MotionCoordinatorTests: XCTestCase {
             await h.drain()
             for _ in 0..<count { await h.completeCycle(after: duration) }
             XCTAssertEqual(h.gestureCommands.count, count)
-            XCTAssertTrue(h.gestureCommands.allSatisfy { if case .gesture(_, _, 1, 100) = $0 { true } else { false } })
+            XCTAssertTrue(h.gestureCommands.allSatisfy { if case .gestureAt(_, _, 1, 100, _, _) = $0 { true } else { false } })
             XCTAssertFalse(h.sentCommands.contains(.stop))
         }
     }
@@ -145,8 +145,8 @@ final class MotionCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.gestureCommands.count, 1)
         XCTAssertEqual(h.motion.reserve(nod, for: old), .invalidated)
         await h.completeCycle(after: 1.52)
-        XCTAssertEqual(h.gestureCommands, [.gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100),
-                                         .gesture(id: 2, ampDeci: 250, repeats: 1, speed: 100)])
+        XCTAssertEqual(h.gestureCommands, [.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0),
+                                         .gestureAt(id: 2, ampDeci: 250, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0)])
         XCTAssertFalse(h.sentCommands.contains(.stop))
     }
 
@@ -318,7 +318,7 @@ final class MotionCoordinatorTests: XCTestCase {
             await h.drain()
             await h.completeCycle(after: 2.48)
         }
-        XCTAssertEqual(h.gestureCommands, [3, 4, 3].map { .gesture(id: $0, ampDeci: 150, repeats: 1, speed: 100) })
+        XCTAssertEqual(h.gestureCommands, [3, 4, 3].map { .gestureAt(id: $0, ampDeci: 150, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0) })
     }
 
     func testLookAtUserUsesOnlyFreshTrackingAndSaturatesAutonomousRange() async {

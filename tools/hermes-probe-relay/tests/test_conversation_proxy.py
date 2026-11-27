@@ -18,16 +18,13 @@ class ConversationProxyTests(unittest.IsolatedAsyncioTestCase):
     async def test_model_catalogs_forward_only_configured_inventory_and_explicit_refresh(self):
         hermes = FakeHermes()
         options = {"providers": [{"slug": "lab", "models": ["robot"]}]}
-        aliases = {"object": "list", "data": [{"id": "home-model"}]}
         hermes.respond("GET", "/api/model/options", 200, options)
-        hermes.respond("GET", "/v1/models", 200, aliases)
         app = build_relay_app(self.conversation_config(), upstream_transport=hermes.transport())
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://relay.test") as client:
             for path, expected, query in [
                 ("/api/model/options", options, {"include_unconfigured": "false"}),
                 ("/api/model/options?refresh=true&include_unconfigured=true&other=drop", options,
                  {"include_unconfigured": "false", "refresh": "true"}),
-                ("/v1/models?other=drop", aliases, {}),
             ]:
                 with self.subTest(path=path):
                     response = await client.get(path, headers={"Authorization": "Bearer phone-client-k"})
@@ -35,6 +32,11 @@ class ConversationProxyTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(response.json(), expected)
                     self.assertEqual(dict(hermes.requests[-1].url.params), query)
                     self.assertEqual(hermes.requests[-1].headers["authorization"], "Bearer windows-api-k")
+            forwarded = len(hermes.requests)
+            # The model alias list is not part of the conversation contract.
+            response = await client.get("/v1/models", headers={"Authorization": "Bearer phone-client-k"})
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(len(hermes.requests), forwarded)
 
     async def test_history_forwards_only_bounded_display_query_and_bearer(self):
         hermes = FakeHermes()

@@ -42,12 +42,12 @@ def build_mcp_app(config: RelayConfig, *, bridge: Bridge) -> Starlette:
     host, port = config.mcp_listen
     server = FastMCP(
         name="mockbridge",
-        instructions="Cat Robot connection probe. The only tool, echo(text), is executed by the bound probe device (mock executor) and returns the text it echoed.",
+        instructions="CaRot connection probe. The only tool, echo(text), is executed by the bound probe device (mock executor) and returns the text it echoed.",
         host=host, port=port, streamable_http_path="/mcp",
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=[f"{host}:{port}"], allowed_origins=[]),
     )
 
-    @server.tool(name="echo", description="Send text to the bound Cat Robot probe device; returns exactly the text the device echoed back.")
+    @server.tool(name="echo", description="Send text to the bound CaRot probe device; returns exactly the text the device echoed back.")
     async def echo(text: str) -> str:
         try:
             return await bridge.enqueue_echo(text)

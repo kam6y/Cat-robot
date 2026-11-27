@@ -262,11 +262,10 @@ final class FaceTrackingMotionTests: XCTestCase {
         XCTAssertEqual(h.gestureCommands.count, 1)
     }
 
-    func testEveryExpressiveToolUsesExecutionTimePoseOnAnchoredFirmware() async throws {
+    func testEveryExpressiveToolUsesExecutionTimePose() async throws {
         for (gesture, id, amp) in [(RobotGesture.nod, 1, 150), (.shake, 2, 250), (.tilt, 3, 150),
                                     (.lookUp, 5, 200), (.lookDown, 6, 200)] {
             let h = makeHarness()
-            h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
             h.link.emitStatus(robotStatus(yaw: -200, pitch: 20))
             follow(h, yaw: -30, pitch: 6)
             await h.drain()
@@ -281,19 +280,17 @@ final class FaceTrackingMotionTests: XCTestCase {
         }
     }
 
-    func testTrackingDisabledKeepsLegacyGestureEvenOnCapableFirmware() async {
+    func testTrackingDisabledUsesTheNeutralOrigin() async {
         let h = makeHarness()
         h.preferences.trackingEnabled = false
-        h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
         h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
         h.motion.speechStarted(h.reserve(.nod))
         await h.drain()
-        XCTAssertEqual(h.sentCommands.last, .gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100))
+        XCTAssertEqual(h.sentCommands.last, .gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0))
     }
 
     func testAnchoredGestureSurvivesFaceLossThenResumesOnlyFreshTracking() async {
         let h = makeHarness()
-        h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
         h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
         follow(h, yaw: -34, pitch: 6)
         await h.drain()
@@ -316,7 +313,6 @@ final class FaceTrackingMotionTests: XCTestCase {
 
     func testToolKeepsCurrentPoseDuringFaceHoldAndExplicitCenterStillCenters() async throws {
         let h = makeHarness()
-        h.link.emitInfo(.init(protocolVersion: 1, major: 0, minor: 2, patch: 0, hardwareID: 1, capabilities: 2))
         h.link.emitStatus(robotStatus(yaw: -340, pitch: 60))
         h.motion.setTrackingState(.holding)
         h.motion.speechStarted(h.reserve(.nod))
@@ -338,7 +334,7 @@ final class FaceTrackingMotionTests: XCTestCase {
         h.motion.speechStarted(h.reserve())
         await h.drain()
         XCTAssertEqual(h.sentCommands, [.move(yawDeci: 200, pitchDeci: 0, speed: 20),
-                                        .gesture(id: 1, ampDeci: 150, repeats: 1, speed: 100)])
+                                        .gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: 80, pitchDeci: 0)])
     }
 
     func testTrackingAndToolsCannotStealUnownedMovingNeck() async {

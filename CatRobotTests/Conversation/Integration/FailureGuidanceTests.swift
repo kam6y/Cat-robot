@@ -172,7 +172,7 @@ final class FailureGuidanceTests: XCTestCase {
             for event in Event.allCases {
                 let gate = ConversationTestGate()
                 // Availability failure exits before memory. The memory gate therefore uses a restore failure.
-                let memory = FakeConversationMemoryManager(state: stage == "memory" ? .restoreFailed(.readFailed) : .ready,
+                let memory = FakeConversationMemoryManager(state: stage == "memory" ? .restoreFailed(.unavailable) : .ready,
                     prepareGate: stage == "memory" ? gate : nil)
                 let harness = ConversationHarness(memory: memory,
                     modelAvailabilityResult: stage == "memory" ? .available : .hermesUnauthorized,
@@ -366,7 +366,7 @@ final class FailureGuidanceTests: XCTestCase {
         state.inactivity = .sleeping
         XCTAssertFalse(state.allowsTypedSubmission)
         state.inactivity = .awake
-        state.memoryState = .restoreFailed(.readFailed)
+        state.memoryState = .restoreFailed(.unavailable)
         XCTAssertFalse(state.allowsTypedSubmission)
     }
 
@@ -479,7 +479,7 @@ final class FailureGuidanceTests: XCTestCase {
         for voice in [true, false] {
             for memoryFails in [false, true] {
                 for speechFails in [false, true] {
-                    let memory = FakeConversationMemoryManager(state: memoryFails ? .restoreFailed(.readFailed) : .ready)
+                    let memory = FakeConversationMemoryManager(state: memoryFails ? .restoreFailed(.unavailable) : .ready)
                     let harness = ConversationHarness(memory: memory, microphoneAllowed: voice,
                         modelAvailabilityResult: memoryFails ? .available : .hermesUnauthorized,
                         speakerAutomaticallyFinishes: !speechFails)
@@ -503,7 +503,7 @@ final class FailureGuidanceTests: XCTestCase {
                     if !voice { XCTAssertFalse(harness.calls.values.contains(.requestMicrophone)) }
                     if memoryFails {
                         XCTAssertEqual(harness.sut.viewState.phase, .paused)
-                        XCTAssertEqual(harness.sut.viewState.memoryState, .restoreFailed(.readFailed))
+                        XCTAssertEqual(harness.sut.viewState.memoryState, .restoreFailed(.unavailable))
                         XCTAssertNil(harness.sut.viewState.errorMessage)
                         await harness.sut.retryMemoryOperation()
                         let restored = await memory.memoryState()

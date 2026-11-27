@@ -172,11 +172,9 @@ ParsedLine parseGesture(char** args, size_t count) {
     if (count >= 3 && !parseUInt(args[2], 0, 255, &repeats)) return makeError(kBadArgs);
     if (count == 4 && !parseUInt(args[3], 0, 255, &speed)) return makeError(kBadArgs);
     Command c{};
-    c.type = CommandType::Gesture;
-    c.gesture.id = id;
-    c.gesture.ampDeci = static_cast<uint8_t>(amp);
-    c.gesture.repeats = static_cast<uint8_t>(repeats);
-    c.gesture.speed = static_cast<uint8_t>(speed);
+    c.type = CommandType::GestureAt;
+    c.gesture = {id, static_cast<uint8_t>(amp), static_cast<uint8_t>(repeats),
+                 static_cast<uint8_t>(speed), 0, 0};
     return makeCommand(c);
 }
 

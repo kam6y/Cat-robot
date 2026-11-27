@@ -53,7 +53,7 @@ struct RobotConnectionView: View {
                     ForEach(model.snapshot.discoveredDevices, id: \.id) { device in
                         Button { model.select(device); showsDevices = false } label: {
                             HStack { Text(device.name); Spacer(); if let rssi = device.rssi { Text("\(rssi) dBm").foregroundStyle(.secondary) } }
-                        }.accessibilityLabel("\(device.name)に接続")
+                        }.accessibilityLabel("\(device.spokenName)に接続")
                     }
                     if model.snapshot.discoveredDevices.isEmpty {
                         Text("ロボットの電源を入れ、近くで検索してください。初回のペアリングは起動後60秒以内に行います。")
@@ -79,7 +79,14 @@ struct RobotConnectionView: View {
             : AnyLayout(HStackLayout(spacing: 12))
         return layout {
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.snapshot.device?.name ?? "接続先が未選択です").font(.headline)
+                Group {
+                    if let device = model.snapshot.device {
+                        Text(device.name).accessibilityLabel(device.spokenName)
+                    } else {
+                        Text("接続先が未選択です")
+                    }
+                }
+                .font(.headline)
                 if showsConnectionMessage {
                     Text(model.presentation.message)
                         .font(.subheadline)

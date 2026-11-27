@@ -32,20 +32,10 @@ void test_decode_move() {
     TEST_ASSERT_EQUAL_UINT8(100, r.command.move.speed);
 }
 
-void test_decode_gesture_and_bad_id() {
-    DecodeResult r = decode({0x02, 1, 150, 2, 100});
-    TEST_ASSERT_TRUE(r.ok);
-    TEST_ASSERT_EQUAL(static_cast<int>(GestureId::Nod), static_cast<int>(r.command.gesture.id));
-    TEST_ASSERT_EQUAL_UINT8(150, r.command.gesture.ampDeci);
-    TEST_ASSERT_EQUAL_UINT8(2, r.command.gesture.repeats);
-    TEST_ASSERT_EQUAL_UINT8(100, r.command.gesture.speed);
-
-    DecodeResult zero = decode({0x02, 0, 150, 1, 100});
-    TEST_ASSERT_FALSE(zero.ok);
-    TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::BadGestureId), static_cast<int>(zero.error));
-    DecodeResult seven = decode({0x02, 7, 150, 1, 100});
-    TEST_ASSERT_FALSE(seven.ok);
-    TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::BadGestureId), static_cast<int>(seven.error));
+void test_obsolete_gesture_opcode_is_unknown() {
+    const DecodeResult result = decode({0x02, 1, 150, 2, 100});
+    TEST_ASSERT_FALSE(result.ok);
+    TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::UnknownType), static_cast<int>(result.error));
 }
 
 void test_decode_rejects_bad_lengths() {
@@ -54,12 +44,12 @@ void test_decode_rejects_bad_lengths() {
     TEST_ASSERT_EQUAL(static_cast<int>(DecodeError::Empty), static_cast<int>(empty.error));
 
     // 種別ごとの固定長 ±1
-    const uint8_t types[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
-    const size_t lengths[] = {6, 5, 1, 2, 2, 6, 2, 9, 2};
+    const uint8_t types[] = {0x01, 0x0A, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
+    const size_t lengths[] = {6, 9, 1, 2, 2, 6, 2, 9, 2};
     for (size_t i = 0; i < 9; ++i) {
         uint8_t buf[20] = {};
         buf[0] = types[i];
-        if (types[i] == 0x02) buf[1] = 1;  // 有効な id
+        if (types[i] == 0x0A) buf[1] = 1;  // 有効な id
         if (types[i] == 0x05) buf[1] = 1;  // 有効な on
         if (types[i] == 0x07) buf[1] = 1;  // 有効な req
         DecodeResult longer = decodeCommand(buf, lengths[i] + 1);
@@ -225,7 +215,7 @@ void test_decode_calibration_and_limits_write() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_decode_move);
-    RUN_TEST(test_decode_gesture_and_bad_id);
+    RUN_TEST(test_obsolete_gesture_opcode_is_unknown);
     RUN_TEST(test_decode_rejects_bad_lengths);
     RUN_TEST(test_decode_unknown_type);
     RUN_TEST(test_decode_anchored_gesture_packet);

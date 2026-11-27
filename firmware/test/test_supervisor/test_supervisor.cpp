@@ -95,11 +95,8 @@ Command moveCmd(float yaw, float pitch, uint8_t speed = 100) {
 }
 Command gestureCmd(GestureId id, float amp, uint8_t repeats = 1, uint8_t speed = 100) {
     Command c{};
-    c.type = CommandType::Gesture;
-    c.gesture.id = id;
-    c.gesture.ampDeci = static_cast<uint8_t>(std::lround(amp * 10.0f));
-    c.gesture.repeats = repeats;
-    c.gesture.speed = speed;
+    c.type = CommandType::GestureAt;
+    c.gesture = {id, static_cast<uint8_t>(std::lround(amp * 10.0f)), repeats, speed, 0, 0};
     return c;
 }
 Command stopCmd() {
@@ -643,7 +640,7 @@ void test_anchored_gesture_refits_limits_changed_during_approach() {
     TEST_ASSERT_FLOAT_WITHIN(0.05f, 40, sim.yawJoint());
 }
 
-void test_legacy_gesture_still_returns_to_neutral() {
+void test_gesture_with_zero_origin_returns_to_neutral() {
     Sim sim;
     sim.bootToIdle();
     sim.send(moveCmd(-34, 6));
@@ -1197,7 +1194,7 @@ int main(int, char**) {
     RUN_TEST(test_anchored_nod_shrinks_waveform_to_available_pitch_room);
     RUN_TEST(test_queued_anchored_gesture_preserves_its_own_origin);
     RUN_TEST(test_stop_discards_anchored_gesture_and_pending_origin);
-    RUN_TEST(test_legacy_gesture_still_returns_to_neutral);
+    RUN_TEST(test_gesture_with_zero_origin_returns_to_neutral);
     RUN_TEST(test_anchored_gesture_refits_limits_changed_during_approach);
     RUN_TEST(test_all_anchored_gestures_fit_limits_and_return_to_origin);
     RUN_TEST(test_disconnect_from_anchored_gesture_returns_to_neutral_without_jump);

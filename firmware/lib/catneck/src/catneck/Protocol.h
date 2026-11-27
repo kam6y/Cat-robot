@@ -8,7 +8,6 @@ namespace catneck {
 
 enum class CommandType : uint8_t {
     Move = 0x01,
-    Gesture = 0x02,
     Stop = 0x03,
     Center = 0x04,
     Torque = 0x05,
@@ -38,7 +37,7 @@ struct GestureCmd {
     uint8_t ampDeci;
     uint8_t repeats;
     uint8_t speed;
-    int16_t yawCenterDeci;    // GestureAt only; legacy Gesture uses zero
+    int16_t yawCenterDeci;
     int16_t pitchCenterDeci;
 };
 struct CenterCmd {

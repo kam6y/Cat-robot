@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["bleak==3.0.2"]
 # ///
-"""CatRobot 首ファームウェア用の Mac BLE 試験クライアント（設計書 §4.6、計画 Task 10）。
+"""CaRot 首ファームウェア用の Mac BLE 試験クライアント（設計書 §4.6、計画 Task 10）。
 
 例:
   uv run tools/ble_client.py scan
@@ -13,7 +13,7 @@
   uv run tools/ble_client.py cal save
   uv run tools/ble_client.py demo --hold 2
 
-接続先は --name CatRobot-XXXX か --address <UUID>。省略時はサービス UUID または名前で 1 台だけ見つかればそれを使う。
+接続先は --name CaRot-XXXX か --address <UUID>。省略時はサービス UUID または名前で 1 台だけ見つかればそれを使う。
 各サブコマンドは接続を保ったまま 1 Hz で PING を送りつつ完了を待ち、--hold 秒保ってから切断する。
 切断すると首は安全復帰（中立へ戻って脱力）する。これは仕様どおり。
 Info 以外の特性は暗号化リンクが必要なので、初回は macOS のペアリングダイアログが出る。
@@ -30,6 +30,7 @@ import time
 from bleak import BleakClient, BleakError, BleakScanner
 
 from catneck_proto import (
+    ANCHORED_GESTURE_CAPABILITY,
     CHAR_CALIBRATION,
     CHAR_COMMAND,
     CHAR_INFO,
@@ -68,8 +69,9 @@ DEMO_AMPLITUDES = {
 
 
 def is_cat_robot(device, adv) -> bool:
-    name = device.name or adv.local_name or ""
-    return SERVICE_UUID in (u.lower() for u in adv.service_uuids) or name.startswith(NAME_PREFIX)
+    return SERVICE_UUID in (u.lower() for u in adv.service_uuids) or any(
+        name and name.startswith(NAME_PREFIX) for name in (adv.local_name, device.name)
+    )
 
 
 async def scan(timeout: float) -> list:
@@ -84,15 +86,18 @@ async def find_device(name: str | None, address: str | None, timeout: float):
             raise SystemExit(f"アドレス {address} が {timeout:.0f} 秒以内に見つかりません")
         return device
     if name:
-        device = await BleakScanner.find_device_by_name(name, timeout=timeout)
+        device = await BleakScanner.find_device_by_filter(
+            lambda d, adv: name in (adv.local_name, d.name),
+            timeout=timeout,
+        )
         if device is None:
             raise SystemExit(f"名前 {name} が {timeout:.0f} 秒以内に見つかりません")
         return device
     candidates = await scan(timeout)
     if not candidates:
-        raise SystemExit(f"CatRobot が {timeout:.0f} 秒以内に見つかりません（電源と xiao ビルドの書き込みを確認）")
+        raise SystemExit(f"CaRot が {timeout:.0f} 秒以内に見つかりません（電源と xiao ビルドの書き込みを確認）")
     if len(candidates) > 1:
-        names = ", ".join(f"{d.name or '?'} ({d.address})" for d, _ in candidates)
+        names = ", ".join(f"{adv.local_name or d.name or '?'} ({d.address})" for d, adv in candidates)
         raise SystemExit(f"複数見つかりました。--name か --address で指定してください: {names}")
     return candidates[0][0]
 
@@ -334,10 +339,10 @@ async def with_scan_deadline(coro, scan_timeout: float):
 async def cmd_scan(args) -> int:
     candidates = await with_scan_deadline(scan(args.scan_timeout), args.scan_timeout)
     if not candidates:
-        print("CatRobot は見つかりませんでした")
+        print("CaRot は見つかりませんでした")
         return 1
     for device, adv in candidates:
-        print(f"{device.name or adv.local_name or '?'}  address={device.address}  rssi={adv.rssi}  "
+        print(f"{adv.local_name or device.name or '?'}  address={device.address}  rssi={adv.rssi}  "
               f"services={[u for u in adv.service_uuids]}")
     return 0
 
@@ -373,9 +378,13 @@ async def run(args) -> int:
     print(f"接続: {device.name or '?'} ({device.address})")
     session: Session | None = None
     try:
+        info = decode_info(bytes(await client.read_gatt_char(CHAR_INFO)))
         if args.cmd == "info":
-            print(format_info(decode_info(bytes(await client.read_gatt_char(CHAR_INFO)))))
+            print(format_info(info))
             return 0
+        if info["proto"] != 1 or not info["caps"] & ANCHORED_GESTURE_CAPABILITY:
+            print(f"姿勢指定ジェスチャーに対応したファームウェアが必要です（{format_info(info)}）", file=sys.stderr)
+            return 1
         session = Session(client)
         # 暗号化が必要な Status を先に読んでペアリングを起こす。Command は応答なし書き込みなので、
         # 未ペアのまま書いても ATT エラーが返らず macOS はペアリングを始めない。Notify も暗号化後にしか届かない
@@ -409,15 +418,15 @@ async def run(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="CatRobot 首ファームウェアの BLE 試験クライアント")
-    parser.add_argument("--name", help="例: CatRobot-5E8E")
+    parser = argparse.ArgumentParser(description="CaRot 首ファームウェアの BLE 試験クライアント")
+    parser.add_argument("--name", help="例: CaRot-5E8E")
     parser.add_argument("--address", help="CoreBluetooth の UUID（scan で表示）")
     parser.add_argument("--scan-timeout", type=float, default=5.0)
     parser.add_argument("--connect-timeout", type=float, default=20.0)
     parser.add_argument("--hold", type=float, default=0.0, help="完了後に接続を保つ秒数（既定 0）")
     parser.add_argument("--no-ping", action="store_true", help="キープアライブ PING を送らない（3 秒無通信の安全復帰を見る）")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("scan", help="CatRobot を探す")
+    sub.add_parser("scan", help="CaRot を探す")
     sub.add_parser("info", help="Info を読む（暗号化不要）")
     p = sub.add_parser("watch", help="Status 通知を表示")
     p.add_argument("--seconds", type=float, default=5.0)

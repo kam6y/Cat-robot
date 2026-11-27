@@ -18,7 +18,7 @@ final class RobotProtocolTests: XCTestCase {
         let limits = RobotLimits(yawVelocityDeci: 1200, pitchVelocityDeci: 1000,
                                  yawAngleDeci: 600, pitchAngleDeci: 300)
         let fixtures: [(RobotCommand, [UInt8])] = [
-            (.gesture(id: 1, ampDeci: 150, repeats: 2, speed: 100), [2, 1, 150, 2, 100]),
+            (.gestureAt(id: 1, ampDeci: 150, repeats: 2, speed: 100, yawDeci: 0, pitchDeci: 0), [10, 1, 150, 2, 100, 0, 0, 0, 0]),
             (.gestureAt(id: 1, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60),
              [10, 1, 150, 1, 100, 0xAC, 0xFE, 60, 0]),
             (.stop, [3]),
@@ -39,8 +39,8 @@ final class RobotProtocolTests: XCTestCase {
 
     func testInvalidCommandCannotBeSent() {
         let commands: [RobotCommand] = [
-            .gesture(id: 0, ampDeci: 1, repeats: 1, speed: 100),
-            .gesture(id: 7, ampDeci: 1, repeats: 1, speed: 100),
+            .gestureAt(id: 0, ampDeci: 1, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0),
+            .gestureAt(id: 7, ampDeci: 1, repeats: 1, speed: 100, yawDeci: 0, pitchDeci: 0),
             .gestureAt(id: 0, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60),
             .gestureAt(id: 7, ampDeci: 150, repeats: 1, speed: 100, yawDeci: -340, pitchDeci: 60),
             .saveCalibration(req: 0),
@@ -108,10 +108,13 @@ final class RobotProtocolTests: XCTestCase {
     }
 
     func testInfoReadValidatesProtocolAndIgnoresReservedBytes() throws {
-        let info = try RobotProtocol.decodeInfo(Data([1, 0, 1, 0, 1, 5, 0xEE, 0xFF]))
-        XCTAssertEqual(info, .init(protocolVersion: 1, major: 0, minor: 1, patch: 0,
-                                   hardwareID: 1, capabilities: 5))
-        XCTAssertThrowsError(try RobotProtocol.decodeInfo(Data([2, 0, 1, 0, 1, 0, 0, 0]))) {
+        let info = try RobotProtocol.decodeInfo(Data([1, 0, 2, 0, 1, 7, 0xEE, 0xFF]))
+        XCTAssertEqual(info, .init(protocolVersion: 1, major: 0, minor: 2, patch: 0,
+                                   hardwareID: 1, capabilities: 7))
+        XCTAssertThrowsError(try RobotProtocol.decodeInfo(Data([1, 0, 1, 0, 1, 1, 0, 0]))) {
+            XCTAssertEqual($0 as? RobotProtocolError, .unsupportedProtocol)
+        }
+        XCTAssertThrowsError(try RobotProtocol.decodeInfo(Data([2, 0, 2, 0, 1, 2, 0, 0]))) {
             XCTAssertEqual($0 as? RobotProtocolError, .unsupportedProtocol)
         }
     }

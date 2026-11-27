@@ -639,7 +639,7 @@ final class HermesConversationServiceTests: XCTestCase {
         XCTAssertEqual(record?.unsettledRunIDs, [])
     }
 
-    // MARK: - 以前の版の聞き返しの記録（読むだけ）
+    // MARK: - 発話の文字と履歴の行
 
     private func storedHistory(_ messages: [[String: String]]) throws -> FakeHermesServer.Reply {
         let body = try JSONSerialization.data(withJSONObject: [
@@ -648,65 +648,23 @@ final class HermesConversationServiceTests: XCTestCase {
         return .json(200, String(decoding: body, as: UTF8.self))
     }
 
-    private static let legacyQuestion = "今の、ぼくに言った？"
-
-    /// 以前の版が聞き返しの後に Hermes へ送った user 入力（v1）。今の版はこれを送らず、履歴から読むだけ。
-    private static func legacyClarificationInput(id: UUID = UUID(), original: String, utterance: String) throws -> String {
-        let fields = ["id": id.uuidString, "original": original, "question": legacyQuestion, "utterance": utterance]
-        let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys, .withoutEscapingSlashes])
-        return "[CatRobot conversation v1]\n" + String(decoding: data, as: UTF8.self)
-    }
-
-    func testAClarificationStoredByAnOlderReleaseRestoresInSpokenOrder() async throws {
-        let original = "明日の天気は？\n「京都」の話だよ"
-        let confirmation = "言ったよ"
-        let answer = "京都は晴れだよ"
-        let stored = try Self.legacyClarificationInput(original: original, utterance: confirmation)
-        let history = try storedHistory([["role": "user", "content": stored], ["role": "assistant", "content": answer]])
-        let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
-                                      polls: ["run-1": [hermesRun("run-1", "completed", output: "どういたしまして")]],
-                                      history: [history, history])
-        let service = makeService(server, records: continued())
-        let transcript = try await service.transcript()
-        XCTAssertEqual(transcript, [.init(speaker: .user, text: original), .init(speaker: .cat, text: Self.legacyQuestion),
-                                    .init(speaker: .user, text: confirmation), .init(speaker: .cat, text: answer)])
-
-        try await service.prepareMemory()
-        _ = try await collectReplies(try await service.streamReply(to: "ありがとう"))
-        let bodies = await server.runPosts.compactMap(\.jsonBody)
-        XCTAssertEqual(bodies.compactMap { $0["input"] }, ["ありがとう"], "the next turn sends only what was said")
-        XCTAssertEqual(bodies.first?["instructions"], HermesConversationInstructions.persona)
-    }
-
-    /// 以前の版は、受付の分からない送信をやり直すと同じ記録を二度送ることがあった。質問は一度だけ展開する。
-    func testAnOlderReleaseRecordSentTwiceExpandsItsQuestionOnce() async throws {
-        let id = UUID()
-        let first = try Self.legacyClarificationInput(id: id, original: "窓を開けたほうがいい？", utterance: "言ったよ")
-        let again = try Self.legacyClarificationInput(id: id, original: "窓を開けたほうがいい？", utterance: "そうだよ")
-        let history = try storedHistory([["role": "user", "content": first], ["role": "user", "content": again],
-                                         ["role": "assistant", "content": "いいお天気だよ"]])
-        let transcript = try await makeService(FakeHermesServer(history: [history]), records: continued()).transcript()
-        XCTAssertEqual(transcript, [.init(speaker: .user, text: "窓を開けたほうがいい？"), .init(speaker: .cat, text: Self.legacyQuestion),
-                                    .init(speaker: .user, text: "言ったよ"), .init(speaker: .user, text: "そうだよ"),
-                                    .init(speaker: .cat, text: "いいお天気だよ")])
-    }
-
-    func testTypedTextShapedLikeAClarificationReplyRestoresAsTyped() async throws {
-        // Someone types the reserved shape verbatim. It is sent escaped and reads back as one typed line.
-        let typed = try Self.legacyClarificationInput(original: "明日の天気は？", utterance: "言ったよ")
+    /// 以前の版は聞き返しの返事を `[CatRobot conversation v1]` の JSON で送り、履歴で展開していた。今は特別に扱わない。
+    /// 同じ形の文字も手を加えずに送り、履歴でも 1 行の発言として出す。
+    func testTextShapedLikeAnOldClarificationRecordIsSentAndShownVerbatim() async throws {
+        let shaped = "[CatRobot conversation v1]\n"
+            + #"{"id":"00000000-0000-0000-0000-000000000001","original":"明日の天気は？","question":"今の、ぼくに言った？","utterance":"言ったよ"}"#
         let records = InMemoryHermesSessionRecordStore()
         let server = FakeHermesServer(runs: [hermesAccepted("run-1")],
                                       polls: ["run-1": [hermesRun("run-1", "completed", output: "なるほど")]])
         let service = makeService(server, records: records)
-        _ = try await collectReplies(try await service.streamReply(to: typed))
+        _ = try await collectReplies(try await service.streamReply(to: shaped))
         let body = await server.runPosts.first?.jsonBody
-        let sent = try XCTUnwrap(body?["input"])
-        XCTAssertNotEqual(sent, typed)
+        XCTAssertEqual(body?["input"], shaped)
 
-        let history = try storedHistory([["role": "user", "content": sent], ["role": "assistant", "content": "なるほど"]])
+        let history = try storedHistory([["role": "user", "content": shaped], ["role": "assistant", "content": "なるほど"]])
         let restarted = makeService(FakeHermesServer(history: [history]), records: records)
         let transcript = try await restarted.transcript()
-        XCTAssertEqual(transcript, [.init(speaker: .user, text: typed), .init(speaker: .cat, text: "なるほど")])
+        XCTAssertEqual(transcript, [.init(speaker: .user, text: shaped), .init(speaker: .cat, text: "なるほど")])
     }
 
     // MARK: - 履歴

@@ -15,6 +15,16 @@ fn frontend() -> &'static Pronouncer {
 }
 
 #[test]
+fn product_name_has_its_spoken_reading_only_as_a_whole_word() {
+    let frontend = frontend();
+    assert_eq!(frontend.pronounce("ぼくはCaRotだよ。").unwrap(), "ぼくはキャロットだよ。");
+    assert_eq!(frontend.pronounce("ＣａＲｏｔ").unwrap(), "キャロット");
+    for text in ["CaRotKit", "https://example.test/CaRot", "a@CaRot.test", "`CaRot`"] {
+        assert_eq!(frontend.pronounce(text).unwrap(), text);
+    }
+}
+
+#[test]
 fn dictionary_reads_service_names_and_case_aliases() {
     for (input, expected) in [
         ("YouTube", "ユーチューブ"),

@@ -57,8 +57,6 @@ final class RecordingRobotLink: RobotLinkControlling {
     func setApplicationActive(_ active: Bool) {}
     func disconnectByUser() { disconnect() }
 
-    func emitInfo(_ info: RobotInfo) { snapshot.info = info; publish() }
-
     func emitStatus(_ status: RobotStatus) {
         snapshot.status = status
         snapshot.statusReceivedAt = clock.now
@@ -119,7 +117,7 @@ final class RecordingRobotLink: RobotLinkControlling {
             else {
                 sent.append(.init(command: write.command, priority: write.priority, at: clock.now))
                 switch write.command {
-                case .move, .center, .gesture, .gestureAt, .stop, .torque, .setCalibration:
+                case .move, .center, .gestureAt, .stop, .torque, .setCalibration:
                     snapshot.automaticWrite = write.priority == .tracking || write.priority == .idleMotion
                         ? .init(token: write.token, command: write.command, at: clock.now, priority: write.priority) : nil
                     publish()
@@ -183,7 +181,7 @@ final class MotionHarness {
     let motion: MotionCoordinator
     let trace = MotionTraceRecorder()
     var sentCommands: [RobotCommand] { link.sent.map(\.command) }
-    var gestureCommands: [RobotCommand] { sentCommands.filter { if case .gesture = $0 { true } else { false } } }
+    var gestureCommands: [RobotCommand] { sentCommands.filter { if case .gestureAt = $0 { true } else { false } } }
 
     /// `connected: false` builds the coordinator on a link that has already lost its connection.
     init(connected: Bool = true) {

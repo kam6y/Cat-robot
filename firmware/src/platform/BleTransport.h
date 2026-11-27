@@ -52,7 +52,7 @@ private:
     NimBLECharacteristic* statusChar_ = nullptr;
     NimBLECharacteristic* calibrationChar_ = nullptr;
     NimBLECharacteristic* limitsChar_ = nullptr;
-    char name_[16] = "CatRobot-????";
+    char name_[16] = "CaRot-????";
     char address_[18] = "";
 
     BleEvent queue_[kQueueSize];

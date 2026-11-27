@@ -31,14 +31,14 @@ struct RobotLimits: Equatable, Sendable {
 }
 
 struct RobotInfo: Equatable, Sendable {
+    static let anchoredGestureCapability: UInt8 = 1 << 1
+
     let protocolVersion: UInt8
     let major: UInt8
     let minor: UInt8
     let patch: UInt8
     let hardwareID: UInt8
     let capabilities: UInt8
-
-    var supportsAnchoredGestures: Bool { capabilities & 2 != 0 }
 }
 
 enum RobotFirmwareState: UInt8, Sendable {
@@ -101,7 +101,6 @@ struct RobotStatus: Equatable, Sendable {
 
 enum RobotCommand: Equatable, Sendable {
     case move(yawDeci: Int16, pitchDeci: Int16, speed: UInt8)
-    case gesture(id: UInt8, ampDeci: UInt8, repeats: UInt8, speed: UInt8)
     case gestureAt(id: UInt8, ampDeci: UInt8, repeats: UInt8, speed: UInt8, yawDeci: Int16, pitchDeci: Int16)
     case stop
     case center(speed: UInt8)
@@ -127,9 +126,6 @@ enum RobotProtocol {
         switch command {
         case let .move(yaw, pitch, speed):
             bytes = [1] + littleEndian(yaw) + littleEndian(pitch) + [speed]
-        case let .gesture(id, amp, repeats, speed):
-            guard (1...6).contains(id) else { throw RobotProtocolError.invalidValue }
-            bytes = [2, id, amp, repeats, speed]
         case let .gestureAt(id, amp, repeats, speed, yaw, pitch):
             guard (1...6).contains(id) else { throw RobotProtocolError.invalidValue }
             bytes = [10, id, amp, repeats, speed] + littleEndian(yaw) + littleEndian(pitch)
@@ -190,7 +186,7 @@ enum RobotProtocol {
 
     static func decodeInfo(_ data: Data) throws -> RobotInfo {
         let bytes = try payload(data, length: 8)
-        guard bytes[0] == 1 else { throw RobotProtocolError.unsupportedProtocol }
+        guard bytes[0] == 1, bytes[5] & RobotInfo.anchoredGestureCapability != 0 else { throw RobotProtocolError.unsupportedProtocol }
         return RobotInfo(protocolVersion: bytes[0], major: bytes[1], minor: bytes[2],
                          patch: bytes[3], hardwareID: bytes[4], capabilities: bytes[5])
     }

@@ -316,7 +316,7 @@
 
 | ID | 要件 | 優先度 |
 |---|---|---|
-| FR-LINK-1 | 初回は接続画面で近くのロボット（アドバタイズ名 `CatRobot-XXXX`）を一覧し、選んでペアリングする。以降は自動再接続する | 必須 |
+| FR-LINK-1 | 初回は接続画面で近くのロボット（アドバタイズ名 `CaRot-XXXX`）を一覧し、選んでペアリングする。以降は自動再接続する | 必須 |
 | FR-LINK-2 | 準備完了後は1秒ごとにPINGを送る。切断後は2秒間隔で再接続し、取消終端前に接続を重ねない。会話画面は「首と接続中」「首と未接続」「首を再接続中」を区別する。一時的なinactiveは準備とPINGを維持して新規動作を止め、backgroundはSTOPを先送せず接続を切りFWの安全復帰に任せる | 必須 |
 | FR-LINK-3 | 校正を専有し、動作・RETURNINGが終わりCalibrationとLimitsを新しくReadしてから編集可能にする。中立オフセットは±20°・0.5°刻み、反転は軸別Toggle、プレビューは最新値を最大10Hz。「保存」は意図値SET_CAL→同reqのACK待ち（1秒・計3回）→Calibration Readでsaved=1かつ意図値一致を確認して成功とする。不一致の全体やり直しは新reqで2回まで。失敗時はドラフトを保ち、切断・終了・新操作で旧結果を無効化する | 必須 |
 | FR-LINK-4 | 校正画面に低速の正面・上下左右の端・即時停止を置く。方向確認は新しいLimits Read以内、最大ヨー±60°・ピッチ±30°、他軸は現在の指令角を保つ。「今回の変更を戻す」はentryの適用値を戻し、不揮発保存しない。離脱は保存/戻す/編集継続を選び、切断後は古いドラフトを再送せず開き直してReadする | 必須 |
@@ -416,7 +416,7 @@
 
 ### 7.5 BLE GATT 仕様
 
-アドバタイズ名 `CatRobot-XXXX`（XXXX は MAC 下位 2 バイト）。接続間隔 15〜30 ms を要求。初版はペアリング（Just Works ボンディング）を必須とし、ボンド済み端末が存在するときは電源投入後 60 秒間だけ新規ペアリングを受け付ける。
+アドバタイズ名 `CaRot-XXXX`（XXXX は MAC 下位 2 バイト）。接続間隔 15〜30 ms を要求。初版はペアリング（Just Works ボンディング）を必須とし、ボンド済み端末が存在するときは電源投入後 60 秒間だけ新規ペアリングを受け付ける。
 
 | 特性 | UUID（128 bit、ベース `C47B0000-6D1F-4B9E-9C9A-2A3B4C5D6E7F`） | 属性 | 内容 |
 |---|---|---|---|
@@ -431,7 +431,6 @@
 | 種別 | 名称 | ペイロード | 動作 |
 |---|---|---|---|
 | 0x01 | MOVE | yaw int16（0.1°）、pitch int16（0.1°）、speed uint8（上限に対する %、0 は 100 と同じ = 現在の速度上限） | 目標角へ制限付きで補間移動。≤50 Hz で連続受信可 |
-| 0x02 | GESTURE | id uint8（1 nod / 2 shake / 3 tilt_l / 4 tilt_r / 5 look_up / 6 look_down）、amp uint8（0.1° 単位）、repeats uint8、speed uint8 | ファームウェア内蔵の定型動作。BLE の揺らぎに依存せず滑らかに動く |
 | 0x03 | STOP | なし | 即時脱力 |
 | 0x04 | CENTER | speed uint8 | 中立へ移動 |
 | 0x05 | TORQUE | on uint8 | 0 で脱力、1 で保持 |
@@ -439,17 +438,18 @@
 | 0x07 | SAVE_CAL | req uint8（1〜255。0 は拒否） | NVS に保存。結果は Status の `save_seq` = req と SAVE_ERROR で伝える（§7.5.2） |
 | 0x08 | SET_LIMITS | yaw_v uint16、pitch_v uint16、yaw_a int16、pitch_a int16 | FW-LIM-2 の内側で更新 |
 | 0x09 | PING | seq uint8 | キープアライブ。Status に seq を返す |
+| 0x0A | GESTURE_AT | id uint8（1 nod / 2 shake / 3 tilt_l / 4 tilt_r / 5 look_up / 6 look_down）、amp uint8（0.1° 単位）、repeats uint8、speed uint8、基準 yaw/pitch 各 int16（0.1°） | ファームウェア内蔵の定型動作。BLE の揺らぎに依存せず滑らかに動く |
 
-アプリは追尾と待機微動には MOVE を、頷き・横振りには GESTURE を使う。GESTURE 中に MOVE が届いたら GESTURE 完了後に反映する。
+アプリは追尾と待機微動には MOVE を、頷き・横振りには GESTURE_AT を使う。GESTURE 中に MOVE が届いたら GESTURE 完了後に反映する。
 
 #### 7.5.2 プロトコル版 1（確定、2026-10-23）
 
 バイト列の正本は設計書 `docs/superpowers/specs/2026-10-23-xiao-firmware-ble-design.md` §4.6。要点:
 
-- サービス UUID `C47B0000-6D1F-4B9E-9C9A-2A3B4C5D6E7F`。Info 以外の特性は暗号化リンク（Just Works ボンディング）でのみ読み書き・通知できる。アドバタイズ名 `CatRobot-XXXX`（本機は `CatRobot-5E8E`）
+- サービス UUID `C47B0000-6D1F-4B9E-9C9A-2A3B4C5D6E7F`。Info 以外の特性は暗号化リンク（Just Works ボンディング）でのみ読み書き・通知できる。アドバタイズ名 `CaRot-XXXX`（例 `CaRot-5E8E`）
 - Status（12 B）: yaw int16、pitch int16（0.1°、指令角）、flags uint16（bit0 LINK、bit1 TORQUE、bit2 MOVING、bit3 BROWNOUT、bit4 SATURATED、bit5 CAL_DIRTY、bit6 GESTURE、bit7 REJECTED、bit8 RETURNING、bit9 PAIR_OPEN、bit10 SAVE_ERROR）、ping seq uint8、state uint8（0 BOOT、1 BOOT_CENTER、2 IDLE、3 ACTIVE、4 RETURNING、5 RELAX_WAIT）、voltage uint16（0 固定）、rejected uint8、save_seq uint8。通知は 200 ms ごと、seq・フラグ・状態・save_seq の変化時は次の tick
 - Calibration（6 B）: yaw_off int16、pitch_off int16、invert uint8（bit0 ヨー、bit1 ピッチ）、saved uint8。Limits（8 B）: yaw_v uint16、pitch_v uint16（0.1°/s）、yaw_a int16、pitch_a int16（0.1°）。Info（8 B）: proto、fw major/minor/patch、hw id（1 = E17）、caps、予約 2 B
-- コマンド長は固定: MOVE 6、GESTURE 5、STOP 1、CENTER 2、TORQUE 2、SET_CAL 6、SAVE_CAL 2、SET_LIMITS 9、PING 2。長さ不一致・未知種別・GESTURE id 範囲外・TORQUE 0/1 以外・SET_LIMITS の負の角度上限・SAVE_CAL の req 0 は拒否（REJECTED）。それ以外の範囲外は飽和（SATURATED）
+- コマンド長は固定: MOVE 6、GESTURE_AT 9、STOP 1、CENTER 2、TORQUE 2、SET_CAL 6、SAVE_CAL 2、SET_LIMITS 9、PING 2。長さ不一致・未知種別・GESTURE id 範囲外・TORQUE 0/1 以外・SET_LIMITS の負の角度上限・SAVE_CAL の req 0 は拒否（REJECTED）。それ以外の範囲外は飽和（SATURATED）
 - 校正の保存: SET_CAL で値を送り、直前の `save_seq` と異なる req で SAVE_CAL、`save_seq` = req の Status を待つ（1 秒で同じ req を再送、冪等）。SAVE_ERROR = 0 なら成功、Calibration を Read して照合する
 - GESTURE の実装は C² の波形（窓つき正弦・5 次多項式）をそのままサーボ角にする（設計書 §4.4、2026-10-23 の実機比較で採用）。`speed` は波形の時間を 100/speed 倍にする。速度・加速度の上限を超える波形は振幅を保って時間を伸ばす。再生中の SET_LIMITS は以後の移動に効く
 

@@ -5,7 +5,7 @@ import Observation
 final class SpeechVoiceSettings {
     @ObservationIgnored private let defaults: UserDefaults
     private static let key = "speech.supertonic.voicePreset"
-    private static let wakePhraseKey = "speech.wakePhrase"
+    private static let wakePhraseKey = "conversation.wakePhrase"
     private(set) var wakePhrase: String
 
     static func cleanedWakePhrase(_ phrase: String) -> String {

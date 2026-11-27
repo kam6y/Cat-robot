@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pyserial==3.5"]
 # ///
-"""CatRobot 首ファームウェア用のシリアル CLI（設計書 §4.7）。
+"""CaRot 首ファームウェア用のシリアル CLI（設計書 §4.7）。
 
 例:
   uv run tools/serial_cli.py --port /dev/cu.usbmodem101 STATUS
@@ -69,7 +69,7 @@ def send_line(ser: serial.Serial, line: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="CatRobot 首ファームウェアのシリアル CLI")
+    parser = argparse.ArgumentParser(description="CaRot 首ファームウェアのシリアル CLI")
     parser.add_argument("--port", required=True, help="例: /dev/cu.usbmodem101")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--quiet", type=float, default=1.0, help="応答待ちを打ち切る無入力秒数（SAVE は 3 程度）")

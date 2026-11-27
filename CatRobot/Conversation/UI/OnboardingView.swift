@@ -48,9 +48,10 @@ struct OnboardingView: View {
         VStack(spacing: 14) {
             CatFaceView(expression: .neutral, mouthPose: .closed, reduceMotion: true)
                 .frame(width: 250, height: 115)
-            Text("AIの猫と話そう")
+            Text("\(ProductName.display)と話そう")
                 .font(.title.weight(.bold))
                 .multilineTextAlignment(.center)
+                .accessibilityLabel("\(ProductName.spoken)と話そう")
                 .accessibilityAddTraits(.isHeader)
             Button(isReview ? "閉じる" : "会話を始める", action: onStart)
                 .buttonStyle(.borderedProminent)
@@ -67,7 +68,7 @@ struct OnboardingView: View {
             point("聞き取りと読み上げはこのiPhoneの中。マイクは会話画面を開いている間と、設定で呼びかけを声で入力するときだけ使います。「新しい会話を始める」は Hermes で新しい会話に切り替えます。前の会話を Hermes から消すことはしません",
                   systemImage: "iphone")
             point("AIの返事は間違うことがあります。利用料は作者の負担です", systemImage: "exclamationmark.triangle")
-            Text("呼びかけの言葉（はじめは「猫ちゃん」）を入れるか、画面を見て話しかけると返答します。顔の判定はiPhone内だけで行います。呼びかけ・カメラの許可・この説明は「設定」で確認できます")
+            Text("呼びかけの言葉（初めは「\(AddresseePolicy.defaultWakePhrase)」）を入れるか、画面を見て話しかけると返答します。顔の判定はiPhone内だけで行います。呼びかけ・カメラの許可・この説明は「設定」で確認できます")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

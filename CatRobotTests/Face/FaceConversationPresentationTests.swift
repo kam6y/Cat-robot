@@ -414,7 +414,7 @@ final class FaceConversationPresentationTests: XCTestCase {
         unsaved.memoryState = .unsaved
         try await renderConversation(unsaved, name: "unsaved")
         var restore = ConversationViewState.idle
-        restore.memoryState = .restoreFailed(.readFailed)
+        restore.memoryState = .restoreFailed(.unavailable)
         try await renderConversation(restore, name: "restore")
         let failed = ConversationViewState.failed(error: .speechUnrecognized,
             message: "うまく聞き取れませんでした。もう一度話しかけるか、文字で入力してください。",

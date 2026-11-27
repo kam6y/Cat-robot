@@ -4,6 +4,11 @@ struct RobotDevice: Equatable, Sendable {
     let id: UUID
     let name: String
     let rssi: Int?
+
+    var spokenName: String {
+        guard let match = name.wholeMatch(of: /CaRot(-[0-9A-Fa-f]{4})?/) else { return name }
+        return ProductName.spoken + (match.1 ?? "")
+    }
 }
 
 enum RobotBluetoothState: Sendable {

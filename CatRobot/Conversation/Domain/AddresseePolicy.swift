@@ -8,7 +8,10 @@ enum AddresseeRoute: Equatable, Sendable {
 }
 
 struct AddresseePolicy: Sendable {
-    static let defaultWakePhrase = "猫ちゃん"
+    static let defaultWakePhrase = ProductName.spoken
+    private static let locale = Locale(identifier: "ja_JP")
+    private static let nameReading = tokenReadings(in: ProductName.spoken).joined()
+    private static let latinSpellings: Set<String> = [ProductName.display.lowercased(), "carrot"]
     private static let fillerTokens: Set<String> = ["あ", "あの", "え", "えー", "えっと", "うーん", "ん", "んー"]
     private static let separators = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
 
@@ -35,10 +38,15 @@ struct AddresseePolicy: Sendable {
         return isFacingScreen || engagement.isActive(at: timestamp) ? .accept(trimmed) : .ignore
     }
 
-    // Compare spoken readings at word boundaries. ASR can write the same name as 猫ちゃん or ねこちゃん.
+    // The tokenizer splits きゃろっと into several words. Normalize it before tokenizing.
+    // Latin transcriptions from speech recognition only match the name at word boundaries.
     static func words(in text: String) -> [String] {
-        let locale = Locale(identifier: "ja_JP")
         let normalized = text.folding(options: [.caseInsensitive, .widthInsensitive], locale: locale)
+            .replacingOccurrences(of: "きゃろっと", with: ProductName.spoken)
+        return tokenReadings(in: normalized).map { latinSpellings.contains($0) ? nameReading : $0 }
+    }
+
+    private static func tokenReadings(in normalized: String) -> [String] {
         let tokenizer = CFStringTokenizerCreate(nil, normalized as CFString, CFRange(location: 0, length: normalized.utf16.count),
                                                 kCFStringTokenizerUnitWord, locale as CFLocale)
         var words: [String] = []

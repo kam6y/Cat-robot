@@ -124,7 +124,7 @@ final class HermesModelSettings {
     private func reconcile(with catalog: HermesModelCatalog, origin: String, force: Bool) {
         notice = nil
         // キャッシュでの一覧取得時は、利用資格やプロバイダーの確認中で候補が一時的に欠けることがある。
-        if !force && catalog.source == .inventory {
+        if !force {
             if let saved = current.model, catalog.model(for: saved) == nil {
                 notice = "保存済みのモデルは現在の候補にありません。「モデルの候補を再取得」で確認できます。"
                 return

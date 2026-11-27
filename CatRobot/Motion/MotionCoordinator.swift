@@ -141,7 +141,7 @@ final class MotionCoordinator: RobotMotionControlling {
         guard (1...3).contains(request.repeats) else { return rejected(.invalidArguments, for: id) }
         let repeats = request.gesture == .center || request.gesture == .lookAtUser ? 1 : request.repeats
         var expectedStatus = status
-        if let pending = turn?.pending.last { expectedStatus = restAfter(command(for: pending.request), current: status) }
+        if let pending = turn?.pending.last { expectedStatus = restAfter(command(for: pending.request, current: status), current: status) }
         else if let active { expectedStatus = restAfter(active.command, current: status) }
         var count = 0
         for _ in 0..<repeats {
@@ -532,24 +532,23 @@ final class MotionCoordinator: RobotMotionControlling {
             } else {
                 turn?.pending.removeFirst()
                 next.predicted = prediction
-                startCycle(next)
+                startCycle(next, status: status)
             }
         }
         serviceAutonomous()
         servicePowerOff()
     }
 
-    private func startCycle(_ plan: PlannedCycle) {
+    private func startCycle(_ plan: PlannedCycle, status: RobotStatus) {
         guard let turn else { return }
         resetPowerOff()
         cancelAuto()
-        let command = command(for: plan.request)
+        let command = command(for: plan.request, current: status)
         clearAutomaticOwnership()
         let token = UUID()
-        let status = snapshot.status!
         let requiresStart: Bool
         switch command {
-        case .gesture, .gestureAt: requiresStart = true
+        case .gestureAt: requiresStart = true
         case .center: requiresStart = abs(Int(status.yawDeci)) > 1 || abs(Int(status.pitchDeci)) > 1
         case let .move(yaw, pitch, _): requiresStart = abs(Int(yaw) - Int(status.yawDeci)) > 1 || abs(Int(pitch) - Int(status.pitchDeci)) > 1
         default: requiresStart = false
@@ -632,11 +631,11 @@ final class MotionCoordinator: RobotMotionControlling {
         if let turn, turn.generationDone, turn.speechDone, turn.pending.isEmpty, active?.turn != turn.id { self.turn = nil }
     }
 
-    private var usesAnchoredGestures: Bool {
-        preferences.trackingEnabled && snapshot.info?.supportsAnchoredGestures == true
+    private func gestureOrigin(for current: RobotStatus) -> (yawDeci: Int16, pitchDeci: Int16) {
+        preferences.trackingEnabled ? (current.yawDeci, current.pitchDeci) : (0, 0)
     }
 
-    private func command(for request: RobotMotionRequest, current: RobotStatus? = nil) -> RobotCommand {
+    private func command(for request: RobotMotionRequest, current: RobotStatus) -> RobotCommand {
         let id: UInt8
         switch request.gesture {
         case .nod: id = 1
@@ -649,17 +648,16 @@ final class MotionCoordinator: RobotMotionControlling {
             guard let target = freshTracking else { return .center(speed: 100) }
             return .move(yawDeci: deci(target.yaw, cap: 45), pitchDeci: deci(target.pitch, cap: 20), speed: 100)
         }
-        if usesAnchoredGestures, let pose = current ?? snapshot.status {
-            return .gestureAt(id: id, ampDeci: request.amplitudeDeci, repeats: 1, speed: 100,
-                              yawDeci: pose.yawDeci, pitchDeci: pose.pitchDeci)
-        }
-        return .gesture(id: id, ampDeci: request.amplitudeDeci, repeats: 1, speed: 100)
+        let origin = gestureOrigin(for: current)
+        return .gestureAt(id: id, ampDeci: request.amplitudeDeci, repeats: 1, speed: 100,
+                          yawDeci: origin.yawDeci, pitchDeci: origin.pitchDeci)
     }
 
     private func estimate(_ request: RobotMotionRequest, limits: RobotLimits, current: RobotStatus) -> TimeInterval {
         guard request.gesture == .lookAtUser, let target = freshTracking else {
+            let origin = gestureOrigin(for: current)
             return GestureTiming.estimate(request: request, limits: limits, current: current,
-                                          anchor: usesAnchoredGestures ? FacePose(yaw: Double(current.yawDeci) / 10, pitch: Double(current.pitchDeci) / 10) : nil)
+                                          anchor: FacePose(yaw: Double(origin.yawDeci) / 10, pitch: Double(origin.pitchDeci) / 10))
         }
         let delta = current.with(yawDeci: Int16(clamping: Int(current.yawDeci) - Int(deci(target.yaw, cap: 45))),
                                  pitchDeci: Int16(clamping: Int(current.pitchDeci) - Int(deci(target.pitch, cap: 20))))

@@ -26,7 +26,8 @@ final class PlaybackIntegrationHarness {
             reply: service ?? reply, speaker: sentenceSpeaker ?? speaker, audioSession: base.audio,
             latency: base.latency, replyTraceSink: traces, motion: motion,
             faceExpressions: expressions, look: look, replyTurnObserver: replyTurnObserver,
-            memory: memory ?? UnsupportedConversationMemoryManager(), now: { base.now.value }))
+            memory: memory ?? UnsupportedConversationMemoryManager(), wakePhrase: base.dependencies.wakePhrase,
+            now: { base.now.value }))
     }
     func waitForPhase(_ phase: ConversationPhase) async { await waitForState { $0.phase == phase } }
     func waitForState(_ predicate: @escaping @MainActor (ConversationViewState) -> Bool) async {

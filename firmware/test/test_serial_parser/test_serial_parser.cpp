@@ -51,14 +51,16 @@ void test_move_line() {
 
 void test_gesture_names_and_ids() {
     ParsedLine nod = parse("GESTURE nod 15");
-    assertCommand(nod, CommandType::Gesture);
+    assertCommand(nod, CommandType::GestureAt);
     TEST_ASSERT_EQUAL(static_cast<int>(GestureId::Nod), static_cast<int>(nod.command.gesture.id));
     TEST_ASSERT_EQUAL_UINT8(150, nod.command.gesture.ampDeci);
+    TEST_ASSERT_EQUAL_INT16(0, nod.command.gesture.yawCenterDeci);
+    TEST_ASSERT_EQUAL_INT16(0, nod.command.gesture.pitchCenterDeci);
     TEST_ASSERT_EQUAL_UINT8(1, nod.command.gesture.repeats);
     TEST_ASSERT_EQUAL_UINT8(0, nod.command.gesture.speed);
 
     ParsedLine shake = parse("gesture 2 25 3 50");
-    assertCommand(shake, CommandType::Gesture);
+    assertCommand(shake, CommandType::GestureAt);
     TEST_ASSERT_EQUAL(static_cast<int>(GestureId::Shake), static_cast<int>(shake.command.gesture.id));
     TEST_ASSERT_EQUAL_UINT8(250, shake.command.gesture.ampDeci);
     TEST_ASSERT_EQUAL_UINT8(3, shake.command.gesture.repeats);
@@ -70,7 +72,7 @@ void test_gesture_names_and_ids() {
         char line[40];
         std::snprintf(line, sizeof line, "gesture %s 8", names[i]);
         ParsedLine g = parse(line);
-        assertCommand(g, CommandType::Gesture);
+        assertCommand(g, CommandType::GestureAt);
         TEST_ASSERT_EQUAL(static_cast<int>(ids[i]), static_cast<int>(g.command.gesture.id));
         TEST_ASSERT_EQUAL_UINT8(80, g.command.gesture.ampDeci);
     }
@@ -165,7 +167,7 @@ void test_hex_matches_binary_decoder() {
     assertCommand(compact, CommandType::Ping);
     TEST_ASSERT_EQUAL_UINT8(5, compact.command.ping.seq);
 
-    assertError(parse("HEX 02 00"), "BAD_LENGTH");
+    assertError(parse("HEX 0A 00"), "BAD_LENGTH");
     assertError(parse("HEX 0B"), "UNKNOWN_TYPE");
     assertError(parse("HEX"), "BAD_ARGS");
     assertError(parse("HEX zz"), "BAD_ARGS");

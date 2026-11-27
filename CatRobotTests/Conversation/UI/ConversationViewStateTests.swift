@@ -59,7 +59,7 @@ final class ConversationViewStateTests: XCTestCase {
         state.inactivity = .sleeping
         XCTAssertEqual(state.statusChips.map(\.title), ["待機中・タップで起こす"])
         state.inactivity = .awake
-        for memory in [ConversationMemoryState.forgetting, .forgetFailed(.deleteFailed), .restoreFailed(.readFailed)] {
+        for memory in [ConversationMemoryState.forgetting, .forgetFailed(.unavailable), .restoreFailed(.unavailable)] {
             state.memoryState = memory
             XCTAssertEqual(state.statusChips, [])
         }
@@ -83,7 +83,7 @@ final class ConversationViewStateTests: XCTestCase {
         XCTAssertEqual(state.statusChips.map(\.title), ["一時停止中・猫をタップで再開"])
         state.memoryState = .unsaved
         XCTAssertTrue(state.showsTapToResume, "保存再試行の通知は猫の再開を妨げない")
-        for memory in [ConversationMemoryState.forgetting, .forgetFailed(.deleteFailed), .restoreFailed(.readFailed)] {
+        for memory in [ConversationMemoryState.forgetting, .forgetFailed(.unavailable), .restoreFailed(.unavailable)] {
             state.memoryState = memory
             XCTAssertEqual(state.statusChips, [], "\(memory)")
         }

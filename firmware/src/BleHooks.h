@@ -9,7 +9,7 @@ struct BleHooks {
     virtual ~BleHooks() = default;
     virtual void clearBonds() = 0;
     virtual void openPairWindow() = 0;
-    // "addr=<aa:bb:…> name=CatRobot-XXXX bonds=<n> pair_open=<0|1>" を out に書く
+    // "addr=<aa:bb:…> name=CaRot-XXXX bonds=<n> pair_open=<0|1>" を out に書く
     virtual void fillInfo(char* out, size_t cap) = 0;
 };
 

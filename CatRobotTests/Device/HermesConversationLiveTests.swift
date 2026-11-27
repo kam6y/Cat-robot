@@ -118,7 +118,7 @@ final class HermesConversationLiveTests: XCTestCase {
         let candidates = catalog.providers.flatMap { provider in
             provider.models.map { (provider.slug, $0) }
         }
-        print("HERMES_MODEL_LIVE catalog=\(catalog.source) count=\(candidates.count)")
+        print("HERMES_MODEL_LIVE providers=\(catalog.providers.count) count=\(candidates.count)")
         let reasoning = candidates.filter { $0.1.reasoning == true }
         let candidate = reasoning.first { $0.0 == catalog.defaultProvider && $0.1.id != catalog.defaultModel }
             ?? reasoning.first { $0.0 != catalog.defaultProvider || $0.1.id != catalog.defaultModel }
@@ -139,7 +139,7 @@ final class HermesConversationLiveTests: XCTestCase {
         let acknowledged = await recorder.acknowledged
         if let acknowledged { XCTAssertEqual(acknowledged, model.id) }
         let served = await recorder.served
-        if catalog.source == .inventory, let served { XCTAssertEqual(served, model.id) }
+        if let served { XCTAssertEqual(served, model.id) }
         print("HERMES_MODEL_LIVE requested=\(model.id) effort=\(effort?.rawValue ?? "default") acknowledged=\(acknowledged ?? "not reported") served=\(served ?? "not reported")")
 #endif
     }

@@ -3,10 +3,10 @@ import XCTest
 
 @MainActor
 final class ExpressToolTests: XCTestCase {
-    func testSupportedNamesAndLegacyListeningReserveWithoutWaitingAndAppearAtSpeechStart() async throws {
+    func testSupportedNamesReserveWithoutWaitingAndAppearAtSpeechStart() async throws {
         let cases: [(String, FaceExpression)] = [
             ("neutral", .neutral), (" HAPPY ", .happy), ("CURIOUS", .curious),
-            ("thinking", .thinking), ("listening", .neutral), ("speaking", .speaking),
+            ("thinking", .thinking), ("speaking", .speaking),
             ("sleepy", .sleepy), ("surprised", .surprised), ("sorry", .sorry)
         ]
         for (raw, expected) in cases {
